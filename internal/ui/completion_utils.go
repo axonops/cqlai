@@ -1,0 +1,328 @@
+package ui
+
+import "strings"
+
+// isColumnName checks if a word could be a column name
+func (ce *CompletionEngine) isColumnName(word string, words []string, fromIndex int) bool {
+	if fromIndex < 0 {
+		return false
+	}
+
+	columns := ce.getColumnNamesForCurrentTable(words, fromIndex)
+	for _, col := range columns {
+		if strings.EqualFold(col, word) {
+			return true
+		}
+	}
+	return false
+}
+
+// isColumnNameForTable checks if a word is a column name for a specific table
+func (ce *CompletionEngine) isColumnNameForTable(word string, tableName string) bool {
+	columns := ce.getColumnNamesForTable(tableName)
+	for _, col := range columns {
+		if strings.EqualFold(col, word) {
+			return true
+		}
+	}
+	return false
+}
+
+// isComparisonOperator checks if a word is a comparison operator
+func (ce *CompletionEngine) isComparisonOperator(word string) bool {
+	for _, op := range ComparisonOperators {
+		if word == op {
+			return true
+		}
+	}
+	return false
+}
+
+// getSuggestionsAfterWhere returns suggestions after WHERE clause
+func (ce *CompletionEngine) getSuggestionsAfterWhere(words []string, hasOrderBy, hasGroupBy, hasLimit, hasAllowFiltering, hasPerPartitionLimit bool) []string {
+	var suggestions []string
+
+	// Can always add more conditions
+	suggestions = append(suggestions, "AND", "OR")
+
+	if !hasGroupBy {
+		suggestions = append(suggestions, "GROUP")
+	}
+	if !hasOrderBy {
+		suggestions = append(suggestions, "ORDER")
+	}
+	if !hasLimit {
+		suggestions = append(suggestions, "LIMIT")
+	}
+	if !hasPerPartitionLimit && hasOrderBy {
+		suggestions = append(suggestions, "PER")
+	}
+	if !hasAllowFiltering {
+		suggestions = append(suggestions, "ALLOW")
+	}
+
+	return suggestions
+}
+
+// getSuggestionsAfterOrderBy returns suggestions after ORDER BY clause
+func (ce *CompletionEngine) getSuggestionsAfterOrderBy(words []string, hasWhere, hasLimit, hasAllowFiltering, hasPerPartitionLimit bool) []string {
+	var suggestions []string
+
+	if !hasLimit {
+		suggestions = append(suggestions, "LIMIT")
+	}
+	if !hasPerPartitionLimit {
+		suggestions = append(suggestions, "PER")
+	}
+	if !hasAllowFiltering && hasWhere {
+		suggestions = append(suggestions, "ALLOW")
+	}
+
+	return suggestions
+}
+
+// getTopLevelCommands returns top-level CQL commands
+func (ce *CompletionEngine) getTopLevelCommands() []string {
+	return []string{
+		"SELECT", "INSERT", "UPDATE", "DELETE",
+		"CREATE", "DROP", "ALTER", "TRUNCATE",
+		"GRANT", "REVOKE",
+		"USE",
+		"DESCRIBE", "DESC",
+		"BEGIN", "APPLY",
+		"LIST",
+		"CONSISTENCY",
+		"TRACING",
+		"PAGING",
+		"SHOW",
+		"HELP",
+		"SOURCE",
+		"CAPTURE",
+		"EXPAND",
+	}
+}
+
+// IsObjectType checks if a word is a database object type
+func IsObjectType(word string) bool {
+	upperWord := strings.ToUpper(word)
+	for _, obj := range DDLObjectTypes {
+		if upperWord == obj {
+			return true
+		}
+	}
+	return false
+}
+
+// GetFollowKeywords returns keywords that can follow a given keyword
+func GetFollowKeywords(keyword string) []string {
+	switch strings.ToUpper(keyword) {
+	case "CREATE":
+		return DDLObjectTypes
+	case "DROP":
+		return DDLObjectTypes
+	case "ALTER":
+		// ALTER supports a subset of object types
+		return []string{"TABLE", "KEYSPACE", "TYPE", "ROLE", "USER"}
+	case "MATERIALIZED":
+		return []string{"VIEW"}
+	case "IF":
+		return []string{"NOT", "EXISTS"}
+	case "NOT":
+		return []string{"EXISTS"}
+	case "ORDER":
+		return []string{"BY"}
+	case "GROUP":
+		return []string{"BY"}
+	case "PRIMARY":
+		return []string{"KEY"}
+	case "ALLOW":
+		return []string{"FILTERING"}
+	case "WITH":
+		return []string{"REPLICATION", "DURABLE_WRITES", "CLUSTERING", "COMPACT", "COMPRESSION"}
+	case "GRANT":
+		return CQLPermissions
+	case "REVOKE":
+		return CQLPermissions
+	default:
+		return []string{}
+	}
+}
+
+// GetCommandObjects returns object names for DDL commands
+func GetCommandObjects(command, objectType string) []string {
+	switch strings.ToUpper(command) {
+	case "CREATE", "DROP", "ALTER":
+		switch strings.ToUpper(objectType) {
+		case "TABLE":
+			return []string{} // Will be filled with actual table names
+		case "KEYSPACE":
+			return []string{} // Will be filled with actual keyspace names
+		default:
+			return []string{}
+		}
+	default:
+		return []string{}
+	}
+}
+
+// getFunctionSuggestions returns CQL function suggestions for SELECT clause
+func (ce *CompletionEngine) getFunctionSuggestions() []string {
+	suggestions := []string{}
+	
+	// Add aggregate functions with opening parenthesis
+	for _, fn := range AggregateFunctions {
+		suggestions = append(suggestions, fn+"(")
+	}
+	
+	// Add time/UUID functions with parentheses where appropriate
+	for _, fn := range TimeFunctions {
+		if fn == "now" || fn == "currentTimeUUID" || fn == "currentTimestamp" || fn == "currentDate" {
+			suggestions = append(suggestions, fn+"()")
+		} else {
+			suggestions = append(suggestions, fn+"(")
+		}
+	}
+	
+	// Add system functions with opening parenthesis
+	for _, fn := range SystemFunctions {
+		if fn == "uuid" {
+			suggestions = append(suggestions, fn+"()")
+		} else {
+			suggestions = append(suggestions, fn+"(")
+		}
+	}
+	
+	// Add type conversion functions
+	suggestions = append(suggestions, "CAST(")
+	
+	return suggestions
+}
+
+// getTableAndKeyspaceNames returns both table names and keyspace names
+func (ce *CompletionEngine) getTableAndKeyspaceNames() []string {
+	var suggestions []string
+
+	// Add table names from current keyspace
+	suggestions = append(suggestions, ce.getTableNames()...)
+
+	// Add keyspace names (for keyspace.table syntax)
+	keyspaces := ce.getKeyspaceNames()
+	for _, ks := range keyspaces {
+		// Add keyspace name with a dot to indicate it expects a table name after
+		suggestions = append(suggestions, ks+".")
+	}
+
+	return suggestions
+}
+
+// FindCommonPrefix finds the common prefix of all completion options
+func FindCommonPrefix(completions []string) string {
+	if len(completions) == 0 {
+		return ""
+	}
+	if len(completions) == 1 {
+		return completions[0]
+	}
+
+	prefix := completions[0]
+	for _, s := range completions[1:] {
+		for len(prefix) > 0 && !strings.HasPrefix(s, prefix) {
+			prefix = prefix[:len(prefix)-1]
+		}
+		if len(prefix) == 0 {
+			break
+		}
+	}
+	return prefix
+}
+
+// getTableNames returns table names from the completion engine
+func (pce *ParserBasedCompletionEngine) getTableNames() []string {
+	return pce.CompletionEngine.getTableNames()
+}
+
+// getKeyspaceNames returns keyspace names from the completion engine
+func (pce *ParserBasedCompletionEngine) getKeyspaceNames() []string {
+	return pce.CompletionEngine.getKeyspaceNames()
+}
+
+// getColumnNamesForTable returns column names for a specific table
+func (pce *ParserBasedCompletionEngine) getColumnNamesForTable(tableName string) []string {
+	return pce.CompletionEngine.getColumnNamesForTable(tableName)
+}
+
+// getTableAndKeyspaceNames returns both table names and keyspace names for INSERT/SELECT
+func (pce *ParserBasedCompletionEngine) getTableAndKeyspaceNames() []string {
+	var suggestions []string
+
+	// Add table names from current keyspace
+	suggestions = append(suggestions, pce.getTableNames()...)
+
+	// Add keyspace names (for keyspace.table syntax)
+	keyspaces := pce.getKeyspaceNames()
+	for _, ks := range keyspaces {
+		// Add keyspace name with a dot to indicate it expects a table name after
+		suggestions = append(suggestions, ks+".")
+	}
+
+	return suggestions
+}
+
+// getTablesForKeyspace returns table names for a specific keyspace
+func (pce *ParserBasedCompletionEngine) getTablesForKeyspace(keyspaceName string) []string {
+	// This would typically query Cassandra for tables in the specified keyspace
+	// For now, delegate to the base completion engine which may have this info cached
+	return pce.CompletionEngine.getTablesForKeyspace(keyspaceName)
+}
+
+// isCQLKeyword checks if a token is a CQL keyword
+func (pce *ParserBasedCompletionEngine) isCQLKeyword(token string) bool {
+	keywords := []string{
+		"SELECT", "FROM", "WHERE", "AND", "OR", "NOT",
+		"INSERT", "INTO", "VALUES",
+		"UPDATE", "SET",
+		"DELETE",
+		"CREATE", "DROP", "ALTER",
+		"TABLE", "KEYSPACE", "INDEX",
+		"ORDER", "BY", "GROUP", "HAVING",
+		"LIMIT", "ALLOW", "FILTERING",
+		"ASC", "DESC", "DISTINCT",
+		"PRIMARY", "KEY", "WITH",
+		"IF", "EXISTS", "NOT",
+		"BEGIN", "BATCH", "APPLY",
+		"TRUNCATE", "GRANT", "REVOKE",
+		"USE", "DESCRIBE", "DESC",
+	}
+
+	upperToken := strings.ToUpper(token)
+	for _, kw := range keywords {
+		if upperToken == kw {
+			return true
+		}
+	}
+	return false
+}
+
+// getTopLevelKeywords returns all top-level CQL keywords
+func (pce *ParserBasedCompletionEngine) getTopLevelKeywords() []string {
+	return []string{
+		"ALTER",
+		"APPLY",
+		"BEGIN",
+		"CONSISTENCY",
+		"CREATE",
+		"DELETE",
+		"DESCRIBE",
+		"DESC",
+		"DROP",
+		"GRANT",
+		"INSERT",
+		"LIST",
+		"REVOKE",
+		"SELECT",
+		"SHOW",
+		"TRUNCATE",
+		"UPDATE",
+		"USE",
+	}
+}
