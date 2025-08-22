@@ -1,0 +1,77 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/cqlai
+/bin/
+/dist/
+/build/
+/releases/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+coverage.out
+
+# Dependency directories
+vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# IDE directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Debug files
+*.log
+debug
+debug.test
+cqlai_debug.log
+__debug_bin
+
+# Configuration files with sensitive data
+cqlai.json
+!cqlai.json.example
+
+# Capture output files
+*.capture
+capture_*.txt
+capture_*.json
+capture_*.csv
+output.json
+output.csv
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+Thumbs.db
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+plan/
