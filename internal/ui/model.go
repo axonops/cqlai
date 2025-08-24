@@ -59,6 +59,9 @@ type MainModel struct {
 	showDataTypes    bool  // Whether to show column data types in table headers
 	columnTypes      []string  // Store column data types
 	
+	// Sliding window for large result sets
+	slidingWindow    *SlidingWindowTable  // Manages memory-limited table data
+	
 	// Multi-line mode
 	multiLineMode    bool     // Whether we're in multi-line mode
 	multiLineBuffer  []string // Buffer for multi-line commands

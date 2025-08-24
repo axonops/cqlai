@@ -12,25 +12,27 @@ var (
 
 // StatusBarModel is the Bubble Tea model for the status bar.
 type StatusBarModel struct {
-	DC          string
-	Host        string
-	Latency     string
-	Consistency string
-	PagingSize  int
-	Tracing     bool
-	Keyspace    string
-	Version     string
+	DC           string
+	Host         string
+	Latency      string
+	Consistency  string
+	PagingSize   int
+	Tracing      bool
+	Keyspace     string
+	Version      string
+	OutputFormat string
 }
 
 // NewStatusBarModel creates a new StatusBarModel.
 func NewStatusBarModel() StatusBarModel {
 	return StatusBarModel{
-		DC:          "local",
-		Host:        "127.0.0.1",
-		Latency:     "10ms",
-		Consistency: "LOCAL_ONE",
-		PagingSize:  100,
-		Tracing:     false,
+		DC:           "local",
+		Host:         "127.0.0.1",
+		Latency:      "10ms",
+		Consistency:  "LOCAL_ONE",
+		PagingSize:   100,
+		Tracing:      false,
+		OutputFormat: "TABLE",
 	}
 }
 
@@ -80,6 +82,10 @@ func (m StatusBarModel) View(width int, styles *Styles) string {
 	versionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#B8B8B8"))
 	
+	// Format style
+	formatStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#87AFFF"))
+	
 	// Build the status text with colors
 	statusText := labelStyle.Render("KS: ") + keyspaceStyle.Render(keyspaceDisplay) +
 		separatorStyle.Render(" │ ") +
@@ -91,7 +97,9 @@ func (m StatusBarModel) View(width int, styles *Styles) string {
 		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Page: ") + pageStyle.Render(fmt.Sprintf("%d", m.PagingSize)) +
 		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState)
+		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState) +
+		separatorStyle.Render(" │ ") +
+		labelStyle.Render("Output: ") + formatStyle.Render(m.OutputFormat)
 	
 	// Add version if available
 	if m.Version != "" {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // Config holds the database configuration
@@ -54,6 +55,16 @@ type AIProviderConfig struct {
 	Model  string `json:"model"`
 }
 
+// OutputFormat represents the output format for query results
+type OutputFormat string
+
+const (
+	OutputFormatTable  OutputFormat = "TABLE"
+	OutputFormatASCII  OutputFormat = "ASCII"
+	OutputFormatExpand OutputFormat = "EXPAND"
+	OutputFormatJSON   OutputFormat = "JSON"
+)
+
 // Session is a wrapper around the gocql.Session.
 type Session struct {
 	*gocql.Session
@@ -65,6 +76,7 @@ type Session struct {
 	requireConfirmation bool
 	cassandraVersion    string
 	aiConfig            *AIConfig
+	outputFormat        OutputFormat
 }
 
 // SessionOptions represents options for creating a session with command-line overrides
@@ -193,6 +205,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		requireConfirmation: config.RequireConfirmation,
 		cassandraVersion:    releaseVersion,
 		aiConfig:            config.AI,
+		outputFormat:        OutputFormatTable,
 	}, nil
 }
 
@@ -299,6 +312,33 @@ func (s *Session) Tracing() bool {
 // SetTracing enables or disables tracing
 func (s *Session) SetTracing(enabled bool) {
 	s.tracing = enabled
+}
+
+// GetOutputFormat returns the current output format
+func (s *Session) GetOutputFormat() OutputFormat {
+	return s.outputFormat
+}
+
+// SetOutputFormat sets the output format
+func (s *Session) SetOutputFormat(format string) error {
+	logger.DebugfToFile("SetOutputFormat", "Setting format to: %s", format)
+	switch strings.ToUpper(format) {
+	case "TABLE":
+		s.outputFormat = OutputFormatTable
+		logger.DebugfToFile("SetOutputFormat", "Format set to TABLE: %v", s.outputFormat)
+	case "ASCII":
+		s.outputFormat = OutputFormatASCII
+		logger.DebugfToFile("SetOutputFormat", "Format set to ASCII: %v", s.outputFormat)
+	case "EXPAND":
+		s.outputFormat = OutputFormatExpand
+		logger.DebugfToFile("SetOutputFormat", "Format set to EXPAND: %v", s.outputFormat)
+	case "JSON":
+		s.outputFormat = OutputFormatJSON
+		logger.DebugfToFile("SetOutputFormat", "Format set to JSON: %v", s.outputFormat)
+	default:
+		return fmt.Errorf("invalid output format '%s'. Use OUTPUT TABLE, OUTPUT ASCII, OUTPUT EXPAND, or OUTPUT JSON", format)
+	}
+	return nil
 }
 
 // Query creates a new query with session defaults applied

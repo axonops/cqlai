@@ -293,6 +293,8 @@ func (pce *ParserBasedCompletionEngine) getNextTokenSuggestions(tokens []antlr.T
 			tokenTypes = append(tokenTypes, "TRIGGER")
 		case grammar.CqlLexerK_CONSISTENCY:
 			tokenTypes = append(tokenTypes, "CONSISTENCY")
+		case grammar.CqlLexerK_ASCII:
+			tokenTypes = append(tokenTypes, "ASCII")
 		case grammar.CqlLexerK_BATCH:
 			tokenTypes = append(tokenTypes, "BATCH")
 		case grammar.CqlLexerK_KEYSPACES:
@@ -329,6 +331,8 @@ func (pce *ParserBasedCompletionEngine) getNextTokenSuggestions(tokens []antlr.T
 			return pce.getRevokeSuggestions(tokenTypes)
 		case "CONSISTENCY":
 			return pce.getConsistencySuggestions(tokenTypes)
+		case "OUTPUT":
+			return pce.getOutputSuggestions(tokenTypes)
 		}
 	}
 

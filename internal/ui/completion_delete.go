@@ -35,7 +35,7 @@ func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []
 	switch lastWord {
 	case "DELETE":
 		// After DELETE, can specify columns or FROM
-		return []string{"FROM"}
+		return FromKeyword
 	case "FROM":
 		return ce.getTableAndKeyspaceNames()
 	case "WHERE":
@@ -45,9 +45,9 @@ func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []
 		}
 		return []string{}
 	case "IF":
-		return []string{"EXISTS"}
+		return ExistsKeyword
 	case "USING":
-		return []string{"TIMESTAMP"}
+		return TimestampKeyword
 	case "TIMESTAMP":
 		// After TIMESTAMP, expect a number
 		return []string{}
@@ -97,7 +97,7 @@ func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []
 			return []string{}
 		}
 
-		return []string{"IF", "AND"}
+		return IfAnd
 	}
 
 	return []string{}
@@ -105,7 +105,7 @@ func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []
 
 func (pce *ParserBasedCompletionEngine) getDeleteSuggestions(tokens []string) []string {
 	if len(tokens) == 1 {
-		return []string{"FROM"}
+		return FromKeyword
 	}
 
 	hasFrom := false
@@ -120,7 +120,7 @@ func (pce *ParserBasedCompletionEngine) getDeleteSuggestions(tokens []string) []
 	}
 
 	if hasFrom && !hasWhere {
-		return []string{"WHERE", "USING", "IF"}
+		return WhereUsingIf
 	}
 
 	return []string{}

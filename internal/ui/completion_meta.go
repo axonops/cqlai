@@ -4,17 +4,7 @@ package ui
 func (ce *CompletionEngine) getDescribeCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
 		// First word after DESCRIBE/DESC
-		return []string{
-			"KEYSPACE", "KEYSPACES",
-			"TABLE", "TABLES",
-			"TYPE", "TYPES",
-			"FUNCTION", "FUNCTIONS",
-			"AGGREGATE", "AGGREGATES",
-			"MATERIALIZED",
-			"INDEX",
-			"SCHEMA",
-			"CLUSTER",
-		}
+		return DescribeObjects
 	}
 
 	// Get the last word to determine context
@@ -25,7 +15,7 @@ func (ce *CompletionEngine) getDescribeCompletions(words []string, wordPos int) 
 
 	// Handle MATERIALIZED VIEW
 	if lastWord == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
 	// If we're at position 2 (after DESCRIBE <type>), suggest names
@@ -93,14 +83,14 @@ func (ce *CompletionEngine) getGrantCompletions(words []string, wordPos int) []s
 		if lastWord == "," {
 			return CQLPermissions
 		}
-		return []string{"ON", ","}
+		return append(OnKeyword, ",")
 	}
 
 	// After ON
 	if hasOn && onPos >= 0 {
 		if wordPos == onPos+1 {
 			// Resource types
-			return []string{"ALL", "KEYSPACE", "TABLE", "ROLE", "FUNCTION", "AGGREGATE", "INDEX", "MATERIALIZED"}
+			return ResourceTypes
 		}
 
 		// After resource type
@@ -117,9 +107,9 @@ func (ce *CompletionEngine) getGrantCompletions(words []string, wordPos int) []s
 			case "INDEX":
 				return ce.getIndexNames()
 			case "MATERIALIZED":
-				return []string{"VIEW"}
+				return MaterializedKeyword
 			case "ALL":
-				return []string{"KEYSPACES", "FUNCTIONS", "ROLES"}
+				return AllResourceTargets
 			}
 		}
 
@@ -130,7 +120,7 @@ func (ce *CompletionEngine) getGrantCompletions(words []string, wordPos int) []s
 
 		// After resource name, suggest TO
 		if !hasTo && wordPos > onPos+2 {
-			return []string{"TO"}
+			return ToKeyword
 		}
 	}
 
@@ -176,14 +166,14 @@ func (ce *CompletionEngine) getRevokeCompletions(words []string, wordPos int) []
 		if lastWord == "," {
 			return CQLPermissions
 		}
-		return []string{"ON", ","}
+		return append(OnKeyword, ",")
 	}
 
 	// After ON
 	if hasOn && onPos >= 0 {
 		if wordPos == onPos+1 {
 			// Resource types
-			return []string{"ALL", "KEYSPACE", "TABLE", "ROLE", "FUNCTION", "AGGREGATE", "INDEX", "MATERIALIZED"}
+			return ResourceTypes
 		}
 
 		// After resource type
@@ -200,9 +190,9 @@ func (ce *CompletionEngine) getRevokeCompletions(words []string, wordPos int) []
 			case "INDEX":
 				return ce.getIndexNames()
 			case "MATERIALIZED":
-				return []string{"VIEW"}
+				return MaterializedKeyword
 			case "ALL":
-				return []string{"KEYSPACES", "FUNCTIONS", "ROLES"}
+				return AllResourceTargets
 			}
 		}
 
@@ -213,7 +203,7 @@ func (ce *CompletionEngine) getRevokeCompletions(words []string, wordPos int) []
 
 		// After resource name, suggest FROM
 		if !hasFrom && wordPos > onPos+2 {
-			return []string{"FROM"}
+			return FromKeyword
 		}
 	}
 
@@ -227,7 +217,7 @@ func (ce *CompletionEngine) getRevokeCompletions(words []string, wordPos int) []
 }
 
 // getUseCompletions returns completions for USE commands
-func (ce *CompletionEngine) getUseCompletions(words []string, wordPos int) []string {
+func (ce *CompletionEngine) getUseCompletions(_ []string, wordPos int) []string {
 	if wordPos == 1 {
 		return ce.getKeyspaceNames()
 	}
@@ -235,28 +225,24 @@ func (ce *CompletionEngine) getUseCompletions(words []string, wordPos int) []str
 }
 
 // getShowCompletions returns completions for SHOW commands
-func (ce *CompletionEngine) getShowCompletions(words []string, wordPos int) []string {
+func (ce *CompletionEngine) getShowCompletions(_ []string, wordPos int) []string {
 	if wordPos == 1 {
-		return []string{"VERSION", "HOST", "SESSION"}
+		return ShowCommands
 	}
 	return []string{}
 }
 
 func (pce *ParserBasedCompletionEngine) getConsistencySuggestions(tokens []string) []string {
 	if len(tokens) == 1 {
-		return []string{
-			"ALL",
-			"ANY",
-			"EACH_QUORUM",
-			"LOCAL_ONE",
-			"LOCAL_QUORUM",
-			"LOCAL_SERIAL",
-			"ONE",
-			"QUORUM",
-			"SERIAL",
-			"THREE",
-			"TWO",
-		}
+		return ConsistencyLevels
+	}
+	return []string{}
+}
+
+func (pce *ParserBasedCompletionEngine) getOutputSuggestions(tokens []string) []string {
+	if len(tokens) == 1 {
+		// After OUTPUT, suggest format types
+		return OutputFormats
 	}
 	return []string{}
 }

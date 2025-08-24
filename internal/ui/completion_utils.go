@@ -83,23 +83,7 @@ func (ce *CompletionEngine) getSuggestionsAfterOrderBy(words []string, hasWhere,
 
 // getTopLevelCommands returns top-level CQL commands
 func (ce *CompletionEngine) getTopLevelCommands() []string {
-	return []string{
-		"SELECT", "INSERT", "UPDATE", "DELETE",
-		"CREATE", "DROP", "ALTER", "TRUNCATE",
-		"GRANT", "REVOKE",
-		"USE",
-		"DESCRIBE", "DESC",
-		"BEGIN", "APPLY",
-		"LIST",
-		"CONSISTENCY",
-		"TRACING",
-		"PAGING",
-		"SHOW",
-		"HELP",
-		"SOURCE",
-		"CAPTURE",
-		"EXPAND",
-	}
+	return TopLevelCommands
 }
 
 // IsObjectType checks if a word is a database object type
@@ -122,23 +106,23 @@ func GetFollowKeywords(keyword string) []string {
 		return DDLObjectTypes
 	case "ALTER":
 		// ALTER supports a subset of object types
-		return []string{"TABLE", "KEYSPACE", "TYPE", "ROLE", "USER"}
+		return AlterSpecificTypes
 	case "MATERIALIZED":
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	case "IF":
-		return []string{"NOT", "EXISTS"}
+		return IfClauseKeywords
 	case "NOT":
-		return []string{"EXISTS"}
+		return IfClauseKeywords[1:] // "EXISTS"
 	case "ORDER":
-		return []string{"BY"}
+		return ByKeyword
 	case "GROUP":
-		return []string{"BY"}
+		return ByKeyword
 	case "PRIMARY":
-		return []string{"KEY"}
+		return KeyKeyword
 	case "ALLOW":
-		return []string{"FILTERING"}
+		return FilteringKeyword
 	case "WITH":
-		return []string{"REPLICATION", "DURABLE_WRITES", "CLUSTERING", "COMPACT", "COMPRESSION"}
+		return KeyspaceOptions
 	case "GRANT":
 		return CQLPermissions
 	case "REVOKE":
@@ -305,24 +289,5 @@ func (pce *ParserBasedCompletionEngine) isCQLKeyword(token string) bool {
 
 // getTopLevelKeywords returns all top-level CQL keywords
 func (pce *ParserBasedCompletionEngine) getTopLevelKeywords() []string {
-	return []string{
-		"ALTER",
-		"APPLY",
-		"BEGIN",
-		"CONSISTENCY",
-		"CREATE",
-		"DELETE",
-		"DESCRIBE",
-		"DESC",
-		"DROP",
-		"GRANT",
-		"INSERT",
-		"LIST",
-		"REVOKE",
-		"SELECT",
-		"SHOW",
-		"TRUNCATE",
-		"UPDATE",
-		"USE",
-	}
+	return TopLevelKeywords
 }

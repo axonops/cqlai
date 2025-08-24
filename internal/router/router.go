@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -40,7 +41,7 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 	// Check if it's a meta-command (starts with certain keywords)
 	upperCommand := strings.ToUpper(command)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "PAGING", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
 	
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s'", command)
 	
@@ -71,11 +72,18 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 
 // parseMetaCommand parses and executes meta-commands
 func parseMetaCommand(command string, session *db.Session) interface{} {
+	// Strip trailing semicolon if present (meta-commands don't need them)
+	command = strings.TrimSpace(command)
+	command = strings.TrimSuffix(command, ";")
 	upperCommand := strings.ToUpper(strings.TrimSpace(command))
 	
+	// Handle OUTPUT command with simple string parsing
+	if strings.HasPrefix(upperCommand, "OUTPUT") {
+		return handleOutputCommand(command, session)
+	}
+	
 	// Handle non-DESCRIBE meta commands with the meta handler
-	if strings.HasPrefix(upperCommand, "CONSISTENCY") ||
-		strings.HasPrefix(upperCommand, "SHOW") ||
+	if strings.HasPrefix(upperCommand, "SHOW") ||
 		strings.HasPrefix(upperCommand, "TRACING") ||
 		strings.HasPrefix(upperCommand, "PAGING") ||
 		strings.HasPrefix(upperCommand, "EXPAND") ||
@@ -85,7 +93,7 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 		return metaHandler.HandleMetaCommand(command)
 	}
 	
-	// DESCRIBE commands use the ANTLR parser
+	// DESCRIBE and CONSISTENCY commands use the ANTLR parser
 	logger.DebugfToFile("parseMetaCommand", "Called with: '%s'", command)
 	is := antlr.NewInputStream(command)
 	lexer := grammar.NewCqlLexer(is)
@@ -121,6 +129,32 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 	
 	logger.DebugfToFile("parseMetaCommand", "Parse tree visit completed, result type: %T", result)
 	return result
+}
+
+// handleOutputCommand handles the OUTPUT command with simple string parsing
+func handleOutputCommand(command string, session *db.Session) interface{} {
+	parts := strings.Fields(strings.ToUpper(strings.TrimSpace(command)))
+	
+	// If just "OUTPUT", show current format
+	if len(parts) == 1 {
+		currentFormat := session.GetOutputFormat()
+		return fmt.Sprintf("Current output format is %s", currentFormat)
+	}
+	
+	// If "OUTPUT <format>", set the format
+	if len(parts) == 2 {
+		format := parts[1]
+		if format == "TABLE" || format == "ASCII" || format == "EXPAND" || format == "JSON" {
+			err := session.SetOutputFormat(format)
+			if err != nil {
+				return err
+			}
+			return fmt.Sprintf("Now using %s output format", format)
+		}
+		return fmt.Sprintf("Invalid output format '%s'. Valid formats are: TABLE, ASCII, EXPAND, JSON", format)
+	}
+	
+	return "Usage: OUTPUT [TABLE|ASCII|EXPAND|JSON]"
 }
 
 // IsDangerousCommand checks if a command requires confirmation

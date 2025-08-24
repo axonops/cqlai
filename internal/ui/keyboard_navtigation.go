@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/axonops/cqlai/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -28,6 +29,41 @@ func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 	var cmd tea.Cmd
 	if m.viewMode == "table" && m.hasTable {
 		m.tableViewport, cmd = m.tableViewport.Update(msg)
+		
+		// Check if we need to load more data
+		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+			// If we're within 10 rows of the bottom, load more
+			remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
+			if remainingRows < 10 {
+				// Load the next page
+				newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
+				if newRows > 0 {
+					// Update the table data and refresh the view
+					allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
+					m.lastTableData = allData
+					
+					// Format based on current output format
+					var contentStr string
+					if m.session != nil {
+						switch m.session.GetOutputFormat() {
+						case db.OutputFormatASCII:
+							contentStr = FormatASCIITable(allData)
+						case db.OutputFormatExpand:
+							contentStr = FormatExpandTable(allData)
+						default:
+							contentStr = m.formatTableForViewport(allData)
+						}
+					} else {
+						contentStr = m.formatTableForViewport(allData)
+					}
+					m.tableViewport.SetContent(contentStr)
+					
+					// Update row count
+					m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+					m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+				}
+			}
+		}
 	} else {
 		m.historyViewport, cmd = m.historyViewport.Update(msg)
 	}
@@ -132,6 +168,50 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 			}
 			if m.tableViewport.YOffset < maxOffset {
 				m.tableViewport.YOffset++
+				
+				// Check if we need to load more data
+				if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+					// If we're within 10 rows of the bottom, load more
+					remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
+					if remainingRows < 10 {
+						// Load the next page
+						newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
+						if newRows > 0 {
+							// Update the table data and refresh the view
+							allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
+							m.lastTableData = allData
+							
+							// Format based on current output format
+							var contentStr string
+							if m.session != nil {
+								switch m.session.GetOutputFormat() {
+								case db.OutputFormatASCII:
+									contentStr = FormatASCIITable(allData)
+								case db.OutputFormatExpand:
+									contentStr = FormatExpandTable(allData)
+								case db.OutputFormatJSON:
+									// Format JSON output - each row is a JSON string
+									jsonStr := ""
+									for _, row := range m.slidingWindow.Rows {
+										if len(row) > 0 {
+											jsonStr += row[0] + "\n"
+										}
+									}
+									contentStr = jsonStr
+								default:
+									contentStr = m.formatTableForViewport(allData)
+								}
+							} else {
+								contentStr = m.formatTableForViewport(allData)
+							}
+							m.tableViewport.SetContent(contentStr)
+							
+							// Update row count
+							m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+							m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+						}
+					}
+				}
 			}
 		} else {
 			// Scroll history down by one line
