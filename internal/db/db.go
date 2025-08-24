@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -368,6 +369,23 @@ func (s *Session) CassandraVersion() string {
 		return "unknown"
 	}
 	return s.cassandraVersion
+}
+
+// IsVersion4OrHigher checks if the Cassandra version is 4.0 or higher
+func (s *Session) IsVersion4OrHigher() bool {
+	version := s.CassandraVersion()
+	// Parse version string like "4.0.4" or "5.0.4"
+	parts := strings.Split(version, ".")
+	if len(parts) < 1 {
+		return false
+	}
+	
+	majorVersion, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	
+	return majorVersion >= 4
 }
 
 // GetAIConfig returns the AI configuration

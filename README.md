@@ -1,8 +1,8 @@
-# cqlai - A modern Cassandra CQL Shell
+# CQLAI - AI-Powered Cassandra CQL Shell
 
 ![cqlai banner](https://user-images.githubusercontent.com/1253874/234567890-12345678-1234-1234-1234-123456789012.png)
 
-**cqlai** is a fast, portable, and feature-rich interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, client-side command parsing, and enhanced productivity features.
+**CQLAI** is a fast, portable, and AI-enhanced interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, natural language query generation, client-side command parsing, and enhanced productivity features.
 
 It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the terminal UI, and uses [ANTLR](https://www.antlr.org/) for robust meta-command parsing.
 
@@ -25,8 +25,13 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
     - `SHOW` to view current session details.
 - **Advanced Autocompletion:** Context-aware completion for keywords, table/keyspace names, and more.
 - **Configuration:**
-    - Simple configuration via `~/.cqlai.yml`, environment variables, or command-line flags.
-    - Support for connection profiles to easily switch between clusters.
+    - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
+    - Support for SSL/TLS connections with certificate authentication.
+- **AI-Powered Query Generation:** 
+    - Natural language to CQL conversion using AI providers (OpenAI, Anthropic, Gemini).
+    - Schema-aware query generation with automatic context.
+    - Safe preview and confirmation before execution.
+    - Support for complex operations including DDL and DML.
 - **Single Binary:** Distributed as a single, static binary with no external dependencies. Fast startup and small footprint.
 
 ## Installation
@@ -35,31 +40,30 @@ You can install `cqlai` in several ways:
 
 #### From Pre-compiled Binaries
 
-Download the appropriate binary for your OS and architecture from the [**Releases**](https://github.com/your-repo/cqlai/releases) page.
+Download the appropriate binary for your OS and architecture from the [**Releases**](https://github.com/axonops/cqlai/releases) page.
 
 #### Using `go install`
 
 ```bash
-go install github.com/your-repo/cqlai/cmd/cqlai@latest
+go install github.com/axonops/cqlai/cmd/cqlai@latest
 ```
 
 #### From Source
 
 ```bash
-git clone https://github.com/your-repo/cqlai.git
+git clone https://github.com/axonops/cqlai.git
 cd cqlai
-make build
+go build -o cqlai cmd/cqlai/main.go
 ```
-The binary will be available at `./bin/cqlai`.
 
 #### Using Docker
 
 ```bash
 # Build the image
-make docker-build
+docker build -t cqlai .
 
 # Run the container
-docker run -it --rm --name cqlai-session cqlai:latest --host your-cassandra-host
+docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 ```
 
 ## Usage
@@ -69,9 +73,12 @@ Connect to a Cassandra host:
 cqlai --host 127.0.0.1 --port 9042 --user cassandra --password cassandra
 ```
 
-Or use a configuration profile:
+Or use a configuration file:
 ```bash
-cqlai --profile my-cluster
+# Create configuration from example
+cp cqlai.json.example cqlai.json
+# Edit cqlai.json with your settings, then run:
+cqlai
 ```
 
 ### Basic Commands
@@ -84,57 +91,104 @@ cqlai --profile my-cluster
   DESCRIBE TABLES;
   CONSISTENCY QUORUM;
   TRACING ON;
-  COPY users (id, name, email) TO 'users.csv' WITH HEADER = TRUE;
+  PAGING 50;
+  EXPAND ON;  -- Vertical output mode
+  SOURCE 'script.cql';  -- Execute CQL script
+  ```
+- **AI-Powered Query Generation:**
+  ```sql
+  .ai show all users with age greater than 25
+  .ai create a table for storing product inventory
+  .ai delete orders older than 1 year
   ```
 - **Keyboard Shortcuts:**
   - `↑`/`↓`: Navigate command history.
-  - `Ctrl+C`: Exit the application.
-  - `F2`: Toggle query tracing.
-  - `F3`: Cycle through consistency levels.
-  - `F4`: Set page size.
+  - `Tab`: Autocomplete commands and table/keyspace names.
+  - `Ctrl+C`: Clear input or exit (press twice to exit).
+  - `Ctrl+R`: Search command history.
+  - `F1`: Switch between history and table view.
+  - `F2`: Toggle column data types in table view.
+  - `Alt+←/→`: Scroll table horizontally.
+  - `Alt+↑/↓`: Scroll viewport vertically.
 
 ## Configuration
 
-`cqlai` can be configured via a YAML file located at `~/.cqlai.yml`.
+`cqlai` can be configured via a JSON file. The application looks for `cqlai.json` in the current directory first, then `~/.cqlai.json` in your home directory.
 
-**Example `~/.cqlai.yml`:**
-```yaml
-# Default connection settings (can be overridden by flags)
-contact_points: ["127.0.0.1"]
-port: 9042
-username: "cassandra"
-# password: "your_password" # Use env var or flag for safety
-keyspace: "system"
-local_dc: "dc1"
-
-# Session defaults
-consistency: "LOCAL_QUORUM"
-page_size: 100
-timeout: "10s"
-
-# TLS settings
-tls:
-  enabled: false
-  ca_path: "/path/to/ca.pem"
-  cert_path: "/path/to/cert.pem"
-  key_path: "/path/to/key.pem"
-  insecure_skip_verify: false
-
-# Connection profiles
-profiles:
-  prod-cluster:
-    contact_points: ["prod-node1.example.com", "prod-node2.example.com"]
-    username: "prod_user"
-    local_dc: "us-east-1"
-    tls:
-      enabled: true
-      ca_path: "/path/to/prod-ca.pem"
-  staging-cluster:
-    contact_points: ["staging-node.example.com"]
-    username: "staging_user"
+**Example `cqlai.json`:**
+```json
+{
+  "host": "127.0.0.1",
+  "port": 9042,
+  "keyspace": "",
+  "username": "cassandra",
+  "password": "cassandra",
+  "requireConfirmation": true,
+  "ssl": {
+    "enabled": false,
+    "certPath": "/path/to/client-cert.pem",
+    "keyPath": "/path/to/client-key.pem",
+    "caPath": "/path/to/ca-cert.pem",
+    "hostVerification": true,
+    "insecureSkipVerify": false
+  },
+  "ai": {
+    "provider": "openai",
+    "openai": {
+      "apiKey": "sk-...",
+      "model": "gpt-4-turbo-preview"
+    }
+  }
+}
 ```
 
-Settings are prioritized in the following order: **Flags > Environment Variables > YAML Configuration**.
+Settings are prioritized in the following order: **Command-line flags > Configuration file**.
+
+## AI-Powered Query Generation
+
+CQLAI includes built-in AI capabilities to convert natural language into CQL queries. Simply prefix your request with `.ai`:
+
+### Examples
+
+```sql
+-- Simple queries
+.ai show all users
+.ai find products with price less than 100
+.ai count orders from last month
+
+-- Complex operations
+.ai create a table for storing customer feedback with id, customer_id, rating, and comment
+.ai update user status to inactive where last_login is older than 90 days
+.ai delete all expired sessions
+
+-- Schema exploration
+.ai what tables are in this keyspace
+.ai describe the structure of the users table
+```
+
+### How It Works
+
+1. **Natural Language Input**: Type `.ai` followed by your request in plain English
+2. **Schema Context**: CQLAI automatically extracts your current schema to provide context
+3. **Query Generation**: The AI generates a structured query plan
+4. **Preview & Confirm**: Review the generated CQL before execution
+5. **Execute or Edit**: Choose to execute, edit, or cancel the query
+
+### Supported AI Providers
+
+Configure your preferred AI provider in `cqlai.json`:
+
+- **OpenAI** (GPT-4, GPT-3.5)
+- **Anthropic** (Claude 3)
+- **Google Gemini**
+- **Mock** (default, for testing without API keys)
+
+### Safety Features
+
+- **Read-only by default**: AI prefers SELECT queries unless explicitly asked to modify
+- **Dangerous operation warnings**: DROP, DELETE, TRUNCATE operations show warnings
+- **Confirmation required**: Destructive operations require additional confirmation
+- **Schema validation**: Queries are validated against your current schema
 
 ## Development
 
@@ -144,11 +198,11 @@ To work on `cqlai`, you'll need Go (≥ 1.22) and ANTLR v4.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-repo/cqlai.git
+git clone https://github.com/axonops/cqlai.git
 cd cqlai
 
 # Install dependencies
-make deps
+go mod download
 ```
 
 #### Building

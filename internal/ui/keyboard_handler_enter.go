@@ -96,6 +96,9 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// Variable to track if we should execute a command from AI modal
+	executeAICommand := false
+	
 	// Check if AI modal is showing
 	if m.showAIModal {
 		if m.aiModal.State == AIModalStatePreview {
@@ -109,18 +112,17 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 				// Get the generated CQL
 				command = m.aiModal.CQL
 				m.showAIModal = false
+				m.aiModal = AIModal{}
 				
 				// Check if it's a dangerous command
 				if m.aiModal.Plan != nil && !m.aiModal.Plan.ReadOnly && m.session.RequireConfirmation() {
 					// Show confirmation modal for dangerous AI-generated commands
 					m.modal = NewConfirmationModal(command)
-					m.aiModal = AIModal{}
 					return m, nil
 				}
 				
-				// Continue with execution below
-				m.aiModal = AIModal{}
-				break // Exit the if block and continue with command execution
+				// Mark that we should execute this command
+				executeAICommand = true
 			case 2: // Edit
 				// Put the CQL in the input for editing
 				m.input.SetValue(m.aiModal.CQL)
@@ -133,6 +135,10 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			// Close error modal
 			m.showAIModal = false
 			m.aiModal = AIModal{}
+			return m, nil
+		}
+		// If we're not executing an AI command, just return
+		if !executeAICommand {
 			return m, nil
 		}
 	}
@@ -270,11 +276,13 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		}
 	}
 
-	// Process the command from input
-	inputText := m.input.Value()
-	command = strings.TrimSpace(inputText)
-	if command == "" && !m.multiLineMode {
-		return m, nil
+	// Process the command from input (unless we're executing an AI command)
+	if !executeAICommand {
+		inputText := m.input.Value()
+		command = strings.TrimSpace(inputText)
+		if command == "" && !m.multiLineMode {
+			return m, nil
+		}
 	}
 
 	// Check if this is a CQL statement (not a meta command)
@@ -294,8 +302,8 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		!strings.HasPrefix(upperCommand, "EXIT") &&
 		!strings.HasPrefix(upperCommand, "QUIT")
 
-	// For CQL statements, check for semicolon
-	if isCQLStatement {
+	// For CQL statements, check for semicolon (skip for AI-generated commands)
+	if isCQLStatement && !executeAICommand {
 		if !strings.HasSuffix(strings.TrimSpace(command), ";") {
 			// Enter multi-line mode
 			if !m.multiLineMode {
@@ -321,7 +329,8 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		}
 	}
 
-	if m.session.RequireConfirmation() && router.IsDangerousCommand(command) {
+	// Check for dangerous commands (skip for AI commands - already checked)
+	if !executeAICommand && m.session.RequireConfirmation() && router.IsDangerousCommand(command) {
 		// Show confirmation modal for dangerous commands
 		m.modal = NewConfirmationModal(command)
 
