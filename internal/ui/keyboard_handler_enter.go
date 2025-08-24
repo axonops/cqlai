@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -176,9 +178,176 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			m.historyViewport.GotoBottom()
 
 			// Handle different result types
+			logger.DebugfToFile("HandleEnterKey", "Result type: %T", result)
 			switch v := result.(type) {
+			case db.StreamingQueryResult:
+				// Handle streaming query result
+				logger.DebugfToFile("HandleEnterKey", "Got StreamingQueryResult with %d headers", len(v.Headers))
+				logger.DebugfToFile("HandleEnterKey", "Headers: %v", v.Headers)
+				logger.DebugfToFile("HandleEnterKey", "ColumnNames: %v", v.ColumnNames)
+				
+				// Initialize sliding window (10MB memory limit, 10000 rows max)
+				m.slidingWindow = NewSlidingWindowTable(10000, 10)
+				m.slidingWindow.Headers = v.Headers
+				m.slidingWindow.ColumnNames = v.ColumnNames
+				m.slidingWindow.ColumnTypes = v.ColumnTypes
+				
+				// Load initial batch of rows
+				initialRows := 0
+				maxInitialRows := 100 // Show first 100 rows immediately
+				
+				for initialRows < maxInitialRows {
+					rowMap := make(map[string]interface{})
+					if !v.Iterator.MapScan(rowMap) {
+						// Check for iterator error
+						if err := v.Iterator.Close(); err != nil {
+							logger.DebugfToFile("HandleEnterKey", "Iterator error: %v", err)
+							// Show error to user
+							historyContent = m.historyViewport.View() + "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
+							m.historyViewport.SetContent(historyContent)
+							m.historyViewport.GotoBottom()
+							m.viewMode = "history"
+							m.hasTable = false
+							m.input.Reset()
+							return m, nil
+						}
+						logger.DebugfToFile("HandleEnterKey", "MapScan returned false after %d rows", initialRows)
+						break
+					}
+					logger.DebugfToFile("HandleEnterKey", "Row %d map keys: %v", initialRows, rowMap)
+					
+					// Convert row to string array using original column names
+					row := make([]string, len(v.ColumnNames))
+					for i, colName := range v.ColumnNames {
+						if val, ok := rowMap[colName]; ok {
+							if val == nil {
+								row[i] = "null"
+							} else {
+								// Handle different types appropriately
+								switch typed := val.(type) {
+								case gocql.UUID:
+									row[i] = typed.String()
+								case []byte:
+									row[i] = fmt.Sprintf("0x%x", typed)
+								case time.Time:
+									row[i] = typed.Format(time.RFC3339)
+								default:
+									row[i] = fmt.Sprintf("%v", val)
+								}
+							}
+						} else {
+							row[i] = "null"
+						}
+					}
+					
+					m.slidingWindow.AddRow(row)
+					initialRows++
+				}
+				
+				logger.DebugfToFile("HandleEnterKey", "Loaded %d initial rows", initialRows)
+				logger.DebugfToFile("HandleEnterKey", "Sliding window has %d rows", len(m.slidingWindow.Rows))
+				
+				// Check if we got any data
+				if initialRows == 0 {
+					// No data returned
+					v.Iterator.Close()
+					historyContent = m.historyViewport.View() + "\n" + "No results"
+					m.historyViewport.SetContent(historyContent)
+					m.historyViewport.GotoBottom()
+					m.viewMode = "history"
+					m.hasTable = false
+					m.input.Reset()
+					return m, nil
+				}
+				
+				// Check if there's more data by trying to peek at the next row
+				// Store the iterator for later use
+				m.slidingWindow.iterator = v.Iterator
+				m.slidingWindow.hasMoreData = true // Assume more data until proven otherwise
+				
+				// Update UI
+				m.topBar.HasQueryData = true
+				m.topBar.QueryTime = time.Since(v.StartTime)
+				m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+				m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+				
+				logger.DebugfToFile("HandleEnterKey", "TopBar.RowCount set to %d", m.topBar.RowCount)
+				
+				// Prepare display based on format
+				if v.Format == db.OutputFormatExpand {
+					// EXPAND format - use table viewport for pagination support
+					m.tableHeaders = v.Headers
+					m.columnTypes = v.ColumnTypes
+					m.hasTable = true
+					m.viewMode = "table"
+					
+					// Format initial data as expanded vertical format
+					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+					m.lastTableData = allData  // Store for pagination
+					m.horizontalOffset = 0      // Reset horizontal scroll
+					
+					// Format as expanded vertical table
+					expandStr := FormatExpandTable(allData)
+					m.tableViewport.SetContent(expandStr)
+					m.tableViewport.GotoTop()
+				} else if v.Format == db.OutputFormatASCII {
+					// ASCII format - use table viewport for pagination support
+					m.tableHeaders = v.Headers
+					m.columnTypes = v.ColumnTypes
+					m.hasTable = true
+					m.viewMode = "table"
+					
+					// Format initial data as ASCII table
+					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+					m.lastTableData = allData  // Store for pagination
+					m.horizontalOffset = 0      // Reset horizontal scroll
+					
+					// Format as ASCII table
+					asciiStr := FormatASCIITable(allData)
+					m.tableViewport.SetContent(asciiStr)
+					m.tableViewport.GotoTop()
+				} else if v.Format == db.OutputFormatJSON {
+					// JSON format - use table viewport for pagination support
+					m.tableHeaders = v.Headers
+					m.columnTypes = v.ColumnTypes
+					m.hasTable = true
+					m.viewMode = "table"
+					
+					// Format initial data as JSON
+					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+					m.lastTableData = allData  // Store for pagination
+					m.horizontalOffset = 0      // Reset horizontal scroll
+					
+					// Format JSON output - each row is a JSON string
+					jsonStr := ""
+					for _, row := range m.slidingWindow.Rows {
+						if len(row) > 0 {
+							jsonStr += row[0] + "\n"
+						}
+					}
+					m.tableViewport.SetContent(jsonStr)
+					m.tableViewport.GotoTop()
+				} else {
+					// TABLE format - use table viewport
+					m.tableHeaders = v.Headers
+					m.columnTypes = v.ColumnTypes
+					m.hasTable = true
+					m.viewMode = "table"
+					
+					// Format initial data for display
+					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+					m.lastTableData = allData  // Store for horizontal scrolling
+					m.horizontalOffset = 0      // Reset horizontal scroll
+					logger.DebugfToFile("HandleEnterKey", "Formatting table with %d rows (including header)", len(allData))
+					tableStr := m.formatTableForViewport(allData)
+					logger.DebugfToFile("HandleEnterKey", "Table string length: %d", len(tableStr))
+					m.tableViewport.SetContent(tableStr)
+					m.tableViewport.GotoTop()
+					logger.DebugfToFile("HandleEnterKey", "Table viewport content set, viewMode: %s", m.viewMode)
+				}
+				
 			case db.QueryResult:
-				// Query result with metadata - use table viewport
+				// Query result with metadata
 				if len(v.Data) > 0 {
 					// Update top bar with query metadata
 					m.topBar.QueryTime = v.Duration
@@ -186,18 +355,62 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					m.topBar.HasQueryData = true
 
 					m.rowCount = v.RowCount
-					// Store table data and headers
-					m.lastTableData = v.Data
-					m.tableHeaders = v.Data[0]    // Store the header row
-					m.columnTypes = v.ColumnTypes // Store column types
-					m.horizontalOffset = 0
-					m.hasTable = true
-					m.viewMode = "table"
+					
+					// Debug logging for format checking
+					logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", v.Format)
+					
+					// Check output format
+					if v.Format == db.OutputFormatASCII {
+						// Format as ASCII table in the UI layer
+						asciiOutput := FormatASCIITable(v.Data)
+						// Display ASCII formatted output in history viewport
+						historyContent = m.historyViewport.View() + "\n" + asciiOutput
+						m.historyViewport.SetContent(historyContent)
+						m.historyViewport.GotoBottom()
+						m.viewMode = "history"
+						m.hasTable = false
+					} else if v.Format == db.OutputFormatExpand {
+						// Format as expanded vertical table in the UI layer
+						expandOutput := FormatExpandTable(v.Data)
+						// Display expanded output in history viewport
+						historyContent = m.historyViewport.View() + "\n" + expandOutput
+						m.historyViewport.SetContent(historyContent)
+						m.historyViewport.GotoBottom()
+						m.viewMode = "history"
+						m.hasTable = false
+					} else if v.Format == db.OutputFormatJSON {
+						// JSON format - display raw JSON rows
+						// With SELECT JSON, each row is a JSON string
+						jsonOutput := ""
+						if len(v.Data) > 1 {
+							// Skip header row for JSON output
+							for _, row := range v.Data[1:] {
+								if len(row) > 0 {
+									jsonOutput += row[0] + "\n"
+								}
+							}
+						}
+						// Display JSON output in history viewport
+						historyContent = m.historyViewport.View() + "\n" + jsonOutput
+						m.historyViewport.SetContent(historyContent)
+						m.historyViewport.GotoBottom()
+						m.viewMode = "history"
+						m.hasTable = false
+					} else {
+						// Use table viewport for TABLE format
+						// Store table data and headers
+						m.lastTableData = v.Data
+						m.tableHeaders = v.Data[0]    // Store the header row
+						m.columnTypes = v.ColumnTypes // Store column types
+						m.horizontalOffset = 0
+						m.hasTable = true
+						m.viewMode = "table"
 
-					// Format and display in table viewport
-					tableStr := m.formatTableForViewport(v.Data)
-					m.tableViewport.SetContent(tableStr)
-					m.tableViewport.GotoTop() // Start at top of table
+						// Format and display in table viewport
+						tableStr := m.formatTableForViewport(v.Data)
+						m.tableViewport.SetContent(tableStr)
+						m.tableViewport.GotoTop() // Start at top of table
+					}
 
 					// Write to capture file if capturing
 					metaHandler := router.GetMetaHandler()
@@ -290,6 +503,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 	isCQLStatement := !strings.HasPrefix(upperCommand, "DESCRIBE") &&
 		!strings.HasPrefix(upperCommand, "DESC ") &&
 		!strings.HasPrefix(upperCommand, "CONSISTENCY") &&
+		!strings.HasPrefix(upperCommand, "OUTPUT") &&
 		!strings.HasPrefix(upperCommand, "PAGING") &&
 		!strings.HasPrefix(upperCommand, "TRACING") &&
 		!strings.HasPrefix(upperCommand, "SOURCE") &&
@@ -387,28 +601,216 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 	m.historyViewport.GotoBottom()
 
 	// Handle different result types
+	logger.DebugfToFile("HandleEnterKey", "Result type (2nd location): %T", result)
 	switch v := result.(type) {
+	case db.StreamingQueryResult:
+		// Handle streaming query result
+		logger.DebugfToFile("HandleEnterKey", "Got StreamingQueryResult with %d headers", len(v.Headers))
+		logger.DebugfToFile("HandleEnterKey", "Headers: %v", v.Headers)
+		logger.DebugfToFile("HandleEnterKey", "ColumnNames: %v", v.ColumnNames)
+		
+		// Initialize sliding window (10MB memory limit, 10000 rows max)
+		m.slidingWindow = NewSlidingWindowTable(10000, 10)
+		m.slidingWindow.Headers = v.Headers
+		m.slidingWindow.ColumnNames = v.ColumnNames
+		m.slidingWindow.ColumnTypes = v.ColumnTypes
+		
+		// Load initial batch of rows
+		initialRows := 0
+		maxInitialRows := 100 // Show first 100 rows immediately
+		
+		for initialRows < maxInitialRows {
+			rowMap := make(map[string]interface{})
+			if !v.Iterator.MapScan(rowMap) {
+				// Check for iterator error
+				if err := v.Iterator.Close(); err != nil {
+					logger.DebugfToFile("HandleEnterKey", "Iterator error: %v", err)
+					// Show error to user
+					historyContent := m.historyViewport.View() + "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
+					m.historyViewport.SetContent(historyContent)
+					m.historyViewport.GotoBottom()
+					m.viewMode = "history"
+					m.hasTable = false
+					m.input.Reset()
+					return m, nil
+				}
+				logger.DebugfToFile("HandleEnterKey", "MapScan returned false after %d rows", initialRows)
+				break
+			}
+			logger.DebugfToFile("HandleEnterKey", "Row %d map keys: %v", initialRows, rowMap)
+			
+			// Convert row to string array using original column names
+			row := make([]string, len(v.ColumnNames))
+			for i, colName := range v.ColumnNames {
+				if val, ok := rowMap[colName]; ok {
+					if val == nil {
+						row[i] = "null"
+					} else {
+						// Handle different types appropriately
+						switch typed := val.(type) {
+						case gocql.UUID:
+							row[i] = typed.String()
+						case []byte:
+							row[i] = fmt.Sprintf("0x%x", typed)
+						case time.Time:
+							row[i] = typed.Format(time.RFC3339)
+						default:
+							row[i] = fmt.Sprintf("%v", val)
+						}
+					}
+				} else {
+					row[i] = "null"
+				}
+			}
+			
+			m.slidingWindow.AddRow(row)
+			initialRows++
+		}
+		
+		logger.DebugfToFile("HandleEnterKey", "Loaded %d initial rows", initialRows)
+		logger.DebugfToFile("HandleEnterKey", "Sliding window has %d rows", len(m.slidingWindow.Rows))
+		
+		// Check if we got any data
+		if initialRows == 0 {
+			// No data returned
+			v.Iterator.Close()
+			historyContent := m.historyViewport.View() + "\n" + "No results"
+			m.historyViewport.SetContent(historyContent)
+			m.historyViewport.GotoBottom()
+			m.viewMode = "history"
+			m.hasTable = false
+			m.input.Reset()
+			return m, nil
+		}
+		
+		// Check if there's more data by trying to peek at the next row
+		// Store the iterator for later use
+		m.slidingWindow.iterator = v.Iterator
+		m.slidingWindow.hasMoreData = true // Assume more data until proven otherwise
+		
+		// Update UI
+		m.topBar.HasQueryData = true
+		m.topBar.QueryTime = time.Since(v.StartTime)
+		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+		
+		logger.DebugfToFile("HandleEnterKey", "TopBar.RowCount set to %d", m.topBar.RowCount)
+		
+		// Prepare display based on format
+		if v.Format == db.OutputFormatExpand {
+			// Format as expanded vertical table
+			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+			expandOutput := FormatExpandTable(allData)
+			
+			// Add note if there's more data
+			if m.slidingWindow.hasMoreData {
+				expandOutput += fmt.Sprintf("\n(Showing first %d rows, more available - use OUTPUT TABLE for pagination)\n", len(m.slidingWindow.Rows))
+			}
+			
+			// Display expanded output in history viewport
+			historyContent := m.historyViewport.View() + "\n" + expandOutput
+			m.historyViewport.SetContent(historyContent)
+			m.historyViewport.GotoBottom()
+			m.viewMode = "history"
+			m.hasTable = false
+			
+			// Close iterator since we won't paginate in expand mode
+			if v.Iterator != nil {
+				v.Iterator.Close()
+			}
+			m.slidingWindow.iterator = nil
+			m.slidingWindow.hasMoreData = false
+		} else if v.Format == db.OutputFormatASCII {
+			// Format as ASCII table
+			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+			asciiOutput := FormatASCIITable(allData)
+			
+			// Add note if there's more data
+			if m.slidingWindow.hasMoreData {
+				asciiOutput += fmt.Sprintf("\n(Showing first %d rows, more available - use OUTPUT TABLE for pagination)\n", len(m.slidingWindow.Rows))
+			}
+			
+			// Display ASCII formatted output in history viewport
+			historyContent := m.historyViewport.View() + "\n" + asciiOutput
+			m.historyViewport.SetContent(historyContent)
+			m.historyViewport.GotoBottom()
+			m.viewMode = "history"
+			m.hasTable = false
+			
+			// Close iterator since we won't paginate in ASCII mode
+			if v.Iterator != nil {
+				v.Iterator.Close()
+			}
+			m.slidingWindow.iterator = nil
+			m.slidingWindow.hasMoreData = false
+		} else {
+			// TABLE format - use table viewport
+			m.tableHeaders = v.Headers
+			m.columnTypes = v.ColumnTypes
+			m.hasTable = true
+			m.viewMode = "table"
+			
+			// Format initial data for display
+			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
+			m.lastTableData = allData  // Store for horizontal scrolling
+			m.horizontalOffset = 0      // Reset horizontal scroll
+			logger.DebugfToFile("HandleEnterKey", "Formatting table with %d rows (including header)", len(allData))
+			tableStr := m.formatTableForViewport(allData)
+			logger.DebugfToFile("HandleEnterKey", "Table string length: %d", len(tableStr))
+			m.tableViewport.SetContent(tableStr)
+			m.tableViewport.GotoTop()
+			logger.DebugfToFile("HandleEnterKey", "Table viewport content set, viewMode: %s", m.viewMode)
+		}
+		
+		// Write to capture file if capturing
+		metaHandler := router.GetMetaHandler()
+		if metaHandler != nil && metaHandler.IsCapturing() && len(m.slidingWindow.Rows) > 0 {
+			metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
+		}
+		
 	case db.QueryResult:
-		// Query result with metadata - use table viewport
+		// Query result with metadata
 		if len(v.Data) > 0 {
 			// Update top bar with query metadata
 			m.topBar.QueryTime = v.Duration
 			m.topBar.RowCount = v.RowCount
 			m.topBar.HasQueryData = true
-
 			m.rowCount = v.RowCount
-			// Store table data and headers
-			m.lastTableData = v.Data
-			m.tableHeaders = v.Data[0]    // Store the header row
-			m.columnTypes = v.ColumnTypes // Store column types
-			m.horizontalOffset = 0
-			m.hasTable = true
-			m.viewMode = "table"
 
-			// Format and display in table viewport
-			tableStr := m.formatTableForViewport(v.Data)
-			m.tableViewport.SetContent(tableStr)
-			m.tableViewport.GotoTop() // Start at top of table
+			// Check output format
+			if v.Format == db.OutputFormatASCII {
+				// Format as ASCII table in the UI layer
+				asciiOutput := FormatASCIITable(v.Data)
+				// Display ASCII formatted output in history viewport
+				historyContent := m.historyViewport.View() + "\n" + asciiOutput
+				m.historyViewport.SetContent(historyContent)
+				m.historyViewport.GotoBottom()
+				m.viewMode = "history"
+				m.hasTable = false
+			} else if v.Format == db.OutputFormatExpand {
+				// Format as expanded vertical table in the UI layer
+				expandOutput := FormatExpandTable(v.Data)
+				// Display expanded output in history viewport
+				historyContent := m.historyViewport.View() + "\n" + expandOutput
+				m.historyViewport.SetContent(historyContent)
+				m.historyViewport.GotoBottom()
+				m.viewMode = "history"
+				m.hasTable = false
+			} else {
+				// Use table viewport for TABLE format
+				// Store table data and headers
+				m.lastTableData = v.Data
+				m.tableHeaders = v.Data[0]    // Store the header row
+				m.columnTypes = v.ColumnTypes // Store column types
+				m.horizontalOffset = 0
+				m.hasTable = true
+				m.viewMode = "table"
+
+				// Format and display in table viewport
+				tableStr := m.formatTableForViewport(v.Data)
+				m.tableViewport.SetContent(tableStr)
+				m.tableViewport.GotoTop() // Start at top of table
+			}
 
 			// Write to capture file if capturing
 			metaHandler := router.GetMetaHandler()

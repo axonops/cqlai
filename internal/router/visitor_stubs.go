@@ -25,6 +25,7 @@ func (v *CqlCommandVisitorImpl) VisitConsistencyCommand(ctx *grammar.Consistency
 	return "Current consistency level: " + v.session.Consistency()
 }
 
+
 func (v *CqlCommandVisitorImpl) VisitUse_(ctx *grammar.Use_Context) interface{} {
 	keyspace := ctx.Keyspace().GetText()
 	// In a real application, you would handle the session change here.

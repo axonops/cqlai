@@ -10,7 +10,7 @@ func IsCompleteKeyword(word string) bool {
 		"SELECT", "INSERT", "UPDATE", "DELETE",
 		"CREATE", "DROP", "ALTER", "TRUNCATE",
 		"GRANT", "REVOKE", "USE",
-		"DESCRIBE", "DESC", "BEGIN", "APPLY", "LIST",
+		"DESCRIBE", "DESC", "BEGIN", "APPLY", "LIST", "OUTPUT",
 		// Common clauses and keywords
 		"FROM", "WHERE", "AND", "OR", "NOT",
 		"SET", "VALUES", "INTO", "IF", "EXISTS",
@@ -22,7 +22,7 @@ func IsCompleteKeyword(word string) bool {
 		"BATCH", "UNLOGGED", "COUNTER", "JSON",
 		"CONSISTENCY", "SERIAL", "QUORUM", "ALL", "ONE", "TWO", "THREE",
 		"LOCAL_ONE", "LOCAL_QUORUM", "EACH_QUORUM", "LOCAL_SERIAL",
-		"ANY", "PER", "PARTITION",
+		"ANY", "PER", "PARTITION", "ASCII",
 	}
 
 	upperWord := strings.ToUpper(word)

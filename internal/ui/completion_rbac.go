@@ -3,7 +3,7 @@ package ui
 func (pce *ParserBasedCompletionEngine) getGrantSuggestions(tokens []string) []string {
 	if len(tokens) == 1 {
 		// Return a subset of common permissions for simple suggestions
-		return []string{"ALL", "SELECT", "MODIFY", "CREATE", "ALTER", "DROP", "AUTHORIZE"}
+		return RBACPermissions
 	}
 
 	// Look for ON
@@ -16,11 +16,11 @@ func (pce *ParserBasedCompletionEngine) getGrantSuggestions(tokens []string) []s
 	}
 
 	if !hasOn {
-		return []string{"ON"}
+		return OnKeyword
 	}
 
 	// After ON
-	return []string{"KEYSPACE", "TABLE", "ROLE", "ALL"}
+	return RBACResourceTypes
 }
 
 func (pce *ParserBasedCompletionEngine) getRevokeSuggestions(tokens []string) []string {

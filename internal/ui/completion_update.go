@@ -58,9 +58,9 @@ func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []
 		return []string{}
 	case "IF":
 		// After IF, could be condition or EXISTS
-		return []string{"EXISTS"}
+		return ExistsKeyword
 	case "USING":
-		return []string{"TTL", "TIMESTAMP"}
+		return UsingOptions
 	case "TTL":
 		// After TTL, expect a number
 		return []string{}
@@ -73,7 +73,7 @@ func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []
 	case "AND":
 		// Could be in SET, WHERE, or USING clause
 		if hasUsing && !hasWhere {
-			return []string{"TTL", "TIMESTAMP"}
+			return UsingOptions
 		} else if hasWhere && wherePos >= 0 {
 			// In WHERE clause
 			if tablePos > 0 && tablePos < len(words) {
@@ -132,10 +132,10 @@ func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []
 
 		// Otherwise suggest IF
 		if !hasIf {
-			return []string{"IF", "AND"}
+			return IfAnd
 		}
 
-		return []string{"AND"}
+		return AndKeyword
 	}
 
 	return []string{}
@@ -159,12 +159,12 @@ func (pce *ParserBasedCompletionEngine) getUpdateSuggestions(tokens []string) []
 	}
 
 	if !hasSet {
-		return []string{"SET", "USING"}
+		return SetUsing
 	}
 
 	if hasSet && !hasWhere {
-		return []string{"WHERE", "IF"}
+		return WhereIf
 	}
 
-	return []string{"IF", "AND"}
+	return IfAnd
 }

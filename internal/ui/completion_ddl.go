@@ -3,7 +3,7 @@ package ui
 // getCreateCompletions returns completions for CREATE commands
 func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
-		return []string{"KEYSPACE", "TABLE", "INDEX", "TYPE", "FUNCTION", "AGGREGATE", "MATERIALIZED", "ROLE", "USER"}
+		return CreateDropObjectTypes
 	}
 
 	lastWord := ""
@@ -12,14 +12,16 @@ func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []
 	}
 
 	if lastWord == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
 	if wordPos == 2 && len(words) > 1 {
-		switch words[1] {
-		case "KEYSPACE", "TABLE", "INDEX", "TYPE", "FUNCTION", "AGGREGATE", "ROLE", "USER":
-			// After CREATE <type>, expect a name or IF NOT EXISTS
-			return []string{"IF"}
+		// Check if it's a valid object type (excluding MATERIALIZED which needs VIEW after it)
+		for _, objType := range CreateDropObjectTypesNoMaterialized {
+			if words[1] == objType {
+				// After CREATE <type>, expect a name or IF NOT EXISTS
+				return IfKeyword
+			}
 		}
 	}
 
@@ -29,7 +31,7 @@ func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []
 // getDropCompletions returns completions for DROP commands
 func (ce *CompletionEngine) getDropCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
-		return []string{"KEYSPACE", "TABLE", "INDEX", "TYPE", "FUNCTION", "AGGREGATE", "MATERIALIZED", "ROLE", "USER"}
+		return CreateDropObjectTypes
 	}
 
 	lastWord := ""
@@ -38,32 +40,32 @@ func (ce *CompletionEngine) getDropCompletions(words []string, wordPos int) []st
 	}
 
 	if lastWord == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
 	// After DROP <type>
 	if wordPos == 2 && len(words) > 1 {
 		switch words[1] {
 		case "KEYSPACE":
-			return append([]string{"IF"}, ce.getKeyspaceNames()...)
+			return append(IfKeyword, ce.getKeyspaceNames()...) // "IF"
 		case "TABLE":
-			return append([]string{"IF"}, ce.getTableNames()...)
+			return append(IfKeyword, ce.getTableNames()...) // "IF"
 		case "INDEX":
-			return append([]string{"IF"}, ce.getIndexNames()...)
+			return append(IfKeyword, ce.getIndexNames()...) // "IF"
 		case "TYPE":
-			return append([]string{"IF"}, ce.getTypeNames()...)
+			return append(IfKeyword, ce.getTypeNames()...) // "IF"
 		case "FUNCTION":
-			return append([]string{"IF"}, ce.getFunctionNames()...)
+			return append(IfKeyword, ce.getFunctionNames()...) // "IF"
 		case "AGGREGATE":
-			return append([]string{"IF"}, ce.getAggregateNames()...)
+			return append(IfKeyword, ce.getAggregateNames()...) // "IF"
 		case "ROLE", "USER":
-			return []string{"IF"}
+			return IfKeyword
 		}
 	}
 
 	// After DROP MATERIALIZED VIEW
 	if wordPos == 3 && len(words) > 2 && words[1] == "MATERIALIZED" && words[2] == "VIEW" {
-		return append([]string{"IF"}, ce.getViewNames()...)
+		return append(IfKeyword, ce.getViewNames()...)
 	}
 
 	return []string{}
@@ -72,7 +74,7 @@ func (ce *CompletionEngine) getDropCompletions(words []string, wordPos int) []st
 // getAlterCompletions returns completions for ALTER commands
 func (ce *CompletionEngine) getAlterCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
-		return []string{"KEYSPACE", "TABLE", "TYPE", "MATERIALIZED", "ROLE", "USER"}
+		return AlterObjectTypes
 	}
 
 	lastWord := ""
@@ -81,7 +83,7 @@ func (ce *CompletionEngine) getAlterCompletions(words []string, wordPos int) []s
 	}
 
 	if lastWord == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
 	// After ALTER <type>
@@ -107,11 +109,11 @@ func (ce *CompletionEngine) getAlterCompletions(words []string, wordPos int) []s
 	if wordPos == 3 && len(words) > 2 {
 		switch words[1] {
 		case "TABLE":
-			return []string{"ADD", "DROP", "ALTER", "RENAME", "WITH"}
+			return AlterTableOperations
 		case "KEYSPACE":
-			return []string{"WITH"}
+			return WithKeyword
 		case "TYPE":
-			return []string{"ADD", "RENAME"}
+			return AlterTypeOperations
 		}
 	}
 
@@ -123,7 +125,7 @@ func (ce *CompletionEngine) getTruncateCompletions(words []string, wordPos int) 
 	if wordPos == 1 {
 		// After TRUNCATE, can specify TABLE or just table name
 		tables := ce.getTableNames()
-		return append([]string{"TABLE"}, tables...)
+		return append(TableKeyword, tables...)
 	}
 
 	if wordPos == 2 && len(words) > 1 && words[1] == "TABLE" {
@@ -135,65 +137,36 @@ func (ce *CompletionEngine) getTruncateCompletions(words []string, wordPos int) 
 
 func (pce *ParserBasedCompletionEngine) getCreateSuggestions(tokens []string) []string {
 	if len(tokens) == 1 {
-		return []string{
-			"AGGREGATE",
-			"FUNCTION",
-			"INDEX",
-			"KEYSPACE",
-			"MATERIALIZED",
-			"ROLE",
-			"TABLE",
-			"TRIGGER",
-			"TYPE",
-			"USER",
-		}
+		return CreateObjectTypes
 	}
 
 	if len(tokens) == 2 && tokens[1] == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
-	return []string{"IF"}
+	return IfKeyword
 }
 
 func (pce *ParserBasedCompletionEngine) getDropSuggestions(tokens []string) []string {
 	if len(tokens) == 1 {
-		return []string{
-			"AGGREGATE",
-			"FUNCTION",
-			"INDEX",
-			"KEYSPACE",
-			"MATERIALIZED",
-			"ROLE",
-			"TABLE",
-			"TRIGGER",
-			"TYPE",
-			"USER",
-		}
+		return CreateObjectTypes // DROP supports same objects as CREATE
 	}
 
 	if len(tokens) == 2 && tokens[1] == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
 	// After object type, suggest IF EXISTS
-	return []string{"IF"}
+	return IfKeyword
 }
 
 func (pce *ParserBasedCompletionEngine) getAlterSuggestions(tokens []string) []string {
 	if len(tokens) == 1 {
-		return []string{
-			"KEYSPACE",
-			"MATERIALIZED",
-			"ROLE",
-			"TABLE",
-			"TYPE",
-			"USER",
-		}
+		return AlterObjectTypes
 	}
 
 	if len(tokens) == 2 && tokens[1] == "MATERIALIZED" {
-		return []string{"VIEW"}
+		return MaterializedKeyword
 	}
 
 	return []string{}

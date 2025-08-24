@@ -12,6 +12,17 @@ type QueryResult struct {
 	Duration    time.Duration
 	RowCount    int
 	ColumnTypes []string // Data types of each column
+	Format      OutputFormat // Output format (TABLE or ASCII)
+}
+
+// StreamingQueryResult wraps query results for progressive loading
+type StreamingQueryResult struct {
+	Headers     []string     // Column headers (with PK/C indicators)
+	ColumnNames []string     // Original column names (for data lookup)
+	ColumnTypes []string     // Data types of each column
+	Format      OutputFormat // Output format (TABLE or ASCII)
+	Iterator    *gocql.Iter  // Iterator for fetching more rows
+	StartTime   time.Time    // Query start time for duration calculation
 }
 
 // KeyColumnInfo holds information about key columns

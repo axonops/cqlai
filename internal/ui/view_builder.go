@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -20,6 +21,19 @@ func (m MainModel) View() string {
 		m.statusBar.Consistency = m.session.Consistency()
 		m.statusBar.PagingSize = m.session.PageSize()
 		m.statusBar.Version = m.session.CassandraVersion()
+		// Get the current output format
+		switch m.session.GetOutputFormat() {
+		case db.OutputFormatTable:
+			m.statusBar.OutputFormat = "TABLE"
+		case db.OutputFormatASCII:
+			m.statusBar.OutputFormat = "ASCII"
+		case db.OutputFormatExpand:
+			m.statusBar.OutputFormat = "EXPAND"
+		case db.OutputFormatJSON:
+			m.statusBar.OutputFormat = "JSON"
+		default:
+			m.statusBar.OutputFormat = "TABLE"
+		}
 	}
 
 	// Get the active viewport for scroll info
@@ -70,6 +84,26 @@ func (m MainModel) View() string {
 			maxOffset := m.tableWidth - m.tableViewport.Width
 			hScrollPercent := float64(m.horizontalOffset) / float64(maxOffset)
 			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
+		}
+	}
+	
+	// Add sliding window indicator if data has been dropped
+	if m.slidingWindow != nil && m.slidingWindow.DataDroppedAtStart {
+		warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500"))
+		scrollInfo += " " + warningStyle.Render(fmt.Sprintf("[Rows %d-%d, earlier rows dropped]", 
+			m.slidingWindow.FirstRowIndex+1, 
+			m.slidingWindow.FirstRowIndex+int64(len(m.slidingWindow.Rows))))
+	}
+	
+	// Add output format indicator
+	if m.session != nil {
+		outputFormat := m.session.GetOutputFormat()
+		if outputFormat == db.OutputFormatExpand {
+			expandStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF")).Bold(true)
+			scrollInfo += " " + expandStyle.Render("[EXPAND ON]")
+		} else if outputFormat == db.OutputFormatASCII {
+			asciiStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
+			scrollInfo += " " + asciiStyle.Render("[ASCII]")
 		}
 	}
 

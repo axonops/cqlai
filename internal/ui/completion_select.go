@@ -82,7 +82,7 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 		// After WHERE, suggest column names if we know the table
 		return ce.getColumnNamesForCurrentTable(words, fromIndex)
 	case "ORDER":
-		return []string{"BY"}
+		return ByKeyword
 	case "BY":
 		if len(words) > 1 {
 			prevWord := words[len(words)-2]
@@ -98,14 +98,14 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 			}
 		}
 	case "GROUP":
-		return []string{"BY"}
+		return ByKeyword
 	case "LIMIT":
 		// After LIMIT, expect a number (no completion)
 		return []string{}
 	case "ALLOW":
-		return []string{"FILTERING"}
+		return FilteringKeyword
 	case "PER":
-		return []string{"PARTITION"}
+		return PartitionKeyword
 	case "COUNT(":
 		// After COUNT(, suggest *, 1, or column names
 		suggestions := []string{"*", "1"}
@@ -127,7 +127,7 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 		return ce.getColumnNamesForCurrentTable(words, fromIndex)
 	case "PARTITION":
 		if len(words) > 1 && words[len(words)-2] == "PER" {
-			return []string{"LIMIT"}
+			return LimitKeyword
 		}
 	case "ASC", "DESC":
 		// After sort order, might have more columns or next clause
@@ -151,9 +151,9 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 			if lastWord != "DISTINCT" && lastWord != "JSON" && lastWord != "SELECT" {
 				// After * or column names, suggest FROM
 				if lastWord == "*" || lastWord == "COUNT(*)" {
-					return []string{"FROM"}
+					return FromKeyword
 				}
-				return []string{"FROM", ",", "AS"}
+				return FromCommaAs
 			}
 		}
 	}
@@ -217,7 +217,7 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 	if hasOrderBy && orderByIndex >= 0 && wordPos > orderByIndex+1 {
 		// If last word is a column name, suggest sort order
 		if ce.isColumnName(lastWord, words, fromIndex) {
-			return []string{"ASC", "DESC", ","}
+			return AscDescComma
 		}
 
 		// After comma in ORDER BY, suggest more columns
@@ -270,7 +270,7 @@ func (pce *ParserBasedCompletionEngine) getSelectSuggestions(tokens []string) []
 	}
 
 	if !hasFrom {
-		return []string{"FROM"}
+		return FromKeyword
 	}
 
 	// Check if we're right after FROM (need table name)
