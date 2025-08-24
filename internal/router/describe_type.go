@@ -3,37 +3,31 @@ package router
 import (
 	"fmt"
 	"strings"
-	"github.com/axonops/cqlai/internal/logger"
 )
 
 // describeTypes lists all user-defined types
 func (v *CqlCommandVisitorImpl) describeTypes() interface{} {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	cassandraVersion := v.session.CassandraVersion()
-	logger.DebugToFile("describeTypes", fmt.Sprintf("Cassandra version: %s", cassandraVersion))
+	serverResult, types, err := v.session.DBDescribeTypes()
 	
-	if isVersion4OrHigher(cassandraVersion) {
-		// Use server-side DESCRIBE TYPES
-		logger.DebugToFile("describeTypes", "Using server-side DESCRIBE TYPES")
-		return v.session.ExecuteCQLQuery("DESCRIBE TYPES")
+	if err != nil {
+		if err.Error() == "no keyspace selected" {
+			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+		}
+		return fmt.Sprintf("Error: %v", err)
 	}
 	
-	// Fall back to manual construction for pre-4.0
+	if serverResult != nil {
+		// Server-side DESCRIBE result, return as-is
+		return serverResult
+	}
+	
+	// Manual query result - format it
 	currentKeyspace := v.session.CurrentKeyspace()
-	if currentKeyspace == "" {
-		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
-	}
-
-	query := `SELECT type_name FROM system_schema.types WHERE keyspace_name = ?`
-	iter := v.session.Query(query, currentKeyspace).Iter()
-
 	results := [][]string{{"Type Name"}}
-	var typeName string
-
-	for iter.Scan(&typeName) {
-		results = append(results, []string{typeName})
+	
+	for _, t := range types {
+		results = append(results, []string{t.Name})
 	}
-	iter.Close()
 
 	if len(results) == 1 {
 		return fmt.Sprintf("No user-defined types in keyspace %s", currentKeyspace)
@@ -44,55 +38,36 @@ func (v *CqlCommandVisitorImpl) describeTypes() interface{} {
 
 // describeType shows detailed information about a user-defined type
 func (v *CqlCommandVisitorImpl) describeType(typeName string) interface{} {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	cassandraVersion := v.session.CassandraVersion()
-	logger.DebugToFile("describeType", fmt.Sprintf("Cassandra version: %s", cassandraVersion))
+	serverResult, typeInfo, err := v.session.DBDescribeType(typeName)
 	
-	if isVersion4OrHigher(cassandraVersion) {
-		// Parse keyspace.type or just type
-		var describeCmd string
-		if strings.Contains(typeName, ".") {
-			describeCmd = fmt.Sprintf("DESCRIBE TYPE %s", typeName)
-		} else {
-			currentKeyspace := v.session.CurrentKeyspace()
-			if currentKeyspace == "" {
-				return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
-			}
-			describeCmd = fmt.Sprintf("DESCRIBE TYPE %s.%s", currentKeyspace, typeName)
+	if err != nil {
+		if err.Error() == "no keyspace selected" {
+			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
 		}
-		
-		logger.DebugToFile("describeType", fmt.Sprintf("Using server-side: %s", describeCmd))
-		return v.session.ExecuteCQLQuery(describeCmd)
+		if strings.Contains(err.Error(), "not found") {
+			return err.Error()
+		}
+		return fmt.Sprintf("Error: %v", err)
 	}
 	
-	// Fall back to manual construction for pre-4.0
-	currentKeyspace := v.session.CurrentKeyspace()
-	if currentKeyspace == "" {
-		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+	if serverResult != nil {
+		// Server-side DESCRIBE result, return as-is
+		return serverResult
 	}
-
-	query := `SELECT type_name, field_names, field_types 
-	          FROM system_schema.types 
-	          WHERE keyspace_name = ? AND type_name = ?`
-
-	iter := v.session.Query(query, currentKeyspace, typeName).Iter()
-
-	var name string
-	var fieldNames []string
-	var fieldTypes []string
-
-	if !iter.Scan(&name, &fieldNames, &fieldTypes) {
-		iter.Close()
+	
+	// Manual query result - format it
+	if typeInfo == nil {
+		currentKeyspace := v.session.CurrentKeyspace()
 		return fmt.Sprintf("Type '%s' not found in keyspace '%s'", typeName, currentKeyspace)
 	}
-	iter.Close()
-
+	
+	currentKeyspace := v.session.CurrentKeyspace()
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("CREATE TYPE %s.%s (\n", currentKeyspace, typeName))
 
-	for i := 0; i < len(fieldNames) && i < len(fieldTypes); i++ {
-		result.WriteString(fmt.Sprintf("    %s %s", fieldNames[i], fieldTypes[i]))
-		if i < len(fieldNames)-1 {
+	for i := 0; i < len(typeInfo.FieldNames) && i < len(typeInfo.FieldTypes); i++ {
+		result.WriteString(fmt.Sprintf("    %s %s", typeInfo.FieldNames[i], typeInfo.FieldTypes[i]))
+		if i < len(typeInfo.FieldNames)-1 {
 			result.WriteString(",")
 		}
 		result.WriteString("\n")

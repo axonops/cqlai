@@ -3,106 +3,59 @@ package router
 import (
 	"fmt"
 	"strings"
-	"github.com/axonops/cqlai/internal/logger"
 )
 
 // describeMaterializedView shows detailed information about a materialized view
 func (v *CqlCommandVisitorImpl) describeMaterializedView(viewName string) interface{} {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	cassandraVersion := v.session.CassandraVersion()
-	logger.DebugToFile("describeMaterializedView", fmt.Sprintf("Cassandra version: %s", cassandraVersion))
+	serverResult, mvInfo, err := v.session.DBDescribeMaterializedView(viewName)
 	
-	if isVersion4OrHigher(cassandraVersion) {
-		// Parse keyspace.view or just view
-		var describeCmd string
-		if strings.Contains(viewName, ".") {
-			describeCmd = fmt.Sprintf("DESCRIBE MATERIALIZED VIEW %s", viewName)
-		} else {
-			currentKeyspace := v.session.CurrentKeyspace()
-			if currentKeyspace == "" {
-				return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
-			}
-			describeCmd = fmt.Sprintf("DESCRIBE MATERIALIZED VIEW %s.%s", currentKeyspace, viewName)
+	if err != nil {
+		if err.Error() == "no keyspace selected" {
+			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
 		}
-		
-		logger.DebugToFile("describeMaterializedView", fmt.Sprintf("Using server-side: %s", describeCmd))
-		return v.session.ExecuteCQLQuery(describeCmd)
+		if strings.Contains(err.Error(), "not found") {
+			return err.Error()
+		}
+		return fmt.Sprintf("Error: %v", err)
 	}
 	
-	// Fall back to manual construction for pre-4.0
-	currentKeyspace := v.session.CurrentKeyspace()
-	if currentKeyspace == "" {
-		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+	if serverResult != nil {
+		// Server-side DESCRIBE result, return as-is
+		return serverResult
 	}
-
-	query := `SELECT view_name, base_table_name, where_clause, 
-	                bloom_filter_fp_chance, caching, comment, compaction, compression,
-	                crc_check_chance, dclocal_read_repair_chance, default_time_to_live,
-	                gc_grace_seconds, max_index_interval, memtable_flush_period_in_ms,
-	                min_index_interval, read_repair_chance, speculative_retry
-	          FROM system_schema.views 
-	          WHERE keyspace_name = ? AND view_name = ?`
-
-	iter := v.session.Query(query, currentKeyspace, viewName).Iter()
-
-	var name, baseTable, whereClause, comment, caching, speculativeRetry string
-	var bloomFilterFpChance, crcCheckChance, dclocalReadRepairChance, readRepairChance float64
-	var defaultTTL, gcGrace, maxIndexInterval, memtableFlushPeriod, minIndexInterval int
-	var compaction, compression map[string]string
-
-	if !iter.Scan(&name, &baseTable, &whereClause, &bloomFilterFpChance, &caching, &comment,
-		&compaction, &compression, &crcCheckChance, &dclocalReadRepairChance, &defaultTTL,
-		&gcGrace, &maxIndexInterval, &memtableFlushPeriod, &minIndexInterval,
-		&readRepairChance, &speculativeRetry) {
-		iter.Close()
+	
+	// Manual query result - format it
+	if mvInfo == nil {
+		currentKeyspace := v.session.CurrentKeyspace()
 		return fmt.Sprintf("Materialized view '%s' not found in keyspace '%s'", viewName, currentKeyspace)
 	}
-	iter.Close()
-
-	// Get view columns
-	colQuery := `SELECT column_name, type, kind 
-	            FROM system_schema.columns 
-	            WHERE keyspace_name = ? AND table_name = ?`
-
-	colIter := v.session.Query(colQuery, currentKeyspace, viewName).Iter()
-
+	
+	currentKeyspace := v.session.CurrentKeyspace()
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("Materialized View: %s.%s\n\n", currentKeyspace, viewName))
-	result.WriteString(fmt.Sprintf("Base Table: %s\n", baseTable))
-	if whereClause != "" {
-		result.WriteString(fmt.Sprintf("Where Clause: %s\n", whereClause))
+	result.WriteString(fmt.Sprintf("Base Table: %s\n", mvInfo.BaseTable))
+	if mvInfo.WhereClause != "" {
+		result.WriteString(fmt.Sprintf("Where Clause: %s\n", mvInfo.WhereClause))
 	}
 	result.WriteString("\n")
 
 	// Show CREATE MATERIALIZED VIEW statement
 	result.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW %s.%s AS\n", currentKeyspace, viewName))
-	result.WriteString(fmt.Sprintf("  SELECT * FROM %s.%s\n", currentKeyspace, baseTable))
-	if whereClause != "" {
-		result.WriteString(fmt.Sprintf("  WHERE %s\n", whereClause))
+	result.WriteString(fmt.Sprintf("  SELECT * FROM %s.%s\n", currentKeyspace, mvInfo.BaseTable))
+	if mvInfo.WhereClause != "" {
+		result.WriteString(fmt.Sprintf("  WHERE %s\n", mvInfo.WhereClause))
 	}
 
-	// Get primary key info
-	var partitionKeys, clusteringKeys []string
-	var colName, colType, colKind string
-
-	for colIter.Scan(&colName, &colType, &colKind) {
-		if colKind == "partition_key" {
-			partitionKeys = append(partitionKeys, colName)
-		} else if colKind == "clustering" {
-			clusteringKeys = append(clusteringKeys, colName)
-		}
-	}
-	colIter.Close()
-
-	if len(partitionKeys) > 0 {
+	// Format primary key
+	if len(mvInfo.PartitionKeys) > 0 {
 		result.WriteString("  PRIMARY KEY (")
-		if len(partitionKeys) == 1 {
-			result.WriteString(partitionKeys[0])
+		if len(mvInfo.PartitionKeys) == 1 {
+			result.WriteString(mvInfo.PartitionKeys[0])
 		} else {
-			result.WriteString(fmt.Sprintf("(%s)", strings.Join(partitionKeys, ", ")))
+			result.WriteString(fmt.Sprintf("(%s)", strings.Join(mvInfo.PartitionKeys, ", ")))
 		}
-		if len(clusteringKeys) > 0 {
-			result.WriteString(", " + strings.Join(clusteringKeys, ", "))
+		if len(mvInfo.ClusteringKeys) > 0 {
+			result.WriteString(", " + strings.Join(mvInfo.ClusteringKeys, ", "))
 		}
 		result.WriteString(")")
 	}

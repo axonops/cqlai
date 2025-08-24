@@ -41,7 +41,7 @@ func (v *CqlCommandVisitorImpl) VisitBeginBatch(ctx *grammar.BeginBatchContext) 
 	}
 	
 	// Create a new batch
-	batchState.batch = v.session.Session.NewBatch(batchType)
+	batchState.batch = v.session.CreateBatch(batchType)
 	batchState.isActive = true
 	batchState.batchType = batchTypeStr
 	batchState.statements = []string{}
@@ -57,7 +57,7 @@ func (v *CqlCommandVisitorImpl) VisitApplyBatch(ctx *grammar.ApplyBatchContext) 
 	}
 	
 	// Execute the batch
-	if err := v.session.Session.ExecuteBatch(batchState.batch); err != nil {
+	if err := v.session.ExecuteBatch(batchState.batch); err != nil {
 		// Reset batch state even on error
 		batchState.isActive = false
 		batchState.batch = nil
@@ -83,7 +83,7 @@ func (v *CqlCommandVisitorImpl) AddToBatch(query string) (bool, error) {
 	}
 	
 	// Add the query to the batch
-	batchState.batch.Query(query)
+	v.session.AddToBatch(batchState.batch, query)
 	batchState.statements = append(batchState.statements, query)
 	
 	return true, nil // Statement was added to batch

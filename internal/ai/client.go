@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/axonops/cqlai/internal/db"
 )
 
@@ -123,6 +125,15 @@ QueryPlan JSON structure:
   "confidence": 0.95,
   "warning": "optional warning message",
   "read_only": true
+}
+
+For "list all keyspaces" or similar requests, use:
+{
+  "operation": "SELECT",
+  "table": "system_schema.keyspaces",
+  "columns": ["keyspace_name"],
+  "confidence": 1.0,
+  "read_only": true
 }`
 
 	userPrompt := fmt.Sprintf(`Schema Context:
@@ -130,7 +141,7 @@ QueryPlan JSON structure:
 
 User Request: %s
 
-Generate a QueryPlan JSON for this request.`, schemaContext, userRequest)
+Generate a QueryPlan JSON for this request. Return only the JSON, no additional text.`, schemaContext, userRequest)
 	
 	return systemPrompt, userPrompt
 }
@@ -215,9 +226,94 @@ type AnthropicClient struct {
 }
 
 func (c *AnthropicClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	// TODO: Implement actual Anthropic API call
-	// For now, return mock response
-	return (&MockClient{}).GenerateCQL(ctx, prompt, schema)
+	if c.APIKey == "" {
+		return nil, fmt.Errorf("Anthropic API key is required")
+	}
+
+	// Create Anthropic client
+	client := anthropic.NewClient(option.WithAPIKey(c.APIKey))
+
+	// Build the prompts
+	systemPrompt, userPrompt := buildPrompt(prompt, schema)
+
+	// Make API call to Anthropic
+	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model(c.Model),
+		MaxTokens: 1024,
+		System: []anthropic.TextBlockParam{
+			{Text: systemPrompt},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to call Anthropic API: %v", err)
+	}
+
+	// Extract the response text
+	if len(message.Content) == 0 {
+		return nil, fmt.Errorf("empty response from Anthropic")
+	}
+
+	// Extract text from the first content block
+	var responseText string
+	firstContent := message.Content[0]
+	textBlock := firstContent.AsText()
+	responseText = textBlock.Text
+
+	if responseText == "" {
+		return nil, fmt.Errorf("no text content in Anthropic response")
+	}
+
+	// Try to extract JSON from the response
+	jsonStr := extractJSON(responseText)
+	if jsonStr == "" {
+		// If no JSON found, try to parse the entire response
+		jsonStr = responseText
+	}
+
+	// Parse the JSON response into a QueryPlan
+	var plan QueryPlan
+	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
+		// If parsing fails, return a simple SELECT plan as fallback
+		return &QueryPlan{
+			Operation:  "SELECT",
+			Table:      "unknown",
+			Columns:    []string{"*"},
+			Confidence: 0.3,
+			Warning:    fmt.Sprintf("Failed to parse AI response: %v. Response: %s", err, responseText),
+			ReadOnly:   true,
+		}, nil
+	}
+
+	return &plan, nil
+}
+
+// extractJSON attempts to extract JSON from a text response
+func extractJSON(text string) string {
+	// Look for JSON between ```json and ``` markers
+	startMarker := "```json"
+	endMarker := "```"
+	startIdx := strings.Index(text, startMarker)
+	if startIdx != -1 {
+		startIdx += len(startMarker)
+		endIdx := strings.Index(text[startIdx:], endMarker)
+		if endIdx != -1 {
+			return strings.TrimSpace(text[startIdx : startIdx+endIdx])
+		}
+	}
+
+	// Look for JSON between { and }
+	startIdx = strings.Index(text, "{")
+	if startIdx != -1 {
+		endIdx := strings.LastIndex(text, "}")
+		if endIdx != -1 && endIdx > startIdx {
+			return text[startIdx : endIdx+1]
+		}
+	}
+
+	return ""
 }
 
 // NewAIClient is a factory function that returns the appropriate AI client
