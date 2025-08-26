@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/axonops/cqlai/internal/ui"
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 
 	m, err := ui.NewMainModelWithConnectionOptions(options)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating model: %v", err)
+		fmt.Fprintf(os.Stderr, "Error creating model: %v\n", err)
 		os.Exit(1)
 	}
 
