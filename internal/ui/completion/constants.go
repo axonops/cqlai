@@ -1,4 +1,4 @@
-package ui
+package completion
 
 // CQL Keywords and Constants used across completion files
 // This file centralizes all keyword lists to avoid duplication

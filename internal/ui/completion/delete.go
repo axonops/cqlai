@@ -1,4 +1,4 @@
-package ui
+package completion
 
 // getDeleteCompletions returns completions for DELETE commands
 func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []string {

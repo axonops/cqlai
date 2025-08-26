@@ -1,4 +1,4 @@
-package ui
+package completion
 
 func (pce *ParserBasedCompletionEngine) getUseSuggestions(tokens []string) []string {
 	if len(tokens) == 1 {

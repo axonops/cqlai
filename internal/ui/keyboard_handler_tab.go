@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/axonops/cqlai/internal/ui/completion"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -42,7 +43,7 @@ func (m MainModel) handleTabKey() (MainModel, tea.Cmd) {
 		if len(words) > 0 {
 			lastWord := words[len(words)-1]
 			// Check if last word is a complete keyword
-			if m.isCompleteKeyword(lastWord) {
+			if completion.IsCompleteKeyword(lastWord) {
 				// Add a space and get next completions
 				currentInput = currentInput + " "
 				m.input.SetValue(currentInput)

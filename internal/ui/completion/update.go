@@ -1,4 +1,4 @@
-package ui
+package completion
 
 // getUpdateCompletions returns completions for UPDATE commands
 func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []string {

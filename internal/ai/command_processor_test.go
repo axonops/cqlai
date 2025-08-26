@@ -13,6 +13,7 @@ func TestParseCommand(t *testing.T) {
 		wantArg  string
 		wantFound bool
 	}{
+		// Legacy format tests
 		{
 			name:      "fuzzy search command",
 			input:     "FUZZY_SEARCH:graph",
@@ -56,10 +57,67 @@ func TestParseCommand(t *testing.T) {
 			wantFound: true,
 		},
 		{
-			name:      "not enough info with detailed message",
-			input:     "NOT_ENOUGH_INFO:I found multiple tables that could match. Please specify the exact keyspace and table name you want to query.",
+			name:      "not relevant command",
+			input:     "NOT_RELEVANT:This is about SQL not CQL",
+			wantCmd:   CommandNotRelevant,
+			wantArg:   "This is about SQL not CQL",
+			wantFound: true,
+		},
+		// JSON format tests
+		{
+			name:      "json fuzzy search",
+			input:     `{"tool": "FUZZY_SEARCH", "params": {"query": "users"}}`,
+			wantCmd:   CommandFuzzySearch,
+			wantArg:   "users",
+			wantFound: true,
+		},
+		{
+			name:      "json get schema",
+			input:     `{"tool": "GET_SCHEMA", "params": {"keyspace": "myapp", "table": "users"}}`,
+			wantCmd:   CommandGetSchema,
+			wantArg:   "myapp.users",
+			wantFound: true,
+		},
+		{
+			name:      "json list keyspaces",
+			input:     `{"tool": "LIST_KEYSPACES", "params": {}}`,
+			wantCmd:   CommandListKeyspaces,
+			wantArg:   "",
+			wantFound: true,
+		},
+		{
+			name:      "json list tables",
+			input:     `{"tool": "LIST_TABLES", "params": {"keyspace": "system"}}`,
+			wantCmd:   CommandListTables,
+			wantArg:   "system",
+			wantFound: true,
+		},
+		{
+			name:      "json user selection",
+			input:     `{"tool": "USER_SELECTION", "params": {"type": "table", "options": ["users", "profiles", "settings"]}}`,
+			wantCmd:   CommandUserSelection,
+			wantArg:   "table:users,profiles,settings",
+			wantFound: true,
+		},
+		{
+			name:      "json not enough info",
+			input:     `{"tool": "NOT_ENOUGH_INFO", "params": {"message": "Please specify the keyspace"}}`,
 			wantCmd:   CommandNotEnoughInfo,
-			wantArg:   "I found multiple tables that could match. Please specify the exact keyspace and table name you want to query.",
+			wantArg:   "Please specify the keyspace",
+			wantFound: true,
+		},
+		{
+			name:      "json not relevant",
+			input:     `{"tool": "NOT_RELEVANT", "params": {"message": "This is about MongoDB"}}`,
+			wantCmd:   CommandNotRelevant,
+			wantArg:   "This is about MongoDB",
+			wantFound: true,
+		},
+		{
+			name:      "json embedded in text",
+			input:     "Let me search for that.\n{\"tool\": \"FUZZY_SEARCH\", \"params\": {\"query\": \"accounts\"}}\nSearching now...",
+			wantCmd:   CommandFuzzySearch,
+			wantArg:   "accounts",
 			wantFound: true,
 		},
 		{

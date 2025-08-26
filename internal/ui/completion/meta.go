@@ -1,4 +1,4 @@
-package ui
+package completion
 
 // getDescribeCompletions returns completions for DESCRIBE commands
 func (ce *CompletionEngine) getDescribeCompletions(words []string, wordPos int) []string {
@@ -63,10 +63,11 @@ func (ce *CompletionEngine) getGrantCompletions(words []string, wordPos int) []s
 	onPos := -1
 
 	for i, word := range words {
-		if word == "ON" {
+		switch word {
+		case "ON":
 			hasOn = true
 			onPos = i
-		} else if word == "TO" {
+		case "TO":
 			hasTo = true
 		}
 	}
@@ -146,10 +147,11 @@ func (ce *CompletionEngine) getRevokeCompletions(words []string, wordPos int) []
 	onPos := -1
 
 	for i, word := range words {
-		if word == "ON" {
+		switch word {
+		case "ON":
 			hasOn = true
 			onPos = i
-		} else if word == "FROM" {
+		case "FROM":
 			hasFrom = true
 		}
 	}

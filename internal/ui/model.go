@@ -8,6 +8,7 @@ import (
 	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/ui/completion"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -62,7 +63,7 @@ type MainModel struct {
 	ready            bool
 	lastQueryTime    time.Duration
 	rowCount         int
-	completionEngine *CompletionEngine
+	completionEngine *completion.CompletionEngine
 	completions      []string
 	completionIndex  int
 	showCompletions  bool
@@ -140,7 +141,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 		return MainModel{}, err
 	}
 
-	completionEngine := NewCompletionEngine(session)
+	completionEngine := completion.NewCompletionEngine(session)
 	
 	// Initialize history manager
 	historyManager, err := NewHistoryManager()
