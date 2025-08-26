@@ -41,18 +41,20 @@ type SSLConfig struct {
 
 // AIConfig holds AI provider configuration
 type AIConfig struct {
-	Provider  string            `json:"provider"` // "mock", "openai", "anthropic", "gemini"
+	Provider  string            `json:"provider"` // "mock", "openai", "anthropic", "gemini", "ollama"
 	APIKey    string            `json:"apiKey"`   // General API key (overridden by provider-specific)
 	Model     string            `json:"model"`    // General model (overridden by provider-specific)
 	OpenAI    *AIProviderConfig `json:"openai,omitempty"`
 	Anthropic *AIProviderConfig `json:"anthropic,omitempty"`
 	Gemini    *AIProviderConfig `json:"gemini,omitempty"`
+	Ollama    *AIProviderConfig `json:"ollama,omitempty"`
 }
 
 // AIProviderConfig holds provider-specific configuration
 type AIProviderConfig struct {
 	APIKey string `json:"apiKey"`
 	Model  string `json:"model"`
+	URL    string `json:"url,omitempty"` // For local providers like Ollama
 }
 
 // OutputFormat represents the output format for query results
@@ -250,7 +252,87 @@ func loadConfig() (*Config, error) {
 		}
 	}
 
+	overrideWithEnvVars(&config)
 	return &config, nil
+}
+
+// overrideWithEnvVars overrides the configuration with values from environment variables.
+func overrideWithEnvVars(config *Config) {
+	if host := os.Getenv("CASSANDRA_HOST"); host != "" {
+		config.Host = host
+	}
+	if portStr := os.Getenv("CASSANDRA_PORT"); portStr != "" {
+		if port, err := strconv.Atoi(portStr); err == nil {
+			config.Port = port
+		}
+	}
+	if keyspace := os.Getenv("CASSANDRA_KEYSPACE"); keyspace != "" {
+		config.Keyspace = keyspace
+	}
+	if user := os.Getenv("CASSANDRA_USER"); user != "" {
+		config.Username = user
+	}
+	if pass := os.Getenv("CASSANDRA_PASSWORD"); pass != "" {
+		config.Password = pass
+	}
+
+	if config.AI == nil {
+		config.AI = &AIConfig{}
+	}
+
+	if provider := os.Getenv("AI_PROVIDER"); provider != "" {
+		config.AI.Provider = provider
+	}
+	if model := os.Getenv("AI_MODEL"); model != "" {
+		config.AI.Model = model
+	}
+
+	// Ollama specific
+	if config.AI.Ollama == nil {
+		config.AI.Ollama = &AIProviderConfig{}
+	}
+	if url := os.Getenv("OLLAMA_URL"); url != "" {
+		config.AI.Ollama.URL = url
+	}
+	if key := os.Getenv("OLLAMA_API_KEY"); key != "" {
+		config.AI.Ollama.APIKey = key
+	}
+	if model := os.Getenv("OLLAMA_MODEL"); model != "" {
+		config.AI.Ollama.Model = model
+	}
+
+	// OpenAI specific
+	if config.AI.OpenAI == nil {
+		config.AI.OpenAI = &AIProviderConfig{}
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		config.AI.OpenAI.APIKey = key
+	}
+	if model := os.Getenv("OPENAI_MODEL"); model != "" {
+		config.AI.OpenAI.Model = model
+	}
+
+	// Anthropic specific
+	if config.AI.Anthropic == nil {
+		config.AI.Anthropic = &AIProviderConfig{}
+	}
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		config.AI.Anthropic.APIKey = key
+	}
+	if model := os.Getenv("ANTHROPIC_MODEL"); model != "" {
+		config.AI.Anthropic.Model = model
+	}
+
+	// Gemini specific
+	if config.AI.Gemini == nil {
+		config.AI.Gemini = &AIProviderConfig{}
+	}
+	if key := os.Getenv("GEMINI_API_KEY"); key != "" {
+		config.AI.Gemini.APIKey = key
+	}
+	if model := os.Getenv("GEMINI_MODEL"); model != "" {
+		config.AI.Gemini.Model = model
+	}
 }
 
 // Consistency returns the current consistency level
