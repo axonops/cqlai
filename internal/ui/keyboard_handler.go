@@ -90,6 +90,29 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEsc:
+		// If AI info request modal is showing, handle it
+		if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+			// Cancel the info request
+			m.aiInfoRequestModal.Active = false
+			return m, func() tea.Msg {
+				return AIInfoResponseMsg{Cancelled: true}
+			}
+		}
+		// If AI selection modal is showing, handle it
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
+			if m.aiSelectionModal.InputMode {
+				// Exit input mode
+				m.aiSelectionModal.InputMode = false
+				m.aiSelectionModal.CustomInput = ""
+			} else {
+				// Cancel the selection
+				m.aiSelectionModal.Active = false
+				return m, func() tea.Msg {
+					return AISelectionResultMsg{Cancelled: true}
+				}
+			}
+			return m, nil
+		}
 		// If AI modal is showing, close it
 		if m.showAIModal {
 			m.showAIModal = false
@@ -235,6 +258,11 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		return m.handlePageDown(msg)
 
 	case tea.KeyUp:
+		// If AI selection modal is showing, navigate options
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+			m.aiSelectionModal.PrevOption()
+			return m, nil
+		}
 		// If in history search mode, navigate search results
 		if m.historySearchMode {
 			if m.historySearchIndex > 0 {
@@ -249,6 +277,11 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		return m.handleUpArrow(msg)
 
 	case tea.KeyDown:
+		// If AI selection modal is showing, navigate options
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+			m.aiSelectionModal.NextOption()
+			return m, nil
+		}
 		// If in history search mode, navigate search results
 		if m.historySearchMode {
 			if m.historySearchIndex < len(m.historySearchResults)-1 {
@@ -298,6 +331,32 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		return m.handleEnterKey()
 
 	default:
+		// Handle AI info request modal text input
+		if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+			var cmd tea.Cmd
+			m.aiInfoRequestModal, cmd = m.aiInfoRequestModal.Update(msg)
+			return m, cmd
+		}
+		// Handle AI selection modal 'i' key for custom input
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+			if msg.String() == "i" || msg.String() == "I" {
+				m.aiSelectionModal.ToggleInputMode()
+				return m, nil
+			}
+		}
+		// Handle AI selection modal text input when in input mode
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && m.aiSelectionModal.InputMode {
+			// Handle character input
+			if msg.Type == tea.KeyRunes {
+				m.aiSelectionModal.CustomInput += string(msg.Runes)
+				return m, nil
+			}
+			// Handle backspace
+			if msg.Type == tea.KeyBackspace && len(m.aiSelectionModal.CustomInput) > 0 {
+				m.aiSelectionModal.CustomInput = m.aiSelectionModal.CustomInput[:len(m.aiSelectionModal.CustomInput)-1]
+				return m, nil
+			}
+		}
 		// Handle AI modal 'P' key for toggling plan/CQL view
 		if m.showAIModal && m.aiModal.State == AIModalStatePreview {
 			if msg.String() == "p" || msg.String() == "P" {

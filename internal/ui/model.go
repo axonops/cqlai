@@ -5,7 +5,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -20,6 +22,29 @@ type ConnectionOptions struct {
 	Username            string
 	Password            string
 	RequireConfirmation bool
+}
+
+// AISelectionResultMsg is sent when user completes a selection
+type AISelectionResultMsg struct {
+	Selection string
+	Cancelled bool
+}
+
+// AIRequestUserSelectionMsg is sent when AI needs user to select from options
+type AIRequestUserSelectionMsg struct {
+	SelectionType string
+	Options       []string
+}
+
+// AIRequestMoreInfoMsg is sent when AI needs more information from user
+type AIRequestMoreInfoMsg struct {
+	Message string
+}
+
+// AIInfoResponseMsg is sent when user provides additional information
+type AIInfoResponseMsg struct {
+	Response  string
+	Cancelled bool
 }
 
 // MainModel is the main Bubble Tea model for the application.
@@ -46,6 +71,9 @@ type MainModel struct {
 	modal            Modal
 	aiModal          AIModal  // AI-powered CQL generation modal
 	showAIModal      bool     // Whether AI modal is active
+	aiConversationID string   // Current AI conversation ID for stateful interactions
+	aiSelectionModal *AISelectionModal  // AI selection modal for user choices
+	aiInfoRequestModal *AIInfoRequestModal  // AI info request modal for additional input
 	showHistoryModal bool  // Whether to show command history modal
 	historyModalIndex int  // Currently selected item in history modal
 	historyModalScrollOffset int  // Track scroll position in history modal
@@ -192,11 +220,123 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	
 	case AICQLResultMsg:
 		// Handle AI CQL generation result
+		logger.DebugfToFile("AI", "Received AI result message")
+		
+		// Store the conversation ID if provided
+		if msg.ConversationID != "" {
+			m.aiConversationID = msg.ConversationID
+			logger.DebugfToFile("AI", "Conversation ID: %s", msg.ConversationID)
+		}
+		
 		if m.showAIModal && m.aiModal.State == AIModalStateGenerating {
 			if msg.Error != nil {
+				// Check if this is an interaction request
+				if interactionReq, ok := msg.Error.(*ai.InteractionRequest); ok {
+					if interactionReq.Type == "selection" {
+						logger.DebugfToFile("AI", "User selection needed for: %s", interactionReq.SelectionType)
+						// Hide the AI modal temporarily
+						m.showAIModal = false
+						// Show selection modal
+						m.aiSelectionModal = NewAISelectionModal(interactionReq.SelectionType, interactionReq.SelectionOptions)
+						return m, nil
+					} else if interactionReq.Type == "info" {
+						logger.DebugfToFile("AI", "More info needed: %s", interactionReq.InfoMessage)
+						// Hide the AI modal temporarily
+						m.showAIModal = false
+						// Show info request modal
+						m.aiInfoRequestModal = NewAIInfoRequestModal(interactionReq.InfoMessage)
+						return m, nil
+					}
+				}
+				// Regular error
+				logger.DebugfToFile("AI", "AI generation failed: %v", msg.Error)
 				m.aiModal.SetError(msg.Error)
 			} else {
+				logger.DebugfToFile("AI", "AI generation successful, showing preview")
 				m.aiModal.SetResult(msg.Plan, msg.CQL)
+			}
+		}
+		return m, nil
+	
+	case AIRequestUserSelectionMsg:
+		// AI needs user to select from options
+		logger.DebugfToFile("AI", "AI requesting user selection: type=%s, options=%v", msg.SelectionType, msg.Options)
+		m.aiSelectionModal = NewAISelectionModal(msg.SelectionType, msg.Options)
+		return m, nil
+	
+	case AISelectionResultMsg:
+		// User completed selection (or cancelled)
+		if msg.Cancelled {
+			logger.DebugfToFile("AI", "User cancelled selection")
+			// Cancel the AI operation and clear conversation
+			m.showAIModal = false
+			m.aiModal = AIModal{}
+			m.aiSelectionModal = nil
+			m.aiConversationID = ""
+			// Add cancellation message
+			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("AI generation cancelled.")
+			m.historyViewport.SetContent(historyContent)
+			m.historyViewport.GotoBottom()
+		} else {
+			logger.DebugfToFile("AI", "User selected: %s", msg.Selection)
+			// Continue AI generation with the selected value
+			m.aiSelectionModal = nil
+			
+			// Re-show the AI modal in generating state
+			m.showAIModal = true
+			m.aiModal.State = AIModalStateGenerating
+			
+			// Continue the existing conversation with the user's selection
+			if m.aiConversationID != "" {
+				logger.DebugfToFile("AI", "Continuing conversation %s with selection: %s", m.aiConversationID, msg.Selection)
+				return m, continueAIConversation(m.aiConversationID, msg.Selection)
+			} else {
+				// Fallback if no conversation ID (shouldn't happen)
+				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
+				contextualRequest := fmt.Sprintf("%s\nUser selected: %s", m.aiModal.UserRequest, msg.Selection)
+				return m, generateAICQL(m.session, contextualRequest)
+			}
+		}
+		return m, nil
+	
+	case AIRequestMoreInfoMsg:
+		// AI needs more information from user
+		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
+		m.aiInfoRequestModal = NewAIInfoRequestModal(msg.Message)
+		return m, nil
+	
+	case AIInfoResponseMsg:
+		// User provided additional information (or cancelled)
+		if msg.Cancelled {
+			logger.DebugfToFile("AI", "User cancelled info request")
+			// Cancel the AI operation and clear conversation
+			m.showAIModal = false
+			m.aiModal = AIModal{}
+			m.aiInfoRequestModal = nil
+			m.aiConversationID = ""
+			// Add cancellation message
+			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("AI generation cancelled.")
+			m.historyViewport.SetContent(historyContent)
+			m.historyViewport.GotoBottom()
+		} else {
+			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
+			// Continue AI generation with the additional information
+			m.aiInfoRequestModal = nil
+			
+			// Re-show the AI modal in generating state
+			m.showAIModal = true
+			m.aiModal.State = AIModalStateGenerating
+			
+			// Continue the existing conversation with the additional info
+			if m.aiConversationID != "" {
+				logger.DebugfToFile("AI", "Continuing conversation %s with info: %s", m.aiConversationID, msg.Response)
+				return m, continueAIConversation(m.aiConversationID, msg.Response)
+			} else {
+				// Fallback if no conversation ID (shouldn't happen)
+				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
+				contextualRequest := fmt.Sprintf("%s\nAdditional info: %s", m.aiModal.UserRequest, msg.Response)
+				m.aiModal.UserRequest = contextualRequest
+				return m, generateAICQL(m.session, contextualRequest)
 			}
 		}
 		return m, nil

@@ -6,20 +6,23 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // AIClient defines the interface for an AI client.
 type AIClient interface {
 	GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error)
+	GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error)
 	SetAPIKey(key string)
 }
 
 // ConvertDBConfigToAIConfig converts db.AIConfig to local AIConfig for the AI client
 func ConvertDBConfigToAIConfig(dbConfig *db.AIConfig) *AIConfig {
+	logger.DebugfToFile("AI", "ConvertDBConfigToAIConfig called")
+
 	if dbConfig == nil {
+		logger.DebugfToFile("AI", "dbConfig is nil, returning mock config")
 		// Return default mock config if no AI config provided
 		return &AIConfig{
 			Provider: "mock",
@@ -27,17 +30,20 @@ func ConvertDBConfigToAIConfig(dbConfig *db.AIConfig) *AIConfig {
 			Model:    "",
 		}
 	}
-	
+
+	logger.DebugfToFile("AI", "dbConfig.Provider: %s", dbConfig.Provider)
+
 	config := &AIConfig{
 		Provider: dbConfig.Provider,
 		APIKey:   dbConfig.APIKey,
 		Model:    dbConfig.Model,
 	}
-	
+
 	if config.Provider == "" {
+		logger.DebugfToFile("AI", "Provider is empty, defaulting to mock")
 		config.Provider = "mock" // Default to mock for safety
 	}
-	
+
 	// Use provider-specific config if available
 	switch config.Provider {
 	case "openai":
@@ -53,16 +59,22 @@ func ConvertDBConfigToAIConfig(dbConfig *db.AIConfig) *AIConfig {
 			config.Model = "gpt-4-turbo-preview"
 		}
 	case "anthropic":
+		logger.DebugfToFile("AI", "Processing Anthropic config")
 		if dbConfig.Anthropic != nil {
+			logger.DebugfToFile("AI", "Anthropic config exists: APIKey=%v, Model=%s",
+				dbConfig.Anthropic.APIKey != "", dbConfig.Anthropic.Model)
 			if dbConfig.Anthropic.APIKey != "" {
 				config.APIKey = dbConfig.Anthropic.APIKey
+				logger.DebugfToFile("AI", "Set Anthropic API key")
 			}
 			if dbConfig.Anthropic.Model != "" {
 				config.Model = dbConfig.Anthropic.Model
+				logger.DebugfToFile("AI", "Set Anthropic model: %s", config.Model)
 			}
 		}
 		if config.Model == "" {
 			config.Model = "claude-3-sonnet-20240229"
+			logger.DebugfToFile("AI", "Using default Anthropic model: %s", config.Model)
 		}
 	case "gemini":
 		if dbConfig.Gemini != nil {
@@ -77,7 +89,10 @@ func ConvertDBConfigToAIConfig(dbConfig *db.AIConfig) *AIConfig {
 			config.Model = "gemini-pro"
 		}
 	}
-	
+
+	logger.DebugfToFile("AI", "Final AI config: Provider=%s, HasAPIKey=%v, Model=%s",
+		config.Provider, config.APIKey != "", config.Model)
+
 	return config
 }
 
@@ -98,197 +113,8 @@ func (c *BaseAIClient) SetAPIKey(key string) {
 	c.APIKey = key
 }
 
-// buildPrompt creates the system and user prompts for the LLM
-func buildPrompt(userRequest string, schemaContext string) (string, string) {
-	systemPrompt := `You are a CQL (Cassandra Query Language) expert assistant. 
-Your task is to convert natural language requests into structured query plans.
 
-Rules:
-1. Return ONLY valid JSON representing a QueryPlan
-2. Be conservative - prefer read-only operations unless explicitly asked to modify
-3. Use appropriate CQL data types and syntax
-4. Include warnings for destructive operations
-5. Set confidence level (0.0-1.0) based on clarity of request
-6. If the request is ambiguous, choose the safest interpretation
 
-QueryPlan JSON structure:
-{
-  "operation": "SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP",
-  "keyspace": "keyspace_name",
-  "table": "table_name",
-  "columns": ["col1", "col2"],
-  "values": {"col1": "value1"},
-  "where": [{"column": "id", "operator": "=", "value": 123}],
-  "order_by": [{"column": "timestamp", "order": "DESC"}],
-  "limit": 10,
-  "allow_filtering": false,
-  "confidence": 0.95,
-  "warning": "optional warning message",
-  "read_only": true
-}
-
-For "list all keyspaces" or similar requests, use:
-{
-  "operation": "SELECT",
-  "table": "system_schema.keyspaces",
-  "columns": ["keyspace_name"],
-  "confidence": 1.0,
-  "read_only": true
-}`
-
-	userPrompt := fmt.Sprintf(`Schema Context:
-%s
-
-User Request: %s
-
-Generate a QueryPlan JSON for this request. Return only the JSON, no additional text.`, schemaContext, userRequest)
-	
-	return systemPrompt, userPrompt
-}
-
-// --- Mock Client (for testing) ---
-type MockClient struct {
-	BaseAIClient
-}
-
-func (c *MockClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	// Generate a simple mock plan based on keywords in the prompt
-	plan := &QueryPlan{
-		Operation:  "SELECT",
-		Confidence: 1.0,
-		ReadOnly:   true,
-	}
-	
-	lowerPrompt := strings.ToLower(prompt)
-	
-	// Try to extract table name from prompt
-	if strings.Contains(lowerPrompt, "users") {
-		plan.Table = "users"
-		plan.Columns = []string{"*"}
-	} else if strings.Contains(lowerPrompt, "products") {
-		plan.Table = "products"
-		plan.Columns = []string{"*"}
-	} else {
-		// Generic response
-		plan.Table = "table_name"
-		plan.Columns = []string{"*"}
-		plan.Warning = "Mock response - please configure a real AI provider"
-	}
-	
-	// Check for operations
-	if strings.Contains(lowerPrompt, "insert") {
-		plan.Operation = "INSERT"
-		plan.ReadOnly = false
-		plan.Values = map[string]interface{}{"id": 1, "name": "example"}
-	} else if strings.Contains(lowerPrompt, "delete") {
-		plan.Operation = "DELETE"
-		plan.ReadOnly = false
-		plan.Warning = "This will delete data"
-		plan.Where = []WhereClause{{Column: "id", Operator: "=", Value: 1}}
-	} else if strings.Contains(lowerPrompt, "create") {
-		plan.Operation = "CREATE"
-		plan.ReadOnly = false
-		plan.Schema = map[string]string{"id": "int PRIMARY KEY", "name": "text"}
-	}
-	
-	if strings.Contains(lowerPrompt, "limit") {
-		plan.Limit = 10
-	}
-	
-	return plan, nil
-}
-
-// --- Gemini Client ---
-type GeminiClient struct {
-	BaseAIClient
-}
-
-func (c *GeminiClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	// TODO: Implement actual Gemini API call
-	// For now, return mock response
-	return (&MockClient{}).GenerateCQL(ctx, prompt, schema)
-}
-
-// --- OpenAI Client ---
-type OpenAIClient struct {
-	BaseAIClient
-}
-
-func (c *OpenAIClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	// TODO: Implement actual OpenAI API call
-	// For now, return mock response
-	return (&MockClient{}).GenerateCQL(ctx, prompt, schema)
-}
-
-// --- Anthropic Client ---
-type AnthropicClient struct {
-	BaseAIClient
-}
-
-func (c *AnthropicClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	if c.APIKey == "" {
-		return nil, fmt.Errorf("Anthropic API key is required")
-	}
-
-	// Create Anthropic client
-	client := anthropic.NewClient(option.WithAPIKey(c.APIKey))
-
-	// Build the prompts
-	systemPrompt, userPrompt := buildPrompt(prompt, schema)
-
-	// Make API call to Anthropic
-	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.Model(c.Model),
-		MaxTokens: 1024,
-		System: []anthropic.TextBlockParam{
-			{Text: systemPrompt},
-		},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)),
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to call Anthropic API: %v", err)
-	}
-
-	// Extract the response text
-	if len(message.Content) == 0 {
-		return nil, fmt.Errorf("empty response from Anthropic")
-	}
-
-	// Extract text from the first content block
-	var responseText string
-	firstContent := message.Content[0]
-	textBlock := firstContent.AsText()
-	responseText = textBlock.Text
-
-	if responseText == "" {
-		return nil, fmt.Errorf("no text content in Anthropic response")
-	}
-
-	// Try to extract JSON from the response
-	jsonStr := extractJSON(responseText)
-	if jsonStr == "" {
-		// If no JSON found, try to parse the entire response
-		jsonStr = responseText
-	}
-
-	// Parse the JSON response into a QueryPlan
-	var plan QueryPlan
-	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
-		// If parsing fails, return a simple SELECT plan as fallback
-		return &QueryPlan{
-			Operation:  "SELECT",
-			Table:      "unknown",
-			Columns:    []string{"*"},
-			Confidence: 0.3,
-			Warning:    fmt.Sprintf("Failed to parse AI response: %v. Response: %s", err, responseText),
-			ReadOnly:   true,
-		}, nil
-	}
-
-	return &plan, nil
-}
 
 // extractJSON attempts to extract JSON from a text response
 func extractJSON(text string) string {
@@ -316,67 +142,96 @@ func extractJSON(text string) string {
 	return ""
 }
 
-// NewAIClient is a factory function that returns the appropriate AI client
-func NewAIClient(config *AIConfig) (AIClient, error) {
+// createAIClient creates the appropriate AI client based on configuration
+func createAIClient(config *AIConfig) (AIClient, error) {
 	if config == nil {
 		return nil, fmt.Errorf("AI configuration is required")
 	}
-	
-	var client AIClient
-	
+
 	switch config.Provider {
-	case "gemini":
-		client = &GeminiClient{BaseAIClient{APIKey: config.APIKey, Model: config.Model}}
 	case "openai":
-		client = &OpenAIClient{BaseAIClient{APIKey: config.APIKey, Model: config.Model}}
+		return NewOpenAIClient(config.APIKey, config.Model), nil
 	case "anthropic":
-		client = &AnthropicClient{BaseAIClient{APIKey: config.APIKey, Model: config.Model}}
-	case "mock":
-		client = &MockClient{}
+		return NewAnthropicClient(config.APIKey, config.Model), nil
 	default:
-		return nil, fmt.Errorf("unknown AI provider: %s", config.Provider)
+		return nil, fmt.Errorf("unsupported AI provider: %s (supported: openai, anthropic)", config.Provider)
 	}
-	
-	return client, nil
 }
 
 // GenerateCQLFromRequest is a high-level function that combines schema fetching and CQL generation
 func GenerateCQLFromRequest(ctx context.Context, session *db.Session, userRequest string) (*QueryPlan, string, error) {
-	// Get schema context
-	schemaContext, err := session.GetSchemaContext(50) // Limit to 50 tables
-	if err != nil {
-		// Continue without schema if it fails
-		schemaContext = "No schema information available"
+	// Initialize local AI for fuzzy search if needed
+	if err := InitializeLocalAI(session); err != nil {
+		// Continue without local AI
 	}
-	
+
+	// Get minimal schema context (just list of keyspaces for initial context)
+	schemaContext := "Available keyspaces: "
+	if globalAI != nil && globalAI.cache != nil {
+		globalAI.cache.Mu.RLock()
+		if len(globalAI.cache.Keyspaces) > 0 {
+			schemaContext += strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", ")
+			if len(globalAI.cache.Keyspaces) > 10 {
+				schemaContext += fmt.Sprintf(" (and %d more)", len(globalAI.cache.Keyspaces)-10)
+			}
+		}
+		globalAI.cache.Mu.RUnlock()
+	} else {
+		// Fallback to getting schema from session
+		sc, err := session.GetSchemaContext(20)
+		if err == nil {
+			schemaContext = sc
+		}
+	}
+
 	// Get AI config from session
 	dbConfig := session.GetAIConfig()
 	config := ConvertDBConfigToAIConfig(dbConfig)
-	
+	logger.DebugfToFile("AI", "AI Config: provider=%s, has_api_key=%v", config.Provider, config.APIKey != "")
+
 	// Create AI client
-	client, err := NewAIClient(config)
+	client, err := createAIClient(config)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create AI client: %v", err)
 	}
-	
-	// Generate plan
-	plan, err := client.GenerateCQL(ctx, userRequest, schemaContext)
+	logger.DebugfToFile("AI", "Created AI client of type: %T", client)
+
+	// Try to generate with tools first (if client supports it)
+	logger.DebugfToFile("AI", "Attempting to generate CQL with tools for: %s", userRequest)
+	plan, err := client.GenerateCQLWithTools(ctx, userRequest, schemaContext)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate CQL plan: %v", err)
+		// Check if this is an interaction request
+		if _, ok := err.(*InteractionRequest); ok {
+			logger.DebugfToFile("AI", "User interaction needed, returning to UI")
+			return nil, "", err // Return the request as-is to preserve type
+		}
+		
+		logger.DebugfToFile("AI", "GenerateCQLWithTools failed: %v, falling back to without tools", err)
+		// Fallback to regular generation without tools
+		plan, err = client.GenerateCQL(ctx, userRequest, schemaContext)
+		if err != nil {
+			// Again check for interaction request in fallback
+			if _, ok := err.(*InteractionRequest); ok {
+				return nil, "", err
+			}
+			return nil, "", fmt.Errorf("failed to generate CQL plan: %v", err)
+		}
+	} else {
+		logger.DebugfToFile("AI", "GenerateCQLWithTools succeeded")
 	}
-	
+
 	// Validate plan
 	validator := &PlanValidator{Schema: nil} // TODO: Pass actual schema
 	if err := validator.ValidatePlan(plan); err != nil {
 		return nil, "", fmt.Errorf("invalid plan: %v", err)
 	}
-	
+
 	// Render CQL
 	cql, err := RenderCQL(plan)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to render CQL: %v", err)
 	}
-	
+
 	return plan, cql, nil
 }
 

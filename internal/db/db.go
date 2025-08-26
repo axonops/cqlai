@@ -77,6 +77,7 @@ type Session struct {
 	cassandraVersion    string
 	aiConfig            *AIConfig
 	outputFormat        OutputFormat
+	schemaCache         *SchemaCache
 }
 
 // SessionOptions represents options for creating a session with command-line overrides
@@ -195,7 +196,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	iter.Scan(&releaseVersion)
 	iter.Close()
 	
-	return &Session{
+	s := &Session{
 		Session:             session,
 		cluster:             cluster,
 		consistency:         gocql.LocalOne,
@@ -206,7 +207,18 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		cassandraVersion:    releaseVersion,
 		aiConfig:            config.AI,
 		outputFormat:        OutputFormatTable,
-	}, nil
+	}
+	
+	// Initialize schema cache for AI features
+	s.schemaCache = NewSchemaCache(s)
+	if err := s.schemaCache.Refresh(); err != nil {
+		// Log error but don't fail connection - AI features will work without cache
+		logger.DebugfToFile("Session", "Failed to initialize schema cache: %v", err)
+	} else {
+		logger.DebugfToFile("Session", "Schema cache initialized with %d keyspaces", len(s.schemaCache.Keyspaces))
+	}
+	
+	return s, nil
 }
 
 // loadConfig loads the configuration from cqlai.json
@@ -431,6 +443,11 @@ func (s *Session) IsVersion4OrHigher() bool {
 // GetAIConfig returns the AI configuration
 func (s *Session) GetAIConfig() *AIConfig {
 	return s.aiConfig
+}
+
+// GetSchemaCache returns the schema cache
+func (s *Session) GetSchemaCache() *SchemaCache {
+	return s.schemaCache
 }
 
 // createTLSConfig creates a TLS configuration based on the SSL settings
