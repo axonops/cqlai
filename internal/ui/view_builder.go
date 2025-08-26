@@ -86,15 +86,15 @@ func (m MainModel) View() string {
 			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
 		}
 	}
-	
+
 	// Add sliding window indicator if data has been dropped
 	if m.slidingWindow != nil && m.slidingWindow.DataDroppedAtStart {
 		warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500"))
-		scrollInfo += " " + warningStyle.Render(fmt.Sprintf("[Rows %d-%d, earlier rows dropped]", 
-			m.slidingWindow.FirstRowIndex+1, 
+		scrollInfo += " " + warningStyle.Render(fmt.Sprintf("[Rows %d-%d, earlier rows dropped]",
+			m.slidingWindow.FirstRowIndex+1,
 			m.slidingWindow.FirstRowIndex+int64(len(m.slidingWindow.Rows))))
 	}
-	
+
 	// Add output format indicator
 	if m.session != nil {
 		outputFormat := m.session.GetOutputFormat()
@@ -254,6 +254,26 @@ func (m MainModel) View() string {
 	// Apply all layers to the final view
 	finalView = layerManager.Render(finalView)
 
+	// If AI info request modal is showing, render it as an overlay
+	if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+		// Get the window dimensions from the viewport
+		screenWidth := viewportWidth
+		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
+
+		// Render the info request modal overlay
+		return m.aiInfoRequestModal.Render(screenWidth, screenHeight, m.styles)
+	}
+	
+	// If AI selection modal is showing, render it as an overlay
+	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
+		// Get the window dimensions from the viewport
+		screenWidth := viewportWidth
+		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
+
+		// Render the selection modal overlay
+		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
+	}
+	
 	// If AI modal is showing, render it as an overlay
 	if m.showAIModal {
 		// Get the window dimensions from the viewport
@@ -263,7 +283,7 @@ func (m MainModel) View() string {
 		// Render the AI modal overlay with the current view as background
 		return m.aiModal.Render(screenWidth, screenHeight, m.styles)
 	}
-	
+
 	// If modal is showing, render it as an overlay
 	if m.modal.Type != ModalNone {
 		// Get the window dimensions from the viewport
@@ -284,7 +304,7 @@ func (m MainModel) getWelcomeMessage() string {
 	// Welcome banner
 	welcome.WriteString(m.styles.AccentText.Bold(true).Render("╔═══════════════════════════════════════════════════════╗"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.AccentText.Bold(true).Render("║            Welcome to CQLAI - CQL Shell               ║"))
+	welcome.WriteString(m.styles.AccentText.Bold(true).Render("║            Welcome to CQLAI by AxonOps                ║"))
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.AccentText.Bold(true).Render("╚═══════════════════════════════════════════════════════╝"))
 	welcome.WriteString("\n\n")

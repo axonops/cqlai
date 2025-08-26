@@ -15,6 +15,47 @@ import (
 
 // handleEnterKey handles Enter key press
 func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
+	// Handle AI info request modal if active
+	if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+		response := m.aiInfoRequestModal.GetResponse()
+		if response != "" {
+			m.aiInfoRequestModal.Active = false
+			return m, func() tea.Msg {
+				return AIInfoResponseMsg{
+					Response:  response,
+					Cancelled: false,
+				}
+			}
+		}
+		// Don't close if empty response
+		return m, nil
+	}
+	
+	// Handle AI selection modal if active
+	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
+		if m.aiSelectionModal.InputMode {
+			// Confirm custom input
+			selection := m.aiSelectionModal.GetSelection()
+			m.aiSelectionModal.Active = false
+			return m, func() tea.Msg {
+				return AISelectionResultMsg{
+					Selection: selection,
+					Cancelled: false,
+				}
+			}
+		} else {
+			// Confirm selected option
+			selection := m.aiSelectionModal.GetSelection()
+			m.aiSelectionModal.Active = false
+			return m, func() tea.Msg {
+				return AISelectionResultMsg{
+					Selection: selection,
+					Cancelled: false,
+				}
+			}
+		}
+	}
+	
 	// Cancel exit confirmation if active
 	if m.confirmExit {
 		m.confirmExit = false
@@ -26,16 +67,39 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 
 	// Handle AI command
 	if strings.HasPrefix(strings.ToUpper(command), ".AI") {
+		// Log the AI command
+		logger.DebugfToFile("AI", "User AI command: %s", command)
+		
+		// Add AI command to command history
+		m.commandHistory = append(m.commandHistory, command)
+		m.historyIndex = -1
+		m.lastCommand = command
+		
+		// Save to persistent history
+		if m.historyManager != nil {
+			if err := m.historyManager.SaveCommand(command); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not save AI command to history: %v\n", err)
+			}
+		}
+		
+		// Add command to history viewport
+		historyContent := m.historyViewport.View() + "\n" + m.styles.AccentText.Render("> "+command)
+		m.historyViewport.SetContent(historyContent)
+		m.historyViewport.GotoBottom()
+		
 		// Extract the natural language request
 		userRequest := strings.TrimSpace(command[3:])
 		if userRequest == "" {
 			// Show error for empty request
-			historyContent := m.historyViewport.View() + "\n" + m.styles.ErrorText.Render("Error: Please provide a request after .ai")
+			historyContent = m.historyViewport.View() + "\n" + m.styles.ErrorText.Render("Error: Please provide a request after .ai")
 			m.historyViewport.SetContent(historyContent)
 			m.historyViewport.GotoBottom()
 			m.input.Reset()
 			return m, nil
 		}
+		
+		// Log the extracted request
+		logger.DebugfToFile("AI", "Extracted AI request: %s", userRequest)
 		
 		// Create and show AI modal
 		m.aiModal = NewAIModal(userRequest)
@@ -113,11 +177,16 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			case 1: // Execute
 				// Get the generated CQL
 				command = m.aiModal.CQL
+				logger.DebugfToFile("AI", "User executing AI-generated CQL: %s", command)
+				
+				// Store the plan before clearing the modal
+				aiPlan := m.aiModal.Plan
+				
 				m.showAIModal = false
 				m.aiModal = AIModal{}
 				
 				// Check if it's a dangerous command
-				if m.aiModal.Plan != nil && !m.aiModal.Plan.ReadOnly && m.session.RequireConfirmation() {
+				if aiPlan != nil && !aiPlan.ReadOnly && m.session.RequireConfirmation() {
 					// Show confirmation modal for dangerous AI-generated commands
 					m.modal = NewConfirmationModal(command)
 					return m, nil

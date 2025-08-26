@@ -105,12 +105,19 @@ func RenderCQL(plan *QueryPlan) (string, error) {
 		return renderCreate(plan)
 	case "DROP":
 		return renderDrop(plan)
+	case "DESCRIBE":
+		return renderDescribe(plan)
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}
 }
 
 func renderSelect(plan *QueryPlan) (string, error) {
+	// Validate table name - prevent wildcards
+	if plan.Table == "" || plan.Table == "*" || strings.Contains(plan.Table, "*") {
+		return "", fmt.Errorf("invalid table name: must specify an exact table name, not '%s'", plan.Table)
+	}
+	
 	var sb strings.Builder
 	
 	// SELECT clause
@@ -304,6 +311,42 @@ func renderDrop(plan *QueryPlan) (string, error) {
 		}
 	} else if plan.Keyspace != "" {
 		sb.WriteString(fmt.Sprintf("KEYSPACE %s", plan.Keyspace))
+	}
+	
+	sb.WriteString(";")
+	return sb.String(), nil
+}
+
+func renderDescribe(plan *QueryPlan) (string, error) {
+	var sb strings.Builder
+	sb.WriteString("DESCRIBE ")
+	
+	// Handle different DESCRIBE targets
+	tableUpper := strings.ToUpper(plan.Table)
+	switch tableUpper {
+	case "KEYSPACES":
+		sb.WriteString("KEYSPACES")
+	case "TABLES":
+		sb.WriteString("TABLES")
+		if plan.Keyspace != "" {
+			// This would be "DESCRIBE TABLES" which shows all tables
+			// If keyspace is specified, we need to use "DESCRIBE KEYSPACE <name>"
+		}
+	case "CLUSTER":
+		sb.WriteString("CLUSTER")
+	case "SCHEMA":
+		sb.WriteString("SCHEMA")
+	default:
+		// Describing a specific table or keyspace
+		if plan.Table != "" {
+			if plan.Keyspace != "" {
+				sb.WriteString(fmt.Sprintf("TABLE %s.%s", plan.Keyspace, plan.Table))
+			} else {
+				sb.WriteString(fmt.Sprintf("TABLE %s", plan.Table))
+			}
+		} else if plan.Keyspace != "" {
+			sb.WriteString(fmt.Sprintf("KEYSPACE %s", plan.Keyspace))
+		}
 	}
 	
 	sb.WriteString(";")
