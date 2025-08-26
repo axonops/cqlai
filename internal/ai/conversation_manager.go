@@ -181,7 +181,7 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 		Messages: messages,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("Anthropic API error: %v", err)
+		return nil, nil, fmt.Errorf("anthropic API error: %v", err)
 	}
 	
 	// Extract response text
@@ -315,7 +315,7 @@ func (conv *AIConversation) continueOpenAI(ctx context.Context, userInput string
 		MaxTokens: 1024,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("OpenAI API error: %v", err)
+		return nil, nil, fmt.Errorf("openAI API error: %v", err)
 	}
 	
 	if len(response.Choices) == 0 {

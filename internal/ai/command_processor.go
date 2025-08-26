@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -17,11 +18,25 @@ const (
 	CommandListTables    CommandType = "LIST_TABLES"
 	CommandUserSelection CommandType = "USER_SELECTION"
 	CommandNotEnoughInfo CommandType = "NOT_ENOUGH_INFO"
+	CommandNotRelevant   CommandType = "NOT_RELEVANT"
 )
 
-// ParseCommand parses a response to extract tool commands
+// ToolRequest represents a JSON tool request from the AI
+type ToolRequest struct {
+	Tool   string                 `json:"tool"`
+	Params map[string]interface{} `json:"params"`
+}
+
+// ParseCommand parses a response to extract tool commands (supports both JSON and legacy formats)
 func ParseCommand(response string) (CommandType, string, bool) {
 	response = strings.TrimSpace(response)
+	
+	// First try to parse as JSON
+	if toolReq, ok := parseJSONCommand(response); ok {
+		return toolReq.Type, toolReq.Arg, true
+	}
+	
+	// Fall back to legacy format for backward compatibility
 	lines := strings.Split(response, "\n")
 	
 	for _, line := range lines {
@@ -55,9 +70,128 @@ func ParseCommand(response string) (CommandType, string, bool) {
 			reason := strings.TrimPrefix(line, "NOT_ENOUGH_INFO:")
 			return CommandNotEnoughInfo, reason, true
 		}
+		
+		if line == "NOT_RELEVANT" || strings.HasPrefix(line, "NOT_RELEVANT:") {
+			reason := strings.TrimPrefix(line, "NOT_RELEVANT:")
+			return CommandNotRelevant, reason, true
+		}
 	}
 	
 	return "", "", false
+}
+
+// ParsedCommand represents a parsed command with its type and arguments
+type ParsedCommand struct {
+	Type CommandType
+	Arg  string
+}
+
+// parseJSONCommand attempts to parse a JSON tool request
+func parseJSONCommand(response string) (*ParsedCommand, bool) {
+	// Try to extract JSON from the response
+	jsonStr := extractJSONObject(response)
+	if jsonStr == "" {
+		return nil, false
+	}
+	
+	var toolReq ToolRequest
+	if err := json.Unmarshal([]byte(jsonStr), &toolReq); err != nil {
+		return nil, false
+	}
+	
+	// Convert JSON tool request to command type and arg
+	switch toolReq.Tool {
+	case "FUZZY_SEARCH":
+		if query, ok := toolReq.Params["query"].(string); ok {
+			return &ParsedCommand{Type: CommandFuzzySearch, Arg: query}, true
+		}
+	
+	case "GET_SCHEMA":
+		keyspace, _ := toolReq.Params["keyspace"].(string)
+		table, _ := toolReq.Params["table"].(string)
+		if keyspace != "" && table != "" {
+			return &ParsedCommand{Type: CommandGetSchema, Arg: fmt.Sprintf("%s.%s", keyspace, table)}, true
+		}
+	
+	case "LIST_KEYSPACES":
+		return &ParsedCommand{Type: CommandListKeyspaces, Arg: ""}, true
+	
+	case "LIST_TABLES":
+		if keyspace, ok := toolReq.Params["keyspace"].(string); ok {
+			return &ParsedCommand{Type: CommandListTables, Arg: keyspace}, true
+		}
+	
+	case "USER_SELECTION":
+		selType, _ := toolReq.Params["type"].(string)
+		options, _ := toolReq.Params["options"].([]interface{})
+		if selType != "" && len(options) > 0 {
+			// Convert options to string array
+			strOptions := make([]string, len(options))
+			for i, opt := range options {
+				strOptions[i] = fmt.Sprintf("%v", opt)
+			}
+			// Format as legacy style for compatibility with existing code
+			arg := fmt.Sprintf("%s:%s", selType, strings.Join(strOptions, ","))
+			return &ParsedCommand{Type: CommandUserSelection, Arg: arg}, true
+		}
+	
+	case "NOT_ENOUGH_INFO":
+		if msg, ok := toolReq.Params["message"].(string); ok {
+			return &ParsedCommand{Type: CommandNotEnoughInfo, Arg: msg}, true
+		}
+	
+	case "NOT_RELEVANT":
+		msg, _ := toolReq.Params["message"].(string)
+		return &ParsedCommand{Type: CommandNotRelevant, Arg: msg}, true
+	}
+	
+	return nil, false
+}
+
+// extractJSONObject extracts a JSON object from text
+func extractJSONObject(text string) string {
+	// Look for JSON object starting with {
+	start := strings.Index(text, "{")
+	if start == -1 {
+		return ""
+	}
+	
+	// Find the matching closing brace
+	braceCount := 0
+	inString := false
+	escape := false
+	
+	for i := start; i < len(text); i++ {
+		ch := text[i]
+		
+		if escape {
+			escape = false
+			continue
+		}
+		
+		if ch == '\\' {
+			escape = true
+			continue
+		}
+		
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		
+		if !inString {
+			if ch == '{' {
+				braceCount++
+			} else if ch == '}' {
+				braceCount--
+				if braceCount == 0 {
+					return text[start : i+1]
+				}
+			}
+		}
+	}
+	
+	return ""
 }
 
 // CommandResult represents the result of executing a command
@@ -236,6 +370,19 @@ func ExecuteCommand(cmd CommandType, arg string) CommandResult {
 			Success:       false, // Not a success yet - needs user input
 			NeedsMoreInfo: true,
 			InfoMessage:   arg,
+		}
+		
+	case CommandNotRelevant:
+		logger.DebugfToFile("CommandProcessor", "Request not relevant to CQL: %s", arg)
+		
+		// The request is not relevant to CQL/Cassandra
+		message := "This request is not related to Cassandra or CQL."
+		if arg != "" {
+			message = arg
+		}
+		return CommandResult{
+			Success: false,
+			Error:   fmt.Errorf("%s", message),
 		}
 		
 	default:

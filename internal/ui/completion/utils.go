@@ -1,4 +1,4 @@
-package ui
+package completion
 
 import "strings"
 
@@ -32,6 +32,41 @@ func (ce *CompletionEngine) isColumnNameForTable(word string, tableName string) 
 func (ce *CompletionEngine) isComparisonOperator(word string) bool {
 	for _, op := range ComparisonOperators {
 		if word == op {
+			return true
+		}
+	}
+	return false
+}
+
+// IsCompleteKeyword checks if a word is a complete CQL keyword
+// This is exported for use by other packages (e.g., ui package)
+func IsCompleteKeyword(word string) bool {
+	upperWord := strings.ToUpper(word)
+	
+	// Check against all keyword lists from constants
+	// Combine relevant keyword lists for comprehensive checking
+	allKeywords := append([]string{}, TopLevelKeywords...)
+	allKeywords = append(allKeywords, SelectKeywords...)
+	allKeywords = append(allKeywords, FromKeyword...)
+	allKeywords = append(allKeywords, WhereKeyword...)
+	allKeywords = append(allKeywords, SetKeyword...)
+	allKeywords = append(allKeywords, ValuesKeyword...)
+	allKeywords = append(allKeywords, IntoKeyword...)
+	allKeywords = append(allKeywords, ByKeyword...)
+	allKeywords = append(allKeywords, LimitKeyword...)
+	allKeywords = append(allKeywords, LogicalOperators...)
+	allKeywords = append(allKeywords, SortOrders...)
+	allKeywords = append(allKeywords, UsingOptions...)
+	allKeywords = append(allKeywords, IfClauseKeywords...)
+	allKeywords = append(allKeywords, DDLObjectTypes...)
+	allKeywords = append(allKeywords, BatchTypes...)
+	allKeywords = append(allKeywords, FilteringKeyword...)
+	allKeywords = append(allKeywords, ConsistencyLevels...)
+	allKeywords = append(allKeywords, AggregateFunctions...)
+	allKeywords = append(allKeywords, "ALLOW", "PRIMARY", "KEY", "WITH", "DISTINCT", "TOKEN", "JSON", "PER", "PARTITION", "ASCII", "HAVING")
+	
+	for _, kw := range allKeywords {
+		if upperWord == kw {
 			return true
 		}
 	}
@@ -101,18 +136,17 @@ func IsObjectType(word string) bool {
 func GetFollowKeywords(keyword string) []string {
 	switch strings.ToUpper(keyword) {
 	case "CREATE":
-		return DDLObjectTypes
+		return CreateObjectTypes
 	case "DROP":
 		return DDLObjectTypes
 	case "ALTER":
-		// ALTER supports a subset of object types
-		return AlterSpecificTypes
+		return AlterObjectTypes
 	case "MATERIALIZED":
 		return MaterializedKeyword
 	case "IF":
 		return IfClauseKeywords
 	case "NOT":
-		return IfClauseKeywords[1:] // "EXISTS"
+		return ExistsKeyword
 	case "ORDER":
 		return ByKeyword
 	case "GROUP":
@@ -127,6 +161,10 @@ func GetFollowKeywords(keyword string) []string {
 		return CQLPermissions
 	case "REVOKE":
 		return CQLPermissions
+	case "USING":
+		return UsingOptions
+	case "TRUNCATE":
+		return TableKeyword
 	default:
 		return []string{}
 	}
@@ -261,30 +299,8 @@ func (pce *ParserBasedCompletionEngine) getTablesForKeyspace(keyspaceName string
 
 // isCQLKeyword checks if a token is a CQL keyword
 func (pce *ParserBasedCompletionEngine) isCQLKeyword(token string) bool {
-	keywords := []string{
-		"SELECT", "FROM", "WHERE", "AND", "OR", "NOT",
-		"INSERT", "INTO", "VALUES",
-		"UPDATE", "SET",
-		"DELETE",
-		"CREATE", "DROP", "ALTER",
-		"TABLE", "KEYSPACE", "INDEX",
-		"ORDER", "BY", "GROUP", "HAVING",
-		"LIMIT", "ALLOW", "FILTERING",
-		"ASC", "DESC", "DISTINCT",
-		"PRIMARY", "KEY", "WITH",
-		"IF", "EXISTS", "NOT",
-		"BEGIN", "BATCH", "APPLY",
-		"TRUNCATE", "GRANT", "REVOKE",
-		"USE", "DESCRIBE", "DESC",
-	}
-
-	upperToken := strings.ToUpper(token)
-	for _, kw := range keywords {
-		if upperToken == kw {
-			return true
-		}
-	}
-	return false
+	// Use the IsCompleteKeyword function which already checks all keywords
+	return IsCompleteKeyword(token)
 }
 
 // getTopLevelKeywords returns all top-level CQL keywords

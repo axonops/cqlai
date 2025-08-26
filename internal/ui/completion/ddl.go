@@ -1,4 +1,4 @@
-package ui
+package completion
 
 // getCreateCompletions returns completions for CREATE commands
 func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []string {
