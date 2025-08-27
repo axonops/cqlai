@@ -88,6 +88,18 @@ func ConvertDBConfigToAIConfig(dbConfig *db.AIConfig) *AIConfig {
 		if config.Model == "" {
 			config.Model = "gemini-pro"
 		}
+	case "ollama":
+		if dbConfig.Ollama != nil {
+			if dbConfig.Ollama.APIKey != "" {
+				config.APIKey = dbConfig.Ollama.APIKey
+			}
+			if dbConfig.Ollama.Model != "" {
+				config.Model = dbConfig.Ollama.Model
+			}
+		}
+		if config.Model == "" {
+			config.Model = "llama3"
+		}
 	}
 
 	logger.DebugfToFile("AI", "Final AI config: Provider=%s, HasAPIKey=%v, Model=%s",
@@ -113,8 +125,11 @@ func (c *BaseAIClient) SetAPIKey(key string) {
 	c.APIKey = key
 }
 
-
-
+// Message represents a single message in a conversation.
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
 
 // extractJSON attempts to extract JSON from a text response
 func extractJSON(text string) string {
@@ -143,7 +158,7 @@ func extractJSON(text string) string {
 }
 
 // createAIClient creates the appropriate AI client based on configuration
-func createAIClient(config *AIConfig) (AIClient, error) {
+func createAIClient(config *AIConfig, session *db.Session) (AIClient, error) {
 	if config == nil {
 		return nil, fmt.Errorf("AI configuration is required")
 	}
@@ -153,9 +168,34 @@ func createAIClient(config *AIConfig) (AIClient, error) {
 		return NewOpenAIClient(config.APIKey, config.Model), nil
 	case "anthropic":
 		return NewAnthropicClient(config.APIKey, config.Model), nil
+	case "ollama":
+		dbConfig := session.GetAIConfig()
+		if dbConfig == nil || dbConfig.Ollama == nil {
+			return nil, fmt.Errorf("Ollama configuration is missing from cqlai.json")
+		}
+		return NewOllamaClient(dbConfig.Ollama), nil
 	default:
-		return nil, fmt.Errorf("unsupported AI provider: %s (supported: openai, anthropic)", config.Provider)
+		// Add a mock client for safety, so the app doesn't crash if config is missing
+		if config.Provider == "mock" {
+			return &MockAIClient{}, nil
+		}
+		return nil, fmt.Errorf("unsupported AI provider: %s (supported: openai, anthropic, ollama)", config.Provider)
 	}
+}
+
+// MockAIClient is a mock client for testing and safe fallback.
+type MockAIClient struct{}
+
+func (m *MockAIClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
+	return nil, fmt.Errorf("mock client does not support CQL generation")
+}
+
+func (m *MockAIClient) GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
+	return nil, fmt.Errorf("mock client does not support tools")
+}
+
+func (m *MockAIClient) SetAPIKey(key string) {
+	// No-op for mock client
 }
 
 // GenerateCQLFromRequest is a high-level function that combines schema fetching and CQL generation
@@ -190,7 +230,7 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, userReques
 	logger.DebugfToFile("AI", "AI Config: provider=%s, has_api_key=%v", config.Provider, config.APIKey != "")
 
 	// Create AI client
-	client, err := createAIClient(config)
+	client, err := createAIClient(config, session)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create AI client: %v", err)
 	}
@@ -205,7 +245,7 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, userReques
 			logger.DebugfToFile("AI", "User interaction needed, returning to UI")
 			return nil, "", err // Return the request as-is to preserve type
 		}
-		
+
 		logger.DebugfToFile("AI", "GenerateCQLWithTools failed: %v, falling back to without tools", err)
 		// Fallback to regular generation without tools
 		plan, err = client.GenerateCQL(ctx, userRequest, schemaContext)

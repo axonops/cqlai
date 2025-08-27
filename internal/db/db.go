@@ -41,18 +41,20 @@ type SSLConfig struct {
 
 // AIConfig holds AI provider configuration
 type AIConfig struct {
-	Provider  string               `json:"provider"`  // "mock", "openai", "anthropic", "gemini"
-	APIKey    string               `json:"apiKey"`    // General API key (overridden by provider-specific)
-	Model     string               `json:"model"`     // General model (overridden by provider-specific)
-	OpenAI    *AIProviderConfig    `json:"openai,omitempty"`
-	Anthropic *AIProviderConfig    `json:"anthropic,omitempty"`
-	Gemini    *AIProviderConfig    `json:"gemini,omitempty"`
+	Provider  string            `json:"provider"` // "mock", "openai", "anthropic", "gemini", "ollama"
+	APIKey    string            `json:"apiKey"`   // General API key (overridden by provider-specific)
+	Model     string            `json:"model"`    // General model (overridden by provider-specific)
+	OpenAI    *AIProviderConfig `json:"openai,omitempty"`
+	Anthropic *AIProviderConfig `json:"anthropic,omitempty"`
+	Gemini    *AIProviderConfig `json:"gemini,omitempty"`
+	Ollama    *AIProviderConfig `json:"ollama,omitempty"`
 }
 
 // AIProviderConfig holds provider-specific configuration
 type AIProviderConfig struct {
 	APIKey string `json:"apiKey"`
 	Model  string `json:"model"`
+	URL    string `json:"url,omitempty"` // For local providers like Ollama
 }
 
 // OutputFormat represents the output format for query results
@@ -99,16 +101,16 @@ func NewSession() (*Session, error) {
 // customLogger suppresses gocql error messages to prevent terminal corruption
 type customLogger struct{}
 
-func (c *customLogger) Error(msg string, fields ...gocql.LogField) {}
+func (c *customLogger) Error(msg string, fields ...gocql.LogField)   {}
 func (c *customLogger) Warning(msg string, fields ...gocql.LogField) {}
-func (c *customLogger) Info(msg string, fields ...gocql.LogField) {}
-func (c *customLogger) Debug(msg string, fields ...gocql.LogField) {}
+func (c *customLogger) Info(msg string, fields ...gocql.LogField)    {}
+func (c *customLogger) Debug(msg string, fields ...gocql.LogField)   {}
 
 // NewSessionWithOptions creates a new Cassandra session with command-line overrides.
 func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	// Also redirect standard log output to discard
 	log.SetOutput(io.Discard)
-	
+
 	// Load configuration
 	config, err := loadConfig()
 	if err != nil {
@@ -144,12 +146,12 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	}
 	// RequireConfirmation is handled specially since false is a valid value
 	// Only override if explicitly set via command line
-	if options.Host != "" || options.Port != 0 || options.Keyspace != "" || 
-	   options.Username != "" || options.Password != "" {
+	if options.Host != "" || options.Port != 0 || options.Keyspace != "" ||
+		options.Username != "" || options.Password != "" {
 		// If any command-line option was provided, use the RequireConfirmation from options
 		config.RequireConfirmation = options.RequireConfirmation
 	}
-	
+
 	// Override SSL config if provided
 	if options.SSL != nil {
 		config.SSL = options.SSL
@@ -162,11 +164,13 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	cluster.Consistency = gocql.LocalOne
 	cluster.Timeout = 10 * time.Second
 	cluster.ConnectTimeout = 10 * time.Second
-	
+	cluster.ProtoVersion = 4
+	cluster.DisableInitialHostLookup = true
+
 	if config.Keyspace != "" {
 		cluster.Keyspace = config.Keyspace
 	}
-	
+
 	if config.Username != "" && config.Password != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{
 			Username: config.Username,
@@ -189,13 +193,13 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cassandra: %v", err)
 	}
-	
+
 	// Get Cassandra version
 	var releaseVersion string
 	iter := session.Query("SELECT release_version FROM system.local").Iter()
 	iter.Scan(&releaseVersion)
 	iter.Close()
-	
+
 	s := &Session{
 		Session:             session,
 		cluster:             cluster,
@@ -208,7 +212,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		aiConfig:            config.AI,
 		outputFormat:        OutputFormatTable,
 	}
-	
+
 	// Initialize schema cache for AI features
 	s.schemaCache = NewSchemaCache(s)
 	if err := s.schemaCache.Refresh(); err != nil {
@@ -217,7 +221,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	} else {
 		logger.DebugfToFile("Session", "Schema cache initialized with %d keyspaces", len(s.schemaCache.Keyspaces))
 	}
-	
+
 	return s, nil
 }
 
@@ -248,7 +252,87 @@ func loadConfig() (*Config, error) {
 		}
 	}
 
+	overrideWithEnvVars(&config)
 	return &config, nil
+}
+
+// overrideWithEnvVars overrides the configuration with values from environment variables.
+func overrideWithEnvVars(config *Config) {
+	if host := os.Getenv("CASSANDRA_HOST"); host != "" {
+		config.Host = host
+	}
+	if portStr := os.Getenv("CASSANDRA_PORT"); portStr != "" {
+		if port, err := strconv.Atoi(portStr); err == nil {
+			config.Port = port
+		}
+	}
+	if keyspace := os.Getenv("CASSANDRA_KEYSPACE"); keyspace != "" {
+		config.Keyspace = keyspace
+	}
+	if user := os.Getenv("CASSANDRA_USER"); user != "" {
+		config.Username = user
+	}
+	if pass := os.Getenv("CASSANDRA_PASSWORD"); pass != "" {
+		config.Password = pass
+	}
+
+	if config.AI == nil {
+		config.AI = &AIConfig{}
+	}
+
+	if provider := os.Getenv("AI_PROVIDER"); provider != "" {
+		config.AI.Provider = provider
+	}
+	if model := os.Getenv("AI_MODEL"); model != "" {
+		config.AI.Model = model
+	}
+
+	// Ollama specific
+	if config.AI.Ollama == nil {
+		config.AI.Ollama = &AIProviderConfig{}
+	}
+	if url := os.Getenv("OLLAMA_URL"); url != "" {
+		config.AI.Ollama.URL = url
+	}
+	if key := os.Getenv("OLLAMA_API_KEY"); key != "" {
+		config.AI.Ollama.APIKey = key
+	}
+	if model := os.Getenv("OLLAMA_MODEL"); model != "" {
+		config.AI.Ollama.Model = model
+	}
+
+	// OpenAI specific
+	if config.AI.OpenAI == nil {
+		config.AI.OpenAI = &AIProviderConfig{}
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		config.AI.OpenAI.APIKey = key
+	}
+	if model := os.Getenv("OPENAI_MODEL"); model != "" {
+		config.AI.OpenAI.Model = model
+	}
+
+	// Anthropic specific
+	if config.AI.Anthropic == nil {
+		config.AI.Anthropic = &AIProviderConfig{}
+	}
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		config.AI.Anthropic.APIKey = key
+	}
+	if model := os.Getenv("ANTHROPIC_MODEL"); model != "" {
+		config.AI.Anthropic.Model = model
+	}
+
+	// Gemini specific
+	if config.AI.Gemini == nil {
+		config.AI.Gemini = &AIProviderConfig{}
+	}
+	if key := os.Getenv("GEMINI_API_KEY"); key != "" {
+		config.AI.Gemini.APIKey = key
+	}
+	if model := os.Getenv("GEMINI_MODEL"); model != "" {
+		config.AI.Gemini.Model = model
+	}
 }
 
 // Consistency returns the current consistency level
@@ -358,7 +442,7 @@ func (s *Session) Query(stmt string, values ...interface{}) *gocql.Query {
 	// If we have a current keyspace and the query is a SELECT/INSERT/UPDATE/DELETE
 	// without an explicit keyspace, prepend the keyspace
 	processedStmt := s.prependKeyspaceIfNeeded(stmt)
-	
+
 	query := s.Session.Query(processedStmt, values...)
 	query.Consistency(s.consistency)
 	query.PageSize(s.pageSize)
@@ -374,13 +458,13 @@ func (s *Session) prependKeyspaceIfNeeded(stmt string) string {
 	if s.currentKeyspace == "" {
 		return stmt
 	}
-	
+
 	// Don't modify system queries or queries that already have keyspace
 	upperStmt := strings.ToUpper(strings.TrimSpace(stmt))
 	if strings.Contains(upperStmt, "SYSTEM") || strings.Contains(stmt, ".") {
 		return stmt
 	}
-	
+
 	// Only modify SELECT/INSERT/UPDATE/DELETE/TRUNCATE statements
 	if strings.HasPrefix(upperStmt, "SELECT") ||
 		strings.HasPrefix(upperStmt, "INSERT") ||
@@ -391,7 +475,7 @@ func (s *Session) prependKeyspaceIfNeeded(stmt string) string {
 		// A real implementation would need proper CQL parsing
 		return stmt
 	}
-	
+
 	return stmt
 }
 
@@ -431,12 +515,12 @@ func (s *Session) IsVersion4OrHigher() bool {
 	if len(parts) < 1 {
 		return false
 	}
-	
+
 	majorVersion, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return false
 	}
-	
+
 	return majorVersion >= 4
 }
 
