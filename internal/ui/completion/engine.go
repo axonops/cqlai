@@ -6,19 +6,22 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // CompletionEngine handles tab completion for CQL commands
 type CompletionEngine struct {
-	session   *db.Session
-	cache     *completionCache
-	lastInput string // Store last input for context
+	session        *db.Session
+	sessionManager *session.Manager
+	cache          *completionCache
+	lastInput      string // Store last input for context
 }
 
 // NewCompletionEngine creates a new completion engine
-func NewCompletionEngine(session *db.Session) *CompletionEngine {
+func NewCompletionEngine(dbSession *db.Session, sessionMgr *session.Manager) *CompletionEngine {
 	return &CompletionEngine{
-		session: session,
+		session:        dbSession,
+		sessionManager: sessionMgr,
 		cache: &completionCache{
 			tables:  make(map[string][]string),
 			columns: make(map[string][]string),

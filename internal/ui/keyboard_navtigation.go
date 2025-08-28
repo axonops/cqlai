@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -44,11 +44,11 @@ func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 					
 					// Format based on current output format
 					var contentStr string
-					if m.session != nil {
-						switch m.session.GetOutputFormat() {
-						case db.OutputFormatASCII:
+					if m.sessionManager != nil {
+						switch m.sessionManager.GetOutputFormat() {
+						case config.OutputFormatASCII:
 							contentStr = FormatASCIITable(allData)
-						case db.OutputFormatExpand:
+						case config.OutputFormatExpand:
 							contentStr = FormatExpandTable(allData)
 						default:
 							contentStr = m.formatTableForViewport(allData)
@@ -183,13 +183,13 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 							
 							// Format based on current output format
 							var contentStr string
-							if m.session != nil {
-								switch m.session.GetOutputFormat() {
-								case db.OutputFormatASCII:
+							if m.sessionManager != nil {
+								switch m.sessionManager.GetOutputFormat() {
+								case config.OutputFormatASCII:
 									contentStr = FormatASCIITable(allData)
-								case db.OutputFormatExpand:
+								case config.OutputFormatExpand:
 									contentStr = FormatExpandTable(allData)
-								case db.OutputFormatJSON:
+								case config.OutputFormatJSON:
 									// Format JSON output - each row is a JSON string
 									jsonStr := ""
 									for _, row := range m.slidingWindow.Rows {

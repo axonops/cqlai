@@ -9,16 +9,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/config"
 )
 
 // OllamaClient represents a client for the Ollama API.
 type OllamaClient struct {
-	config *db.AIProviderConfig
+	config *config.AIProviderConfig
 }
 
 // NewOllamaClient creates a new Ollama client.
-func NewOllamaClient(config *db.AIProviderConfig) *OllamaClient {
+func NewOllamaClient(config *config.AIProviderConfig) *OllamaClient {
 	return &OllamaClient{
 		config: config,
 	}

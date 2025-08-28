@@ -7,7 +7,7 @@ import (
 
 // describeFunctions lists all functions
 func (v *CqlCommandVisitorImpl) describeFunctions() interface{} {
-	result, isServerSide, err := v.session.DBDescribeFunctions()
+	result, isServerSide, err := v.session.DBDescribeFunctions(sessionManager)
 
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -24,7 +24,11 @@ func (v *CqlCommandVisitorImpl) describeFunctions() interface{} {
 	// Manual query result, check if empty
 	if results, ok := result.([][]string); ok {
 		if len(results) == 1 {
-			return fmt.Sprintf("No functions in keyspace %s", v.session.CurrentKeyspace())
+			currentKeyspace := ""
+			if sessionManager != nil {
+				currentKeyspace = sessionManager.CurrentKeyspace()
+			}
+			return fmt.Sprintf("No functions in keyspace %s", currentKeyspace)
 		}
 		return results
 	}
@@ -34,7 +38,7 @@ func (v *CqlCommandVisitorImpl) describeFunctions() interface{} {
 
 // describeFunction shows detailed information about a specific function
 func (v *CqlCommandVisitorImpl) describeFunction(functionName string) interface{} {
-	serverResult, functions, err := v.session.DBDescribeFunction(functionName)
+	serverResult, functions, err := v.session.DBDescribeFunction(sessionManager, functionName)
 
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -50,11 +54,17 @@ func (v *CqlCommandVisitorImpl) describeFunction(functionName string) interface{
 
 	// Manual query result - format it
 	if len(functions) == 0 {
-		currentKeyspace := v.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
 		return fmt.Sprintf("Function '%s' not found in keyspace '%s'", functionName, currentKeyspace)
 	}
 
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	var result strings.Builder
 	for i, fn := range functions {
 		if i > 0 {

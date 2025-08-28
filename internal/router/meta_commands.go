@@ -115,7 +115,11 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 
 	if strings.Contains(upperCommand, "SESSION") {
 		// Show session information
-		result := fmt.Sprintf("Current keyspace: %s\n", h.session.CurrentKeyspace())
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
+		result := fmt.Sprintf("Current keyspace: %s\n", currentKeyspace)
 		result += fmt.Sprintf("Consistency: %s\n", h.session.Consistency())
 		result += fmt.Sprintf("Page size: %d\n", h.session.PageSize())
 		result += fmt.Sprintf("Tracing: %v\n", h.session.Tracing())

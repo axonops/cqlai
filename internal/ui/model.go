@@ -6,8 +6,11 @@ import (
 	"time"
 
 	"github.com/axonops/cqlai/internal/ai"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/router"
+	"github.com/axonops/cqlai/internal/session"
 	"github.com/axonops/cqlai/internal/ui/completion"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -50,58 +53,60 @@ type AIInfoResponseMsg struct {
 
 // MainModel is the main Bubble Tea model for the application.
 type MainModel struct {
-	historyViewport  viewport.Model  // For command history
-	tableViewport    viewport.Model  // For current table display
-	input            textinput.Model
-	topBar           TopBarModel
-	statusBar        StatusBarModel
-	lastCommand      string
-	commandHistory   []string
-	historyIndex     int
-	session          *db.Session
-	styles           *Styles
-	ready            bool
-	lastQueryTime    time.Duration
-	rowCount         int
-	completionEngine *completion.CompletionEngine
-	completions      []string
-	completionIndex  int
-	showCompletions  bool
-	completionScrollOffset int  // Track scroll position in completion list
-	confirmExit      bool
-	modal            Modal
-	aiModal          AIModal  // AI-powered CQL generation modal
-	showAIModal      bool     // Whether AI modal is active
-	aiConversationID string   // Current AI conversation ID for stateful interactions
-	aiSelectionModal *AISelectionModal  // AI selection modal for user choices
-	aiInfoRequestModal *AIInfoRequestModal  // AI info request modal for additional input
-	showHistoryModal bool  // Whether to show command history modal
-	historyModalIndex int  // Currently selected item in history modal
-	historyModalScrollOffset int  // Track scroll position in history modal
-	horizontalOffset int  // For horizontal scrolling of tables
-	lastTableData    [][]string  // Store the last table data for horizontal scrolling
-	tableWidth       int  // Width of the full table (before truncation)
-	tableHeaders     []string  // Store column headers for sticky display
-	columnWidths     []int  // Store column widths for proper alignment
-	hasTable         bool  // Whether we're currently displaying a table
-	viewMode         string  // "history" or "table"
-	showDataTypes    bool  // Whether to show column data types in table headers
-	columnTypes      []string  // Store column data types
-	
+	historyViewport          viewport.Model // For command history
+	tableViewport            viewport.Model // For current table display
+	input                    textinput.Model
+	topBar                   TopBarModel
+	statusBar                StatusBarModel
+	lastCommand              string
+	commandHistory           []string
+	historyIndex             int
+	session                  *db.Session
+	sessionManager           *session.Manager // Application state manager
+	aiConfig                 *config.AIConfig // AI configuration
+	styles                   *Styles
+	ready                    bool
+	lastQueryTime            time.Duration
+	rowCount                 int
+	completionEngine         *completion.CompletionEngine
+	completions              []string
+	completionIndex          int
+	showCompletions          bool
+	completionScrollOffset   int // Track scroll position in completion list
+	confirmExit              bool
+	modal                    Modal
+	aiModal                  AIModal             // AI-powered CQL generation modal
+	showAIModal              bool                // Whether AI modal is active
+	aiConversationID         string              // Current AI conversation ID for stateful interactions
+	aiSelectionModal         *AISelectionModal   // AI selection modal for user choices
+	aiInfoRequestModal       *AIInfoRequestModal // AI info request modal for additional input
+	showHistoryModal         bool                // Whether to show command history modal
+	historyModalIndex        int                 // Currently selected item in history modal
+	historyModalScrollOffset int                 // Track scroll position in history modal
+	horizontalOffset         int                 // For horizontal scrolling of tables
+	lastTableData            [][]string          // Store the last table data for horizontal scrolling
+	tableWidth               int                 // Width of the full table (before truncation)
+	tableHeaders             []string            // Store column headers for sticky display
+	columnWidths             []int               // Store column widths for proper alignment
+	hasTable                 bool                // Whether we're currently displaying a table
+	viewMode                 string              // "history" or "table"
+	showDataTypes            bool                // Whether to show column data types in table headers
+	columnTypes              []string            // Store column data types
+
 	// Sliding window for large result sets
-	slidingWindow    *SlidingWindowTable  // Manages memory-limited table data
-	
+	slidingWindow *SlidingWindowTable // Manages memory-limited table data
+
 	// Multi-line mode
-	multiLineMode    bool     // Whether we're in multi-line mode
-	multiLineBuffer  []string // Buffer for multi-line commands
-	
+	multiLineMode   bool     // Whether we're in multi-line mode
+	multiLineBuffer []string // Buffer for multi-line commands
+
 	// History search
-	historyManager   *HistoryManager
-	historySearchMode bool  // Whether we're in Ctrl+R history search mode
-	historySearchQuery string  // Current search query
-	historySearchResults []string  // Filtered history results
-	historySearchIndex int  // Currently selected item in search results
-	historySearchScrollOffset int  // Scroll offset for history search modal
+	historyManager            *HistoryManager
+	historySearchMode         bool     // Whether we're in Ctrl+R history search mode
+	historySearchQuery        string   // Current search query
+	historySearchResults      []string // Filtered history results
+	historySearchIndex        int      // Currently selected item in search results
+	historySearchScrollOffset int      // Scroll offset for history search modal
 }
 
 // NewMainModel creates a new MainModel.
@@ -129,20 +134,62 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 	ti.Prompt = styles.AccentText.Render("> ")
 	ti.PlaceholderStyle = styles.MutedText
 
-	session, err := db.NewSessionWithOptions(db.SessionOptions{
-		Host:                options.Host,
-		Port:                options.Port,
-		Keyspace:            options.Keyspace,
-		Username:            options.Username,
-		Password:            options.Password,
-		RequireConfirmation: options.RequireConfirmation,
+	// Load configuration from file and environment
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		// Use defaults if config file not found
+		cfg = &config.Config{
+			Host:                "127.0.0.1",
+			Port:                9042,
+			RequireConfirmation: true,
+			AI: &config.AIConfig{
+				Provider: "mock",
+			},
+		}
+	}
+
+	// Override with command-line options
+	if options.Host != "" {
+		cfg.Host = options.Host
+	}
+	if options.Port != 0 {
+		cfg.Port = options.Port
+	}
+	if options.Keyspace != "" {
+		cfg.Keyspace = options.Keyspace
+	}
+	if options.Username != "" {
+		cfg.Username = options.Username
+	}
+	if options.Password != "" {
+		cfg.Password = options.Password
+	}
+	// RequireConfirmation handled specially since false is a valid override
+	if options.Host != "" || options.Port != 0 || options.Keyspace != "" ||
+		options.Username != "" || options.Password != "" {
+		cfg.RequireConfirmation = options.RequireConfirmation
+	}
+
+	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		Keyspace: cfg.Keyspace,
+		Username: cfg.Username,
+		Password: cfg.Password,
+		SSL:      cfg.SSL,
 	})
 	if err != nil {
 		return MainModel{}, err
 	}
 
-	completionEngine := completion.NewCompletionEngine(session)
-	
+	// Create session manager for application state
+	sessionMgr := session.NewManager(cfg)
+
+	// Initialize router with session manager
+	router.InitRouter(sessionMgr)
+
+	completionEngine := completion.NewCompletionEngine(dbSession, sessionMgr)
+
 	// Initialize history manager
 	historyManager, err := NewHistoryManager()
 	if err != nil {
@@ -150,35 +197,37 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 		fmt.Fprintf(os.Stderr, "Warning: could not initialize history manager: %v\n", err)
 		historyManager = &HistoryManager{history: []string{}}
 	}
-	
+
 	// Load command history from the history manager
 	commandHistory := historyManager.GetHistory()
 
 	return MainModel{
-		topBar:           NewTopBarModel(),
-		statusBar:        NewStatusBarModel(),
-		input:            ti,
-		session:          session,
-		styles:           styles,
-		commandHistory:   commandHistory,
-		historyIndex:     -1,
-		completionEngine: completionEngine,
-		completions:      []string{},
-		completionIndex:  -1,
-		showCompletions:  false,
-		completionScrollOffset: 0,
-		horizontalOffset: 0,
-		lastTableData:    nil,
-		tableWidth:       0,
-		tableHeaders:     nil,
-		columnWidths:     nil,
-		hasTable:         false,
-		viewMode:         "history",
-		historyManager:   historyManager,
-		historySearchMode: false,
-		historySearchQuery: "",
-		historySearchResults: []string{},
-		historySearchIndex: 0,
+		topBar:                    NewTopBarModel(),
+		statusBar:                 NewStatusBarModel(),
+		input:                     ti,
+		session:                   dbSession,
+		sessionManager:            sessionMgr,
+		aiConfig:                  cfg.AI,
+		styles:                    styles,
+		commandHistory:            commandHistory,
+		historyIndex:              -1,
+		completionEngine:          completionEngine,
+		completions:               []string{},
+		completionIndex:           -1,
+		showCompletions:           false,
+		completionScrollOffset:    0,
+		horizontalOffset:          0,
+		lastTableData:             nil,
+		tableWidth:                0,
+		tableHeaders:              nil,
+		columnWidths:              nil,
+		hasTable:                  false,
+		viewMode:                  "history",
+		historyManager:            historyManager,
+		historySearchMode:         false,
+		historySearchQuery:        "",
+		historySearchResults:      []string{},
+		historySearchIndex:        0,
 		historySearchScrollOffset: 0,
 	}, nil
 }
@@ -187,7 +236,6 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 func (m MainModel) Init() tea.Cmd {
 	return textinput.Blink
 }
-
 
 // Update updates the main model.
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -218,17 +266,17 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKeyboardInput(msg)
-	
+
 	case AICQLResultMsg:
 		// Handle AI CQL generation result
 		logger.DebugfToFile("AI", "Received AI result message")
-		
+
 		// Store the conversation ID if provided
 		if msg.ConversationID != "" {
 			m.aiConversationID = msg.ConversationID
 			logger.DebugfToFile("AI", "Conversation ID: %s", msg.ConversationID)
 		}
-		
+
 		if m.showAIModal && m.aiModal.State == AIModalStateGenerating {
 			if msg.Error != nil {
 				// Check if this is an interaction request
@@ -258,13 +306,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	
+
 	case AIRequestUserSelectionMsg:
 		// AI needs user to select from options
 		logger.DebugfToFile("AI", "AI requesting user selection: type=%s, options=%v", msg.SelectionType, msg.Options)
 		m.aiSelectionModal = NewAISelectionModal(msg.SelectionType, msg.Options)
 		return m, nil
-	
+
 	case AISelectionResultMsg:
 		// User completed selection (or cancelled)
 		if msg.Cancelled {
@@ -282,11 +330,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logger.DebugfToFile("AI", "User selected: %s", msg.Selection)
 			// Continue AI generation with the selected value
 			m.aiSelectionModal = nil
-			
+
 			// Re-show the AI modal in generating state
 			m.showAIModal = true
 			m.aiModal.State = AIModalStateGenerating
-			
+
 			// Continue the existing conversation with the user's selection
 			if m.aiConversationID != "" {
 				logger.DebugfToFile("AI", "Continuing conversation %s with selection: %s", m.aiConversationID, msg.Selection)
@@ -295,17 +343,17 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Fallback if no conversation ID (shouldn't happen)
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
 				contextualRequest := fmt.Sprintf("%s\nUser selected: %s", m.aiModal.UserRequest, msg.Selection)
-				return m, generateAICQL(m.session, contextualRequest)
+				return m, generateAICQL(m.session, m.aiConfig, contextualRequest)
 			}
 		}
 		return m, nil
-	
+
 	case AIRequestMoreInfoMsg:
 		// AI needs more information from user
 		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
 		m.aiInfoRequestModal = NewAIInfoRequestModal(msg.Message)
 		return m, nil
-	
+
 	case AIInfoResponseMsg:
 		// User provided additional information (or cancelled)
 		if msg.Cancelled {
@@ -323,11 +371,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
 			// Continue AI generation with the additional information
 			m.aiInfoRequestModal = nil
-			
+
 			// Re-show the AI modal in generating state
 			m.showAIModal = true
 			m.aiModal.State = AIModalStateGenerating
-			
+
 			// Continue the existing conversation with the additional info
 			if m.aiConversationID != "" {
 				logger.DebugfToFile("AI", "Continuing conversation %s with info: %s", m.aiConversationID, msg.Response)
@@ -337,7 +385,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
 				contextualRequest := fmt.Sprintf("%s\nAdditional info: %s", m.aiModal.UserRequest, msg.Response)
 				m.aiModal.UserRequest = contextualRequest
-				return m, generateAICQL(m.session, contextualRequest)
+				return m, generateAICQL(m.session, m.aiConfig, contextualRequest)
 			}
 		}
 		return m, nil

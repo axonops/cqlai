@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -16,22 +16,30 @@ func (m MainModel) View() string {
 
 	m.topBar.LastCommand = m.lastCommand
 	if m.session != nil {
-		m.statusBar.Keyspace = m.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if m.sessionManager != nil {
+			currentKeyspace = m.sessionManager.CurrentKeyspace()
+		}
+		m.statusBar.Keyspace = currentKeyspace
 		m.statusBar.Tracing = m.session.Tracing()
 		m.statusBar.Consistency = m.session.Consistency()
 		m.statusBar.PagingSize = m.session.PageSize()
 		m.statusBar.Version = m.session.CassandraVersion()
 		// Get the current output format
-		switch m.session.GetOutputFormat() {
-		case db.OutputFormatTable:
-			m.statusBar.OutputFormat = "TABLE"
-		case db.OutputFormatASCII:
-			m.statusBar.OutputFormat = "ASCII"
-		case db.OutputFormatExpand:
-			m.statusBar.OutputFormat = "EXPAND"
-		case db.OutputFormatJSON:
-			m.statusBar.OutputFormat = "JSON"
-		default:
+		if m.sessionManager != nil {
+			switch m.sessionManager.GetOutputFormat() {
+			case config.OutputFormatTable:
+				m.statusBar.OutputFormat = "TABLE"
+			case config.OutputFormatASCII:
+				m.statusBar.OutputFormat = "ASCII"
+			case config.OutputFormatExpand:
+				m.statusBar.OutputFormat = "EXPAND"
+			case config.OutputFormatJSON:
+				m.statusBar.OutputFormat = "JSON"
+			default:
+				m.statusBar.OutputFormat = "TABLE"
+			}
+		} else {
 			m.statusBar.OutputFormat = "TABLE"
 		}
 	}
@@ -96,12 +104,12 @@ func (m MainModel) View() string {
 	}
 
 	// Add output format indicator
-	if m.session != nil {
-		outputFormat := m.session.GetOutputFormat()
-		if outputFormat == db.OutputFormatExpand {
+	if m.sessionManager != nil {
+		outputFormat := m.sessionManager.GetOutputFormat()
+		if outputFormat == config.OutputFormatExpand {
 			expandStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF")).Bold(true)
 			scrollInfo += " " + expandStyle.Render("[EXPAND ON]")
-		} else if outputFormat == db.OutputFormatASCII {
+		} else if outputFormat == config.OutputFormatASCII {
 			asciiStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
 			scrollInfo += " " + asciiStyle.Render("[ASCII]")
 		}
@@ -313,8 +321,12 @@ func (m MainModel) getWelcomeMessage() string {
 	if m.session != nil && m.session.Session != nil {
 		welcome.WriteString(m.styles.SuccessText.Render("✓ Connected to Cassandra"))
 		welcome.WriteString("\n")
-		if m.session.CurrentKeyspace() != "" {
-			welcome.WriteString(m.styles.MutedText.Render(fmt.Sprintf("  Keyspace: %s", m.session.CurrentKeyspace())))
+		currentKeyspace := ""
+		if m.sessionManager != nil {
+			currentKeyspace = m.sessionManager.CurrentKeyspace()
+		}
+		if currentKeyspace != "" {
+			welcome.WriteString(m.styles.MutedText.Render(fmt.Sprintf("  Keyspace: %s", currentKeyspace)))
 			welcome.WriteString("\n")
 		}
 	} else {

@@ -7,7 +7,7 @@ import (
 
 // describeIndex shows detailed information about a specific index
 func (v *CqlCommandVisitorImpl) describeIndex(indexName string) interface{} {
-	serverResult, indexInfo, err := v.session.DBDescribeIndex(indexName)
+	serverResult, indexInfo, err := v.session.DBDescribeIndex(sessionManager, indexName)
 
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -26,11 +26,17 @@ func (v *CqlCommandVisitorImpl) describeIndex(indexName string) interface{} {
 
 	// Manual query result - format it
 	if indexInfo == nil {
-		currentKeyspace := v.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
 		return fmt.Sprintf("Index '%s' not found in keyspace '%s'", indexName, currentKeyspace)
 	}
 
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("Index: %s.%s\n\n", currentKeyspace, indexName))
 

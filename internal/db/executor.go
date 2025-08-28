@@ -26,7 +26,7 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 		return s.ExecuteSelectQuery(query)
 	} else if strings.HasPrefix(upperQuery, "USE ") {
 		// Handle USE statement - gocql doesn't support USE directly
-		// We just track the keyspace locally for DESCRIBE commands
+		// Return the keyspace name for the UI/router layer to handle
 		parts := strings.Fields(query)
 		if len(parts) >= 2 {
 			keyspace := strings.Trim(strings.Trim(parts[1], ";"), "\"")
@@ -40,8 +40,7 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 			}
 			iter.Close()
 
-			// Update the current keyspace in our session wrapper
-			s.SetKeyspace(keyspace)
+			// Return success - the router/UI will handle updating the current keyspace
 			return fmt.Sprintf("Now using keyspace %s", keyspace)
 		}
 		return "Invalid USE statement"
@@ -65,12 +64,6 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Add debug logging
 	logger.DebugToFile("executeSelectQuery", "Starting executeSelectQuery")
-	
-	// Check if JSON format is requested and modify query accordingly
-	if s.GetOutputFormat() == OutputFormatJSON {
-		query = s.convertToJSONQuery(query)
-		logger.DebugfToFile("executeSelectQuery", "Converted to JSON query: %s", query)
-	}
 
 	// Check if we should use streaming for large results
 	// This is a simple heuristic - could be made configurable
@@ -211,20 +204,15 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Calculate query duration
 	duration := time.Since(startTime)
 
-	// Check the output format
-	outputFormat := s.GetOutputFormat()
-	logger.DebugfToFile("ExecuteSelectQuery", "Current output format: %v", outputFormat)
-
 	queryResult := QueryResult{
 		Data:        results,
 		Duration:    duration,
 		RowCount:    rowNum, // rowNum already contains the count of data rows (excluding header)
 		ColumnTypes: columnTypes,
-		Format:      outputFormat,
 	}
 
-	// Just pass the format info, UI will handle formatting
-	logger.DebugfToFile("ExecuteSelectQuery", "Returning QueryResult with format: %v", outputFormat)
+	// Just pass the result, UI will handle formatting
+	logger.DebugfToFile("ExecuteSelectQuery", "Returning QueryResult with %d rows", rowNum)
 
 	return queryResult
 }
@@ -321,14 +309,14 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 		Headers:     headers,
 		ColumnNames: columnNames,
 		ColumnTypes: columnTypes,
-		Format:      s.GetOutputFormat(),
 		Iterator:    iter,
 		StartTime:   startTime,
 	}
 }
 
-// convertToJSONQuery converts a SELECT query to SELECT JSON format
-func (s *Session) convertToJSONQuery(query string) string {
+// ConvertToJSONQuery converts a SELECT query to SELECT JSON format
+// This is now a public method so it can be called from the router/UI layer when needed
+func ConvertToJSONQuery(query string) string {
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
 	
 	// Check if it's already a JSON query
@@ -374,13 +362,11 @@ func (s *Session) GetKeyColumns(query string) map[string]KeyColumnInfo {
 	keyspaceName := matches[1] // May be empty
 	tableName := matches[2]
 
-	// If no keyspace specified, use current keyspace
+	// If no keyspace specified, we can't determine key columns
+	// The UI/router layer should track the current keyspace
 	if keyspaceName == "" {
-		keyspaceName = s.CurrentKeyspace()
-		if keyspaceName == "" {
-			logger.DebugToFile("getKeyColumns", "No keyspace available")
-			return keyColumns
-		}
+		logger.DebugToFile("getKeyColumns", "No keyspace specified")
+		return keyColumns
 	}
 
 	logger.DebugfToFile("getKeyColumns", "Looking up columns for %s.%s", keyspaceName, tableName)

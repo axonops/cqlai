@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // IndexInfo holds index information for manual describe
@@ -39,7 +41,7 @@ func (s *Session) DescribeIndexQuery(keyspace string, indexName string) (*IndexI
 }
 
 // DBDescribeIndex handles version detection and returns appropriate data
-func (s *Session) DBDescribeIndex(indexName string) (interface{}, *IndexInfo, error) {
+func (s *Session) DBDescribeIndex(sessionMgr *session.Manager, indexName string) (interface{}, *IndexInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Parse keyspace.index or just index
@@ -47,7 +49,10 @@ func (s *Session) DBDescribeIndex(indexName string) (interface{}, *IndexInfo, er
 		if strings.Contains(indexName, ".") {
 			describeCmd = fmt.Sprintf("DESCRIBE INDEX %s", indexName)
 		} else {
-			currentKeyspace := s.CurrentKeyspace()
+			currentKeyspace := ""
+			if sessionMgr != nil {
+				currentKeyspace = sessionMgr.CurrentKeyspace()
+			}
 			if currentKeyspace == "" {
 				return nil, nil, fmt.Errorf("no keyspace selected")
 			}
@@ -59,7 +64,10 @@ func (s *Session) DBDescribeIndex(indexName string) (interface{}, *IndexInfo, er
 	}
 
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}

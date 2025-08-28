@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // TableInfo holds table information for manual describe
@@ -191,7 +193,7 @@ func (s *Session) DescribeTablesQuery(keyspace string) ([]TableListInfo, error) 
 }
 
 // DBDescribeTable handles version detection and returns appropriate data
-func (s *Session) DBDescribeTable(tableName string) (interface{}, *TableInfo, error) {
+func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string) (interface{}, *TableInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Try server-side DESCRIBE
@@ -217,7 +219,10 @@ func (s *Session) DBDescribeTable(tableName string) (interface{}, *TableInfo, er
 	
 	// Fall back to manual construction for pre-4.0 or if server-side failed
 	// Check if table name includes keyspace qualification
-	keyspaceName := s.CurrentKeyspace()
+	keyspaceName := ""
+	if sessionMgr != nil {
+		keyspaceName = sessionMgr.CurrentKeyspace()
+	}
 	actualTableName := tableName
 	
 	if strings.Contains(tableName, ".") {
@@ -239,7 +244,7 @@ func (s *Session) DBDescribeTable(tableName string) (interface{}, *TableInfo, er
 }
 
 // DBDescribeTables handles version detection and returns appropriate data
-func (s *Session) DBDescribeTables() (interface{}, []TableListInfo, error) {
+func (s *Session) DBDescribeTables(sessionMgr *session.Manager) (interface{}, []TableListInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Use server-side DESCRIBE TABLES
@@ -248,7 +253,10 @@ func (s *Session) DBDescribeTables() (interface{}, []TableListInfo, error) {
 	}
 	
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}
