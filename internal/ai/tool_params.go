@@ -1,0 +1,218 @@
+package ai
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// ToolParams is the interface that all tool parameter structs must implement
+type ToolParams interface {
+	Validate() error
+}
+
+// FuzzySearchParams represents parameters for fuzzy search tool
+type FuzzySearchParams struct {
+	Query string `json:"query"`
+}
+
+func (p FuzzySearchParams) Validate() error {
+	if p.Query == "" {
+		return fmt.Errorf("query is required")
+	}
+	return nil
+}
+
+// GetSchemaParams represents parameters for get schema tool
+type GetSchemaParams struct {
+	Keyspace string `json:"keyspace"`
+	Table    string `json:"table"`
+}
+
+func (p GetSchemaParams) Validate() error {
+	if p.Keyspace == "" {
+		return fmt.Errorf("keyspace is required")
+	}
+	if p.Table == "" {
+		return fmt.Errorf("table is required")
+	}
+	return nil
+}
+
+// ListKeyspacesParams represents parameters for list keyspaces tool
+type ListKeyspacesParams struct{}
+
+func (p ListKeyspacesParams) Validate() error {
+	return nil
+}
+
+// ListTablesParams represents parameters for list tables tool
+type ListTablesParams struct {
+	Keyspace string `json:"keyspace"`
+}
+
+func (p ListTablesParams) Validate() error {
+	if p.Keyspace == "" {
+		return fmt.Errorf("keyspace is required")
+	}
+	return nil
+}
+
+// UserSelectionParams represents parameters for user selection
+type UserSelectionParams struct {
+	Type    string   `json:"type"`
+	Options []string `json:"options"`
+}
+
+func (p UserSelectionParams) Validate() error {
+	if p.Type == "" {
+		return fmt.Errorf("selection type is required")
+	}
+	if len(p.Options) == 0 {
+		return fmt.Errorf("at least one option is required")
+	}
+	return nil
+}
+
+// InfoMessageParams represents parameters for info messages
+type InfoMessageParams struct {
+	Message string `json:"message"`
+}
+
+func (p InfoMessageParams) Validate() error {
+	if p.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	return nil
+}
+
+// SubmitQueryPlanParams represents the final query plan to execute
+type SubmitQueryPlanParams struct {
+	Operation      string            `json:"operation"`
+	Keyspace       string            `json:"keyspace,omitempty"`
+	Table          string            `json:"table,omitempty"`
+	Columns        []string          `json:"columns,omitempty"`
+	Values         map[string]any    `json:"values,omitempty"`
+	Where          []WhereClause     `json:"where,omitempty"`
+	OrderBy        []OrderClause     `json:"order_by,omitempty"`
+	Limit          int               `json:"limit,omitempty"`
+	AllowFiltering bool              `json:"allow_filtering,omitempty"`
+	Schema         map[string]string `json:"schema,omitempty"`
+	Options        map[string]any    `json:"options,omitempty"`
+	Confidence     float64           `json:"confidence"`
+	Warning        string            `json:"warning,omitempty"`
+	ReadOnly       bool              `json:"read_only"`
+}
+
+func (p SubmitQueryPlanParams) Validate() error {
+	if p.Operation == "" {
+		return fmt.Errorf("operation is required")
+	}
+
+	// Validate based on operation type
+	switch p.Operation {
+	case "SELECT", "UPDATE", "DELETE":
+		if p.Table == "" {
+			return fmt.Errorf("table is required for %s operation", p.Operation)
+		}
+	case "INSERT":
+		if p.Table == "" {
+			return fmt.Errorf("table is required for INSERT operation")
+		}
+		if len(p.Values) == 0 {
+			return fmt.Errorf("values are required for INSERT operation")
+		}
+	}
+
+	return nil
+}
+
+// ToQueryPlan converts the params to a QueryPlan
+func (p SubmitQueryPlanParams) ToQueryPlan() *QueryPlan {
+	return &QueryPlan{
+		Operation:      p.Operation,
+		Keyspace:       p.Keyspace,
+		Table:          p.Table,
+		Columns:        p.Columns,
+		Values:         p.Values,
+		Where:          p.Where,
+		OrderBy:        p.OrderBy,
+		Limit:          p.Limit,
+		AllowFiltering: p.AllowFiltering,
+		Schema:         p.Schema,
+		Options:        p.Options,
+		Confidence:     p.Confidence,
+		Warning:        p.Warning,
+		ReadOnly:       p.ReadOnly,
+	}
+}
+
+// ParseToolParams parses raw parameters into the appropriate typed struct
+func ParseToolParams(toolName ToolName, rawParams json.RawMessage) (ToolParams, error) {
+	switch toolName {
+	case ToolFuzzySearch:
+		var params FuzzySearchParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid fuzzy search parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolGetSchema:
+		var params GetSchemaParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid get schema parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolListKeyspaces:
+		return ListKeyspacesParams{}, nil
+
+	case ToolListTables:
+		var params ListTablesParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid list tables parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolUserSelection:
+		var params UserSelectionParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid user selection parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolNotEnoughInfo:
+		var params InfoMessageParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid info message parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolNotRelevant:
+		var params InfoMessageParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			// not_relevant might not have a message
+			return InfoMessageParams{}, nil
+		}
+		return params, nil
+
+	case ToolSubmitQueryPlan:
+		var params SubmitQueryPlanParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid query plan parameters: %w", err)
+		}
+		return params, nil
+
+	default:
+		return nil, fmt.Errorf("unknown tool: %s", toolName)
+	}
+}
+
+// ParseToolParamsFromMap parses a map into the appropriate typed struct
+func ParseToolParamsFromMap(toolName ToolName, args map[string]any) (ToolParams, error) {
+	// Convert map to JSON then parse
+	jsonBytes, err := json.Marshal(args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal parameters: %w", err)
+	}
+	return ParseToolParams(toolName, jsonBytes)
+}

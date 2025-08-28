@@ -14,6 +14,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/lithammer/fuzzysearch v1.1.8
+	github.com/openai/openai-go v1.12.0
 	github.com/sashabaranov/go-openai v1.41.1
 )
 

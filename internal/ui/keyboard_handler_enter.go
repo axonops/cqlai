@@ -37,21 +37,25 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		if m.aiSelectionModal.InputMode {
 			// Confirm custom input
 			selection := m.aiSelectionModal.GetSelection()
+			selectionType := m.aiSelectionModal.SelectionType
 			m.aiSelectionModal.Active = false
 			return m, func() tea.Msg {
 				return AISelectionResultMsg{
-					Selection: selection,
-					Cancelled: false,
+					Selection:     selection,
+					SelectionType: selectionType,
+					Cancelled:     false,
 				}
 			}
 		} else {
 			// Confirm selected option
 			selection := m.aiSelectionModal.GetSelection()
+			selectionType := m.aiSelectionModal.SelectionType
 			m.aiSelectionModal.Active = false
 			return m, func() tea.Msg {
 				return AISelectionResultMsg{
-					Selection: selection,
-					Cancelled: false,
+					Selection:     selection,
+					SelectionType: selectionType,
+					Cancelled:     false,
 				}
 			}
 		}

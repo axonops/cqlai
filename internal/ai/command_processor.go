@@ -8,73 +8,19 @@ import (
 	"github.com/axonops/cqlai/internal/logger"
 )
 
-// CommandType represents the type of tool command
-type CommandType string
-
-const (
-	CommandFuzzySearch   CommandType = "FUZZY_SEARCH"
-	CommandGetSchema     CommandType = "GET_SCHEMA"
-	CommandListKeyspaces CommandType = "LIST_KEYSPACES"
-	CommandListTables    CommandType = "LIST_TABLES"
-	CommandUserSelection CommandType = "USER_SELECTION"
-	CommandNotEnoughInfo CommandType = "NOT_ENOUGH_INFO"
-	CommandNotRelevant   CommandType = "NOT_RELEVANT"
-)
-
 // ToolRequest represents a JSON tool request from the AI
 type ToolRequest struct {
-	Tool   string                 `json:"tool"`
-	Params map[string]interface{} `json:"params"`
+	Tool   string            `json:"tool"`
+	Params map[string]any `json:"params"`
 }
 
-// ParseCommand parses a response to extract tool commands (supports both JSON and legacy formats)
-func ParseCommand(response string) (CommandType, string, bool) {
+// ParseCommand parses a response to extract tool commands (JSON format only)
+func ParseCommand(response string) (ToolName, string, bool) {
 	response = strings.TrimSpace(response)
 	
-	// First try to parse as JSON
+	// Parse JSON command
 	if toolReq, ok := parseJSONCommand(response); ok {
-		return toolReq.Type, toolReq.Arg, true
-	}
-	
-	// Fall back to legacy format for backward compatibility
-	lines := strings.Split(response, "\n")
-	
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		
-		if strings.HasPrefix(line, "FUZZY_SEARCH:") {
-			query := strings.TrimPrefix(line, "FUZZY_SEARCH:")
-			return CommandFuzzySearch, query, true
-		}
-		
-		if strings.HasPrefix(line, "GET_SCHEMA:") {
-			tableRef := strings.TrimPrefix(line, "GET_SCHEMA:")
-			return CommandGetSchema, tableRef, true
-		}
-		
-		if line == "LIST_KEYSPACES" {
-			return CommandListKeyspaces, "", true
-		}
-		
-		if strings.HasPrefix(line, "LIST_TABLES:") {
-			keyspace := strings.TrimPrefix(line, "LIST_TABLES:")
-			return CommandListTables, keyspace, true
-		}
-		
-		if strings.HasPrefix(line, "USER_SELECTION:") {
-			selectionInfo := strings.TrimPrefix(line, "USER_SELECTION:")
-			return CommandUserSelection, selectionInfo, true
-		}
-		
-		if strings.HasPrefix(line, "NOT_ENOUGH_INFO:") {
-			reason := strings.TrimPrefix(line, "NOT_ENOUGH_INFO:")
-			return CommandNotEnoughInfo, reason, true
-		}
-		
-		if line == "NOT_RELEVANT" || strings.HasPrefix(line, "NOT_RELEVANT:") {
-			reason := strings.TrimPrefix(line, "NOT_RELEVANT:")
-			return CommandNotRelevant, reason, true
-		}
+		return toolReq.Tool, toolReq.Arg, true
 	}
 	
 	return "", "", false
@@ -82,7 +28,7 @@ func ParseCommand(response string) (CommandType, string, bool) {
 
 // ParsedCommand represents a parsed command with its type and arguments
 type ParsedCommand struct {
-	Type CommandType
+	Tool ToolName
 	Arg  string
 }
 
@@ -99,50 +45,55 @@ func parseJSONCommand(response string) (*ParsedCommand, bool) {
 		return nil, false
 	}
 	
-	// Convert JSON tool request to command type and arg
-	switch toolReq.Tool {
-	case "FUZZY_SEARCH":
+	// Parse and validate tool name
+	toolName := ParseToolName(toolReq.Tool)
+	if !toolName.IsValid() {
+		return nil, false
+	}
+	
+	switch toolName {
+	case ToolFuzzySearch:
 		if query, ok := toolReq.Params["query"].(string); ok {
-			return &ParsedCommand{Type: CommandFuzzySearch, Arg: query}, true
+			return &ParsedCommand{Tool: ToolFuzzySearch, Arg: query}, true
 		}
 	
-	case "GET_SCHEMA":
+	case ToolGetSchema:
 		keyspace, _ := toolReq.Params["keyspace"].(string)
 		table, _ := toolReq.Params["table"].(string)
 		if keyspace != "" && table != "" {
-			return &ParsedCommand{Type: CommandGetSchema, Arg: fmt.Sprintf("%s.%s", keyspace, table)}, true
+			return &ParsedCommand{Tool: ToolGetSchema, Arg: fmt.Sprintf("%s.%s", keyspace, table)}, true
 		}
 	
-	case "LIST_KEYSPACES":
-		return &ParsedCommand{Type: CommandListKeyspaces, Arg: ""}, true
+	case ToolListKeyspaces:
+		return &ParsedCommand{Tool: ToolListKeyspaces, Arg: ""}, true
 	
-	case "LIST_TABLES":
+	case ToolListTables:
 		if keyspace, ok := toolReq.Params["keyspace"].(string); ok {
-			return &ParsedCommand{Type: CommandListTables, Arg: keyspace}, true
+			return &ParsedCommand{Tool: ToolListTables, Arg: keyspace}, true
 		}
 	
-	case "USER_SELECTION":
+	case ToolUserSelection:
 		selType, _ := toolReq.Params["type"].(string)
-		options, _ := toolReq.Params["options"].([]interface{})
+		options, _ := toolReq.Params["options"].([]any)
 		if selType != "" && len(options) > 0 {
 			// Convert options to string array
 			strOptions := make([]string, len(options))
 			for i, opt := range options {
 				strOptions[i] = fmt.Sprintf("%v", opt)
 			}
-			// Format as legacy style for compatibility with existing code
+			// Format for existing handler
 			arg := fmt.Sprintf("%s:%s", selType, strings.Join(strOptions, ","))
-			return &ParsedCommand{Type: CommandUserSelection, Arg: arg}, true
+			return &ParsedCommand{Tool: ToolUserSelection, Arg: arg}, true
 		}
 	
-	case "NOT_ENOUGH_INFO":
+	case ToolNotEnoughInfo:
 		if msg, ok := toolReq.Params["message"].(string); ok {
-			return &ParsedCommand{Type: CommandNotEnoughInfo, Arg: msg}, true
+			return &ParsedCommand{Tool: ToolNotEnoughInfo, Arg: msg}, true
 		}
 	
-	case "NOT_RELEVANT":
+	case ToolNotRelevant:
 		msg, _ := toolReq.Params["message"].(string)
-		return &ParsedCommand{Type: CommandNotRelevant, Arg: msg}, true
+		return &ParsedCommand{Tool: ToolNotRelevant, Arg: msg}, true
 	}
 	
 	return nil, false
@@ -208,13 +159,18 @@ type CommandResult struct {
 	NeedsMoreInfo bool
 	InfoMessage   string
 	
+	NotRelevant bool
+	
+	// Query plan submission (for submit_query_plan tool)
+	QueryPlan *QueryPlan
+	
 	// Error case
 	Error error
 }
 
 // IsInteractionNeeded returns true if user interaction is required
 func (r CommandResult) IsInteractionNeeded() bool {
-	return r.NeedsUserSelection || r.NeedsMoreInfo
+	return r.NeedsUserSelection || r.NeedsMoreInfo || r.NotRelevant
 }
 
 // InteractionRequest represents a request for user interaction
@@ -235,16 +191,16 @@ func (i *InteractionRequest) Error() string {
 }
 
 // ExecuteCommand executes a tool command and returns the result
-func ExecuteCommand(cmd CommandType, arg string) CommandResult {
+func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 	if globalAI == nil || globalAI.cache == nil {
-		return CommandResult{
+		return &CommandResult{
 			Success: false,
 			Error:   fmt.Errorf("AI system not initialized"),
 		}
 	}
 	
-	switch cmd {
-	case CommandFuzzySearch:
+	switch toolName {
+	case ToolFuzzySearch:
 		logger.DebugfToFile("CommandProcessor", "Executing fuzzy search for: %s", arg)
 		
 		if globalAI.resolver != nil {
@@ -252,36 +208,38 @@ func ExecuteCommand(cmd CommandType, arg string) CommandResult {
 			logger.DebugfToFile("CommandProcessor", "Fuzzy search returned %d candidates", len(candidates))
 			
 			if len(candidates) > 0 {
-				result := fmt.Sprintf("Found %d tables matching '%s':\n", len(candidates), arg)
+				var sb strings.Builder
+				sb.WriteString(fmt.Sprintf("Found %d tables matching '%s':\n", len(candidates), arg))
 				for _, c := range candidates {
-					result += fmt.Sprintf("- %s.%s (score: %.2f, columns: %v)\n",
-						c.Keyspace, c.Table, c.Score, c.Columns)
+					sb.WriteString(fmt.Sprintf("- %s.%s (score: %.2f, columns: %v)\n",
+						c.Keyspace, c.Table, c.Score, c.Columns))
 				}
-				return CommandResult{Success: true, Data: result}
+				return &CommandResult{Success: true, Data: sb.String()}
 			}
 			
 			// No direct matches, show available keyspaces
 			if len(globalAI.cache.Keyspaces) > 0 {
-				result := fmt.Sprintf("No tables found matching '%s'. Available keyspaces: %s\n",
-					arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", "))
-				result += "\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace."
-				return CommandResult{Success: true, Data: result}
+				var sb strings.Builder
+				sb.WriteString(fmt.Sprintf("No tables found matching '%s'. Available keyspaces: %s\n",
+					arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", ")))
+				sb.WriteString("\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace.")
+				return &CommandResult{Success: true, Data: sb.String()}
 			}
 			
-			return CommandResult{
+			return &CommandResult{
 				Success: true,
 				Data:    fmt.Sprintf("No tables found matching '%s' and no keyspaces available.", arg),
 			}
 		}
-		return CommandResult{
+		return &CommandResult{
 			Success: false,
 			Error:   fmt.Errorf("resolver not available"),
 		}
 		
-	case CommandGetSchema:
+	case ToolGetSchema:
 		parts := strings.Split(arg, ".")
 		if len(parts) != 2 {
-			return CommandResult{
+			return &CommandResult{
 				Success: false,
 				Error:   fmt.Errorf("invalid table reference: %s (expected keyspace.table)", arg),
 			}
@@ -290,42 +248,43 @@ func ExecuteCommand(cmd CommandType, arg string) CommandResult {
 		logger.DebugfToFile("CommandProcessor", "Getting schema for: %s", arg)
 		schemaInfo, err := globalAI.cache.GetTableSchema(parts[0], parts[1])
 		if err != nil {
-			return CommandResult{Success: true, Data: "Schema not found"}
+			return &CommandResult{Success: true, Data: "Schema not found"}
 		}
 		
-		result := fmt.Sprintf("Table %s.%s schema:\n", parts[0], parts[1])
-		result += fmt.Sprintf("Partition Keys: %v\n", schemaInfo.PartitionKeys)
-		result += fmt.Sprintf("Clustering Keys: %v\n", schemaInfo.ClusteringKeys)
-		result += fmt.Sprintf("Columns: %v", schemaInfo.Columns)
-		return CommandResult{Success: true, Data: result}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Table %s.%s schema:\n", parts[0], parts[1]))
+		sb.WriteString(fmt.Sprintf("Partition Keys: %v\n", schemaInfo.PartitionKeys))
+		sb.WriteString(fmt.Sprintf("Clustering Keys: %v\n", schemaInfo.ClusteringKeys))
+		sb.WriteString(fmt.Sprintf("Columns: %v", schemaInfo.Columns))
+		return &CommandResult{Success: true, Data: sb.String()}
 		
-	case CommandListKeyspaces:
+	case ToolListKeyspaces:
 		logger.DebugfToFile("CommandProcessor", "Listing keyspaces")
 		keyspaces := globalAI.cache.Keyspaces
-		return CommandResult{
+		return &CommandResult{
 			Success: true,
 			Data:    fmt.Sprintf("Keyspaces: %s", strings.Join(keyspaces, ", ")),
 		}
 		
-	case CommandListTables:
+	case ToolListTables:
 		logger.DebugfToFile("CommandProcessor", "Listing tables for keyspace: %s", arg)
 		tables := globalAI.cache.Tables[arg]
 		tableNames := []string{}
 		for _, t := range tables {
 			tableNames = append(tableNames, t.TableName)
 		}
-		return CommandResult{
+		return &CommandResult{
 			Success: true,
 			Data:    fmt.Sprintf("Tables in %s: %s", arg, strings.Join(tableNames, ", ")),
 		}
 		
-	case CommandUserSelection:
+	case ToolUserSelection:
 		logger.DebugfToFile("CommandProcessor", "User selection requested: %s", arg)
 		
 		// Parse the type and values from arg (format: type:value1,value2,value3 or type:["value1","value2"])
 		parts := strings.SplitN(arg, ":", 2)
 		if len(parts) != 2 {
-			return CommandResult{
+			return &CommandResult{
 				Success: false,
 				Error:   fmt.Errorf("invalid USER_SELECTION format: %s (expected type:values)", arg),
 			}
@@ -355,24 +314,24 @@ func ExecuteCommand(cmd CommandType, arg string) CommandResult {
 		}
 		
 		// Return result indicating user selection is needed
-		return CommandResult{
+		return &CommandResult{
 			Success:            false, // Not a success yet - needs user input
 			NeedsUserSelection: true,
 			SelectionType:      selectionType,
 			SelectionOptions:   options,
 		}
 		
-	case CommandNotEnoughInfo:
+	case ToolNotEnoughInfo:
 		logger.DebugfToFile("CommandProcessor", "Not enough information: %s", arg)
 		
 		// The arg contains the message from AI requesting more information
-		return CommandResult{
+		return &CommandResult{
 			Success:       false, // Not a success yet - needs user input
 			NeedsMoreInfo: true,
 			InfoMessage:   arg,
 		}
 		
-	case CommandNotRelevant:
+	case ToolNotRelevant:
 		logger.DebugfToFile("CommandProcessor", "Request not relevant to CQL: %s", arg)
 		
 		// The request is not relevant to CQL/Cassandra
@@ -380,15 +339,15 @@ func ExecuteCommand(cmd CommandType, arg string) CommandResult {
 		if arg != "" {
 			message = arg
 		}
-		return CommandResult{
-			Success: false,
-			Error:   fmt.Errorf("%s", message),
+		return &CommandResult{
+			NotRelevant: true,
+			InfoMessage: message,
 		}
 		
 	default:
-		return CommandResult{
+		return &CommandResult{
 			Success: false,
-			Error:   fmt.Errorf("unknown command type: %s", cmd),
+			Error:   fmt.Errorf("unknown tool: %s", toolName),
 		}
 	}
 }

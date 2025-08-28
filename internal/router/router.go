@@ -96,11 +96,12 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 		strings.HasPrefix(upperCommand, "EXPAND") ||
 		strings.HasPrefix(upperCommand, "SOURCE") ||
 		strings.HasPrefix(upperCommand, "CAPTURE") ||
-		strings.HasPrefix(upperCommand, "HELP") {
+		strings.HasPrefix(upperCommand, "HELP") ||
+		strings.HasPrefix(upperCommand, "CONSISTENCY") {
 		return metaHandler.HandleMetaCommand(command)
 	}
 
-	// DESCRIBE and CONSISTENCY commands use the ANTLR parser
+	// DESCRIBE commands use the ANTLR parser
 	logger.DebugfToFile("parseMetaCommand", "Called with: '%s'", command)
 	is := antlr.NewInputStream(command)
 	lexer := grammar.NewCqlLexer(is)

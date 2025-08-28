@@ -77,9 +77,9 @@ func (ai *AI) GetSchemaContext(limit int) (string, error) {
 	context.WriteString("Available Cassandra Schema:\n\n")
 
 	// List keyspaces
-	context.WriteString(fmt.Sprintf("Keyspaces (%d):\n", len(ai.cache.Keyspaces)))
+	fmt.Fprintf(&context, "Keyspaces (%d):\n", len(ai.cache.Keyspaces))
 	for _, ks := range ai.cache.Keyspaces {
-		context.WriteString(fmt.Sprintf("  - %s\n", ks))
+		fmt.Fprintf(&context, "  - %s\n", ks)
 	}
 	context.WriteString("\n")
 
@@ -88,11 +88,11 @@ func (ai *AI) GetSchemaContext(limit int) (string, error) {
 	for keyspace, tables := range ai.cache.Tables {
 		for _, table := range tables {
 			if limit > 0 && tableCount >= limit {
-				context.WriteString(fmt.Sprintf("\n... and %d more tables\n", ai.cache.CountTotalTables()-tableCount))
+				fmt.Fprintf(&context, "\n... and %d more tables\n", ai.cache.CountTotalTables()-tableCount)
 				return context.String(), nil
 			}
 
-			context.WriteString(fmt.Sprintf("Table: %s.%s\n", keyspace, table.TableName))
+			fmt.Fprintf(&context, "Table: %s.%s\n", keyspace, table.TableName)
 
 			// Add columns
 			if columns, ok := ai.cache.Columns[keyspace][table.TableName]; ok {
@@ -102,7 +102,7 @@ func (ai *AI) GetSchemaContext(limit int) (string, error) {
 					if col.Kind == "partition_key" || col.Kind == "clustering" {
 						kind = fmt.Sprintf(" (%s)", col.Kind)
 					}
-					context.WriteString(fmt.Sprintf("    - %s %s%s\n", col.Name, col.DataType, kind))
+					fmt.Fprintf(&context, "    - %s %s%s\n", col.Name, col.DataType, kind)
 				}
 			}
 			context.WriteString("\n")
@@ -114,11 +114,11 @@ func (ai *AI) GetSchemaContext(limit int) (string, error) {
 }
 
 // GetSchemaStats returns statistics about the cached schema
-func (ai *AI) GetSchemaStats() map[string]interface{} {
+func (ai *AI) GetSchemaStats() map[string]any {
 	ai.cache.Mu.RLock()
 	defer ai.cache.Mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"keyspaces":    ai.cache.Keyspaces,
 		"table_count":  ai.cache.CountTotalTables(),
 		"last_refresh": ai.cache.LastRefresh,
