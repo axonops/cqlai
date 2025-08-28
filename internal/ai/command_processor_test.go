@@ -9,114 +9,64 @@ func TestParseCommand(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		wantCmd  CommandType
+		wantCmd  ToolName
 		wantArg  string
 		wantFound bool
 	}{
-		// Legacy format tests
-		{
-			name:      "fuzzy search command",
-			input:     "FUZZY_SEARCH:graph",
-			wantCmd:   CommandFuzzySearch,
-			wantArg:   "graph",
-			wantFound: true,
-		},
-		{
-			name:      "get schema command",
-			input:     "GET_SCHEMA:graphql_test.users",
-			wantCmd:   CommandGetSchema,
-			wantArg:   "graphql_test.users",
-			wantFound: true,
-		},
-		{
-			name:      "list keyspaces command",
-			input:     "LIST_KEYSPACES",
-			wantCmd:   CommandListKeyspaces,
-			wantArg:   "",
-			wantFound: true,
-		},
-		{
-			name:      "list tables command",
-			input:     "LIST_TABLES:graphql_test",
-			wantCmd:   CommandListTables,
-			wantArg:   "graphql_test",
-			wantFound: true,
-		},
-		{
-			name:      "user selection command",
-			input:     "USER_SELECTION:keyspace:test1,test2,test3",
-			wantCmd:   CommandUserSelection,
-			wantArg:   "keyspace:test1,test2,test3",
-			wantFound: true,
-		},
-		{
-			name:      "not enough info with message",
-			input:     "NOT_ENOUGH_INFO:Please specify which table you want to query",
-			wantCmd:   CommandNotEnoughInfo,
-			wantArg:   "Please specify which table you want to query",
-			wantFound: true,
-		},
-		{
-			name:      "not relevant command",
-			input:     "NOT_RELEVANT:This is about SQL not CQL",
-			wantCmd:   CommandNotRelevant,
-			wantArg:   "This is about SQL not CQL",
-			wantFound: true,
-		},
 		// JSON format tests
 		{
 			name:      "json fuzzy search",
 			input:     `{"tool": "FUZZY_SEARCH", "params": {"query": "users"}}`,
-			wantCmd:   CommandFuzzySearch,
+			wantCmd:   ToolFuzzySearch,
 			wantArg:   "users",
 			wantFound: true,
 		},
 		{
 			name:      "json get schema",
 			input:     `{"tool": "GET_SCHEMA", "params": {"keyspace": "myapp", "table": "users"}}`,
-			wantCmd:   CommandGetSchema,
+			wantCmd:   ToolGetSchema,
 			wantArg:   "myapp.users",
 			wantFound: true,
 		},
 		{
 			name:      "json list keyspaces",
 			input:     `{"tool": "LIST_KEYSPACES", "params": {}}`,
-			wantCmd:   CommandListKeyspaces,
+			wantCmd:   ToolListKeyspaces,
 			wantArg:   "",
 			wantFound: true,
 		},
 		{
 			name:      "json list tables",
 			input:     `{"tool": "LIST_TABLES", "params": {"keyspace": "system"}}`,
-			wantCmd:   CommandListTables,
+			wantCmd:   ToolListTables,
 			wantArg:   "system",
 			wantFound: true,
 		},
 		{
 			name:      "json user selection",
 			input:     `{"tool": "USER_SELECTION", "params": {"type": "table", "options": ["users", "profiles", "settings"]}}`,
-			wantCmd:   CommandUserSelection,
+			wantCmd:   ToolUserSelection,
 			wantArg:   "table:users,profiles,settings",
 			wantFound: true,
 		},
 		{
 			name:      "json not enough info",
 			input:     `{"tool": "NOT_ENOUGH_INFO", "params": {"message": "Please specify the keyspace"}}`,
-			wantCmd:   CommandNotEnoughInfo,
+			wantCmd:   ToolNotEnoughInfo,
 			wantArg:   "Please specify the keyspace",
 			wantFound: true,
 		},
 		{
 			name:      "json not relevant",
 			input:     `{"tool": "NOT_RELEVANT", "params": {"message": "This is about MongoDB"}}`,
-			wantCmd:   CommandNotRelevant,
+			wantCmd:   ToolNotRelevant,
 			wantArg:   "This is about MongoDB",
 			wantFound: true,
 		},
 		{
 			name:      "json embedded in text",
 			input:     "Let me search for that.\n{\"tool\": \"FUZZY_SEARCH\", \"params\": {\"query\": \"accounts\"}}\nSearching now...",
-			wantCmd:   CommandFuzzySearch,
+			wantCmd:   ToolFuzzySearch,
 			wantArg:   "accounts",
 			wantFound: true,
 		},
@@ -126,13 +76,6 @@ func TestParseCommand(t *testing.T) {
 			wantCmd:   "",
 			wantArg:   "",
 			wantFound: false,
-		},
-		{
-			name:      "command in multiline response",
-			input:     "Let me search for that.\nFUZZY_SEARCH:users\nSearching now...",
-			wantCmd:   CommandFuzzySearch,
-			wantArg:   "users",
-			wantFound: true,
 		},
 	}
 
@@ -154,7 +97,7 @@ func TestParseCommand(t *testing.T) {
 
 func TestExecuteCommand_UserSelection(t *testing.T) {
 	// This test just verifies the formatting - actual execution requires globalAI to be set up
-	cmd := CommandUserSelection
+	cmd := ToolUserSelection
 	arg := "table:users,accounts,sessions"
 	
 	result := ExecuteCommand(cmd, arg)
@@ -170,7 +113,7 @@ func TestExecuteCommand_UserSelection(t *testing.T) {
 
 func TestExecuteCommand_NotEnoughInfo(t *testing.T) {
 	// Test with the AI system not initialized - should get that error
-	cmd := CommandNotEnoughInfo
+	cmd := ToolNotEnoughInfo
 	arg := "Please specify which table to query"
 	
 	result := ExecuteCommand(cmd, arg)

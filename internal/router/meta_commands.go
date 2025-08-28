@@ -70,11 +70,18 @@ func (h *MetaCommandHandler) handleConsistency(command string) interface{} {
 		return fmt.Sprintf("Current consistency level: %s", h.session.Consistency())
 	}
 
-	if len(parts) == 2 {
-		// Set consistency level
+	if len(parts) >= 2 {
+		// Set consistency level - handle both "CONSISTENCY LOCAL_QUORUM" and "CONSISTENCY LOCAL QUORUM"
 		level := parts[1]
+		// Handle multi-word consistency levels (e.g., LOCAL_QUORUM might be split as LOCAL QUORUM)
+		if len(parts) == 3 && parts[1] == "LOCAL" {
+			level = parts[1] + "_" + parts[2]
+		} else if len(parts) == 3 && parts[1] == "EACH" {
+			level = parts[1] + "_" + parts[2]
+		}
+		
 		if err := h.session.SetConsistency(level); err != nil {
-			return err
+			return fmt.Sprintf("Error setting consistency: %v", err)
 		}
 		return fmt.Sprintf("Consistency level set to %s", level)
 	}

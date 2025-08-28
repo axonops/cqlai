@@ -8,6 +8,13 @@ import (
 
 // handleSpaceKey handles Space key press
 func (m MainModel) handleSpaceKey(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+	// If AI info request modal is active, let it handle the space key
+	if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+		var cmd tea.Cmd
+		m.aiInfoRequestModal, cmd = m.aiInfoRequestModal.Update(msg)
+		return m, cmd
+	}
+	
 	// If we have completions showing, accept the current one and add space
 	if m.showCompletions && len(m.completions) > 0 {
 		// Get the selected completion (just the next word)

@@ -13,7 +13,6 @@ import (
 
 // AIClient defines the interface for an AI client.
 type AIClient interface {
-	GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error)
 	GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error)
 	SetAPIKey(key string)
 }
@@ -46,8 +45,8 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 	}
 
 	// Use provider-specific config if available
-	switch config.Provider {
-	case "openai":
+	switch Provider(config.Provider) {
+	case ProviderOpenAI:
 		if dbConfig.OpenAI != nil {
 			if dbConfig.OpenAI.APIKey != "" {
 				config.APIKey = dbConfig.OpenAI.APIKey
@@ -57,9 +56,9 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 			}
 		}
 		if config.Model == "" {
-			config.Model = "gpt-4-turbo-preview"
+			config.Model = DefaultOpenAIModel
 		}
-	case "anthropic":
+	case ProviderAnthropic:
 		logger.DebugfToFile("AI", "Processing Anthropic config")
 		if dbConfig.Anthropic != nil {
 			logger.DebugfToFile("AI", "Anthropic config exists: APIKey=%v, Model=%s",
@@ -74,10 +73,10 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 			}
 		}
 		if config.Model == "" {
-			config.Model = "claude-3-sonnet-20240229"
+			config.Model = DefaultAnthropicModel
 			logger.DebugfToFile("AI", "Using default Anthropic model: %s", config.Model)
 		}
-	case "gemini":
+	case ProviderGemini:
 		if dbConfig.Gemini != nil {
 			if dbConfig.Gemini.APIKey != "" {
 				config.APIKey = dbConfig.Gemini.APIKey
@@ -87,9 +86,9 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 			}
 		}
 		if config.Model == "" {
-			config.Model = "gemini-pro"
+			config.Model = DefaultGeminiModel
 		}
-	case "ollama":
+	case ProviderOllama:
 		if dbConfig.Ollama != nil {
 			if dbConfig.Ollama.APIKey != "" {
 				config.APIKey = dbConfig.Ollama.APIKey
@@ -99,7 +98,7 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 			}
 		}
 		if config.Model == "" {
-			config.Model = "llama3"
+			config.Model = DefaultOllamaModel
 		}
 	}
 
@@ -135,8 +134,8 @@ type Message struct {
 // extractJSON attempts to extract JSON from a text response
 func extractJSON(text string) string {
 	// Look for JSON between ```json and ``` markers
-	startMarker := "```json"
-	endMarker := "```"
+	startMarker := JSONStartMarker
+	endMarker := JSONEndMarker
 	startIdx := strings.Index(text, startMarker)
 	if startIdx != -1 {
 		startIdx += len(startMarker)
@@ -164,12 +163,12 @@ func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClie
 		return nil, fmt.Errorf("AI configuration is required")
 	}
 
-	switch aiConfig.Provider {
-	case "openai":
+	switch Provider(aiConfig.Provider) {
+	case ProviderOpenAI:
 		return NewOpenAIClient(aiConfig.APIKey, aiConfig.Model), nil
-	case "anthropic":
+	case ProviderAnthropic:
 		return NewAnthropicClient(aiConfig.APIKey, aiConfig.Model), nil
-	case "ollama":
+	case ProviderOllama:
 		if providerConfig == nil || providerConfig.Ollama == nil {
 			return nil, fmt.Errorf("Ollama configuration is missing from cqlai.json")
 		}
@@ -179,19 +178,15 @@ func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClie
 		if aiConfig.Provider == "mock" {
 			return &MockAIClient{}, nil
 		}
-		return nil, fmt.Errorf("unsupported AI provider: %s (supported: openai, anthropic, ollama)", aiConfig.Provider)
+		return nil, fmt.Errorf(ErrInvalidProvider, aiConfig.Provider)
 	}
 }
 
 // MockAIClient is a mock client for testing and safe fallback.
 type MockAIClient struct{}
 
-func (m *MockAIClient) GenerateCQL(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	return nil, fmt.Errorf("mock client does not support CQL generation")
-}
-
 func (m *MockAIClient) GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
-	return nil, fmt.Errorf("mock client does not support tools")
+	return nil, fmt.Errorf(ErrUnsupportedMethod, "mock", "tool calling")
 }
 
 func (m *MockAIClient) SetAPIKey(key string) {
@@ -235,7 +230,7 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *
 	}
 	logger.DebugfToFile("AI", "Created AI client of type: %T", client)
 
-	// Try to generate with tools first (if client supports it)
+	// Generate with tools (all clients support tools now)
 	logger.DebugfToFile("AI", "Attempting to generate CQL with tools for: %s", userRequest)
 	plan, err := client.GenerateCQLWithTools(ctx, userRequest, schemaContext)
 	if err != nil {
@@ -245,19 +240,10 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *
 			return nil, "", err // Return the request as-is to preserve type
 		}
 
-		logger.DebugfToFile("AI", "GenerateCQLWithTools failed: %v, falling back to without tools", err)
-		// Fallback to regular generation without tools
-		plan, err = client.GenerateCQL(ctx, userRequest, schemaContext)
-		if err != nil {
-			// Again check for interaction request in fallback
-			if _, ok := err.(*InteractionRequest); ok {
-				return nil, "", err
-			}
-			return nil, "", fmt.Errorf("failed to generate CQL plan: %v", err)
-		}
-	} else {
-		logger.DebugfToFile("AI", "GenerateCQLWithTools succeeded")
+		logger.DebugfToFile("AI", "GenerateCQLWithTools failed: %v", err)
+		return nil, "", fmt.Errorf("failed to generate CQL plan: %v", err)
 	}
+	logger.DebugfToFile("AI", "GenerateCQLWithTools succeeded")
 
 	// Validate plan
 	validator := &PlanValidator{Schema: nil} // TODO: Pass actual schema

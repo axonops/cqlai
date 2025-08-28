@@ -192,14 +192,23 @@ func (r *Resolver) FindTablesWithFuzzy(query string, limit int) []TableCandidate
 	matches := fuzzy.RankFindNormalized(query, tableList)
 	logger.DebugfToFile("Resolver", "Fuzzy search found %d matches", len(matches))
 	
+	// Log first few matches for debugging
+	for i, match := range matches {
+		if i < 5 {
+			logger.DebugfToFile("Resolver", "Match %d: Target='%s', Distance=%d", i, match.Target, match.Distance)
+		}
+	}
+	
 	// Check if any keyspace matches - if so, return all tables from that keyspace
 	matchedKeyspaces := make(map[string]bool)
 	for _, match := range matches {
-		// Check if the match is a keyspace
+		// Check if the match is a keyspace (compare case-insensitive since RankFindNormalized normalizes)
 		for _, ks := range r.cache.Keyspaces {
-			if match.Target == ks && match.Distance > 30 {
+			logger.DebugfToFile("Resolver", "Comparing match.Target='%s' with keyspace='%s', Distance=%d", match.Target, ks, match.Distance)
+			if strings.EqualFold(match.Target, ks) {
+				// No minimum distance requirement for keyspace matches
 				matchedKeyspaces[ks] = true
-				logger.DebugfToFile("Resolver", "Matched keyspace: %s (score: %d)", ks, match.Distance)
+				logger.DebugfToFile("Resolver", "MATCHED keyspace: %s (score: %d)", ks, match.Distance)
 			}
 		}
 	}
@@ -234,45 +243,49 @@ func (r *Resolver) FindTablesWithFuzzy(query string, limit int) []TableCandidate
 	
 	// Also add direct table matches
 	for _, match := range matches {
-		if match.Distance > 30 { // Minimum threshold (30 out of 100)
-			var tableInfo db.CachedTableInfo
-			var found bool
-			
-			// Try to find the table info
-			if info, ok := tableMap[match.Target]; ok {
-				tableInfo = info
-				found = true
+		// Remove distance check for now to debug
+		logger.DebugfToFile("Resolver", "Processing match: Target='%s', Distance=%d", match.Target, match.Distance)
+		
+		var tableInfo db.CachedTableInfo
+		var found bool
+		
+		// Try to find the table info
+		if info, ok := tableMap[match.Target]; ok {
+			tableInfo = info
+			found = true
+			logger.DebugfToFile("Resolver", "Found table info for '%s'", match.Target)
+		} else {
+			logger.DebugfToFile("Resolver", "No table info found for '%s'", match.Target)
+		}
+		
+		if found && match.Distance > 0 { // Only require Distance > 0
+			// Check if we already added this table from keyspace match
+			alreadyAdded := false
+			for _, c := range candidates {
+				if c.Keyspace == tableInfo.KeyspaceName && c.Table == tableInfo.TableName {
+					alreadyAdded = true
+					break
+				}
 			}
 			
-			if found {
-				// Check if we already added this table from keyspace match
-				alreadyAdded := false
-				for _, c := range candidates {
-					if c.Keyspace == tableInfo.KeyspaceName && c.Table == tableInfo.TableName {
-						alreadyAdded = true
-						break
+			if !alreadyAdded {
+				// Get sample columns
+				sampleColumns := []string{}
+				if columns, ok := r.cache.Columns[tableInfo.KeyspaceName][tableInfo.TableName]; ok {
+					for i, col := range columns {
+						if i < 5 { // Limit to 5 columns
+							sampleColumns = append(sampleColumns, col.Name)
+						}
 					}
 				}
 				
-				if !alreadyAdded {
-					// Get sample columns
-					sampleColumns := []string{}
-					if columns, ok := r.cache.Columns[tableInfo.KeyspaceName][tableInfo.TableName]; ok {
-						for i, col := range columns {
-							if i < 5 { // Limit to 5 columns
-								sampleColumns = append(sampleColumns, col.Name)
-							}
-						}
-					}
-					
-					candidates = append(candidates, TableCandidate{
-						Keyspace:  tableInfo.KeyspaceName,
-						Table:     tableInfo.TableName,
-						Score:     float64(match.Distance) / 100.0, // Normalize to 0-1
-						MatchType: "fuzzy",
-						Columns:   sampleColumns,
-					})
-				}
+				candidates = append(candidates, TableCandidate{
+					Keyspace:  tableInfo.KeyspaceName,
+					Table:     tableInfo.TableName,
+					Score:     float64(match.Distance) / 100.0, // Normalize to 0-1
+					MatchType: "fuzzy",
+					Columns:   sampleColumns,
+				})
 			}
 		}
 	}
@@ -282,5 +295,6 @@ func (r *Resolver) FindTablesWithFuzzy(query string, limit int) []TableCandidate
 		candidates = candidates[:limit]
 	}
 	
+	logger.DebugfToFile("Resolver", "Returning %d candidates", len(candidates))
 	return candidates
 }

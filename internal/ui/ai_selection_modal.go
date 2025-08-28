@@ -9,35 +9,38 @@ import (
 
 // AISelectionModal represents a modal for user to select from AI-provided options
 type AISelectionModal struct {
-	Active       bool
-	Title        string   // e.g., "Select a keyspace"
-	Message      string   // e.g., "Multiple keyspaces found. Please select one:"
-	Options      []string // The list of options to choose from
-	Selected     int      // Currently selected option index
-	Width        int
-	Height       int
-	AllowCancel  bool     // Show cancel button
-	AllowCustom  bool     // Allow user to enter custom text
-	CustomInput  string   // Custom input text
-	InputMode    bool     // Whether we're in custom input mode
+	Active        bool
+	Title         string   // e.g., "Select a keyspace"
+	Message       string   // e.g., "Multiple keyspaces found. Please select one:"
+	SelectionType string   // The type being selected (e.g., "keyspace", "table")
+	Options       []string // The list of options to choose from
+	Selected      int      // Currently selected option index
+	ScrollOffset  int      // Scroll offset for long lists
+	Width         int
+	Height        int
+	AllowCancel   bool   // Show cancel button
+	AllowCustom   bool   // Allow user to enter custom text
+	CustomInput   string // Custom input text
+	InputMode     bool   // Whether we're in custom input mode
 }
 
 // NewAISelectionModal creates a new selection modal
 func NewAISelectionModal(selectionType string, options []string) *AISelectionModal {
 	title := fmt.Sprintf("Select %s", selectionType)
 	message := fmt.Sprintf("Multiple options found for %s. Please select one:", selectionType)
-	
+
 	return &AISelectionModal{
-		Active:      true,
-		Title:       title,
-		Message:     message,
-		Options:     options,
-		Selected:    0,
-		Width:       60,
-		Height:      20,
-		AllowCancel: true,
-		AllowCustom: true,
-		InputMode:   false,
+		Active:        true,
+		Title:         title,
+		Message:       message,
+		SelectionType: selectionType,
+		Options:       options,
+		Selected:      0,
+		Width:         60,
+		Height:        20,
+		AllowCancel:   true,
+		AllowCustom:   true,
+		InputMode:     false,
 	}
 }
 
@@ -45,6 +48,13 @@ func NewAISelectionModal(selectionType string, options []string) *AISelectionMod
 func (m *AISelectionModal) NextOption() {
 	if !m.InputMode && len(m.Options) > 0 {
 		m.Selected = (m.Selected + 1) % len(m.Options)
+		// Adjust scroll offset if needed
+		maxVisible := 10 // Maximum visible items
+		if m.Selected >= m.ScrollOffset+maxVisible {
+			m.ScrollOffset = m.Selected - maxVisible + 1
+		} else if m.Selected < m.ScrollOffset {
+			m.ScrollOffset = m.Selected
+		}
 	}
 }
 
@@ -54,6 +64,13 @@ func (m *AISelectionModal) PrevOption() {
 		m.Selected--
 		if m.Selected < 0 {
 			m.Selected = len(m.Options) - 1
+		}
+		// Adjust scroll offset if needed
+		maxVisible := 10 // Maximum visible items
+		if m.Selected >= m.ScrollOffset+maxVisible {
+			m.ScrollOffset = m.Selected - maxVisible + 1
+		} else if m.Selected < m.ScrollOffset {
+			m.ScrollOffset = m.Selected
 		}
 	}
 }
@@ -82,13 +99,36 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 		return ""
 	}
 
-	// Create modal box style
+	// Calculate available space for the modal
+	// Reserve space for: title(2) + message(2) + custom input(4) + buttons(3) + borders/padding(6)
+	reservedHeight := 17
+	availableHeight := screenHeight - reservedHeight
+	
+	// Calculate maximum visible options based on available space
+	maxVisibleOptions := availableHeight / 2 // Each option takes roughly 1 line, but we need margin
+	if maxVisibleOptions > 8 {
+		maxVisibleOptions = 8 // Cap at 8 for better UX
+	}
+	if maxVisibleOptions < 3 {
+		maxVisibleOptions = 3 // Minimum of 3 visible options
+	}
+	
+	numOptions := len(m.Options)
+	visibleOptions := numOptions
+	if visibleOptions > maxVisibleOptions {
+		visibleOptions = maxVisibleOptions
+	}
+	
+	// Calculate actual options container height
+	optionsHeight := visibleOptions + 2 // +2 for padding
+
+	// Create modal box style with reduced padding
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
 		BorderBackground(lipgloss.Color("#000000")).
 		Background(lipgloss.Color("#000000")).
-		Padding(1, 2).
+		Padding(0, 1).
 		Width(m.Width).
 		MaxWidth(screenWidth - 4)
 
@@ -103,8 +143,7 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 	messageStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Width(m.Width - 4).
-		Align(lipgloss.Center).
-		MarginTop(1)
+		Align(lipgloss.Center)
 
 	// Options list style
 	optionStyle := lipgloss.NewStyle().
@@ -118,28 +157,45 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 		Padding(0, 2).
 		Width(m.Width - 8)
 
-	// Build options list
+	// Build options list with scrolling
 	var optionsList []string
-	for i, opt := range m.Options {
+	startIdx := m.ScrollOffset
+	endIdx := startIdx + visibleOptions
+	if endIdx > len(m.Options) {
+		endIdx = len(m.Options)
+	}
+	
+	// Add scroll indicator at top if needed
+	if startIdx > 0 {
+		scrollIndicator := optionStyle.Render("  ↑ (more above)")
+		optionsList = append(optionsList, scrollIndicator)
+	}
+	
+	for i := startIdx; i < endIdx; i++ {
 		var optText string
 		if i == m.Selected && !m.InputMode {
 			// Selected option
-			optText = selectedStyle.Render(fmt.Sprintf("▶ %s", opt))
+			optText = selectedStyle.Render(fmt.Sprintf("▶ %s", m.Options[i]))
 		} else {
 			// Normal option
-			optText = optionStyle.Render(fmt.Sprintf("  %s", opt))
+			optText = optionStyle.Render(fmt.Sprintf("  %s", m.Options[i]))
 		}
 		optionsList = append(optionsList, optText)
 	}
+	
+	// Add scroll indicator at bottom if needed
+	if endIdx < len(m.Options) {
+		scrollIndicator := optionStyle.Render("  ↓ (more below)")
+		optionsList = append(optionsList, scrollIndicator)
+	}
 
-	// Options container
+	// Options container - use calculated height with reduced padding
 	optionsContainer := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Border).
-		Padding(1).
+		Padding(0, 1).
 		Width(m.Width - 6).
-		Height(10).
-		MarginTop(1).
+		Height(optionsHeight).
 		Render(strings.Join(optionsList, "\n"))
 
 	// Custom input field (if enabled)
@@ -205,13 +261,20 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 
 	modalBox := modalStyle.Render(content)
 
-	// Center the modal on screen
+	// Always position with a margin from top to avoid cutoff
+	// Add top padding to ensure modal doesn't get cut off
+	topPadding := 2
+	paddedModal := lipgloss.NewStyle().
+		MarginTop(topPadding).
+		Render(modalBox)
+
+	// Position the modal with top alignment to prevent cutoff
 	return lipgloss.Place(
 		screenWidth,
 		screenHeight,
 		lipgloss.Center,
-		lipgloss.Center,
-		modalBox,
+		lipgloss.Top,
+		paddedModal,
 		lipgloss.WithWhitespaceBackground(lipgloss.Color("#000000")),
 	)
 }

@@ -112,25 +112,25 @@ func TestParseCommandInConversation(t *testing.T) {
 	testCases := []struct {
 		response    string
 		expectCmd   bool
-		cmdType     CommandType
+		cmdType     ToolName
 		cmdArg      string
 	}{
 		{
 			response:  "Let me search for that.\nFUZZY_SEARCH:users\nSearching...",
 			expectCmd: true,
-			cmdType:   CommandFuzzySearch,
+			cmdType:   ToolFuzzySearch,
 			cmdArg:    "users",
 		},
 		{
 			response:  "USER_SELECTION:table:users,accounts,sessions",
 			expectCmd: true,
-			cmdType:   CommandUserSelection,
+			cmdType:   ToolUserSelection,
 			cmdArg:    "table:users,accounts,sessions",
 		},
 		{
 			response:  "NOT_ENOUGH_INFO:Please specify which keyspace",
 			expectCmd: true,
-			cmdType:   CommandNotEnoughInfo,
+			cmdType:   ToolNotEnoughInfo,
 			cmdArg:    "Please specify which keyspace",
 		},
 		{

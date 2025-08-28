@@ -30,8 +30,9 @@ type ConnectionOptions struct {
 
 // AISelectionResultMsg is sent when user completes a selection
 type AISelectionResultMsg struct {
-	Selection string
-	Cancelled bool
+	Selection     string
+	SelectionType string // The type of selection (e.g., "keyspace", "table")
+	Cancelled     bool
 }
 
 // AIRequestUserSelectionMsg is sent when AI needs user to select from options
@@ -327,7 +328,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.historyViewport.SetContent(historyContent)
 			m.historyViewport.GotoBottom()
 		} else {
-			logger.DebugfToFile("AI", "User selected: %s", msg.Selection)
+			logger.DebugfToFile("AI", "User selected %s: %s", msg.SelectionType, msg.Selection)
 			// Continue AI generation with the selected value
 			m.aiSelectionModal = nil
 
@@ -335,14 +336,17 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAIModal = true
 			m.aiModal.State = AIModalStateGenerating
 
+			// Build contextual response with type information
+			contextualResponse := fmt.Sprintf("User selected %s: %s", msg.SelectionType, msg.Selection)
+
 			// Continue the existing conversation with the user's selection
 			if m.aiConversationID != "" {
-				logger.DebugfToFile("AI", "Continuing conversation %s with selection: %s", m.aiConversationID, msg.Selection)
-				return m, continueAIConversation(m.aiConversationID, msg.Selection)
+				logger.DebugfToFile("AI", "Continuing conversation %s with selection: %s", m.aiConversationID, contextualResponse)
+				return m, continueAIConversation(m.aiConversationID, contextualResponse)
 			} else {
 				// Fallback if no conversation ID (shouldn't happen)
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
-				contextualRequest := fmt.Sprintf("%s\nUser selected: %s", m.aiModal.UserRequest, msg.Selection)
+				contextualRequest := fmt.Sprintf("%s\n%s", m.aiModal.UserRequest, contextualResponse)
 				return m, generateAICQL(m.session, m.aiConfig, contextualRequest)
 			}
 		}
