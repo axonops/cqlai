@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // TableSchema represents a table's schema information
@@ -137,11 +139,15 @@ func (s *Session) GetTableSchema(keyspace, table string) (*TableSchema, error) {
 }
 
 // GetCurrentKeyspaceSchema retrieves schema for the current keyspace
-func (s *Session) GetCurrentKeyspaceSchema() (*KeyspaceSchema, error) {
-	if s.currentKeyspace == "" {
+func (s *Session) GetCurrentKeyspaceSchema(sessionMgr *session.Manager) (*KeyspaceSchema, error) {
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
+	if currentKeyspace == "" {
 		return nil, fmt.Errorf("no keyspace selected")
 	}
-	return s.GetKeyspaceSchema(s.currentKeyspace)
+	return s.GetKeyspaceSchema(currentKeyspace)
 }
 
 // loadTablesForKeyspace loads all tables for a keyspace

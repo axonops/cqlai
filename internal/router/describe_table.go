@@ -8,7 +8,7 @@ import (
 
 // describeTable shows detailed information about a specific table
 func (v *CqlCommandVisitorImpl) describeTable(tableName string) interface{} {
-	serverResult, tableInfo, err := v.session.DBDescribeTable(tableName)
+	serverResult, tableInfo, err := v.session.DBDescribeTable(sessionManager, tableName)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -267,7 +267,7 @@ var compressionAbbrev = map[string]string{
 
 // describeTables lists all tables in the current keyspace.
 func (v *CqlCommandVisitorImpl) describeTables() interface{} {
-	serverResult, tables, err := v.session.DBDescribeTables()
+	serverResult, tables, err := v.session.DBDescribeTables(sessionManager)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -283,7 +283,10 @@ func (v *CqlCommandVisitorImpl) describeTables() interface{} {
 	
 	// Manual query result - format it
 	if tables == nil || len(tables) == 0 {
-		currentKeyspace := v.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
 		return fmt.Sprintf("No tables found in keyspace %s", currentKeyspace)
 	}
 

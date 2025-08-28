@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // AggregateInfo holds aggregate information for manual describe
@@ -82,7 +84,7 @@ func (s *Session) DescribeAggregateQuery(keyspace string, aggregateName string) 
 }
 
 // DBDescribeAggregates handles version detection and returns appropriate data
-func (s *Session) DBDescribeAggregates() (interface{}, []AggregateListInfo, error) {
+func (s *Session) DBDescribeAggregates(sessionMgr *session.Manager) (interface{}, []AggregateListInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Use server-side DESCRIBE AGGREGATES
@@ -91,7 +93,10 @@ func (s *Session) DBDescribeAggregates() (interface{}, []AggregateListInfo, erro
 	}
 	
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}
@@ -105,7 +110,7 @@ func (s *Session) DBDescribeAggregates() (interface{}, []AggregateListInfo, erro
 }
 
 // DBDescribeAggregate handles version detection and returns appropriate data
-func (s *Session) DBDescribeAggregate(aggregateName string) (interface{}, *AggregateInfo, error) {
+func (s *Session) DBDescribeAggregate(sessionMgr *session.Manager, aggregateName string) (interface{}, *AggregateInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Parse keyspace.aggregate or just aggregate
@@ -113,7 +118,10 @@ func (s *Session) DBDescribeAggregate(aggregateName string) (interface{}, *Aggre
 		if strings.Contains(aggregateName, ".") {
 			describeCmd = fmt.Sprintf("DESCRIBE AGGREGATE %s", aggregateName)
 		} else {
-			currentKeyspace := s.CurrentKeyspace()
+			currentKeyspace := ""
+			if sessionMgr != nil {
+				currentKeyspace = sessionMgr.CurrentKeyspace()
+			}
 			if currentKeyspace == "" {
 				return nil, nil, fmt.Errorf("no keyspace selected")
 			}
@@ -125,7 +133,10 @@ func (s *Session) DBDescribeAggregate(aggregateName string) (interface{}, *Aggre
 	}
 	
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}

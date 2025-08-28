@@ -22,7 +22,10 @@ func (ce *CompletionEngine) getKeyspaceNames() []string {
 
 // getTableNames returns table names for current keyspace
 func (ce *CompletionEngine) getTableNames() []string {
-	currentKeyspace := ce.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if ce.sessionManager != nil {
+		currentKeyspace = ce.sessionManager.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return []string{}
 	}
@@ -39,7 +42,10 @@ func (ce *CompletionEngine) getTableAndKeyspaceTableNames() []string {
 	var suggestions []string
 	
 	// Add tables from current keyspace (unqualified)
-	currentKeyspace := ce.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if ce.sessionManager != nil {
+		currentKeyspace = ce.sessionManager.CurrentKeyspace()
+	}
 	if currentKeyspace != "" {
 		suggestions = append(suggestions, ce.getTableNames()...)
 	}
@@ -163,7 +169,10 @@ func (ce *CompletionEngine) getColumnNamesForCurrentTable(words []string, fromIn
 	}
 	
 	tableName := words[fromIndex+1]
-	currentKeyspace := ce.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if ce.sessionManager != nil {
+		currentKeyspace = ce.sessionManager.CurrentKeyspace()
+	}
 	
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
@@ -189,7 +198,10 @@ func (ce *CompletionEngine) getColumnNamesForCurrentTable(words []string, fromIn
 
 // getColumnNamesForTable returns column names for a specific table
 func (ce *CompletionEngine) getColumnNamesForTable(tableName string) []string {
-	currentKeyspace := ce.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if ce.sessionManager != nil {
+		currentKeyspace = ce.sessionManager.CurrentKeyspace()
+	}
 	
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
@@ -215,7 +227,10 @@ func (ce *CompletionEngine) getColumnNamesForTable(tableName string) []string {
 
 // getColumnTypeTemplate returns a template string with data types for the specified columns
 func (ce *CompletionEngine) getColumnTypeTemplate(tableName string, columnNames []string) string {
-	currentKeyspace := ce.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if ce.sessionManager != nil {
+		currentKeyspace = ce.sessionManager.CurrentKeyspace()
+	}
 	
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {

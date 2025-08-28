@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // TypeInfo holds user-defined type information for manual describe
@@ -64,7 +66,7 @@ func (s *Session) DescribeTypeQuery(keyspace string, typeName string) (*TypeInfo
 }
 
 // DBDescribeTypes handles version detection and returns appropriate data
-func (s *Session) DBDescribeTypes() (interface{}, []TypeListInfo, error) {
+func (s *Session) DBDescribeTypes(sessionMgr *session.Manager) (interface{}, []TypeListInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Use server-side DESCRIBE TYPES
@@ -73,7 +75,10 @@ func (s *Session) DBDescribeTypes() (interface{}, []TypeListInfo, error) {
 	}
 	
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}
@@ -87,7 +92,7 @@ func (s *Session) DBDescribeTypes() (interface{}, []TypeListInfo, error) {
 }
 
 // DBDescribeType handles version detection and returns appropriate data
-func (s *Session) DBDescribeType(typeName string) (interface{}, *TypeInfo, error) {
+func (s *Session) DBDescribeType(sessionMgr *session.Manager, typeName string) (interface{}, *TypeInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Parse keyspace.type or just type
@@ -95,7 +100,10 @@ func (s *Session) DBDescribeType(typeName string) (interface{}, *TypeInfo, error
 		if strings.Contains(typeName, ".") {
 			describeCmd = fmt.Sprintf("DESCRIBE TYPE %s", typeName)
 		} else {
-			currentKeyspace := s.CurrentKeyspace()
+			currentKeyspace := ""
+			if sessionMgr != nil {
+				currentKeyspace = sessionMgr.CurrentKeyspace()
+			}
 			if currentKeyspace == "" {
 				return nil, nil, fmt.Errorf("no keyspace selected")
 			}
@@ -107,7 +115,10 @@ func (s *Session) DBDescribeType(typeName string) (interface{}, *TypeInfo, error
 	}
 	
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}

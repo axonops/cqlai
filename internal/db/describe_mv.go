@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // MaterializedViewInfo holds materialized view information for manual describe
@@ -97,7 +99,7 @@ func (s *Session) DescribeMaterializedViewQuery(keyspace string, viewName string
 }
 
 // DBDescribeMaterializedView handles version detection and returns appropriate data
-func (s *Session) DBDescribeMaterializedView(viewName string) (interface{}, *MaterializedViewInfo, error) {
+func (s *Session) DBDescribeMaterializedView(sessionMgr *session.Manager, viewName string) (interface{}, *MaterializedViewInfo, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Parse keyspace.view or just view
@@ -105,7 +107,10 @@ func (s *Session) DBDescribeMaterializedView(viewName string) (interface{}, *Mat
 		if strings.Contains(viewName, ".") {
 			describeCmd = fmt.Sprintf("DESCRIBE MATERIALIZED VIEW %s", viewName)
 		} else {
-			currentKeyspace := s.CurrentKeyspace()
+			currentKeyspace := ""
+			if sessionMgr != nil {
+				currentKeyspace = sessionMgr.CurrentKeyspace()
+			}
 			if currentKeyspace == "" {
 				return nil, nil, fmt.Errorf("no keyspace selected")
 			}
@@ -117,7 +122,10 @@ func (s *Session) DBDescribeMaterializedView(viewName string) (interface{}, *Mat
 	}
 	
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}

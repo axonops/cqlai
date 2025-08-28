@@ -7,6 +7,7 @@ import (
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
@@ -30,7 +31,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		// Don't close if empty response
 		return m, nil
 	}
-	
+
 	// Handle AI selection modal if active
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
 		if m.aiSelectionModal.InputMode {
@@ -55,7 +56,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	// Cancel exit confirmation if active
 	if m.confirmExit {
 		m.confirmExit = false
@@ -69,24 +70,24 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 	if strings.HasPrefix(strings.ToUpper(command), ".AI") {
 		// Log the AI command
 		logger.DebugfToFile("AI", "User AI command: %s", command)
-		
+
 		// Add AI command to command history
 		m.commandHistory = append(m.commandHistory, command)
 		m.historyIndex = -1
 		m.lastCommand = command
-		
+
 		// Save to persistent history
 		if m.historyManager != nil {
 			if err := m.historyManager.SaveCommand(command); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: could not save AI command to history: %v\n", err)
 			}
 		}
-		
+
 		// Add command to history viewport
 		historyContent := m.historyViewport.View() + "\n" + m.styles.AccentText.Render("> "+command)
 		m.historyViewport.SetContent(historyContent)
 		m.historyViewport.GotoBottom()
-		
+
 		// Extract the natural language request
 		userRequest := strings.TrimSpace(command[3:])
 		if userRequest == "" {
@@ -97,17 +98,17 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			m.input.Reset()
 			return m, nil
 		}
-		
+
 		// Log the extracted request
 		logger.DebugfToFile("AI", "Extracted AI request: %s", userRequest)
-		
+
 		// Create and show AI modal
 		m.aiModal = NewAIModal(userRequest)
 		m.showAIModal = true
 		m.input.Reset()
-		
+
 		// Start AI generation in background (will be handled in Update)
-		return m, generateAICQL(m.session, userRequest)
+		return m, generateAICQL(m.session, m.aiConfig, userRequest)
 	}
 
 	// If completions are showing, accept the selected one
@@ -164,7 +165,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 
 	// Variable to track if we should execute a command from AI modal
 	executeAICommand := false
-	
+
 	// Check if AI modal is showing
 	if m.showAIModal {
 		if m.aiModal.State == AIModalStatePreview {
@@ -178,20 +179,20 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 				// Get the generated CQL
 				command = m.aiModal.CQL
 				logger.DebugfToFile("AI", "User executing AI-generated CQL: %s", command)
-				
+
 				// Store the plan before clearing the modal
 				aiPlan := m.aiModal.Plan
-				
+
 				m.showAIModal = false
 				m.aiModal = AIModal{}
-				
+
 				// Check if it's a dangerous command
-				if aiPlan != nil && !aiPlan.ReadOnly && m.session.RequireConfirmation() {
+				if aiPlan != nil && !aiPlan.ReadOnly && m.sessionManager != nil && m.sessionManager.RequireConfirmation() {
 					// Show confirmation modal for dangerous AI-generated commands
 					m.modal = NewConfirmationModal(command)
 					return m, nil
 				}
-				
+
 				// Mark that we should execute this command
 				executeAICommand = true
 			case 2: // Edit
@@ -213,7 +214,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			return m, nil
 		}
 	}
-	
+
 	// Check if modal is showing FIRST before processing command
 	if m.modal.Type != ModalNone {
 		if m.modal.Selected == 1 { // "Execute" button
@@ -254,17 +255,17 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 				logger.DebugfToFile("HandleEnterKey", "Got StreamingQueryResult with %d headers", len(v.Headers))
 				logger.DebugfToFile("HandleEnterKey", "Headers: %v", v.Headers)
 				logger.DebugfToFile("HandleEnterKey", "ColumnNames: %v", v.ColumnNames)
-				
+
 				// Initialize sliding window (10MB memory limit, 10000 rows max)
 				m.slidingWindow = NewSlidingWindowTable(10000, 10)
 				m.slidingWindow.Headers = v.Headers
 				m.slidingWindow.ColumnNames = v.ColumnNames
 				m.slidingWindow.ColumnTypes = v.ColumnTypes
-				
+
 				// Load initial batch of rows
 				initialRows := 0
 				maxInitialRows := 100 // Show first 100 rows immediately
-				
+
 				for initialRows < maxInitialRows {
 					rowMap := make(map[string]interface{})
 					if !v.Iterator.MapScan(rowMap) {
@@ -284,7 +285,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 						break
 					}
 					logger.DebugfToFile("HandleEnterKey", "Row %d map keys: %v", initialRows, rowMap)
-					
+
 					// Convert row to string array using original column names
 					row := make([]string, len(v.ColumnNames))
 					for i, colName := range v.ColumnNames {
@@ -308,14 +309,14 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 							row[i] = "null"
 						}
 					}
-					
+
 					m.slidingWindow.AddRow(row)
 					initialRows++
 				}
-				
+
 				logger.DebugfToFile("HandleEnterKey", "Loaded %d initial rows", initialRows)
 				logger.DebugfToFile("HandleEnterKey", "Sliding window has %d rows", len(m.slidingWindow.Rows))
-				
+
 				// Check if we got any data
 				if initialRows == 0 {
 					// No data returned
@@ -328,65 +329,69 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					m.input.Reset()
 					return m, nil
 				}
-				
+
 				// Check if there's more data by trying to peek at the next row
 				// Store the iterator for later use
 				m.slidingWindow.iterator = v.Iterator
 				m.slidingWindow.hasMoreData = true // Assume more data until proven otherwise
-				
+
 				// Update UI
 				m.topBar.HasQueryData = true
 				m.topBar.QueryTime = time.Since(v.StartTime)
 				m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 				m.rowCount = int(m.slidingWindow.TotalRowsSeen)
-				
+
 				logger.DebugfToFile("HandleEnterKey", "TopBar.RowCount set to %d", m.topBar.RowCount)
-				
+
 				// Prepare display based on format
-				if v.Format == db.OutputFormatExpand {
+				outputFormat := config.OutputFormatTable
+				if m.sessionManager != nil {
+					outputFormat = m.sessionManager.GetOutputFormat()
+				}
+				if outputFormat == config.OutputFormatExpand {
 					// EXPAND format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
 					m.hasTable = true
 					m.viewMode = "table"
-					
+
 					// Format initial data as expanded vertical format
 					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
-					m.lastTableData = allData  // Store for pagination
-					m.horizontalOffset = 0      // Reset horizontal scroll
-					
+					m.lastTableData = allData // Store for pagination
+					m.horizontalOffset = 0    // Reset horizontal scroll
+
 					// Format as expanded vertical table
 					expandStr := FormatExpandTable(allData)
 					m.tableViewport.SetContent(expandStr)
 					m.tableViewport.GotoTop()
-				} else if v.Format == db.OutputFormatASCII {
+				} else if outputFormat == config.OutputFormatASCII {
 					// ASCII format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
 					m.hasTable = true
 					m.viewMode = "table"
-					
+
 					// Format initial data as ASCII table
 					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
-					m.lastTableData = allData  // Store for pagination
-					m.horizontalOffset = 0      // Reset horizontal scroll
-					
+					m.lastTableData = allData // Store for pagination
+					m.horizontalOffset = 0    // Reset horizontal scroll
+
 					// Format as ASCII table
 					asciiStr := FormatASCIITable(allData)
 					m.tableViewport.SetContent(asciiStr)
 					m.tableViewport.GotoTop()
-				} else if v.Format == db.OutputFormatJSON {
+				} else if outputFormat == config.OutputFormatJSON {
 					// JSON format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
 					m.hasTable = true
 					m.viewMode = "table"
-					
+
 					// Format initial data as JSON
 					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
-					m.lastTableData = allData  // Store for pagination
-					m.horizontalOffset = 0      // Reset horizontal scroll
-					
+					m.lastTableData = allData // Store for pagination
+					m.horizontalOffset = 0    // Reset horizontal scroll
+
 					// Format JSON output - each row is a JSON string
 					jsonStr := ""
 					for _, row := range m.slidingWindow.Rows {
@@ -402,11 +407,11 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					m.columnTypes = v.ColumnTypes
 					m.hasTable = true
 					m.viewMode = "table"
-					
+
 					// Format initial data for display
 					allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
-					m.lastTableData = allData  // Store for horizontal scrolling
-					m.horizontalOffset = 0      // Reset horizontal scroll
+					m.lastTableData = allData // Store for horizontal scrolling
+					m.horizontalOffset = 0    // Reset horizontal scroll
 					logger.DebugfToFile("HandleEnterKey", "Formatting table with %d rows (including header)", len(allData))
 					tableStr := m.formatTableForViewport(allData)
 					logger.DebugfToFile("HandleEnterKey", "Table string length: %d", len(tableStr))
@@ -414,7 +419,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					m.tableViewport.GotoTop()
 					logger.DebugfToFile("HandleEnterKey", "Table viewport content set, viewMode: %s", m.viewMode)
 				}
-				
+
 			case db.QueryResult:
 				// Query result with metadata
 				if len(v.Data) > 0 {
@@ -424,12 +429,16 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					m.topBar.HasQueryData = true
 
 					m.rowCount = v.RowCount
-					
-					// Debug logging for format checking
-					logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", v.Format)
-					
+
+					// Get output format from session manager
+					outputFormat := config.OutputFormatTable
+					if m.sessionManager != nil {
+						outputFormat = m.sessionManager.GetOutputFormat()
+					}
+					logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", outputFormat)
+
 					// Check output format
-					if v.Format == db.OutputFormatASCII {
+					if outputFormat == config.OutputFormatASCII {
 						// Format as ASCII table in the UI layer
 						asciiOutput := FormatASCIITable(v.Data)
 						// Display ASCII formatted output in history viewport
@@ -438,7 +447,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
-					} else if v.Format == db.OutputFormatExpand {
+					} else if outputFormat == config.OutputFormatExpand {
 						// Format as expanded vertical table in the UI layer
 						expandOutput := FormatExpandTable(v.Data)
 						// Display expanded output in history viewport
@@ -447,7 +456,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
-					} else if v.Format == db.OutputFormatJSON {
+					} else if outputFormat == config.OutputFormatJSON {
 						// JSON format - display raw JSON rows
 						// With SELECT JSON, each row is a JSON string
 						jsonOutput := ""
@@ -516,6 +525,14 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					}
 				}
 			case string:
+				// Check if this is a USE command result
+				if strings.HasPrefix(v, "Now using keyspace ") {
+					// Extract keyspace name and update session manager
+					keyspace := strings.TrimPrefix(v, "Now using keyspace ")
+					if m.sessionManager != nil {
+						m.sessionManager.SetKeyspace(keyspace)
+					}
+				}
 				// Text result - add to history
 				m.tableHeaders = nil
 				m.columnWidths = nil
@@ -613,7 +630,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 	}
 
 	// Check for dangerous commands (skip for AI commands - already checked)
-	if !executeAICommand && m.session.RequireConfirmation() && router.IsDangerousCommand(command) {
+	if !executeAICommand && m.sessionManager != nil && m.sessionManager.RequireConfirmation() && router.IsDangerousCommand(command) {
 		// Show confirmation modal for dangerous commands
 		m.modal = NewConfirmationModal(command)
 
@@ -677,17 +694,17 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		logger.DebugfToFile("HandleEnterKey", "Got StreamingQueryResult with %d headers", len(v.Headers))
 		logger.DebugfToFile("HandleEnterKey", "Headers: %v", v.Headers)
 		logger.DebugfToFile("HandleEnterKey", "ColumnNames: %v", v.ColumnNames)
-		
+
 		// Initialize sliding window (10MB memory limit, 10000 rows max)
 		m.slidingWindow = NewSlidingWindowTable(10000, 10)
 		m.slidingWindow.Headers = v.Headers
 		m.slidingWindow.ColumnNames = v.ColumnNames
 		m.slidingWindow.ColumnTypes = v.ColumnTypes
-		
+
 		// Load initial batch of rows
 		initialRows := 0
 		maxInitialRows := 100 // Show first 100 rows immediately
-		
+
 		for initialRows < maxInitialRows {
 			rowMap := make(map[string]interface{})
 			if !v.Iterator.MapScan(rowMap) {
@@ -707,7 +724,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 				break
 			}
 			logger.DebugfToFile("HandleEnterKey", "Row %d map keys: %v", initialRows, rowMap)
-			
+
 			// Convert row to string array using original column names
 			row := make([]string, len(v.ColumnNames))
 			for i, colName := range v.ColumnNames {
@@ -731,14 +748,14 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					row[i] = "null"
 				}
 			}
-			
+
 			m.slidingWindow.AddRow(row)
 			initialRows++
 		}
-		
+
 		logger.DebugfToFile("HandleEnterKey", "Loaded %d initial rows", initialRows)
 		logger.DebugfToFile("HandleEnterKey", "Sliding window has %d rows", len(m.slidingWindow.Rows))
-		
+
 		// Check if we got any data
 		if initialRows == 0 {
 			// No data returned
@@ -751,61 +768,67 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			m.input.Reset()
 			return m, nil
 		}
-		
+
 		// Check if there's more data by trying to peek at the next row
 		// Store the iterator for later use
 		m.slidingWindow.iterator = v.Iterator
 		m.slidingWindow.hasMoreData = true // Assume more data until proven otherwise
-		
+
 		// Update UI
 		m.topBar.HasQueryData = true
 		m.topBar.QueryTime = time.Since(v.StartTime)
 		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
-		
+
 		logger.DebugfToFile("HandleEnterKey", "TopBar.RowCount set to %d", m.topBar.RowCount)
-		
+
+		// Get output format from session manager
+		outputFormat := config.OutputFormatTable
+		if m.sessionManager != nil {
+			outputFormat = m.sessionManager.GetOutputFormat()
+		}
+
 		// Prepare display based on format
-		if v.Format == db.OutputFormatExpand {
+		if outputFormat == config.OutputFormatExpand {
 			// Format as expanded vertical table
 			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
 			expandOutput := FormatExpandTable(allData)
-			
+
 			// Add note if there's more data
 			if m.slidingWindow.hasMoreData {
 				expandOutput += fmt.Sprintf("\n(Showing first %d rows, more available - use OUTPUT TABLE for pagination)\n", len(m.slidingWindow.Rows))
 			}
-			
+
 			// Display expanded output in history viewport
 			historyContent := m.historyViewport.View() + "\n" + expandOutput
 			m.historyViewport.SetContent(historyContent)
 			m.historyViewport.GotoBottom()
 			m.viewMode = "history"
 			m.hasTable = false
-			
+
 			// Close iterator since we won't paginate in expand mode
 			if v.Iterator != nil {
 				v.Iterator.Close()
 			}
 			m.slidingWindow.iterator = nil
 			m.slidingWindow.hasMoreData = false
-		} else if v.Format == db.OutputFormatASCII {
+		} else if outputFormat == config.OutputFormatASCII {
 			// Format as ASCII table
 			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
 			asciiOutput := FormatASCIITable(allData)
-			
+
 			// Add note if there's more data
 			if m.slidingWindow.hasMoreData {
 				asciiOutput += fmt.Sprintf("\n(Showing first %d rows, more available - use OUTPUT TABLE for pagination)\n", len(m.slidingWindow.Rows))
 			}
-			
+
 			// Display ASCII formatted output in history viewport
 			historyContent := m.historyViewport.View() + "\n" + asciiOutput
 			m.historyViewport.SetContent(historyContent)
 			m.historyViewport.GotoBottom()
 			m.viewMode = "history"
 			m.hasTable = false
-			
+
 			// Close iterator since we won't paginate in ASCII mode
 			if v.Iterator != nil {
 				v.Iterator.Close()
@@ -818,11 +841,11 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			m.columnTypes = v.ColumnTypes
 			m.hasTable = true
 			m.viewMode = "table"
-			
+
 			// Format initial data for display
 			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
-			m.lastTableData = allData  // Store for horizontal scrolling
-			m.horizontalOffset = 0      // Reset horizontal scroll
+			m.lastTableData = allData // Store for horizontal scrolling
+			m.horizontalOffset = 0    // Reset horizontal scroll
 			logger.DebugfToFile("HandleEnterKey", "Formatting table with %d rows (including header)", len(allData))
 			tableStr := m.formatTableForViewport(allData)
 			logger.DebugfToFile("HandleEnterKey", "Table string length: %d", len(tableStr))
@@ -830,13 +853,13 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			m.tableViewport.GotoTop()
 			logger.DebugfToFile("HandleEnterKey", "Table viewport content set, viewMode: %s", m.viewMode)
 		}
-		
+
 		// Write to capture file if capturing
 		metaHandler := router.GetMetaHandler()
 		if metaHandler != nil && metaHandler.IsCapturing() && len(m.slidingWindow.Rows) > 0 {
 			metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
 		}
-		
+
 	case db.QueryResult:
 		// Query result with metadata
 		if len(v.Data) > 0 {
@@ -846,8 +869,14 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 			m.topBar.HasQueryData = true
 			m.rowCount = v.RowCount
 
+			// Get output format from session manager
+			outputFormat := config.OutputFormatTable
+			if m.sessionManager != nil {
+				outputFormat = m.sessionManager.GetOutputFormat()
+			}
+
 			// Check output format
-			if v.Format == db.OutputFormatASCII {
+			if outputFormat == config.OutputFormatASCII {
 				// Format as ASCII table in the UI layer
 				asciiOutput := FormatASCIITable(v.Data)
 				// Display ASCII formatted output in history viewport
@@ -856,7 +885,7 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 				m.historyViewport.GotoBottom()
 				m.viewMode = "history"
 				m.hasTable = false
-			} else if v.Format == db.OutputFormatExpand {
+			} else if outputFormat == config.OutputFormatExpand {
 				// Format as expanded vertical table in the UI layer
 				expandOutput := FormatExpandTable(v.Data)
 				// Display expanded output in history viewport

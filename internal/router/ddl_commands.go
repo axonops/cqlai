@@ -164,8 +164,8 @@ func (v *CqlCommandVisitorImpl) VisitDropKeyspace(ctx *grammar.DropKeyspaceConte
 
 	if keyspaceName != "" {
 		// Clear current keyspace if we just dropped it
-		if v.session.CurrentKeyspace() == keyspaceName {
-			v.session.SetKeyspace("")
+		if sessionManager != nil && sessionManager.CurrentKeyspace() == keyspaceName {
+			sessionManager.SetKeyspace("")
 		}
 		return fmt.Sprintf("Keyspace '%s' dropped successfully", keyspaceName)
 	}

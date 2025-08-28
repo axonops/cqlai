@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/axonops/cqlai/internal/ai"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,14 +20,14 @@ type AICQLResultMsg struct {
 }
 
 // startAIConversation starts a new AI conversation
-func startAIConversation(session *db.Session, userRequest string) tea.Cmd {
+func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userRequest string) tea.Cmd {
 	return func() tea.Msg {
 		logger.DebugfToFile("AI", "Starting new AI conversation for request: %s", userRequest)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		plan, cql, err := ai.GenerateCQLFromRequest(ctx, session, userRequest)
+		plan, cql, err := ai.GenerateCQLFromRequest(ctx, session, aiConfig, userRequest)
 		if err != nil {
 			// Check if this is an interaction request that needs to be bubbled up
 			if interactionReq, ok := err.(*ai.InteractionRequest); ok {
@@ -98,6 +99,6 @@ func continueAIConversation(conversationID string, userInput string) tea.Cmd {
 }
 
 // generateAICQL is kept for backward compatibility but now starts a new conversation
-func generateAICQL(session *db.Session, userRequest string) tea.Cmd {
-	return startAIConversation(session, userRequest)
+func generateAICQL(session *db.Session, aiConfig *config.AIConfig, userRequest string) tea.Cmd {
+	return startAIConversation(session, aiConfig, userRequest)
 }

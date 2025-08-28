@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // DescribeFunctionsQuery executes the query to list all functions in the current keyspace (for pre-4.0)
@@ -83,7 +85,7 @@ func (s *Session) DescribeFunctionQuery(currentKeyspace string, functionName str
 }
 
 // DBDescribeFunctions handles version detection and returns appropriate data
-func (s *Session) DBDescribeFunctions() (interface{}, bool, error) {
+func (s *Session) DBDescribeFunctions(sessionMgr *session.Manager) (interface{}, bool, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Use server-side DESCRIBE FUNCTIONS
@@ -92,7 +94,10 @@ func (s *Session) DBDescribeFunctions() (interface{}, bool, error) {
 	}
 
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, false, fmt.Errorf("no keyspace selected")
 	}
@@ -106,7 +111,7 @@ func (s *Session) DBDescribeFunctions() (interface{}, bool, error) {
 }
 
 // DBDescribeFunction handles version detection and returns appropriate data
-func (s *Session) DBDescribeFunction(functionName string) (interface{}, []FunctionDetails, error) {
+func (s *Session) DBDescribeFunction(sessionMgr *session.Manager, functionName string) (interface{}, []FunctionDetails, error) {
 	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
 	if s.IsVersion4OrHigher() {
 		// Parse keyspace.function or just function
@@ -114,7 +119,10 @@ func (s *Session) DBDescribeFunction(functionName string) (interface{}, []Functi
 		if strings.Contains(functionName, ".") {
 			describeCmd = fmt.Sprintf("DESCRIBE FUNCTION %s", functionName)
 		} else {
-			currentKeyspace := s.CurrentKeyspace()
+			currentKeyspace := ""
+			if sessionMgr != nil {
+				currentKeyspace = sessionMgr.CurrentKeyspace()
+			}
 			if currentKeyspace == "" {
 				return nil, nil, fmt.Errorf("no keyspace selected")
 			}
@@ -126,7 +134,10 @@ func (s *Session) DBDescribeFunction(functionName string) (interface{}, []Functi
 	}
 
 	// Fall back to manual construction for pre-4.0
-	currentKeyspace := s.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}

@@ -7,7 +7,7 @@ import (
 
 // describeTypes lists all user-defined types
 func (v *CqlCommandVisitorImpl) describeTypes() interface{} {
-	serverResult, types, err := v.session.DBDescribeTypes()
+	serverResult, types, err := v.session.DBDescribeTypes(sessionManager)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -22,7 +22,10 @@ func (v *CqlCommandVisitorImpl) describeTypes() interface{} {
 	}
 	
 	// Manual query result - format it
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	results := [][]string{{"Type Name"}}
 	
 	for _, t := range types {
@@ -38,7 +41,7 @@ func (v *CqlCommandVisitorImpl) describeTypes() interface{} {
 
 // describeType shows detailed information about a user-defined type
 func (v *CqlCommandVisitorImpl) describeType(typeName string) interface{} {
-	serverResult, typeInfo, err := v.session.DBDescribeType(typeName)
+	serverResult, typeInfo, err := v.session.DBDescribeType(sessionManager, typeName)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -57,11 +60,17 @@ func (v *CqlCommandVisitorImpl) describeType(typeName string) interface{} {
 	
 	// Manual query result - format it
 	if typeInfo == nil {
-		currentKeyspace := v.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
 		return fmt.Sprintf("Type '%s' not found in keyspace '%s'", typeName, currentKeyspace)
 	}
 	
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("CREATE TYPE %s.%s (\n", currentKeyspace, typeName))
 

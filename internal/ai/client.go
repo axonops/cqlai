@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 )
@@ -17,8 +18,8 @@ type AIClient interface {
 	SetAPIKey(key string)
 }
 
-// ConvertDBConfigToAIConfig converts db.AIConfig to local AIConfig for the AI client
-func ConvertDBConfigToAIConfig(dbConfig *db.AIConfig) *AIConfig {
+// ConvertDBConfigToAIConfig converts config.AIConfig to local AIConfig for the AI client
+func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 	logger.DebugfToFile("AI", "ConvertDBConfigToAIConfig called")
 
 	if dbConfig == nil {
@@ -158,28 +159,27 @@ func extractJSON(text string) string {
 }
 
 // createAIClient creates the appropriate AI client based on configuration
-func createAIClient(config *AIConfig, session *db.Session) (AIClient, error) {
-	if config == nil {
+func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClient, error) {
+	if aiConfig == nil {
 		return nil, fmt.Errorf("AI configuration is required")
 	}
 
-	switch config.Provider {
+	switch aiConfig.Provider {
 	case "openai":
-		return NewOpenAIClient(config.APIKey, config.Model), nil
+		return NewOpenAIClient(aiConfig.APIKey, aiConfig.Model), nil
 	case "anthropic":
-		return NewAnthropicClient(config.APIKey, config.Model), nil
+		return NewAnthropicClient(aiConfig.APIKey, aiConfig.Model), nil
 	case "ollama":
-		dbConfig := session.GetAIConfig()
-		if dbConfig == nil || dbConfig.Ollama == nil {
+		if providerConfig == nil || providerConfig.Ollama == nil {
 			return nil, fmt.Errorf("Ollama configuration is missing from cqlai.json")
 		}
-		return NewOllamaClient(dbConfig.Ollama), nil
+		return NewOllamaClient(providerConfig.Ollama), nil
 	default:
 		// Add a mock client for safety, so the app doesn't crash if config is missing
-		if config.Provider == "mock" {
+		if aiConfig.Provider == "mock" {
 			return &MockAIClient{}, nil
 		}
-		return nil, fmt.Errorf("unsupported AI provider: %s (supported: openai, anthropic, ollama)", config.Provider)
+		return nil, fmt.Errorf("unsupported AI provider: %s (supported: openai, anthropic, ollama)", aiConfig.Provider)
 	}
 }
 
@@ -199,7 +199,7 @@ func (m *MockAIClient) SetAPIKey(key string) {
 }
 
 // GenerateCQLFromRequest is a high-level function that combines schema fetching and CQL generation
-func GenerateCQLFromRequest(ctx context.Context, session *db.Session, userRequest string) (*QueryPlan, string, error) {
+func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *config.AIConfig, userRequest string) (*QueryPlan, string, error) {
 	// Initialize local AI for fuzzy search if needed
 	if err := InitializeLocalAI(session); err != nil {
 		// Continue without local AI
@@ -224,13 +224,12 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, userReques
 		}
 	}
 
-	// Get AI config from session
-	dbConfig := session.GetAIConfig()
-	config := ConvertDBConfigToAIConfig(dbConfig)
-	logger.DebugfToFile("AI", "AI Config: provider=%s, has_api_key=%v", config.Provider, config.APIKey != "")
+	// Convert config to local AI config
+	localConfig := ConvertDBConfigToAIConfig(aiConfig)
+	logger.DebugfToFile("AI", "AI Config: provider=%s, has_api_key=%v", localConfig.Provider, localConfig.APIKey != "")
 
 	// Create AI client
-	client, err := createAIClient(config, session)
+	client, err := createAIClient(localConfig, aiConfig)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create AI client: %v", err)
 	}

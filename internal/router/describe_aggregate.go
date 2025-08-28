@@ -7,7 +7,7 @@ import (
 
 // describeAggregates lists all aggregates in the current keyspace
 func (v *CqlCommandVisitorImpl) describeAggregates() interface{} {
-	serverResult, aggregates, err := v.session.DBDescribeAggregates()
+	serverResult, aggregates, err := v.session.DBDescribeAggregates(sessionManager)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -22,7 +22,10 @@ func (v *CqlCommandVisitorImpl) describeAggregates() interface{} {
 	}
 	
 	// Manual query result - format it
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	results := [][]string{{"Aggregate", "Arguments", "State Type", "Return Type"}}
 	
 	for _, agg := range aggregates {
@@ -39,7 +42,7 @@ func (v *CqlCommandVisitorImpl) describeAggregates() interface{} {
 
 // describeAggregate shows detailed information about a specific aggregate
 func (v *CqlCommandVisitorImpl) describeAggregate(aggregateName string) interface{} {
-	serverResult, aggregateInfo, err := v.session.DBDescribeAggregate(aggregateName)
+	serverResult, aggregateInfo, err := v.session.DBDescribeAggregate(sessionManager, aggregateName)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -58,11 +61,17 @@ func (v *CqlCommandVisitorImpl) describeAggregate(aggregateName string) interfac
 	
 	// Manual query result - format it
 	if aggregateInfo == nil {
-		currentKeyspace := v.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
 		return fmt.Sprintf("Aggregate '%s' not found in keyspace '%s'", aggregateName, currentKeyspace)
 	}
 	
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("CREATE AGGREGATE %s.%s(", currentKeyspace, aggregateName))
 

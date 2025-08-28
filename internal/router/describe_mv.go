@@ -7,7 +7,7 @@ import (
 
 // describeMaterializedView shows detailed information about a materialized view
 func (v *CqlCommandVisitorImpl) describeMaterializedView(viewName string) interface{} {
-	serverResult, mvInfo, err := v.session.DBDescribeMaterializedView(viewName)
+	serverResult, mvInfo, err := v.session.DBDescribeMaterializedView(sessionManager, viewName)
 	
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
@@ -26,11 +26,17 @@ func (v *CqlCommandVisitorImpl) describeMaterializedView(viewName string) interf
 	
 	// Manual query result - format it
 	if mvInfo == nil {
-		currentKeyspace := v.session.CurrentKeyspace()
+		currentKeyspace := ""
+		if sessionManager != nil {
+			currentKeyspace = sessionManager.CurrentKeyspace()
+		}
 		return fmt.Sprintf("Materialized view '%s' not found in keyspace '%s'", viewName, currentKeyspace)
 	}
 	
-	currentKeyspace := v.session.CurrentKeyspace()
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("Materialized View: %s.%s\n\n", currentKeyspace, viewName))
 	result.WriteString(fmt.Sprintf("Base Table: %s\n", mvInfo.BaseTable))
