@@ -99,21 +99,55 @@ func (c *OpenAIClient) GenerateCQLWithTools(ctx context.Context, prompt string, 
 		if len(choice.Message.ToolCalls) > 0 {
 			logger.DebugfToFile("OpenAI", "Model requested %d tool calls", len(choice.Message.ToolCalls))
 
-			// Add the assistant's message with tool calls
-			assistantMsg := openai.AssistantMessage("")
-			// We need to manually add the tool calls to the message
-			// This is a simplified version - the actual SDK may have different requirements
-			messages = append(messages, assistantMsg)
+			// Convert tool calls to param format
+			toolCallParams := make([]openai.ChatCompletionMessageToolCallParam, len(choice.Message.ToolCalls))
+			for i, tc := range choice.Message.ToolCalls {
+				toolCallParams[i] = openai.ChatCompletionMessageToolCallParam{
+					ID:       tc.ID,
+					Type:     tc.Type,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+
+			// Add the assistant's message with tool calls to the conversation
+			// Create the assistant message param with tool calls
+			assistantMsgParam := openai.ChatCompletionAssistantMessageParam{
+				ToolCalls: toolCallParams,
+			}
+			// If there's content, set it using the helper to handle the union type properly
+			if choice.Message.Content != "" {
+				// Create a basic assistant message with content, then merge tool calls
+				baseMsg := openai.AssistantMessage(choice.Message.Content)
+				if baseMsg.OfAssistant != nil {
+					baseMsg.OfAssistant.ToolCalls = toolCallParams
+				}
+				messages = append(messages, baseMsg)
+			} else {
+				// No content, just tool calls - create the union manually
+				messages = append(messages, openai.ChatCompletionMessageParamUnion{
+					OfAssistant: &assistantMsgParam,
+				})
+			}
 
 			// Process each tool call
 			for _, toolCall := range choice.Message.ToolCalls {
-				logger.DebugfToFile("OpenAI", "Processing tool call: %s", toolCall.Function.Name)
+				logger.DebugfToFile("OpenAI", "Processing tool call: %s with ID: %s", toolCall.Function.Name, toolCall.ID)
+
+				// Validate tool call ID length (OpenAI requires max 40 chars)
+				if len(toolCall.ID) > 40 {
+					logger.DebugfToFile("OpenAI", "Warning: tool call ID too long (%d chars): %s", len(toolCall.ID), toolCall.ID)
+					// This shouldn't happen with valid OpenAI responses, but log it for debugging
+				}
 
 				// Parse the arguments
 				var args map[string]any
 				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
 					logger.DebugfToFile("OpenAI", "Failed to parse tool arguments: %v", err)
-					messages = append(messages, openai.ToolMessage(toolCall.ID, fmt.Sprintf("Error parsing arguments: %v", err)))
+					// Note: ToolMessage takes content first, then toolCallID
+					messages = append(messages, openai.ToolMessage(fmt.Sprintf("Error parsing arguments: %v", err), toolCall.ID))
 					continue
 				}
 
@@ -154,7 +188,8 @@ func (c *OpenAIClient) GenerateCQLWithTools(ctx context.Context, prompt string, 
 				if result.Error != nil {
 					responseContent = fmt.Sprintf("Error: %v", result.Error)
 				}
-				messages = append(messages, openai.ToolMessage(toolCall.ID, responseContent))
+				// Note: ToolMessage takes content first, then toolCallID
+				messages = append(messages, openai.ToolMessage(responseContent, toolCall.ID))
 			}
 
 			// Update params with new messages
