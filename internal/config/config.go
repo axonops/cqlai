@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,14 +12,21 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	Host                string     `json:"host"`
-	Port                int        `json:"port"`
-	Keyspace            string     `json:"keyspace"`
-	Username            string     `json:"username"`
-	Password            string     `json:"password"`
-	RequireConfirmation bool       `json:"requireConfirmation,omitempty"`
-	SSL                 *SSLConfig `json:"ssl,omitempty"`
-	AI                  *AIConfig  `json:"ai,omitempty"`
+	Host                string          `json:"host"`
+	Port                int             `json:"port"`
+	Keyspace            string          `json:"keyspace"`
+	Username            string          `json:"username"`
+	Password            string          `json:"password"`
+	RequireConfirmation bool            `json:"requireConfirmation,omitempty"`
+	SSL                 *SSLConfig      `json:"ssl,omitempty"`
+	AI                  *AIConfig       `json:"ai,omitempty"`
+	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`
+}
+
+// AuthProvider holds authentication provider configuration
+type AuthProvider struct {
+	Module    string `json:"module,omitempty"`    // e.g., "cassandra.auth"
+	ClassName string `json:"className,omitempty"` // e.g., "PlainTextAuthProvider"
 }
 
 // SSLConfig holds SSL/TLS configuration options
@@ -66,7 +74,19 @@ func LoadConfig() (*Config, error) {
 		Port: 9042,
 	}
 
-	// Check common config file locations
+	// First, try to load CQLSHRC file
+	cqlshrcPaths := []string{
+		filepath.Join(os.Getenv("HOME"), ".cassandra", "cqlshrc"),
+		filepath.Join(os.Getenv("HOME"), ".cqlshrc"),
+	}
+
+	for _, path := range cqlshrcPaths {
+		if err := loadCQLSHRC(path, config); err == nil {
+			break
+		}
+	}
+
+	// Then check JSON config file locations (these will override CQLSHRC settings)
 	configPaths := []string{
 		"cqlai.json",
 		filepath.Join(os.Getenv("HOME"), ".cqlai.json"),
@@ -270,4 +290,187 @@ func ParseOutputFormat(format string) (OutputFormat, error) {
 	default:
 		return "", fmt.Errorf("unknown output format: %s", format)
 	}
+}
+
+// loadCQLSHRC loads configuration from a CQLSHRC file
+func loadCQLSHRC(path string, config *Config) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	currentSection := ""
+	var credentialsPath string
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip comments and empty lines
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Check for section headers
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			currentSection = strings.ToLower(strings.Trim(line, "[]"))
+			continue
+		}
+
+		// Parse key-value pairs
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Remove quotes if present
+		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') ||
+			(value[0] == '\'' && value[len(value)-1] == '\'')) {
+			value = value[1 : len(value)-1]
+		}
+
+		// Map CQLSHRC values to config
+		switch currentSection {
+		case "connection":
+			switch key {
+			case "hostname":
+				config.Host = value
+			case "port":
+				if port, err := strconv.Atoi(value); err == nil {
+					config.Port = port
+				}
+			case "ssl":
+				if value == "true" || value == "1" {
+					if config.SSL == nil {
+						config.SSL = &SSLConfig{}
+					}
+					config.SSL.Enabled = true
+				}
+			}
+		case "authentication":
+			switch key {
+			case "credentials":
+				credentialsPath = value
+			case "keyspace":
+				config.Keyspace = value
+			}
+		case "auth_provider":
+			if config.AuthProvider == nil {
+				config.AuthProvider = &AuthProvider{}
+			}
+			switch key {
+			case "module":
+				config.AuthProvider.Module = value
+			case "classname":
+				config.AuthProvider.ClassName = value
+			case "username":
+				config.Username = value
+				// Note: password is typically not stored in cqlshrc for security reasons
+				// It's usually in a separate credentials file or provided via prompt
+			}
+		case "ssl":
+			if config.SSL == nil {
+				config.SSL = &SSLConfig{}
+			}
+			switch key {
+			case "certfile":
+				// Expand ~ to home directory
+				if strings.HasPrefix(value, "~") {
+					value = filepath.Join(os.Getenv("HOME"), value[1:])
+				}
+				config.SSL.CAPath = value
+			case "userkey":
+				if strings.HasPrefix(value, "~") {
+					value = filepath.Join(os.Getenv("HOME"), value[1:])
+				}
+				config.SSL.KeyPath = value
+			case "usercert":
+				if strings.HasPrefix(value, "~") {
+					value = filepath.Join(os.Getenv("HOME"), value[1:])
+				}
+				config.SSL.CertPath = value
+			case "validate":
+				if value == "false" || value == "0" {
+					config.SSL.InsecureSkipVerify = true
+				}
+			}
+		}
+	}
+
+	// If a credentials file was specified, try to load it
+	if credentialsPath != "" {
+		_ = loadCredentialsFile(credentialsPath, config)
+	}
+
+	return scanner.Err()
+}
+
+// loadCredentialsFile loads username/password from a credentials file
+// The format is typically:
+// [auth_provider_classname]
+// username = user
+// password = pass
+func loadCredentialsFile(path string, config *Config) error {
+	// Expand ~ to home directory
+	if strings.HasPrefix(path, "~") {
+		path = filepath.Join(os.Getenv("HOME"), path[1:])
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	inAuthSection := false
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip comments and empty lines
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Check for section headers
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := strings.ToLower(strings.Trim(line, "[]"))
+			// Look for PlainTextAuthProvider or similar auth sections
+			inAuthSection = strings.Contains(section, "auth")
+			continue
+		}
+
+		if !inAuthSection {
+			continue
+		}
+
+		// Parse key-value pairs
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Remove quotes if present
+		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') ||
+			(value[0] == '\'' && value[len(value)-1] == '\'')) {
+			value = value[1 : len(value)-1]
+		}
+
+		switch key {
+		case "username":
+			config.Username = value
+		case "password":
+			config.Password = value
+		}
+	}
+
+	return scanner.Err()
 }
