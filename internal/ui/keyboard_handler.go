@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/axonops/cqlai/internal/logger"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -258,6 +259,8 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		return m.handlePageDown(msg)
 
 	case tea.KeyUp:
+		logger.DebugfToFile("AI", "KeyUp pressed. showAIModal=%v, aiSelectionModal.Active=%v, historySearchMode=%v", 
+			m.showAIModal, m.aiSelectionModal != nil && m.aiSelectionModal.Active, m.historySearchMode)
 		// If AI selection modal is showing, navigate options
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
 			m.aiSelectionModal.PrevOption()
@@ -357,11 +360,62 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 				return m, nil
 			}
 		}
-		// Handle AI modal 'P' key for toggling plan/CQL view
+		// Handle AI modal keyboard input
 		if m.showAIModal && m.aiModal.State == AIModalStatePreview {
-			if msg.String() == "p" || msg.String() == "P" {
-				m.aiModal.ToggleView()
-				return m, nil
+			// Check if this is an INFO operation - handle typing
+			if m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
+				// Handle typing in follow-up input field
+				switch msg.String() {
+				case "backspace", "delete":
+					if m.aiModal.CursorPosition > 0 && len(m.aiModal.FollowUpInput) > 0 {
+						// Remove character before cursor
+						m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition-1] + 
+							m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
+						m.aiModal.CursorPosition--
+					}
+				case "left":
+					if m.aiModal.CursorPosition > 0 {
+						m.aiModal.CursorPosition--
+					}
+				case "right":
+					if m.aiModal.CursorPosition < len(m.aiModal.FollowUpInput) {
+						m.aiModal.CursorPosition++
+					}
+				case "home":
+					m.aiModal.CursorPosition = 0
+				case "end":
+					m.aiModal.CursorPosition = len(m.aiModal.FollowUpInput)
+				case "up", "down":
+					// Don't handle up/down here - they're handled in the arrow key handlers
+					// Break out of the switch to let arrow key handlers process them
+					break
+				default:
+					// Handle all printable characters including space
+					if msg.Type == tea.KeySpace || msg.String() == " " {
+						// Handle space key explicitly
+						if len(m.aiModal.FollowUpInput) < 256 {
+							m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] + 
+								" " + 
+								m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
+							m.aiModal.CursorPosition++
+						}
+					} else if len(msg.Runes) > 0 && len(m.aiModal.FollowUpInput) < 256 {
+						// Add other printable characters
+						// Insert character at cursor position
+						m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] + 
+							string(msg.Runes) + 
+							m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
+						m.aiModal.CursorPosition += len(msg.Runes)
+					}
+					return m, nil
+				}
+				// For up/down keys, don't return - let them fall through to be handled by arrow key handlers
+			} else {
+				// Regular modal - handle 'P' key for toggling plan/CQL view
+				if msg.String() == "p" || msg.String() == "P" {
+					m.aiModal.ToggleView()
+					return m, nil
+				}
 			}
 		}
 

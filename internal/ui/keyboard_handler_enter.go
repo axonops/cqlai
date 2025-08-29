@@ -70,6 +70,9 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 
 	command := strings.TrimSpace(m.input.Value())
 
+	// Note: We removed the follow-up mode check here since we're now handling 
+	// follow-up questions within the modal itself
+
 	// Handle AI command
 	if strings.HasPrefix(strings.ToUpper(command), ".AI") {
 		// Log the AI command
@@ -105,6 +108,10 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 
 		// Log the extracted request
 		logger.DebugfToFile("AI", "Extracted AI request: %s", userRequest)
+
+		// Clear any existing conversation ID for new .ai command
+		// The new conversation ID will be set when we receive the response
+		m.aiConversationID = ""
 
 		// Create and show AI modal
 		m.aiModal = NewAIModal(userRequest)
@@ -173,39 +180,67 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 	// Check if AI modal is showing
 	if m.showAIModal {
 		if m.aiModal.State == AIModalStatePreview {
-			switch m.aiModal.Selected {
-			case 0: // Cancel
-				m.showAIModal = false
-				m.aiModal = AIModal{}
-				m.input.Placeholder = "Enter CQL command..."
-				return m, nil
-			case 1: // Execute
-				// Get the generated CQL
-				command = m.aiModal.CQL
-				logger.DebugfToFile("AI", "User executing AI-generated CQL: %s", command)
-
-				// Store the plan before clearing the modal
-				aiPlan := m.aiModal.Plan
-
-				m.showAIModal = false
-				m.aiModal = AIModal{}
-
-				// Check if it's a dangerous command
-				if aiPlan != nil && !aiPlan.ReadOnly && m.sessionManager != nil && m.sessionManager.RequireConfirmation() {
-					// Show confirmation modal for dangerous AI-generated commands
-					m.modal = NewConfirmationModal(command)
+			// Check if this is an INFO operation
+			if m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
+				// INFO operation - handle follow-up submission
+				if m.aiModal.FollowUpInput != "" {
+					// Submit the follow-up question
+					followUpQuestion := m.aiModal.FollowUpInput
+					logger.DebugfToFile("AI", "User submitting follow-up question: %s", followUpQuestion)
+					logger.DebugfToFile("AI", "Current conversation ID: %s", m.aiConversationID)
+					
+					// Clear the input and set state to generating
+					m.aiModal.FollowUpInput = ""
+					m.aiModal.CursorPosition = 0
+					m.aiModal.State = AIModalStateGenerating
+					m.aiModal.UserRequest = followUpQuestion
+					
+					// Continue the conversation
+					return m, continueAIConversation(m.aiConfig, m.aiConversationID, followUpQuestion)
+				} else {
+					// No input - treat as Done
+					m.showAIModal = false
+					m.aiModal = AIModal{}
+					m.aiConversationID = ""
+					m.input.Placeholder = "Enter CQL command..."
 					return m, nil
 				}
+			} else {
+				// Regular CQL operation
+				switch m.aiModal.Selected {
+				case 0: // Cancel
+					m.showAIModal = false
+					m.aiModal = AIModal{}
+					m.input.Placeholder = "Enter CQL command..."
+					return m, nil
+				case 1: // Execute
+					// Get the generated CQL
+					command = m.aiModal.CQL
+					logger.DebugfToFile("AI", "User executing AI-generated CQL: %s", command)
 
-				// Mark that we should execute this command
-				executeAICommand = true
-			case 2: // Edit
-				// Put the CQL in the input for editing
-				m.input.SetValue(m.aiModal.CQL)
-				m.input.SetCursor(len(m.aiModal.CQL))
-				m.showAIModal = false
-				m.aiModal = AIModal{}
-				return m, nil
+					// Store the plan before clearing the modal
+					aiPlan := m.aiModal.Plan
+
+					m.showAIModal = false
+					m.aiModal = AIModal{}
+
+					// Check if it's a dangerous command
+					if aiPlan != nil && !aiPlan.ReadOnly && m.sessionManager != nil && m.sessionManager.RequireConfirmation() {
+						// Show confirmation modal for dangerous AI-generated commands
+						m.modal = NewConfirmationModal(command)
+						return m, nil
+					}
+
+					// Mark that we should execute this command
+					executeAICommand = true
+				case 2: // Edit
+					// Put the CQL in the input for editing
+					m.input.SetValue(m.aiModal.CQL)
+					m.input.SetCursor(len(m.aiModal.CQL))
+					m.showAIModal = false
+					m.aiModal = AIModal{}
+					return m, nil
+				}
 			}
 		} else if m.aiModal.State == AIModalStateError {
 			// Close error modal

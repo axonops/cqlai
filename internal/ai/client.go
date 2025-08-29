@@ -13,7 +13,7 @@ import (
 
 // AIClient defines the interface for an AI client.
 type AIClient interface {
-	GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error)
+	ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error)
 	SetAPIKey(key string)
 }
 
@@ -185,7 +185,7 @@ func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClie
 // MockAIClient is a mock client for testing and safe fallback.
 type MockAIClient struct{}
 
-func (m *MockAIClient) GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
+func (m *MockAIClient) ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error) {
 	return nil, fmt.Errorf(ErrUnsupportedMethod, "mock", "tool calling")
 }
 
@@ -193,8 +193,8 @@ func (m *MockAIClient) SetAPIKey(key string) {
 	// No-op for mock client
 }
 
-// GenerateCQLFromRequest is a high-level function that combines schema fetching and CQL generation
-func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *config.AIConfig, userRequest string) (*QueryPlan, string, error) {
+// GenerateCQLFromRequest is a high-level function that processes user requests and may generate CQL or return informational responses
+func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *config.AIConfig, userRequest string) (*AIResult, string, error) {
 	// Initialize local AI for fuzzy search if needed
 	if err := InitializeLocalAI(session); err != nil {
 		// Continue without local AI
@@ -231,8 +231,8 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *
 	logger.DebugfToFile("AI", "Created AI client of type: %T", client)
 
 	// Generate with tools (all clients support tools now)
-	logger.DebugfToFile("AI", "Attempting to generate CQL with tools for: %s", userRequest)
-	plan, err := client.GenerateCQLWithTools(ctx, userRequest, schemaContext)
+	logger.DebugfToFile("AI", "Attempting to process request with tools for: %s", userRequest)
+	plan, err := client.ProcessRequestWithTools(ctx, userRequest, schemaContext)
 	if err != nil {
 		// Check if this is an interaction request
 		if _, ok := err.(*InteractionRequest); ok {
@@ -240,12 +240,19 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *
 			return nil, "", err // Return the request as-is to preserve type
 		}
 
-		logger.DebugfToFile("AI", "GenerateCQLWithTools failed: %v", err)
+		logger.DebugfToFile("AI", "ProcessRequestWithTools failed: %v", err)
 		return nil, "", fmt.Errorf("failed to generate CQL plan: %v", err)
 	}
-	logger.DebugfToFile("AI", "GenerateCQLWithTools succeeded")
+	logger.DebugfToFile("AI", "ProcessRequestWithTools succeeded")
 
-	// Validate plan
+	// Check if this is an informational response
+	if plan.Operation == "INFO" {
+		logger.DebugfToFile("AI", "Returning informational response: %s", plan.InfoContent)
+		// For informational responses, return the content instead of CQL
+		return plan, plan.InfoContent, nil
+	}
+
+	// Validate plan for CQL operations
 	validator := &PlanValidator{Schema: nil} // TODO: Pass actual schema
 	if err := validator.ValidatePlan(plan); err != nil {
 		return nil, "", fmt.Errorf("invalid plan: %v", err)
@@ -261,7 +268,7 @@ func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *
 }
 
 // FormatPlanAsJSON returns a pretty-printed JSON representation of the plan
-func FormatPlanAsJSON(plan *QueryPlan) string {
+func FormatPlanAsJSON(plan *AIResult) string {
 	b, err := json.MarshalIndent(plan, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("Error formatting plan: %v", err)

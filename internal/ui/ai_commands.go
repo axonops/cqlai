@@ -13,7 +13,7 @@ import (
 
 // AICQLResultMsg is sent when AI CQL generation completes
 type AICQLResultMsg struct {
-	Plan           *ai.QueryPlan
+	Plan           *ai.AIResult
 	CQL            string
 	Error          error
 	ConversationID string // Track which conversation this result is for
@@ -24,33 +24,84 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 	return func() tea.Msg {
 		logger.DebugfToFile("AI", "Starting new AI conversation for request: %s", userRequest)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		plan, cql, err := ai.GenerateCQLFromRequest(ctx, session, aiConfig, userRequest)
+		// Get schema context
+		schemaContext := ""
+		// Try to get from globalAI if available
+		if err := ai.InitializeLocalAI(session); err == nil {
+			// globalAI should now be initialized
+		}
+		
+		// Get minimal schema context
+		schemaContext = "Available keyspaces: "
+		sc, err := session.GetSchemaContext(20)
+		if err == nil {
+			schemaContext = sc
+		}
+
+		// Convert config to get proper provider-specific settings
+		localConfig := ai.ConvertDBConfigToAIConfig(aiConfig)
+		logger.DebugfToFile("AI", "Using provider: %s, model: %s, has_api_key: %v", 
+			localConfig.Provider, localConfig.Model, localConfig.APIKey != "")
+
+		// Start a new conversation
+		cm := ai.GetConversationManager()
+		conv, err := cm.StartConversation(
+			string(localConfig.Provider),
+			localConfig.Model,
+			localConfig.APIKey,
+			userRequest,
+			schemaContext,
+		)
 		if err != nil {
-			// Check if this is an interaction request that needs to be bubbled up
-			if interactionReq, ok := err.(*ai.InteractionRequest); ok {
-				return AICQLResultMsg{
-					Error: interactionReq, // Pass as error to maintain compatibility
-				}
-			}
 			return AICQLResultMsg{Error: err}
+		}
+		
+		logger.DebugfToFile("AI", "Started conversation with ID: %s", conv.ID)
+
+		// Continue the conversation with empty input to get initial response
+		plan, interactionReq, err := conv.Continue(ctx, "")
+
+		// Check if interaction is needed
+		if interactionReq != nil {
+			return AICQLResultMsg{
+				Error:          interactionReq, // Pass as error to maintain compatibility
+				ConversationID: conv.ID,
+			}
+		}
+
+		if err != nil {
+			return AICQLResultMsg{
+				Error:          err,
+				ConversationID: conv.ID,
+			}
+		}
+
+		// Render CQL from plan
+		cql := ""
+		if plan != nil && plan.Operation != "INFO" {
+			renderedCQL, err := ai.RenderCQL(plan)
+			if err == nil {
+				cql = renderedCQL
+			}
 		}
 
 		return AICQLResultMsg{
-			Plan: plan,
-			CQL:  cql,
+			Plan:           plan,
+			CQL:            cql,
+			ConversationID: conv.ID,
 		}
 	}
 }
 
 // continueAIConversation continues an existing AI conversation with user input
-func continueAIConversation(conversationID string, userInput string) tea.Cmd {
+func continueAIConversation(aiConfig *config.AIConfig, conversationID string, userInput string) tea.Cmd {
 	return func() tea.Msg {
 		logger.DebugfToFile("AI", "Continuing conversation %s with input: %s", conversationID, userInput)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		// Get the conversation

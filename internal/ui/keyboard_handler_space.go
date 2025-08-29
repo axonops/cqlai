@@ -8,6 +8,19 @@ import (
 
 // handleSpaceKey handles Space key press
 func (m MainModel) handleSpaceKey(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+	// If AI modal is showing with INFO operation, handle space key for follow-up input
+	if m.showAIModal && m.aiModal.State == AIModalStatePreview && 
+		m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
+		// Handle space key in follow-up input
+		if len(m.aiModal.FollowUpInput) < 256 {
+			m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] + 
+				" " + 
+				m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
+			m.aiModal.CursorPosition++
+		}
+		return m, nil
+	}
+	
 	// If AI info request modal is active, let it handle the space key
 	if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
 		var cmd tea.Cmd

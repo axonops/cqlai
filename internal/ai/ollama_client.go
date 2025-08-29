@@ -27,9 +27,9 @@ func NewOllamaClient(config *config.AIProviderConfig) *OllamaClient {
 
 // ollamaMessage represents a message in Ollama format
 type ollamaMessage struct {
-	Role       string        `json:"role"`
-	Content    string        `json:"content,omitempty"`
-	ToolCalls  []ollamaToolCall `json:"tool_calls,omitempty"`
+	Role      string           `json:"role"`
+	Content   string           `json:"content,omitempty"`
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 }
 
 // ollamaToolCall represents a tool call in Ollama format
@@ -39,20 +39,20 @@ type ollamaToolCall struct {
 
 // ollamaFunctionCall represents function details in a tool call
 type ollamaFunctionCall struct {
-	Name      string                 `json:"name"`
+	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments"`
 }
 
 // ollamaTool represents a tool definition for Ollama
 type ollamaTool struct {
-	Type     string        `json:"type"`
+	Type     string         `json:"type"`
 	Function ollamaFunction `json:"function"`
 }
 
 // ollamaFunction represents a function definition
 type ollamaFunction struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
 	Parameters  map[string]any `json:"parameters"`
 }
 
@@ -66,17 +66,17 @@ type ollamaRequest struct {
 
 // ollamaResponse represents a single response from the Ollama API.
 type ollamaResponse struct {
-	Model     string         `json:"model"`
-	CreatedAt time.Time      `json:"created_at"`
-	Message   ollamaMessage  `json:"message"`
-	Done      bool           `json:"done"`
+	Model     string        `json:"model"`
+	CreatedAt time.Time     `json:"created_at"`
+	Message   ollamaMessage `json:"message"`
+	Done      bool          `json:"done"`
 }
 
 // getOllamaTools returns all tool definitions for Ollama's function calling
 func getOllamaTools() []ollamaTool {
 	// Get common tool definitions
 	commonTools := GetCommonToolDefinitions()
-	
+
 	// Convert to Ollama format
 	tools := make([]ollamaTool, len(commonTools))
 	for i, tool := range commonTools {
@@ -96,8 +96,8 @@ func getOllamaTools() []ollamaTool {
 	return tools
 }
 
-// GenerateCQLWithTools implements tool calling for Ollama (if supported by the model)
-func (c *OllamaClient) GenerateCQLWithTools(ctx context.Context, prompt string, schema string) (*QueryPlan, error) {
+// ProcessRequestWithTools implements tool calling for Ollama (if supported by the model)
+func (c *OllamaClient) ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error) {
 	if c.config.URL == "" {
 		return nil, fmt.Errorf("Ollama URL is not configured")
 	}
@@ -161,7 +161,7 @@ func (c *OllamaClient) GenerateCQLWithTools(ctx context.Context, prompt string, 
 		// Check if the model wants to call functions
 		if len(ollamaResp.Message.ToolCalls) > 0 {
 			logger.DebugfToFile("Ollama", "Model requested %d tool calls", len(ollamaResp.Message.ToolCalls))
-			
+
 			// Add the assistant's message
 			messages = append(messages, ollamaResp.Message)
 
@@ -218,7 +218,7 @@ func (c *OllamaClient) GenerateCQLWithTools(ctx context.Context, prompt string, 
 			jsonStr = responseText
 		}
 
-		var plan QueryPlan
+		var plan AIResult
 		if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
 			logger.DebugfToFile("Ollama", "Failed to parse JSON: %v", err)
 			// Add a message asking for proper JSON format

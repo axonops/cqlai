@@ -30,9 +30,6 @@ const (
 	CodeEndMarker   = "```"
 )
 
-// ToolName represents a type-safe tool name
-type ToolName string
-
 // String returns the string representation of the tool name
 func (t ToolName) String() string {
 	return string(t)
@@ -42,13 +39,13 @@ func (t ToolName) String() string {
 func ParseToolName(s string) ToolName {
 	// Normalize to lowercase
 	s = strings.ToLower(strings.TrimSpace(s))
-	
+
 	// Check if it's a valid tool name
 	toolName := ToolName(s)
 	if toolName.IsValid() {
 		return toolName
 	}
-	
+
 	return ""
 }
 
@@ -57,7 +54,7 @@ func (t ToolName) IsValid() bool {
 	switch t {
 	case ToolFuzzySearch, ToolGetSchema, ToolGetTableInfo,
 		ToolListKeyspaces, ToolListTables, ToolSubmitQueryPlan,
-		ToolUserSelection, ToolNotEnoughInfo, ToolNotRelevant:
+		ToolUserSelection, ToolNotEnoughInfo, ToolNotRelevant, ToolInfo:
 		return true
 	}
 	return false
@@ -74,6 +71,7 @@ const (
 	ToolUserSelection   ToolName = "user_selection"
 	ToolNotEnoughInfo   ToolName = "not_enough_info"
 	ToolNotRelevant     ToolName = "not_relevant"
+	ToolInfo            ToolName = "info" // For informational responses
 )
 
 // Environment variable names

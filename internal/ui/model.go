@@ -342,7 +342,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Continue the existing conversation with the user's selection
 			if m.aiConversationID != "" {
 				logger.DebugfToFile("AI", "Continuing conversation %s with selection: %s", m.aiConversationID, contextualResponse)
-				return m, continueAIConversation(m.aiConversationID, contextualResponse)
+				return m, continueAIConversation(m.aiConfig, m.aiConversationID, contextualResponse)
 			} else {
 				// Fallback if no conversation ID (shouldn't happen)
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
@@ -383,7 +383,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Continue the existing conversation with the additional info
 			if m.aiConversationID != "" {
 				logger.DebugfToFile("AI", "Continuing conversation %s with info: %s", m.aiConversationID, msg.Response)
-				return m, continueAIConversation(m.aiConversationID, msg.Response)
+				return m, continueAIConversation(m.aiConfig, m.aiConversationID, msg.Response)
 			} else {
 				// Fallback if no conversation ID (shouldn't happen)
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
