@@ -15,46 +15,12 @@ type FuzzySearchParams struct {
 	Query string `json:"query"`
 }
 
-func (p FuzzySearchParams) Validate() error {
-	if p.Query == "" {
-		return fmt.Errorf("query is required")
-	}
-	return nil
-}
-
-// GetSchemaParams represents parameters for get schema tool
-type GetSchemaParams struct {
-	Keyspace string `json:"keyspace"`
-	Table    string `json:"table"`
-}
-
-func (p GetSchemaParams) Validate() error {
-	if p.Keyspace == "" {
-		return fmt.Errorf("keyspace is required")
-	}
-	if p.Table == "" {
-		return fmt.Errorf("table is required")
-	}
-	return nil
-}
-
 // ListKeyspacesParams represents parameters for list keyspaces tool
 type ListKeyspacesParams struct{}
-
-func (p ListKeyspacesParams) Validate() error {
-	return nil
-}
 
 // ListTablesParams represents parameters for list tables tool
 type ListTablesParams struct {
 	Keyspace string `json:"keyspace"`
-}
-
-func (p ListTablesParams) Validate() error {
-	if p.Keyspace == "" {
-		return fmt.Errorf("keyspace is required")
-	}
-	return nil
 }
 
 // UserSelectionParams represents parameters for user selection
@@ -63,14 +29,10 @@ type UserSelectionParams struct {
 	Options []string `json:"options"`
 }
 
-func (p UserSelectionParams) Validate() error {
-	if p.Type == "" {
-		return fmt.Errorf("selection type is required")
-	}
-	if len(p.Options) == 0 {
-		return fmt.Errorf("at least one option is required")
-	}
-	return nil
+// GetSchemaParams represents parameters for get schema tool
+type GetSchemaParams struct {
+	Keyspace string `json:"keyspace"`
+	Table    string `json:"table"`
 }
 
 // InfoMessageParams represents parameters for info messages
@@ -78,11 +40,13 @@ type InfoMessageParams struct {
 	Message string `json:"message"`
 }
 
-func (p InfoMessageParams) Validate() error {
-	if p.Message == "" {
-		return fmt.Errorf("message is required")
-	}
-	return nil
+// InfoResponseParams represents parameters for informational responses
+type InfoResponseParams struct {
+	ResponseType string         `json:"response_type"` // "text" or "schema_info"
+	Title        string         `json:"title,omitempty"`
+	Content      string         `json:"content"`               // Text content for display
+	SchemaInfo   map[string]any `json:"schema_info,omitempty"` // Optional structured data
+	Confidence   float64        `json:"confidence"`
 }
 
 // SubmitQueryPlanParams represents the final query plan to execute
@@ -101,6 +65,61 @@ type SubmitQueryPlanParams struct {
 	Confidence     float64           `json:"confidence"`
 	Warning        string            `json:"warning,omitempty"`
 	ReadOnly       bool              `json:"read_only"`
+}
+
+func (p FuzzySearchParams) Validate() error {
+	if p.Query == "" {
+		return fmt.Errorf("query is required")
+	}
+	return nil
+}
+
+func (p GetSchemaParams) Validate() error {
+	if p.Keyspace == "" {
+		return fmt.Errorf("keyspace is required")
+	}
+	if p.Table == "" {
+		return fmt.Errorf("table is required")
+	}
+	return nil
+}
+
+func (p ListKeyspacesParams) Validate() error {
+	return nil
+}
+
+func (p ListTablesParams) Validate() error {
+	if p.Keyspace == "" {
+		return fmt.Errorf("keyspace is required")
+	}
+	return nil
+}
+
+func (p UserSelectionParams) Validate() error {
+	if p.Type == "" {
+		return fmt.Errorf("selection type is required")
+	}
+	if len(p.Options) == 0 {
+		return fmt.Errorf("at least one option is required")
+	}
+	return nil
+}
+
+func (p InfoMessageParams) Validate() error {
+	if p.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+	return nil
+}
+
+func (p InfoResponseParams) Validate() error {
+	if p.Content == "" {
+		return fmt.Errorf("content is required")
+	}
+	if p.ResponseType == "" {
+		p.ResponseType = "text" // Default to text
+	}
+	return nil
 }
 
 func (p SubmitQueryPlanParams) Validate() error {
@@ -127,8 +146,8 @@ func (p SubmitQueryPlanParams) Validate() error {
 }
 
 // ToQueryPlan converts the params to a QueryPlan
-func (p SubmitQueryPlanParams) ToQueryPlan() *QueryPlan {
-	return &QueryPlan{
+func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
+	return &AIResult{
 		Operation:      p.Operation,
 		Keyspace:       p.Keyspace,
 		Table:          p.Table,
@@ -199,6 +218,13 @@ func ParseToolParams(toolName ToolName, rawParams json.RawMessage) (ToolParams, 
 		var params SubmitQueryPlanParams
 		if err := json.Unmarshal(rawParams, &params); err != nil {
 			return nil, fmt.Errorf("invalid query plan parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolInfo:
+		var params InfoResponseParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid info response parameters: %w", err)
 		}
 		return params, nil
 

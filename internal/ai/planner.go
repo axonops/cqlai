@@ -6,48 +6,8 @@ import (
 	"strings"
 )
 
-// QueryPlan represents a structured plan for CQL generation
-type QueryPlan struct {
-	Operation      string                 `json:"operation"` // SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP
-	Keyspace       string                 `json:"keyspace,omitempty"`
-	Table          string                 `json:"table,omitempty"`
-	Columns        []string               `json:"columns,omitempty"`
-	Values         map[string]any `json:"values,omitempty"`
-	Where          []WhereClause          `json:"where,omitempty"`
-	OrderBy        []OrderClause          `json:"order_by,omitempty"`
-	Limit          int                    `json:"limit,omitempty"`
-	AllowFiltering bool                   `json:"allow_filtering,omitempty"`
-
-	// For DDL operations
-	Schema  map[string]string      `json:"schema,omitempty"`  // Column definitions for CREATE TABLE
-	Options map[string]any `json:"options,omitempty"` // Table/keyspace options
-
-	// Metadata
-	Confidence float64 `json:"confidence"`
-	Warning    string  `json:"warning,omitempty"`
-	ReadOnly   bool    `json:"read_only"`
-}
-
-// WhereClause represents a WHERE condition
-type WhereClause struct {
-	Column   string      `json:"column"`
-	Operator string      `json:"operator"` // =, <, >, <=, >=, IN, CONTAINS
-	Value    any `json:"value"`
-}
-
-// OrderClause represents ORDER BY
-type OrderClause struct {
-	Column string `json:"column"`
-	Order  string `json:"order"` // ASC or DESC
-}
-
-// PlanValidator validates a query plan against schema
-type PlanValidator struct {
-	Schema any // Will be *db.SchemaCatalog when we integrate
-}
-
 // ValidatePlan checks if a plan is valid against the schema
-func (v *PlanValidator) ValidatePlan(plan *QueryPlan) error {
+func (v *PlanValidator) ValidatePlan(plan *AIResult) error {
 	// Basic validation
 	if plan.Operation == "" {
 		return fmt.Errorf("operation is required")
@@ -91,7 +51,7 @@ func (v *PlanValidator) ValidatePlan(plan *QueryPlan) error {
 }
 
 // RenderCQL converts a validated plan to CQL
-func RenderCQL(plan *QueryPlan) (string, error) {
+func RenderCQL(plan *AIResult) (string, error) {
 	switch strings.ToUpper(plan.Operation) {
 	case "SELECT":
 		return renderSelect(plan)
@@ -112,7 +72,7 @@ func RenderCQL(plan *QueryPlan) (string, error) {
 	}
 }
 
-func renderSelect(plan *QueryPlan) (string, error) {
+func renderSelect(plan *AIResult) (string, error) {
 	// Validate table name - prevent wildcards
 	if plan.Table == "" || plan.Table == "*" || strings.Contains(plan.Table, "*") {
 		return "", fmt.Errorf("invalid table name: must specify an exact table name, not '%s'", plan.Table)
@@ -170,7 +130,7 @@ func renderSelect(plan *QueryPlan) (string, error) {
 	return sb.String(), nil
 }
 
-func renderInsert(plan *QueryPlan) (string, error) {
+func renderInsert(plan *AIResult) (string, error) {
 	if len(plan.Values) == 0 {
 		return "", fmt.Errorf("no values to insert")
 	}
@@ -200,7 +160,7 @@ func renderInsert(plan *QueryPlan) (string, error) {
 	return sb.String(), nil
 }
 
-func renderUpdate(plan *QueryPlan) (string, error) {
+func renderUpdate(plan *AIResult) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("UPDATE ")
 
@@ -236,7 +196,7 @@ func renderUpdate(plan *QueryPlan) (string, error) {
 	return sb.String(), nil
 }
 
-func renderDelete(plan *QueryPlan) (string, error) {
+func renderDelete(plan *AIResult) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("DELETE ")
 
@@ -269,7 +229,7 @@ func renderDelete(plan *QueryPlan) (string, error) {
 	return sb.String(), nil
 }
 
-func renderCreate(plan *QueryPlan) (string, error) {
+func renderCreate(plan *AIResult) (string, error) {
 	// Simplified CREATE TABLE rendering
 	if plan.Table == "" {
 		return "", fmt.Errorf("table name required for CREATE")
@@ -298,7 +258,7 @@ func renderCreate(plan *QueryPlan) (string, error) {
 	return sb.String(), nil
 }
 
-func renderDrop(plan *QueryPlan) (string, error) {
+func renderDrop(plan *AIResult) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("DROP ")
 
@@ -317,7 +277,7 @@ func renderDrop(plan *QueryPlan) (string, error) {
 	return sb.String(), nil
 }
 
-func renderDescribe(plan *QueryPlan) (string, error) {
+func renderDescribe(plan *AIResult) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("DESCRIBE ")
 
@@ -376,8 +336,8 @@ func formatValue(v any) string {
 }
 
 // ParsePlanFromJSON parses a JSON plan from LLM response
-func ParsePlanFromJSON(jsonStr string) (*QueryPlan, error) {
-	var plan QueryPlan
+func ParsePlanFromJSON(jsonStr string) (*AIResult, error) {
+	var plan AIResult
 	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
 		return nil, fmt.Errorf("failed to parse plan: %v", err)
 	}

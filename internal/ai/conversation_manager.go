@@ -7,42 +7,16 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/axonops/cqlai/internal/logger"
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go"
+	openaioption "github.com/openai/openai-go/option"
 )
 
 // ConversationManager manages ongoing AI conversations
 type ConversationManager struct {
 	mu            sync.RWMutex
 	conversations map[string]*AIConversation
-}
-
-// AIConversation represents a single AI conversation session
-type AIConversation struct {
-	ID              string
-	Provider        string
-	Model           string
-	APIKey          string
-	OriginalRequest string
-	SchemaContext   string
-	CreatedAt       time.Time
-	LastActivity    time.Time
-
-	// Conversation state
-	Messages     []ConversationMessage
-	CurrentRound int
-	MaxRounds    int
-
-	// Provider-specific clients
-	anthropicClient *anthropic.Client
-	openaiClient    *openai.Client
-}
-
-// ConversationMessage represents a message in the conversation
-type ConversationMessage struct {
-	Role    string // "user", "assistant", "system"
-	Content string
 }
 
 var conversationManager = &ConversationManager{
@@ -76,10 +50,11 @@ func (cm *ConversationManager) StartConversation(provider, model, apiKey, reques
 	// Initialize provider-specific client
 	switch provider {
 	case "anthropic":
-		client := anthropic.NewClient(option.WithAPIKey(apiKey))
+		client := anthropic.NewClient(anthropicoption.WithAPIKey(apiKey))
 		conv.anthropicClient = &client
 	case "openai":
-		conv.openaiClient = openai.NewClient(apiKey)
+		client := openai.NewClient(openaioption.WithAPIKey(apiKey))
+		conv.openaiClient = &client
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", provider)
 	}
@@ -120,7 +95,7 @@ func (cm *ConversationManager) CleanupOldConversations(maxAge time.Duration) {
 }
 
 // Continue continues the conversation with user input (or empty string for continuation)
-func (conv *AIConversation) Continue(ctx context.Context, userInput string) (*QueryPlan, *InteractionRequest, error) {
+func (conv *AIConversation) Continue(ctx context.Context, userInput string) (*AIResult, *InteractionRequest, error) {
 	conv.LastActivity = time.Now()
 	conv.CurrentRound++
 

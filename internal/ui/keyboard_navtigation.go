@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/axonops/cqlai/internal/config"
+	"github.com/axonops/cqlai/internal/logger"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -13,6 +14,13 @@ func (m MainModel) handlePageUp(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		m.input.Placeholder = "Enter CQL command..."
 		return m, nil
 	}
+
+	// If AI modal is showing, scroll its viewport
+	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
+		cmd := m.aiModal.Update(msg)
+		return m, cmd
+	}
+
 	// Scroll the appropriate viewport
 	var cmd tea.Cmd
 	if m.viewMode == "table" && m.hasTable {
@@ -25,11 +33,17 @@ func (m MainModel) handlePageUp(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 // handlePageDown handles PageDown key press
 func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+	// If AI modal is showing, scroll its viewport
+	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
+		cmd := m.aiModal.Update(msg)
+		return m, cmd
+	}
+
 	// Scroll the appropriate viewport
 	var cmd tea.Cmd
 	if m.viewMode == "table" && m.hasTable {
 		m.tableViewport, cmd = m.tableViewport.Update(msg)
-		
+
 		// Check if we need to load more data
 		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
 			// If we're within 10 rows of the bottom, load more
@@ -41,7 +55,7 @@ func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 					// Update the table data and refresh the view
 					allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
 					m.lastTableData = allData
-					
+
 					// Format based on current output format
 					var contentStr string
 					if m.sessionManager != nil {
@@ -57,7 +71,7 @@ func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 						contentStr = m.formatTableForViewport(allData)
 					}
 					m.tableViewport.SetContent(contentStr)
-					
+
 					// Update row count
 					m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 					m.rowCount = int(m.slidingWindow.TotalRowsSeen)
@@ -72,6 +86,9 @@ func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 // handleUpArrow handles Up arrow key press
 func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+	logger.DebugfToFile("AI", "handleUpArrow called. showAIModal=%v, aiModal.State=%v",
+		m.showAIModal, m.aiModal.State)
+
 	// If completions are showing, navigate up
 	if m.showCompletions && len(m.completions) > 0 {
 		m.completionIndex--
@@ -88,6 +105,15 @@ func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 			m.completionScrollOffset = m.completionIndex
 		}
 		return m, nil
+	}
+
+	// If AI modal is showing and in preview state, handle scrolling
+	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
+		logger.DebugfToFile("AI", "AI modal scrolling up.")
+		// Use the Update method to handle scrolling
+		cmd := m.aiModal.Update(msg)
+		logger.DebugfToFile("AI", "AI modal scrolled up.")
+		return m, cmd
 	}
 
 	// If history modal is showing, navigate up
@@ -121,7 +147,7 @@ func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 	// Show history modal if there's history to show
 	if len(m.commandHistory) > 0 && !m.showHistoryModal {
 		m.showHistoryModal = true
-		m.historyModalIndex = 0  // Start at most recent
+		m.historyModalIndex = 0 // Start at most recent
 		m.historyModalScrollOffset = 0
 	}
 	return m, nil
@@ -129,6 +155,9 @@ func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 // handleDownArrow handles Down arrow key press
 func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+	logger.DebugfToFile("AI", "handleDownArrow called. showAIModal=%v, aiModal.State=%v",
+		m.showAIModal, m.aiModal.State)
+
 	// If completions are showing, navigate down
 	if m.showCompletions && len(m.completions) > 0 {
 		m.completionIndex = (m.completionIndex + 1) % len(m.completions)
@@ -143,6 +172,15 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 			m.completionScrollOffset = m.completionIndex - 9
 		}
 		return m, nil
+	}
+
+	// If AI modal is showing and in preview state, handle scrolling
+	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
+		logger.DebugfToFile("AI", "AI modal scrolling down.")
+		// Use the Update method to handle scrolling
+		cmd := m.aiModal.Update(msg)
+		logger.DebugfToFile("AI", "AI modal scrolled down.")
+		return m, cmd
 	}
 
 	// If history modal is showing, navigate down
@@ -168,7 +206,7 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 			}
 			if m.tableViewport.YOffset < maxOffset {
 				m.tableViewport.YOffset++
-				
+
 				// Check if we need to load more data
 				if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
 					// If we're within 10 rows of the bottom, load more
@@ -180,7 +218,7 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 							// Update the table data and refresh the view
 							allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
 							m.lastTableData = allData
-							
+
 							// Format based on current output format
 							var contentStr string
 							if m.sessionManager != nil {
@@ -205,7 +243,7 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 								contentStr = m.formatTableForViewport(allData)
 							}
 							m.tableViewport.SetContent(contentStr)
-							
+
 							// Update row count
 							m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 							m.rowCount = int(m.slidingWindow.TotalRowsSeen)
@@ -231,6 +269,7 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 	return m, nil
 }
 
+
 // handleLeftArrow handles Left arrow key press
 func (m MainModel) handleLeftArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 	// If AI modal is showing, navigate left
@@ -238,7 +277,7 @@ func (m MainModel) handleLeftArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		m.aiModal.PrevChoice()
 		return m, nil
 	}
-	
+
 	// If modal is showing, navigate choices
 	if m.modal.Type != ModalNone {
 		m.modal.PrevChoice()
@@ -271,7 +310,7 @@ func (m MainModel) handleRightArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		m.aiModal.NextChoice()
 		return m, nil
 	}
-	
+
 	// If modal is showing, navigate choices
 	if m.modal.Type != ModalNone {
 		m.modal.NextChoice()

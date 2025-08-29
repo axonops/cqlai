@@ -2,6 +2,8 @@ package ai
 
 import (
 	"fmt"
+	
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // Note: System prompts have been moved to prompts.go
@@ -65,6 +67,17 @@ func ExecuteToolCallTyped(toolName ToolName, params ToolParams) *CommandResult {
 			Data:    "QUERY_PLAN_SUBMITTED", // Special marker
 			// Store the plan in a way that can be retrieved
 			QueryPlan: plan,
+		}
+
+	case ToolInfo:
+		p := params.(InfoResponseParams)
+		logger.DebugfToFile("Tools", "Info tool called with response_type=%s, title=%s, content=%s", 
+			p.ResponseType, p.Title, p.Content)
+		// Return info response as a special success case
+		return &CommandResult{
+			Success:      true,
+			Data:         fmt.Sprintf("Informational response provided: %s", p.Title), // More meaningful message
+			InfoResponse: &p, // Store the info response
 		}
 
 	default:
@@ -265,6 +278,36 @@ func GetCommonToolDefinitions() []ToolDefinition {
 				},
 			},
 			Required: []string{"operation"},
+		},
+		{
+			Name:        ToolInfo.String(),
+			Description: "Submit an informational response (no CQL execution)",
+			Parameters: map[string]any{
+				"response_type": map[string]any{
+					"type":        "string",
+					"description": "Type of response: 'text' (default) or 'schema_info'",
+					"enum":        []string{"text", "schema_info"},
+				},
+				"title": map[string]any{
+					"type":        "string",
+					"description": "Optional title for the response",
+				},
+				"content": map[string]any{
+					"type":        "string",
+					"description": "The text content to display",
+				},
+				"schema_info": map[string]any{
+					"type":        "object",
+					"description": "Structured schema information if response_type is 'schema_info'",
+				},
+				"confidence": map[string]any{
+					"type":        "number",
+					"description": "Confidence level (0.0-1.0) in the response",
+					"minimum":     0.0,
+					"maximum":     1.0,
+				},
+			},
+			Required: []string{"content"},
 		},
 	}
 }

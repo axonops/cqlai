@@ -289,7 +289,7 @@ func (m MainModel) View() string {
 		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
 
 		// Render the AI modal overlay with the current view as background
-		return m.aiModal.Render(screenWidth, screenHeight, m.styles)
+		return (&m.aiModal).Render(screenWidth, screenHeight, m.styles)
 	}
 
 	// If modal is showing, render it as an overlay
