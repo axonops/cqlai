@@ -374,6 +374,6 @@ make grammar
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the Apache 2.0 license. See the LICENSE file for details.
 
 Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/) directory. To regenerate license attributions, run `make licenses`.

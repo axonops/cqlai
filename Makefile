@@ -165,20 +165,15 @@ licenses:
 		echo "$(YELLOW)Installing go-licenses...$(NC)"; \
 		go install github.com/google/go-licenses@latest; \
 	fi
-	@echo "$(BLUE)Collecting licenses...$(NC)"
+	@echo "$(BLUE)Collecting license files...$(NC)"
 	@rm -rf THIRD-PARTY-LICENSES
 	@mkdir -p THIRD-PARTY-LICENSES
-	@go-licenses save ./cmd/cqlai --save_path=THIRD-PARTY-LICENSES --force || true
-	@echo "$(BLUE)Generating license report...$(NC)"
-	@go-licenses report ./cmd/cqlai > THIRD-PARTY-LICENSES/NOTICES.txt 2>/dev/null || true
-	@echo "$(BLUE)Creating combined license file...$(NC)"
-	@cat LICENSE > THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
-	@echo "\n\n================================================================================\n" >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
-	@echo "                           THIRD PARTY LICENSES" >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
-	@echo "================================================================================\n" >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
-	@cat THIRD-PARTY-LICENSES/NOTICES.txt >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt 2>/dev/null || true
+	@PATH="$(HOME)/go/bin:$$PATH" go-licenses save ./cmd/cqlai --save_path=THIRD-PARTY-LICENSES --force || true
+	@echo "$(BLUE)Generating license summary...$(NC)"
+	@PATH="$(HOME)/go/bin:$$PATH" go-licenses report ./cmd/cqlai > THIRD-PARTY-LICENSES/NOTICES.txt 2>/dev/null || true
 	@echo "$(GREEN)✓ License attributions generated in THIRD-PARTY-LICENSES/$(NC)"
-	@echo "$(YELLOW)Remember to commit these files to the repository$(NC)"
+	@echo "$(GREEN)  - Individual license files in subdirectories$(NC)"
+	@echo "$(GREEN)  - License summary in NOTICES.txt$(NC)"
 
 ## release: Build release binaries for all platforms
 release-all: clean

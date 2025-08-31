@@ -116,19 +116,19 @@ func TestParseCommandInConversation(t *testing.T) {
 		cmdArg      string
 	}{
 		{
-			response:  "Let me search for that.\nFUZZY_SEARCH:users\nSearching...",
+			response:  `Let me search for that. {"tool": "fuzzy_search", "params": {"query": "users"}} Searching...`,
 			expectCmd: true,
 			cmdType:   ToolFuzzySearch,
 			cmdArg:    "users",
 		},
 		{
-			response:  "USER_SELECTION:table:users,accounts,sessions",
+			response:  `{"tool": "user_selection", "params": {"type": "table", "options": ["users", "accounts", "sessions"]}}`,
 			expectCmd: true,
 			cmdType:   ToolUserSelection,
 			cmdArg:    "table:users,accounts,sessions",
 		},
 		{
-			response:  "NOT_ENOUGH_INFO:Please specify which keyspace",
+			response:  `{"tool": "not_enough_info", "params": {"message": "Please specify which keyspace"}}`,
 			expectCmd: true,
 			cmdType:   ToolNotEnoughInfo,
 			cmdArg:    "Please specify which keyspace",
