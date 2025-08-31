@@ -8,7 +8,7 @@ import (
 )
 
 // handleKeyboardInput handles keyboard input events
-func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		// If in history search mode, exit it
@@ -92,9 +92,9 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 	case tea.KeyEsc:
 		// If AI info request modal is showing, handle it
-		if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+		if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
 			// Cancel the info request
-			m.aiInfoRequestModal.Active = false
+			m.aiInfoReplyModal.Active = false
 			return m, func() tea.Msg {
 				return AIInfoResponseMsg{Cancelled: true}
 			}
@@ -118,6 +118,7 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 		if m.showAIModal {
 			m.showAIModal = false
 			m.aiModal = AIModal{}
+			m.aiConversationID = ""
 			m.input.Placeholder = "Enter CQL command..."
 			return m, nil
 		}
@@ -212,39 +213,39 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 						// Parse the original header to extract base name and key indicators
 						original := m.tableHeaders[i]
 
-						// Remove any existing type info [...]
-						if idx := strings.Index(original, " ["); idx != -1 {
-							if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
-								original = original[:idx] + original[idx+endIdx+1:]
+							// Remove any existing type info [...]
+							if idx := strings.Index(original, " ["); idx != -1 {
+								if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
+									original = original[:idx] + original[idx+endIdx+1:]
+								}
 							}
+
+							// Extract base name and key indicator
+							baseName := original
+							keyIndicator := ""
+							if strings.HasSuffix(original, " (PK)") {
+								baseName = strings.TrimSuffix(original, " (PK)")
+								keyIndicator = " (PK)"
+							} else if strings.HasSuffix(original, " (C)") {
+								baseName = strings.TrimSuffix(original, " (C)")
+								keyIndicator = " (C)"
+							}
+
+							// Build the new header
+							newHeader := baseName
+							if m.showDataTypes && m.columnTypes[i] != "" {
+								newHeader += " [" + m.columnTypes[i] + "]"
+							}
+							newHeader += keyIndicator
+
+							// Update the actual stored data
+							m.lastTableData[0][i] = newHeader
+						}
 						}
 
-						// Extract base name and key indicator
-						baseName := original
-						keyIndicator := ""
-						if strings.HasSuffix(original, " (PK)") {
-							baseName = strings.TrimSuffix(original, " (PK)")
-							keyIndicator = " (PK)"
-						} else if strings.HasSuffix(original, " (C)") {
-							baseName = strings.TrimSuffix(original, " (C)")
-							keyIndicator = " (C)"
-						}
-
-						// Build the new header
-						newHeader := baseName
-						if m.showDataTypes && m.columnTypes[i] != "" {
-							newHeader += " [" + m.columnTypes[i] + "]"
-						}
-						newHeader += keyIndicator
-
-						// Update the actual stored data
-						m.lastTableData[0][i] = newHeader
-					}
-				}
-
-				// Refresh the table display with the updated data
-				tableStr := m.formatTableForViewport(m.lastTableData)
-				m.tableViewport.SetContent(tableStr)
+						// Refresh the table display with the updated data
+					tableStr := m.formatTableForViewport(m.lastTableData)
+					m.tableViewport.SetContent(tableStr)
 			}
 		}
 		return m, nil
@@ -335,9 +336,9 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 	default:
 		// Handle AI info request modal text input
-		if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+		if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
 			var cmd tea.Cmd
-			m.aiInfoRequestModal, cmd = m.aiInfoRequestModal.Update(msg)
+			m.aiInfoReplyModal, cmd = m.aiInfoReplyModal.Update(msg)
 			return m, cmd
 		}
 		// Handle AI selection modal 'i' key for custom input
@@ -360,62 +361,40 @@ func (m MainModel) handleKeyboardInput(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// Handle AI modal info input (when INFO operation is showing)
+		if m.showAIModal && m.aiModal.State == AIModalStatePreview && 
+			m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
+			// Handle character input
+			if msg.Type == tea.KeyRunes {
+				runes := string(msg.Runes)
+				if len(m.aiModal.FollowUpInput) < 500 {
+					m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] +
+						runes +
+						m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
+					m.aiModal.CursorPosition += len(runes)
+				}
+				return m, nil
+			}
+			// Handle backspace
+			if msg.Type == tea.KeyBackspace && m.aiModal.CursorPosition > 0 {
+				m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition-1] +
+					m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
+				m.aiModal.CursorPosition--
+				return m, nil
+			}
+		}
+		
 		// Handle AI modal keyboard input
 		if m.showAIModal && m.aiModal.State == AIModalStatePreview {
-			// Check if this is an INFO operation - handle typing
-			if m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
-				// Handle typing in follow-up input field
-				switch msg.String() {
-				case "backspace", "delete":
-					if m.aiModal.CursorPosition > 0 && len(m.aiModal.FollowUpInput) > 0 {
-						// Remove character before cursor
-						m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition-1] + 
-							m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
-						m.aiModal.CursorPosition--
-					}
-				case "left":
-					if m.aiModal.CursorPosition > 0 {
-						m.aiModal.CursorPosition--
-					}
-				case "right":
-					if m.aiModal.CursorPosition < len(m.aiModal.FollowUpInput) {
-						m.aiModal.CursorPosition++
-					}
-				case "home":
-					m.aiModal.CursorPosition = 0
-				case "end":
-					m.aiModal.CursorPosition = len(m.aiModal.FollowUpInput)
-				case "up", "down":
-					// Don't handle up/down here - they're handled in the arrow key handlers
-					// Break out of the switch to let arrow key handlers process them
-					break
-				default:
-					// Handle all printable characters including space
-					if msg.Type == tea.KeySpace || msg.String() == " " {
-						// Handle space key explicitly
-						if len(m.aiModal.FollowUpInput) < 256 {
-							m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] + 
-								" " + 
-								m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
-							m.aiModal.CursorPosition++
-						}
-					} else if len(msg.Runes) > 0 && len(m.aiModal.FollowUpInput) < 256 {
-						// Add other printable characters
-						// Insert character at cursor position
-						m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] + 
-							string(msg.Runes) + 
-							m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
-						m.aiModal.CursorPosition += len(msg.Runes)
-					}
-					return m, nil
-				}
-				// For up/down keys, don't return - let them fall through to be handled by arrow key handlers
-			} else {
-				// Regular modal - handle 'P' key for toggling plan/CQL view
-				if msg.String() == "p" || msg.String() == "P" {
-					m.aiModal.ToggleView()
-					return m, nil
-				}
+
+
+
+
+
+			// Regular modal - handle 'P' key for toggling plan/CQL view
+			if msg.String() == "p" || msg.String() == "P" {
+				m.aiModal.ToggleView()
+				return m, nil
 			}
 		}
 

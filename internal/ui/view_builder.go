@@ -9,7 +9,7 @@ import (
 )
 
 // View renders the main model.
-func (m MainModel) View() string {
+func (m *MainModel) View() string {
 	if !m.ready {
 		return ""
 	}
@@ -263,15 +263,15 @@ func (m MainModel) View() string {
 	finalView = layerManager.Render(finalView)
 
 	// If AI info request modal is showing, render it as an overlay
-	if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
+	if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
 		// Get the window dimensions from the viewport
 		screenWidth := viewportWidth
 		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
 
 		// Render the info request modal overlay
-		return m.aiInfoRequestModal.Render(screenWidth, screenHeight, m.styles)
+		return m.aiInfoReplyModal.Render(screenWidth, screenHeight, m.styles)
 	}
-	
+
 	// If AI selection modal is showing, render it as an overlay
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
 		// Get the window dimensions from the viewport
@@ -281,7 +281,7 @@ func (m MainModel) View() string {
 		// Render the selection modal overlay
 		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
 	}
-	
+
 	// If AI modal is showing, render it as an overlay
 	if m.showAIModal {
 		// Get the window dimensions from the viewport
@@ -289,7 +289,7 @@ func (m MainModel) View() string {
 		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
 
 		// Render the AI modal overlay with the current view as background
-		return (&m.aiModal).Render(screenWidth, screenHeight, m.styles)
+		return m.aiModal.Render(screenWidth, screenHeight, m.styles)
 	}
 
 	// If modal is showing, render it as an overlay
@@ -306,7 +306,7 @@ func (m MainModel) View() string {
 }
 
 // getWelcomeMessage returns the welcome message for the application
-func (m MainModel) getWelcomeMessage() string {
+func (m *MainModel) getWelcomeMessage() string {
 	var welcome strings.Builder
 
 	// Welcome banner

@@ -8,7 +8,7 @@ import (
 )
 
 // handleTabKey handles Tab key press
-func (m MainModel) handleTabKey() (MainModel, tea.Cmd) {
+func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 	// Cancel exit confirmation if active
 	if m.confirmExit {
 		m.confirmExit = false

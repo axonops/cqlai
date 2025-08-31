@@ -80,7 +80,8 @@ type MainModel struct {
 	showAIModal              bool                // Whether AI modal is active
 	aiConversationID         string              // Current AI conversation ID for stateful interactions
 	aiSelectionModal         *AISelectionModal   // AI selection modal for user choices
-	aiInfoRequestModal       *AIInfoRequestModal // AI info request modal for additional input
+	aiInfoReplyModal         *AIInfoRequestModal // AI info request modal for additional input
+	infoReplyInput           textinput.Model     // Input for the info reply
 	showHistoryModal         bool                // Whether to show command history modal
 	historyModalIndex        int                 // Currently selected item in history modal
 	historyModalScrollOffset int                 // Track scroll position in history modal
@@ -111,12 +112,12 @@ type MainModel struct {
 }
 
 // NewMainModel creates a new MainModel.
-func NewMainModel() (MainModel, error) {
+func NewMainModel() (*MainModel, error) {
 	return NewMainModelWithOptions(false)
 }
 
 // NewMainModelWithOptions creates a new MainModel with options.
-func NewMainModelWithOptions(noConfirm bool) (MainModel, error) {
+func NewMainModelWithOptions(noConfirm bool) (*MainModel, error) {
 	options := ConnectionOptions{
 		RequireConfirmation: !noConfirm,
 	}
@@ -124,7 +125,7 @@ func NewMainModelWithOptions(noConfirm bool) (MainModel, error) {
 }
 
 // NewMainModelWithConnectionOptions creates a new MainModel with connection options.
-func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, error) {
+func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, error) {
 	ti := textinput.New()
 	ti.Placeholder = "Enter CQL command..."
 	ti.Focus()
@@ -134,6 +135,11 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 
 	ti.Prompt = styles.AccentText.Render("> ")
 	ti.PlaceholderStyle = styles.MutedText
+
+	infoReplyInput := textinput.New()
+	infoReplyInput.Placeholder = "Type your response..."
+	infoReplyInput.CharLimit = 500
+	infoReplyInput.Width = 50
 
 	// Load configuration from file and environment
 	cfg, err := config.LoadConfig()
@@ -180,7 +186,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 		SSL:      cfg.SSL,
 	})
 	if err != nil {
-		return MainModel{}, err
+		return nil, err
 	}
 
 	// Create session manager for application state
@@ -202,10 +208,11 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 	// Load command history from the history manager
 	commandHistory := historyManager.GetHistory()
 
-	return MainModel{
+	return &MainModel{
 		topBar:                    NewTopBarModel(),
 		statusBar:                 NewStatusBarModel(),
 		input:                     ti,
+		infoReplyInput:            infoReplyInput,
 		session:                   dbSession,
 		sessionManager:            sessionMgr,
 		aiConfig:                  cfg.AI,
@@ -234,12 +241,12 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (MainModel, er
 }
 
 // Init initializes the main model.
-func (m MainModel) Init() tea.Cmd {
+func (m *MainModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
 // Update updates the main model.
-func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		headerHeight := 1 // top bar
@@ -266,7 +273,8 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		return m.handleKeyboardInput(msg)
+		updatedModel, cmd := m.handleKeyboardInput(msg)
+		return updatedModel, cmd
 
 	case AICQLResultMsg:
 		// Handle AI CQL generation result
@@ -294,7 +302,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// Hide the AI modal temporarily
 						m.showAIModal = false
 						// Show info request modal
-						m.aiInfoRequestModal = NewAIInfoRequestModal(interactionReq.InfoMessage)
+						m.aiInfoReplyModal = NewAIInfoRequestModal(interactionReq.InfoMessage)
 						return m, nil
 					}
 				}
@@ -355,7 +363,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AIRequestMoreInfoMsg:
 		// AI needs more information from user
 		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
-		m.aiInfoRequestModal = NewAIInfoRequestModal(msg.Message)
+		m.aiInfoReplyModal = NewAIInfoRequestModal(msg.Message)
 		return m, nil
 
 	case AIInfoResponseMsg:
@@ -365,7 +373,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Cancel the AI operation and clear conversation
 			m.showAIModal = false
 			m.aiModal = AIModal{}
-			m.aiInfoRequestModal = nil
+			m.aiInfoReplyModal = nil
 			m.aiConversationID = ""
 			// Add cancellation message
 			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("AI generation cancelled.")
@@ -374,7 +382,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
 			// Continue AI generation with the additional information
-			m.aiInfoRequestModal = nil
+			m.aiInfoReplyModal = nil
 
 			// Re-show the AI modal in generating state
 			m.showAIModal = true
