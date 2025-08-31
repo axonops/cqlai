@@ -49,7 +49,7 @@ NC := \033[0m # No Color
 .DEFAULT_GOAL := build
 
 # Phony targets
-.PHONY: all build clean install uninstall run test lint fmt deps vendor grammar help release-all
+.PHONY: all build clean install uninstall run test lint fmt deps vendor grammar help release-all licenses
 
 ## all: Clean, format, lint, test, and build
 all: clean fmt lint test build
@@ -157,6 +157,28 @@ grammar:
 		echo "$(RED)✗ antlr4 not found. Install with: go install github.com/antlr4-go/antlr/v4/cmd/antlr4@latest$(NC)"; \
 		exit 1; \
 	fi
+
+## licenses: Generate third-party license attributions
+licenses:
+	@echo "$(BLUE)Generating third-party license attributions...$(NC)"
+	@if ! command -v go-licenses >/dev/null 2>&1; then \
+		echo "$(YELLOW)Installing go-licenses...$(NC)"; \
+		go install github.com/google/go-licenses@latest; \
+	fi
+	@echo "$(BLUE)Collecting licenses...$(NC)"
+	@rm -rf THIRD-PARTY-LICENSES
+	@mkdir -p THIRD-PARTY-LICENSES
+	@go-licenses save ./cmd/cqlai --save_path=THIRD-PARTY-LICENSES --force || true
+	@echo "$(BLUE)Generating license report...$(NC)"
+	@go-licenses report ./cmd/cqlai > THIRD-PARTY-LICENSES/NOTICES.txt 2>/dev/null || true
+	@echo "$(BLUE)Creating combined license file...$(NC)"
+	@cat LICENSE > THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
+	@echo "\n\n================================================================================\n" >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
+	@echo "                           THIRD PARTY LICENSES" >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
+	@echo "================================================================================\n" >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt
+	@cat THIRD-PARTY-LICENSES/NOTICES.txt >> THIRD-PARTY-LICENSES/LICENSE-COMBINED.txt 2>/dev/null || true
+	@echo "$(GREEN)✓ License attributions generated in THIRD-PARTY-LICENSES/$(NC)"
+	@echo "$(YELLOW)Remember to commit these files to the repository$(NC)"
 
 ## release: Build release binaries for all platforms
 release-all: clean

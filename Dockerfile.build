@@ -1,0 +1,75 @@
+# Multi-stage Dockerfile for building CQLAI
+# This is used for creating reproducible builds in CI/CD
+
+# Stage 1: Build environment
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    make \
+    gcc \
+    musl-dev \
+    ca-certificates
+
+# Install security scanning tools
+RUN go install golang.org/x/vuln/cmd/govulncheck@latest
+
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code and license files
+COPY . .
+
+# Build the binary
+ARG VERSION=dev
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-w -s -X main.version=${VERSION}" \
+    -o cqlai ./cmd/cqlai
+
+# Run security checks
+RUN govulncheck ./... || true
+
+# Stage 2: ClamAV scanning
+FROM alpine:latest AS scanner
+
+RUN apk add --no-cache clamav clamav-libunrar
+
+# Copy binary from builder
+COPY --from=builder /build/cqlai /scan/cqlai
+
+# Update ClamAV database and scan
+RUN freshclam && \
+    clamscan -r --infected --remove=no /scan/
+
+# Stage 3: Final minimal image
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata
+
+# Copy binary and licenses
+COPY --from=builder /build/cqlai /usr/local/bin/cqlai
+COPY --from=builder /build/THIRD-PARTY-LICENSES /usr/share/doc/cqlai/
+
+# Make binary executable
+RUN chmod 755 /usr/local/bin/cqlai
+
+# Set up a non-root user for running the CLI
+RUN addgroup -g 1000 -S cqlai && \
+    adduser -u 1000 -S cqlai -G cqlai
+
+# Switch to non-root user
+USER cqlai
+WORKDIR /home/cqlai
+
+# CQLAI will look for config in ~/.cqlai.json by default
+ENTRYPOINT ["cqlai"]
