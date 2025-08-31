@@ -4,6 +4,9 @@
 
 **CQLAI** is a fast, portable, and AI-enhanced interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, natural language query generation, client-side command parsing, and enhanced productivity features.
 
+The original cqlsh command is written in Python, which requires a Python installation on the system. The idea behind CQLAI is that it is a single executable binary with no external dependencies, which makes it easier to deploy in all environments.
+
+
 It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the terminal UI, and uses [ANTLR](https://www.antlr.org/) for robust meta-command parsing.
 
 ---
@@ -14,7 +17,6 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - **Rich Terminal UI:**
     - A multi-layer, full-screen terminal application.
     - Virtualized, scrollable table for results, preventing memory overload from large queries.
-    - Zebra-striped rows, dimmed `null` values, and proper column alignment for readability.
     - Sticky footer/status bar showing connection details, query latency, and session status (consistency, tracing).
     - Modal overlays for history, help, and command completion.
 - **Client-Side Meta-Commands:** A powerful set of `cqlsh`-compatible commands parsed by a real grammar (ANTLR):
@@ -68,6 +70,8 @@ docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 
 ## Usage
 
+### Interactive Mode
+
 Connect to a Cassandra host:
 ```bash
 cqlai --host 127.0.0.1 --port 9042 --user cassandra --password cassandra
@@ -80,6 +84,36 @@ cp cqlai.json.example cqlai.json
 # Edit cqlai.json with your settings, then run:
 cqlai
 ```
+
+### Batch Mode
+
+Execute CQL statements non-interactively (compatible with cqlsh):
+
+```bash
+# Execute a single statement
+cqlai -e "SELECT * FROM system_schema.keyspaces;"
+
+# Execute from a file
+cqlai -f script.cql
+
+# Pipe input
+echo "SELECT * FROM users;" | cqlai
+
+# Control output format
+cqlai -e "SELECT * FROM users;" --format json
+cqlai -e "SELECT * FROM users;" --format csv --no-header
+
+# Control pagination size
+cqlai -e "SELECT * FROM large_table;" --page-size 50
+```
+
+**Batch Mode Options:**
+- `-e <statement>` - Execute CQL statement and exit
+- `-f <file>` - Execute CQL from file and exit
+- `--format <format>` - Output format: ascii (default), json, csv, table
+- `--no-header` - Don't output column headers (CSV format)
+- `--field-separator <sep>` - Field separator for CSV output (default: ,)
+- `--page-size <n>` - Number of rows per batch (default: 100)
 
 ### Basic Commands
 
@@ -181,6 +215,7 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   "username": "cassandra",
   "password": "cassandra",
   "requireConfirmation": true,
+  "pageSize": 100,
   "ssl": {
     "enabled": false,
     "certPath": "/path/to/client-cert.pem",
@@ -222,6 +257,7 @@ Common environment variables:
 - `CQLAI_KEYSPACE` - Default keyspace
 - `CQLAI_USERNAME` - Authentication username
 - `CQLAI_PASSWORD` - Authentication password
+- `CQLAI_PAGE_SIZE` - Batch mode pagination size (default: 100)
 - `CQLSH_RC` - Path to custom CQLSHRC file
 
 ### Migration from cqlsh

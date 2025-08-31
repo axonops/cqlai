@@ -3,7 +3,50 @@ package ui
 import (
 	"bytes"
 	"fmt"
+	"strings"
 )
+
+// FormatASCIITableHeader formats just the header part of an ASCII table
+func FormatASCIITableHeader(headers [][]string) string {
+	if len(headers) == 0 || len(headers[0]) == 0 {
+		return ""
+	}
+	
+	header := headers[0]
+	
+	// Calculate column widths
+	columnWidths := make([]int, len(header))
+	for i, h := range header {
+		columnWidths[i] = len(h)
+	}
+	
+	var buf bytes.Buffer
+	
+	// Top border
+	buf.WriteString("+")
+	for _, width := range columnWidths {
+		buf.WriteString(strings.Repeat("-", width+2))
+		buf.WriteString("+")
+	}
+	buf.WriteString("\n")
+	
+	// Header row
+	buf.WriteString("|")
+	for i, h := range header {
+		buf.WriteString(fmt.Sprintf(" %-*s |", columnWidths[i], h))
+	}
+	buf.WriteString("\n")
+	
+	// Header separator
+	buf.WriteString("+")
+	for _, width := range columnWidths {
+		buf.WriteString(strings.Repeat("-", width+2))
+		buf.WriteString("+")
+	}
+	buf.WriteString("\n")
+	
+	return buf.String()
+}
 
 // FormatASCIITable formats query results as an ASCII table for display in the terminal
 func FormatASCIITable(data [][]string) string {
