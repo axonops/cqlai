@@ -333,8 +333,14 @@ func (conv *AIConversation) continueOpenAI(ctx context.Context, userInput string
 
 		// Add new user input if provided
 		if userInput != "" {
-			messages = append(messages, openai.UserMessage(userInput))
-			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userInput})
+			// For follow-up questions, make it clear this is a follow-up
+			followUpMessage := userInput
+			if len(conv.Messages) > 0 {
+				// This is a follow-up in an existing conversation
+				followUpMessage = "Follow-up question (answer only this, don't repeat previous response): " + userInput
+			}
+			messages = append(messages, openai.UserMessage(followUpMessage))
+			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userInput}) // Store original for history
 		}
 	}
 

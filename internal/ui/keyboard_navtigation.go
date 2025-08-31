@@ -7,7 +7,7 @@ import (
 )
 
 // handlePageUp handles PageUp key press
-func (m MainModel) handlePageUp(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	// Cancel exit confirmation if active
 	if m.confirmExit {
 		m.confirmExit = false
@@ -32,7 +32,7 @@ func (m MainModel) handlePageUp(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 }
 
 // handlePageDown handles PageDown key press
-func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	// If AI modal is showing, scroll its viewport
 	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
 		cmd := m.aiModal.Update(msg)
@@ -85,7 +85,7 @@ func (m MainModel) handlePageDown(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 }
 
 // handleUpArrow handles Up arrow key press
-func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	logger.DebugfToFile("AI", "handleUpArrow called. showAIModal=%v, aiModal.State=%v",
 		m.showAIModal, m.aiModal.State)
 
@@ -109,10 +109,14 @@ func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 	// If AI modal is showing and in preview state, handle scrolling
 	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
-		logger.DebugfToFile("AI", "AI modal scrolling up.")
+		logger.DebugfToFile("AI", "handleUpArrow: AI modal is showing, calling Update. Plan=%v, Operation=%v", 
+			m.aiModal.Plan != nil, "")
+		if m.aiModal.Plan != nil {
+			logger.DebugfToFile("AI", "handleUpArrow: Operation=%s", m.aiModal.Plan.Operation)
+		}
 		// Use the Update method to handle scrolling
 		cmd := m.aiModal.Update(msg)
-		logger.DebugfToFile("AI", "AI modal scrolled up.")
+		logger.DebugfToFile("AI", "handleUpArrow: After Update, returning")
 		return m, cmd
 	}
 
@@ -154,7 +158,7 @@ func (m MainModel) handleUpArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 }
 
 // handleDownArrow handles Down arrow key press
-func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	logger.DebugfToFile("AI", "handleDownArrow called. showAIModal=%v, aiModal.State=%v",
 		m.showAIModal, m.aiModal.State)
 
@@ -176,10 +180,14 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 	// If AI modal is showing and in preview state, handle scrolling
 	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
-		logger.DebugfToFile("AI", "AI modal scrolling down.")
+		logger.DebugfToFile("AI", "handleDownArrow: AI modal is showing, calling Update. Plan=%v", 
+			m.aiModal.Plan != nil)
+		if m.aiModal.Plan != nil {
+			logger.DebugfToFile("AI", "handleDownArrow: Operation=%s", m.aiModal.Plan.Operation)
+		}
 		// Use the Update method to handle scrolling
 		cmd := m.aiModal.Update(msg)
-		logger.DebugfToFile("AI", "AI modal scrolled down.")
+		logger.DebugfToFile("AI", "handleDownArrow: After Update, returning")
 		return m, cmd
 	}
 
@@ -271,7 +279,7 @@ func (m MainModel) handleDownArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 
 
 // handleLeftArrow handles Left arrow key press
-func (m MainModel) handleLeftArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handleLeftArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	// If AI modal is showing, navigate left
 	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
 		m.aiModal.PrevChoice()
@@ -304,7 +312,7 @@ func (m MainModel) handleLeftArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
 }
 
 // handleRightArrow handles Right arrow key press
-func (m MainModel) handleRightArrow(msg tea.KeyMsg) (MainModel, tea.Cmd) {
+func (m *MainModel) handleRightArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	// If AI modal is showing, navigate right
 	if m.showAIModal && m.aiModal.State == AIModalStatePreview {
 		m.aiModal.NextChoice()

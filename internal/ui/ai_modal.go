@@ -5,8 +5,9 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/ai"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/charmbracelet/bubbles/viewport"
-	bt "github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -17,7 +18,8 @@ const (
 	AIModalStateGenerating AIModalState = iota
 	AIModalStatePreview
 	AIModalStateError
-	AIModalStateFollowUp // New state for entering follow-up questions
+	AIModalStateFollowUp     // New state for entering follow-up questions
+	AIModalStateInfoFollowUp // New state for the info follow-up input
 )
 
 // AIModal represents the AI-powered CQL generation modal
@@ -30,6 +32,7 @@ type AIModal struct {
 	Selected       int          // 0: Cancel, 1: Execute, 2: Edit
 	Width          int
 	Height         int
+	ScreenHeight   int            // Current screen height for dynamic sizing
 	ShowPlan       bool           // Toggle between showing plan JSON and CQL
 	FollowUpInput  string         // Input for follow-up questions
 	CursorPosition int            // Cursor position in follow-up input
@@ -40,15 +43,50 @@ type AIModal struct {
 }
 
 // Update handles messages for the AI modal
-func (m *AIModal) Update(msg bt.Msg) bt.Cmd {
-	var cmd bt.Cmd
+func (m *AIModal) Update(msg tea.Msg) tea.Cmd {
+	var cmds []tea.Cmd
 
-	// Only handle scrolling when in preview mode
-	if m.State == AIModalStatePreview {
+	// Import logger for debugging
+	logger.DebugfToFile("AI", "AIModal.Update called with msg type: %T", msg)
+
+	// Always pass window size messages to viewport
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		logger.DebugfToFile("AI", "AIModal: WindowSizeMsg received, width=%d, height=%d", msg.Width, msg.Height)
+		m.ScreenHeight = msg.Height
+		// Don't set viewport dimensions here, let renderPreview handle it dynamically
+		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	case tea.KeyMsg:
+		logger.DebugfToFile("AI", "AIModal: KeyMsg received, key=%s, state=%v", msg.String(), m.State)
+		// Only handle key messages if we're in preview state
+		if m.State == AIModalStatePreview {
+			oldYOffset := m.viewport.YOffset
+			oldScrollPercent := m.viewport.ScrollPercent()
+
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+
+			logger.DebugfToFile("AI", "AIModal: After viewport.Update - YOffset: %d->%d, ScrollPercent: %.2f->%.2f, TotalLines: %d, Height: %d",
+				oldYOffset, m.viewport.YOffset,
+				oldScrollPercent, m.viewport.ScrollPercent(),
+				m.viewport.TotalLineCount(), m.viewport.Height)
+		} else {
+			logger.DebugfToFile("AI", "AIModal: Ignoring key because state is %v", m.State)
+		}
+	case tea.MouseMsg:
+		logger.DebugfToFile("AI", "AIModal: MouseMsg received")
+		// Handle mouse scroll events if we're in preview state
+		if m.State == AIModalStatePreview {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 	}
 
-	return cmd
+	return tea.Batch(cmds...)
 }
 
 // NewAIModal creates a new AI modal for generating CQL
@@ -57,6 +95,7 @@ func NewAIModal(userRequest string) AIModal {
 	vp.Style = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFFFFF")).
 		Background(lipgloss.Color("#1a1a1a"))
+	vp.KeyMap = viewport.DefaultKeyMap() // Enable keyboard navigation
 
 	return AIModal{
 		State:         AIModalStateGenerating,
@@ -64,6 +103,7 @@ func NewAIModal(userRequest string) AIModal {
 		Selected:      0,
 		Width:         80,
 		Height:        20,
+		ScreenHeight:  24, // Default screen height
 		ShowPlan:      false,
 		viewport:      vp,
 		viewportReady: false,
@@ -90,13 +130,10 @@ func (m *AIModal) SetError(err error) {
 // NextChoice moves to the next choice
 func (m *AIModal) NextChoice() {
 	if m.State == AIModalStatePreview {
-		// Check if this is an INFO operation
 		if m.Plan != nil && m.Plan.Operation == "INFO" {
-			// For INFO operations, no choice navigation - just input field
-			return
+			m.Selected = (m.Selected + 1) % 2 // 0: Done, 1: Reply
 		} else {
-			// For regular operations: 0: Cancel, 1: Execute, 2: Edit
-			m.Selected = (m.Selected + 1) % 3
+			m.Selected = (m.Selected + 1) % 3 // 0: Cancel, 1: Execute, 2: Edit
 		}
 	} else if m.State == AIModalStateError {
 		m.Selected = 0 // Only cancel available on error
@@ -106,12 +143,12 @@ func (m *AIModal) NextChoice() {
 // PrevChoice moves to the previous choice
 func (m *AIModal) PrevChoice() {
 	if m.State == AIModalStatePreview {
-		// Check if this is an INFO operation
 		if m.Plan != nil && m.Plan.Operation == "INFO" {
-			// For INFO operations, no choice navigation - just input field
-			return
+			m.Selected--
+			if m.Selected < 0 {
+				m.Selected = 1
+			}
 		} else {
-			// For regular operations: 0: Cancel, 1: Execute, 2: Edit
 			m.Selected--
 			if m.Selected < 0 {
 				m.Selected = 2
@@ -129,6 +166,10 @@ func (m *AIModal) ToggleView() {
 
 // Render renders the AI modal
 func (m *AIModal) Render(screenWidth, screenHeight int, styles *Styles) string {
+	// Store the screen height for dynamic sizing
+	if screenHeight > 0 {
+		m.ScreenHeight = screenHeight
+	}
 	// Create modal box style
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -152,11 +193,13 @@ func (m *AIModal) Render(screenWidth, screenHeight int, styles *Styles) string {
 	case AIModalStateGenerating:
 		content = m.renderGenerating(titleStyle, styles)
 	case AIModalStatePreview:
-		content = m.renderPreview(titleStyle, styles)
+		content = m.renderPreview(titleStyle, styles, screenHeight)
 	case AIModalStateError:
 		content = m.renderError(titleStyle, styles)
 	case AIModalStateFollowUp:
 		content = m.renderFollowUp(titleStyle, styles)
+	case AIModalStateInfoFollowUp:
+		content = m.renderInfoFollowUp(titleStyle, styles)
 	}
 
 	modalBox := modalStyle.Render(content)
@@ -208,25 +251,41 @@ func (m *AIModal) renderGenerating(titleStyle lipgloss.Style, styles *Styles) st
 	)
 }
 
-func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles) string {
+func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, screenHeight int) string {
+
 	// Message style
 	messageStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Width(m.Width - 4).
 		MarginTop(1)
 
-	// Set viewport dimensions
-	viewportHeight := 10
-	m.viewport.Width = m.Width - 8
-	m.viewport.Height = viewportHeight
+	// Calculate dynamic viewport height based on screen size
+	// Reserve space for: modal border/padding (4), title (2), message (2), buttons (3),
+	// instructions (3), operation indicator (2), warning if present (2)
+	reservedHeight := 16
+	if m.Plan != nil && m.Plan.Warning != "" {
+		reservedHeight += 2 // Extra space for warning
+	}
+	if m.Plan != nil && m.Plan.Operation != "INFO" {
+		reservedHeight += 2 // Extra space for operation type indicator
+	}
+
+	// Calculate viewport height (minimum 5, maximum based on screen)
+	viewportHeight := max(5, min(screenHeight-reservedHeight, 25))
+
+	// Set viewport dimensions if they've changed
+	if m.viewport.Width != m.Width-6 || m.viewport.Height != viewportHeight {
+		m.viewport.Width = m.Width - 6 // Adjusted to match content box width
+		m.viewport.Height = viewportHeight
+		m.viewportReady = true
+	}
 
 	// Content box style for viewport wrapper
 	contentStyle := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Border).
-		Width(m.Width-6).
-		Height(viewportHeight+2). // +2 for border
-		Padding(0, 1)
+		Width(m.Width - 6).
+		Height(viewportHeight + 2) // +2 for border
 
 	// Warning style
 	warningStyle := lipgloss.NewStyle().
@@ -235,22 +294,44 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles) strin
 		Width(m.Width - 4).
 		Align(lipgloss.Center)
 
-	// Build button row based on operation type
+	// Build button row and input based on operation type
 	var buttonRow string
+	var replyInput string
 
 	if m.Plan != nil && m.Plan.Operation == "INFO" {
-		// For INFO operations, show a single Done button
-		doneStyle := lipgloss.NewStyle().Padding(0, 2).
-			Foreground(lipgloss.Color("#000000")).
-			Background(styles.Ok).
-			Bold(true)
+		// Input field for follow-up questions
+		inputStyle := lipgloss.NewStyle().
+			Foreground(styles.AccentText.GetForeground()).
+			Background(lipgloss.Color("#1a1a1a")).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(styles.Border).
+			Padding(0, 1).
+			Width(m.Width - 8).
+			MarginTop(1)
 
-		doneBtn := doneStyle.Render("Done")
+		// Show input field with cursor
+		inputContent := m.FollowUpInput
+		if m.CursorPosition <= len(inputContent) {
+			inputContent = inputContent[:m.CursorPosition] + "│"
+		}
 
-		buttonRow = lipgloss.NewStyle().
-			Width(m.Width - 4).
-			Align(lipgloss.Center).
-			Render(doneBtn)
+		if inputContent == "" || inputContent == "│" {
+			inputContent = "Type your follow-up question here..."
+			if m.CursorPosition == 0 {
+				inputContent = "│" + inputContent
+			}
+		}
+
+		replyInput = inputStyle.Render(inputContent)
+
+		// Simple Done button
+		doneStyle := lipgloss.NewStyle().
+			Padding(0, 2).
+			Foreground(styles.MutedText.GetForeground()).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(styles.Border)
+
+		buttonRow = doneStyle.Render("Done (Esc)")
 	} else {
 		// Regular CQL operations
 		cancelStyle := lipgloss.NewStyle().Padding(0, 2)
@@ -339,7 +420,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles) strin
 
 	var instructions string
 	if m.Plan != nil && m.Plan.Operation == "INFO" {
-		instructions = instructionStyle.Render(fmt.Sprintf("Type follow-up • ↑↓/PgUp/PgDn: Scroll %s • Enter: Send • Esc: Done", scrollInfo))
+		instructions = instructionStyle.Render(fmt.Sprintf("↑↓/PgUp/PgDn: Scroll %s • Enter: Send follow-up • Esc: Done", scrollInfo))
 	} else {
 		instructions = instructionStyle.Render(fmt.Sprintf("← → / Tab: Navigate • ↑↓/PgUp/PgDn: Scroll %s • Enter: Confirm • P: Toggle Plan/CQL • Esc: Cancel", scrollInfo))
 	}
@@ -363,19 +444,46 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles) strin
 	}
 
 	// Update viewport content if it has changed or if width changed
-	if currentContent != m.lastContent || m.viewport.Width != m.lastWidth {
+	contentChanged := currentContent != m.lastContent
+	widthChanged := m.viewport.Width != m.lastWidth
+
+	// logger.DebugfToFile("AI", "renderPreview: Content check - changed=%v, len(current)=%d, len(last)=%d",
+	// 	contentChanged, len(currentContent), len(m.lastContent))
+	// logger.DebugfToFile("AI", "renderPreview: Width check - changed=%v, current=%d, last=%d",
+	// 	widthChanged, m.viewport.Width, m.lastWidth)
+
+	if contentChanged || widthChanged {
+		logger.DebugfToFile("AI", "renderPreview: Setting viewport content because content or width changed")
+		logger.DebugfToFile("AI", "renderPreview: Setting viewport content, contentLen=%d, lines=%d",
+			len(currentContent), strings.Count(currentContent, "\n")+1)
+
+		// Process content line by line for proper wrapping
 		lines := strings.Split(currentContent, "\n")
 		wrapStyle := lipgloss.NewStyle().Width(m.viewport.Width)
 		var wrappedLines []string
 		for _, line := range lines {
-			wrappedLines = append(wrappedLines, wrapStyle.Render(line))
+			// Wrap each line to fit viewport width
+			wrapped := wrapStyle.Render(line)
+			wrappedLines = append(wrappedLines, wrapped)
 		}
 		wrappedContent := strings.Join(wrappedLines, "\n")
 		m.viewport.SetContent(wrappedContent)
-		m.viewport.GotoTop()
-		m.lastContent = currentContent
+
+		logger.DebugfToFile("AI", "renderPreview: After SetContent - TotalLines=%d, Height=%d, YOffset=%d",
+			m.viewport.TotalLineCount(), m.viewport.Height, m.viewport.YOffset)
+
+		// Only go to top if this is new content, not just a width change
+		if currentContent != m.lastContent {
+			m.viewport.GotoTop()
+			logger.DebugfToFile("AI", "renderPreview: Called GotoTop because content changed")
+			m.lastContent = currentContent
+		}
 		m.lastWidth = m.viewport.Width
+		m.viewportReady = true // Mark viewport as ready after content is set
 	}
+	//  else {
+	// 	logger.DebugfToFile("AI", "renderPreview: Content unchanged, not calling SetContent. YOffset=%d", m.viewport.YOffset)
+	// }
 
 	// Add confidence indicator
 	confidenceStr := ""
@@ -384,10 +492,17 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles) strin
 		confidenceStr = fmt.Sprintf(" (Confidence: %d%%)", confidence)
 	}
 
+	viewportContent := m.viewport.View()
+	// logger.DebugfToFile("AI", "renderPreview: viewport.View() returned %d chars, YOffset=%d, ScrollPercent=%.2f",
+	// 	len(viewportContent), m.viewport.YOffset, m.viewport.ScrollPercent())
+
+	// Simply use the viewport content for now
+	// We'll show scroll position in the instructions instead of a visual scrollbar
+
 	parts := []string{
 		titleStyle.Render("🤖 AI Assistant"),
 		messageStyle.Render(contentTitle + confidenceStr),
-		contentStyle.Render(m.viewport.View()),
+		contentStyle.Render(viewportContent),
 	}
 
 	// Add warning if present
@@ -408,36 +523,87 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles) strin
 		parts = append(parts, opStyle.Render(opType))
 	}
 
-	// Add follow-up input field for INFO operations
+	// Add reply input if INFO operation
 	if m.Plan != nil && m.Plan.Operation == "INFO" {
-		// Input field style
-		inputStyle := lipgloss.NewStyle().
-			Foreground(styles.AccentText.GetForeground()).
-			Background(lipgloss.Color("#1a1a1a")).
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(styles.Border).
-			Padding(0, 1).
-			Width(m.Width - 6).
-			MarginTop(1)
-
-		// Show input field with cursor
-		inputContent := m.FollowUpInput
-		if m.CursorPosition <= len(inputContent) {
-			inputContent = inputContent[:m.CursorPosition] + "█" + inputContent[m.CursorPosition:]
-		} else {
-			inputContent = inputContent + "█"
-		}
-
-		if inputContent == "█" {
-			inputContent = "Enter follow-up question...█"
-		}
-
-		parts = append(parts, "", inputStyle.Render(inputContent))
+		parts = append(parts, "", replyInput, "", buttonRow, "", instructions)
+	} else {
+		parts = append(parts, "", buttonRow, "", instructions)
 	}
 
-	parts = append(parts, "", buttonRow, "", instructions)
-
 	return lipgloss.JoinVertical(lipgloss.Center, parts...)
+}
+
+func (m *AIModal) renderInfoFollowUp(titleStyle lipgloss.Style, styles *Styles) string {
+	// Message style
+	messageStyle := lipgloss.NewStyle().
+		Foreground(styles.MutedText.GetForeground()).
+		Width(m.Width - 4)
+
+	// Previous message box style
+	previousMsgStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(styles.Border).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(lipgloss.Color("#0a0a0a")).
+		Padding(1).
+		Width(m.Width - 6).
+		MaxHeight(10).
+		MarginTop(1)
+
+	// Get the previous message content
+	previousContent := ""
+	if m.Plan != nil && m.Plan.Operation == "INFO" {
+		previousContent = m.Plan.InfoContent
+		// Truncate if too long for display
+		lines := strings.Split(previousContent, "\n")
+		if len(lines) > 8 {
+			previousContent = strings.Join(lines[:8], "\n") + "\n..."
+		}
+	}
+
+	// Input field style
+	inputStyle := lipgloss.NewStyle().
+		Foreground(styles.AccentText.GetForeground()).
+		Background(lipgloss.Color("#1a1a1a")).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(styles.Accent).
+		Padding(0, 1).
+		Width(m.Width - 6).
+		MarginTop(1).
+		MarginBottom(1)
+
+	// Show input field with cursor
+	inputContent := m.FollowUpInput
+	if m.CursorPosition <= len(inputContent) {
+		inputContent = inputContent[:m.CursorPosition] + "█" + inputContent[m.CursorPosition:]
+	} else {
+		inputContent = inputContent + "█"
+	}
+
+	if inputContent == "█" {
+		inputContent = "Enter your follow-up question...█"
+	}
+
+	// Instructions
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(styles.MutedText.GetForeground()).
+		Italic(true).
+		Align(lipgloss.Center).
+		Width(m.Width - 4)
+
+	instructions := instructionStyle.Render("Enter: Submit  •  Esc: Back to message")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Center,
+		titleStyle.Render("🤖 AI Assistant - Reply"),
+		messageStyle.Render("Previous response:"),
+		previousMsgStyle.Render(previousContent),
+		"",
+		messageStyle.Render("Your follow-up question:"),
+		inputStyle.Render(inputContent),
+		"",
+		instructions,
+	)
 }
 
 func (m *AIModal) renderFollowUp(titleStyle lipgloss.Style, styles *Styles) string {
@@ -465,6 +631,10 @@ func (m *AIModal) renderFollowUp(titleStyle lipgloss.Style, styles *Styles) stri
 		inputContent = inputContent[:m.CursorPosition] + "█" + inputContent[m.CursorPosition:]
 	} else {
 		inputContent = inputContent + "█"
+	}
+
+	if inputContent == "█" {
+		inputContent = "Enter follow-up question...█"
 	}
 
 	// Loading animation
@@ -519,8 +689,8 @@ func (m *AIModal) renderError(titleStyle lipgloss.Style, styles *Styles) string 
 
 	return lipgloss.JoinVertical(
 		lipgloss.Center,
-		titleStyle.Render("🤖 AI CQL Generator - Error"),
-		errorStyle.Render("Failed to generate CQL:"),
+		titleStyle.Render("🤖 AI CQL Helper - Error"),
+		errorStyle.Render("I failed:"),
 		requestStyle.Render(m.Error),
 		"",
 		errorStyle.Render("Request:"),

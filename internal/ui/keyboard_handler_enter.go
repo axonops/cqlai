@@ -15,12 +15,12 @@ import (
 )
 
 // handleEnterKey handles Enter key press
-func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
+func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	// Handle AI info request modal if active
-	if m.aiInfoRequestModal != nil && m.aiInfoRequestModal.Active {
-		response := m.aiInfoRequestModal.GetResponse()
+	if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
+		response := m.aiInfoReplyModal.GetResponse()
 		if response != "" {
-			m.aiInfoRequestModal.Active = false
+			m.aiInfoReplyModal.Active = false
 			return m, func() tea.Msg {
 				return AIInfoResponseMsg{
 					Response:  response,
@@ -182,9 +182,8 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 		if m.aiModal.State == AIModalStatePreview {
 			// Check if this is an INFO operation
 			if m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
-				// INFO operation - handle follow-up submission
+				// If there's follow-up input, submit it
 				if m.aiModal.FollowUpInput != "" {
-					// Submit the follow-up question
 					followUpQuestion := m.aiModal.FollowUpInput
 					logger.DebugfToFile("AI", "User submitting follow-up question: %s", followUpQuestion)
 					logger.DebugfToFile("AI", "Current conversation ID: %s", m.aiConversationID)
@@ -197,14 +196,9 @@ func (m MainModel) handleEnterKey() (MainModel, tea.Cmd) {
 					
 					// Continue the conversation
 					return m, continueAIConversation(m.aiConfig, m.aiConversationID, followUpQuestion)
-				} else {
-					// No input - treat as Done
-					m.showAIModal = false
-					m.aiModal = AIModal{}
-					m.aiConversationID = ""
-					m.input.Placeholder = "Enter CQL command..."
-					return m, nil
 				}
+				// If no input, do nothing (stay in info view)
+				return m, nil
 			} else {
 				// Regular CQL operation
 				switch m.aiModal.Selected {
