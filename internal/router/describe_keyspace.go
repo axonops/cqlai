@@ -9,24 +9,24 @@ import (
 // describeKeyspace shows detailed information about a specific keyspace
 func (v *CqlCommandVisitorImpl) describeKeyspace(keyspaceName string) interface{} {
 	serverResult, keyspaceInfo, err := v.session.DBDescribeKeyspace(keyspaceName)
-	
+
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return fmt.Sprintf("Keyspace '%s' not found", keyspaceName)
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
-	
+
 	if serverResult != nil {
 		// Server-side DESCRIBE result, return as-is
 		return serverResult
 	}
-	
+
 	// Manual query result - format it
 	if keyspaceInfo == nil {
 		return fmt.Sprintf("Keyspace '%s' not found", keyspaceName)
 	}
-	
+
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("CREATE KEYSPACE %s WITH replication = {\n", keyspaceInfo.Name))
 
@@ -47,21 +47,21 @@ func (v *CqlCommandVisitorImpl) describeKeyspace(keyspaceName string) interface{
 // describeKeyspaces lists all keyspaces in the cluster.
 func (v *CqlCommandVisitorImpl) describeKeyspaces() interface{} {
 	serverResult, keyspaces, err := v.session.DBDescribeKeyspaces()
-	
+
 	if err != nil {
 		return fmt.Sprintf("Error: %v", err)
 	}
-	
+
 	if serverResult != nil {
 		// Server-side DESCRIBE result, return as-is
 		return serverResult
 	}
-	
+
 	// Manual query result - format it
-	if keyspaces == nil || len(keyspaces) == 0 {
+	if len(keyspaces) == 0 {
 		return "No keyspaces found"
 	}
-	
+
 	// Build results showing keyspace and replication strategy
 	results := [][]string{{"keyspace_name", "replication_strategy", "replication_factor"}}
 	for _, ks := range keyspaces {

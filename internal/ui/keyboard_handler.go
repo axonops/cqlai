@@ -205,7 +205,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if m.hasTable && m.viewMode == "table" {
 			m.showDataTypes = !m.showDataTypes
 			// Refresh the table view with new headers
-			if m.lastTableData != nil && len(m.lastTableData) > 0 {
+			if len(m.lastTableData) > 0 {
 				// Update ALL headers in the stored data (not just visible ones)
 				if len(m.columnTypes) > 0 {
 					// Process all columns in the header row
@@ -213,39 +213,39 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 						// Parse the original header to extract base name and key indicators
 						original := m.tableHeaders[i]
 
-							// Remove any existing type info [...]
-							if idx := strings.Index(original, " ["); idx != -1 {
-								if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
-									original = original[:idx] + original[idx+endIdx+1:]
-								}
+						// Remove any existing type info [...]
+						if idx := strings.Index(original, " ["); idx != -1 {
+							if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
+								original = original[:idx] + original[idx+endIdx+1:]
 							}
-
-							// Extract base name and key indicator
-							baseName := original
-							keyIndicator := ""
-							if strings.HasSuffix(original, " (PK)") {
-								baseName = strings.TrimSuffix(original, " (PK)")
-								keyIndicator = " (PK)"
-							} else if strings.HasSuffix(original, " (C)") {
-								baseName = strings.TrimSuffix(original, " (C)")
-								keyIndicator = " (C)"
-							}
-
-							// Build the new header
-							newHeader := baseName
-							if m.showDataTypes && m.columnTypes[i] != "" {
-								newHeader += " [" + m.columnTypes[i] + "]"
-							}
-							newHeader += keyIndicator
-
-							// Update the actual stored data
-							m.lastTableData[0][i] = newHeader
-						}
 						}
 
-						// Refresh the table display with the updated data
-					tableStr := m.formatTableForViewport(m.lastTableData)
-					m.tableViewport.SetContent(tableStr)
+						// Extract base name and key indicator
+						baseName := original
+						keyIndicator := ""
+						if strings.HasSuffix(original, " (PK)") {
+							baseName = strings.TrimSuffix(original, " (PK)")
+							keyIndicator = " (PK)"
+						} else if strings.HasSuffix(original, " (C)") {
+							baseName = strings.TrimSuffix(original, " (C)")
+							keyIndicator = " (C)"
+						}
+
+						// Build the new header
+						newHeader := baseName
+						if m.showDataTypes && m.columnTypes[i] != "" {
+							newHeader += " [" + m.columnTypes[i] + "]"
+						}
+						newHeader += keyIndicator
+
+						// Update the actual stored data
+						m.lastTableData[0][i] = newHeader
+					}
+				}
+
+				// Refresh the table display with the updated data
+				tableStr := m.formatTableForViewport(m.lastTableData)
+				m.tableViewport.SetContent(tableStr)
 			}
 		}
 		return m, nil
@@ -260,7 +260,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handlePageDown(msg)
 
 	case tea.KeyUp:
-		logger.DebugfToFile("AI", "KeyUp pressed. showAIModal=%v, aiSelectionModal.Active=%v, historySearchMode=%v", 
+		logger.DebugfToFile("AI", "KeyUp pressed. showAIModal=%v, aiSelectionModal.Active=%v, historySearchMode=%v",
 			m.showAIModal, m.aiSelectionModal != nil && m.aiSelectionModal.Active, m.historySearchMode)
 		// If AI selection modal is showing, navigate options
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
@@ -362,7 +362,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		}
 		// Handle AI modal info input (when INFO operation is showing)
-		if m.showAIModal && m.aiModal.State == AIModalStatePreview && 
+		if m.showAIModal && m.aiModal.State == AIModalStatePreview &&
 			m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
 			// Handle character input
 			if msg.Type == tea.KeyRunes {
@@ -383,13 +383,9 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				return m, nil
 			}
 		}
-		
+
 		// Handle AI modal keyboard input
 		if m.showAIModal && m.aiModal.State == AIModalStatePreview {
-
-
-
-
 
 			// Regular modal - handle 'P' key for toggling plan/CQL view
 			if msg.String() == "p" || msg.String() == "P" {
