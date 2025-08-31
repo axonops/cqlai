@@ -1,0 +1,167 @@
+# GoReleaser configuration for automated releases
+# This can be used as an alternative to the GitHub Actions workflow
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: cqlai
+    main: ./cmd/cqlai
+    binary: cqlai
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: cqlai-archive
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ title .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - THIRD-PARTY-LICENSES/*
+      - cqlai.json.example
+
+nfpms:
+  - id: packages
+    package_name: cqlai
+    file_name_template: >-
+      {{ .PackageName }}_
+      {{- .Version }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else if eq .Arch "arm64" }}aarch64
+      {{- else }}{{ .Arch }}{{ end }}
+    vendor: AxonOps
+    homepage: https://github.com/axonops/cqlai
+    maintainer: CQLAI Team <cqlai@axonops.com>
+    description: Modern Cassandra CQL Shell with AI assistance
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+    dependencies:
+      - libc6 # for deb
+      - glibc # for rpm
+    bindir: /usr/bin
+    section: database
+    priority: optional
+    contents:
+      - src: cqlai.json.example
+        dst: /etc/cqlai/cqlai.json.example
+        type: config
+      - src: THIRD-PARTY-LICENSES/
+        dst: /usr/share/doc/cqlai/
+    scripts:
+      postinstall: scripts/post-install.sh
+      preremove: scripts/pre-remove.sh
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+    cmd: gpg
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 2
+    - title: 'Security Updates'
+      regexp: "^.*security[(\\w)]*:+.*$"
+      order: 3
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: axonops
+    name: cqlai
+  name_template: "{{.ProjectName}}-v{{.Version}}"
+  draft: false
+  prerelease: auto
+  mode: append
+  footer: |
+    ## Installation
+    
+    ### Linux (DEB/RPM)
+    Download the appropriate package for your distribution and install:
+    ```bash
+    # Debian/Ubuntu
+    sudo dpkg -i cqlai_{{ .Version }}_x86_64.deb
+    
+    # RHEL/CentOS/Fedora
+    sudo rpm -i cqlai-{{ .Version }}-1.x86_64.rpm
+    ```
+    
+    ### macOS/Linux (Binary)
+    ```bash
+    tar -xzf cqlai_{{ .Version }}_<OS>_<ARCH>.tar.gz
+    sudo mv cqlai /usr/local/bin/
+    ```
+    
+    ### Windows
+    Extract the ZIP file and add the directory to your PATH.
+    
+    ## Verification
+    All artifacts are signed and include checksums for verification.
+    
+    ## Security
+    - ClamAV scanned
+    - SBOM included (SPDX and CycloneDX formats)
+    - Vulnerability scan results available

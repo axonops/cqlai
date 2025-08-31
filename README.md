@@ -113,7 +113,64 @@ cqlai
 
 ## Configuration
 
-`cqlai` can be configured via a JSON file. The application looks for `cqlai.json` in the current directory first, then `~/.cqlai.json` in your home directory.
+CQLAI supports multiple configuration methods for maximum flexibility and compatibility with existing Cassandra setups.
+
+### Configuration Precedence
+
+Configuration sources are loaded in the following order (later sources override earlier ones):
+
+1. **CQLSHRC files** (for compatibility with existing cqlsh setups)
+   - `~/.cassandra/cqlshrc` (standard location)
+   - `~/.cqlshrc` (alternative location)
+   - `$CQLSH_RC` (if environment variable is set)
+
+2. **CQLAI JSON configuration files**
+   - `./cqlai.json` (current directory)
+   - `~/.cqlai.json` (user home directory)
+   - `~/.config/cqlai/config.json` (XDG config directory)
+   - `/etc/cqlai/config.json` (system-wide)
+
+3. **Environment variables**
+   - `CQLAI_HOST`, `CQLAI_PORT`, `CQLAI_KEYSPACE`, etc.
+   - `CASSANDRA_HOST`, `CASSANDRA_PORT` (for compatibility)
+
+4. **Command-line flags** (highest priority)
+   - `--host`, `--port`, `--keyspace`, `--username`, `--password`, etc.
+
+### CQLSHRC Compatibility
+
+CQLAI can read standard CQLSHRC files used by the traditional `cqlsh` tool, making migration seamless.
+
+**Supported CQLSHRC sections:**
+- `[connection]` - hostname, port, ssl settings
+- `[authentication]` - keyspace, credentials file path
+- `[auth_provider]` - authentication module and username
+- `[ssl]` - SSL/TLS certificate configuration
+
+**Example CQLSHRC file:**
+```ini
+; ~/.cassandra/cqlshrc
+[connection]
+hostname = cassandra.example.com
+port = 9042
+ssl = true
+
+[authentication]
+keyspace = my_keyspace
+credentials = ~/.cassandra/credentials
+
+[ssl]
+certfile = ~/certs/ca.pem
+userkey = ~/certs/client-key.pem
+usercert = ~/certs/client-cert.pem
+validate = true
+```
+
+See [CQLSHRC_SUPPORT.md](CQLSHRC_SUPPORT.md) for complete CQLSHRC compatibility details.
+
+### CQLAI JSON Configuration
+
+For advanced features and AI configuration, CQLAI uses its own JSON format:
 
 **Example `cqlai.json`:**
 ```json
@@ -142,7 +199,34 @@ cqlai
 }
 ```
 
-Settings are prioritized in the following order: **Command-line flags > Configuration file**.
+### Configuration File Locations
+
+CQLAI searches for configuration files in the following locations:
+
+**CQLSHRC files:**
+1. `$CQLSH_RC` (if environment variable is set)
+2. `~/.cassandra/cqlshrc` (standard cqlsh location)
+3. `~/.cqlshrc` (alternative location)
+
+**CQLAI JSON files:**
+1. `./cqlai.json` (current working directory)
+2. `~/.cqlai.json` (user home directory)
+3. `~/.config/cqlai/config.json` (XDG config directory on Linux/macOS)
+4. `/etc/cqlai/config.json` (system-wide configuration)
+
+### Environment Variables
+
+Common environment variables:
+- `CQLAI_HOST` or `CASSANDRA_HOST` - Cassandra host
+- `CQLAI_PORT` or `CASSANDRA_PORT` - Cassandra port
+- `CQLAI_KEYSPACE` - Default keyspace
+- `CQLAI_USERNAME` - Authentication username
+- `CQLAI_PASSWORD` - Authentication password
+- `CQLSH_RC` - Path to custom CQLSHRC file
+
+### Migration from cqlsh
+
+If you're migrating from `cqlsh`, CQLAI will automatically read your existing `~/.cassandra/cqlshrc` file. No changes are needed to start using CQLAI with your existing Cassandra configuration.
 
 ## AI-Powered Query Generation
 
@@ -255,3 +339,5 @@ make grammar
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/) directory. To regenerate license attributions, run `make licenses`.
