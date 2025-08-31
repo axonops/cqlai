@@ -31,12 +31,13 @@ type Session struct {
 
 // SessionOptions represents options for creating a session with command-line overrides
 type SessionOptions struct {
-	Host     string
-	Port     int
-	Keyspace string
-	Username string
-	Password string
-	SSL      *config.SSLConfig
+	Host      string
+	Port      int
+	Keyspace  string
+	Username  string
+	Password  string
+	SSL       *config.SSLConfig
+	BatchMode bool // Skip schema caching for batch mode
 }
 
 // NewSession creates a new Cassandra session.
@@ -147,13 +148,17 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		cassandraVersion: releaseVersion,
 	}
 
-	// Initialize schema cache for AI features
-	s.schemaCache = NewSchemaCache(s)
-	if err := s.schemaCache.Refresh(); err != nil {
-		// Log error but don't fail connection - AI features will work without cache
-		logger.DebugfToFile("Session", "Failed to initialize schema cache: %v", err)
+	// Initialize schema cache for AI features (skip in batch mode)
+	if !options.BatchMode {
+		s.schemaCache = NewSchemaCache(s)
+		if err := s.schemaCache.Refresh(); err != nil {
+			// Log error but don't fail connection - AI features will work without cache
+			logger.DebugfToFile("Session", "Failed to initialize schema cache: %v", err)
+		} else {
+			logger.DebugfToFile("Session", "Schema cache initialized with %d keyspaces", len(s.schemaCache.Keyspaces))
+		}
 	} else {
-		logger.DebugfToFile("Session", "Schema cache initialized with %d keyspaces", len(s.schemaCache.Keyspaces))
+		logger.DebugfToFile("Session", "Skipping schema cache initialization in batch mode")
 	}
 
 	return s, nil

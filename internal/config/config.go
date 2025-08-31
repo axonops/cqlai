@@ -18,6 +18,7 @@ type Config struct {
 	Username            string          `json:"username"`
 	Password            string          `json:"password"`
 	RequireConfirmation bool            `json:"requireConfirmation,omitempty"`
+	PageSize            int             `json:"pageSize,omitempty"`
 	SSL                 *SSLConfig      `json:"ssl,omitempty"`
 	AI                  *AIConfig       `json:"ai,omitempty"`
 	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`
@@ -158,6 +159,13 @@ func OverrideWithEnvVars(config *Config) {
 	}
 	if password := os.Getenv("CQLAI_PASSWORD"); password != "" {
 		config.Password = password
+	}
+
+	// Page size setting
+	if pageSize := os.Getenv("CQLAI_PAGE_SIZE"); pageSize != "" {
+		if p, err := strconv.Atoi(pageSize); err == nil && p > 0 {
+			config.PageSize = p
+		}
 	}
 
 	// AI provider settings
