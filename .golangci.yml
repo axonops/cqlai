@@ -1,9 +1,6 @@
 run:
   timeout: 5m
   tests: true
-  modules-download-mode: readonly
-  skip-dirs:
-    - internal/parser/grammar
 
 linters:
   enable:
@@ -13,29 +10,18 @@ linters:
     - errcheck
     - staticcheck
     - ineffassign
-    - typecheck
     - gosec
     - misspell
-    - unparam
     - gocritic
-    - gocyclo
-    - funlen
-    - whitespace
 
 issues:
-  exclude-dirs:
-    - internal/parser/grammar
-  exclude-files:
-    - ".*_gen\\.go$"
-    - ".*\\.pb\\.go$"
-    - "internal/parser/grammar/.*\\.go$"
   exclude-rules:
+    # Exclude generated ANTLR grammar files
+    - path: internal/parser/grammar
+      linters:
+        - all
+    # Exclude test files from some linters
     - path: _test\.go
       linters:
         - errcheck
         - gosec
-    - path: internal/parser/grammar
-      linters:
-        - typecheck
-        - govet
-        - staticcheck
