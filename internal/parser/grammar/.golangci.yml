@@ -1,0 +1,4 @@
+# Skip linting for generated ANTLR files
+run:
+  skip-files:
+    - ".*"
