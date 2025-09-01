@@ -1,6 +1,8 @@
 run:
   timeout: 5m
   tests: true
+  skip-dirs:
+    - internal/parser/grammar
 
 linters:
   enable:
@@ -15,13 +17,5 @@ linters:
     - gocritic
 
 issues:
-  exclude-rules:
-    # Exclude generated ANTLR grammar files
-    - path: internal/parser/grammar
-      linters:
-        - all
-    # Exclude test files from some linters
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosec
+  exclude-dirs:
+    - internal/parser/grammar
