@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/router"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -52,6 +53,17 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				// Load the next page
 				newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
 				if newRows > 0 {
+					// Write uncaptured rows to capture file if capturing
+					metaHandler := router.GetMetaHandler()
+					if metaHandler != nil && metaHandler.IsCapturing() {
+						uncapturedRows := m.slidingWindow.GetUncapturedRows()
+						if len(uncapturedRows) > 0 {
+							// Use AppendCaptureRows for continuation data
+							_ = metaHandler.AppendCaptureRows(uncapturedRows)
+							m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
+						}
+					}
+
 					// Update the table data and refresh the view
 					allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
 					m.lastTableData = allData
@@ -223,6 +235,18 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 						// Load the next page
 						newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
 						if newRows > 0 {
+							// Write uncaptured rows to capture file if capturing
+							metaHandler := router.GetMetaHandler()
+							if metaHandler != nil && metaHandler.IsCapturing() {
+								uncapturedRows := m.slidingWindow.GetUncapturedRows()
+								if len(uncapturedRows) > 0 {
+									// Note: WriteCaptureResult expects the command as first param,
+									// but for paged data we use empty string since it's continuation
+									_ = metaHandler.WriteCaptureResult("", m.slidingWindow.Headers, uncapturedRows)
+									m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
+								}
+							}
+
 							// Update the table data and refresh the view
 							allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
 							m.lastTableData = allData

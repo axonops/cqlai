@@ -1,0 +1,5 @@
+
+> capture output.txt; desc table system_schema.columns;
+--------------------------------------------------
+Now capturing query output to output.txt; desc table system_schema.columns (format: text). Use 'CAPTURE OFF' to stop.
+

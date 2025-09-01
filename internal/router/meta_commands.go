@@ -447,6 +447,75 @@ func (h *MetaCommandHandler) WriteToCapture(data string) error {
 	return nil
 }
 
+// WriteCaptureText writes text output (like DESCRIBE results) to the capture file
+func (h *MetaCommandHandler) WriteCaptureText(command string, output string) error {
+	if h.captureOutput == nil {
+		return nil
+	}
+
+	switch h.captureFormat {
+	case "csv":
+		// For CSV format, write as a single column with the output
+		// Write command as comment
+		_ = h.csvWriter.Write([]string{"# Command: " + command})
+		
+		// Split output by lines and write each as a row
+		lines := strings.Split(output, "\n")
+		for _, line := range lines {
+			if err := h.csvWriter.Write([]string{line}); err != nil {
+				return err
+			}
+		}
+		
+		// Add empty row to separate commands
+		_ = h.csvWriter.Write([]string{})
+		
+		// Flush to ensure data is written
+		h.csvWriter.Flush()
+		return h.csvWriter.Error()
+
+	case "json":
+		// For JSON format, create a text result object
+		type TextResult struct {
+			Command string `json:"command"`
+			Output  string `json:"output"`
+			Type    string `json:"type"`
+		}
+
+		result := TextResult{
+			Command: command,
+			Output:  output,
+			Type:    "text",
+		}
+
+		jsonBytes, err := json.MarshalIndent(result, "  ", "  ")
+		if err != nil {
+			return err
+		}
+
+		// Check if this is the first entry
+		info, _ := h.captureOutput.Stat()
+		if info.Size() > 2 { // More than just "[\n"
+			_, _ = h.captureOutput.WriteString(",\n")
+		}
+		_, _ = h.captureOutput.WriteString("  ")
+		_, _ = h.captureOutput.Write(jsonBytes)
+
+	default:
+		// Text format - write the command and output
+		_, _ = fmt.Fprintf(h.captureOutput, "\n> %s\n", command)
+		_, _ = h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
+		_, _ = h.captureOutput.WriteString(output)
+		if !strings.HasSuffix(output, "\n") {
+			_, _ = h.captureOutput.WriteString("\n")
+		}
+		// Add just a blank line for separation
+		_, _ = h.captureOutput.WriteString("\n")
+	}
+
+	return nil
+}
+
 // FormatResultAsJSON formats query results as JSON
 func FormatResultAsJSON(headers []string, rows [][]string) (string, error) {
 	type QueryResult struct {
@@ -488,6 +557,40 @@ func FormatResultAsJSON(headers []string, rows [][]string) (string, error) {
 	}
 
 	return string(jsonBytes), nil
+}
+
+// AppendCaptureRows appends additional rows to the capture file (for paging)
+func (h *MetaCommandHandler) AppendCaptureRows(rows [][]string) error {
+	if h.captureOutput == nil {
+		return nil
+	}
+
+	switch h.captureFormat {
+	case "csv":
+		// Write data rows only (no headers for continuation)
+		for _, row := range rows {
+			if err := h.csvWriter.Write(row); err != nil {
+				return err
+			}
+		}
+		// Flush to ensure data is written
+		h.csvWriter.Flush()
+		return h.csvWriter.Error()
+
+	case "json":
+		// For JSON, we can't easily append to an existing object
+		// So we'll skip continuation rows in JSON format
+		// This maintains valid JSON structure
+		return nil
+
+	default:
+		// Text format - just append the rows, no command header
+		for _, row := range rows {
+			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
+		}
+	}
+
+	return nil
 }
 
 // WriteCaptureResult writes query results to the capture file
@@ -583,7 +686,8 @@ func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string
 			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
 		}
 
-		_, _ = fmt.Fprintf(h.captureOutput, "\n(%d rows)\n\n", len(rows))
+		// Add just a blank line for separation, no row count
+		_, _ = h.captureOutput.WriteString("\n")
 	}
 
 	return nil

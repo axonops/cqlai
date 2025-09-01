@@ -27,8 +27,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			m.input.Reset()
 
 			// Add cancellation message to history
-			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("Command cancelled.")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Command cancelled.")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			return m, nil
 		}
@@ -130,8 +130,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			m.input.Reset()
 
 			// Add cancellation message to history
-			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("Multi-line mode cancelled.")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Multi-line mode cancelled.")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			return m, nil
 		}
@@ -157,8 +157,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			m.input.Reset()
 
 			// Add cancellation message to history
-			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("Command cancelled.")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Command cancelled.")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			return m, nil
 		}

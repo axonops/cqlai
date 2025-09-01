@@ -32,6 +32,9 @@ type SlidingWindowTable struct {
 	// Indicators for UI
 	DataDroppedAtStart bool // True if we've dropped rows from the beginning
 	DataAvailableAtEnd bool // True if more data can be loaded
+	
+	// Capture tracking
+	LastCapturedRow int64 // Index of the last row written to capture file
 }
 
 // NewSlidingWindowTable creates a new sliding window table
@@ -226,6 +229,37 @@ func (swt *SlidingWindowTable) LoadMoreRows(maxRows int) int {
 	return loadedRows
 }
 
+// GetUncapturedRows returns rows that haven't been written to capture file yet
+func (swt *SlidingWindowTable) GetUncapturedRows() [][]string {
+	if swt.LastCapturedRow >= swt.TotalRowsSeen {
+		// All rows have been captured
+		return nil
+	}
+	
+	// Calculate how many uncaptured rows we have
+	startIdx := swt.LastCapturedRow - swt.FirstRowIndex
+	if startIdx < 0 {
+		// All current rows are uncaptured
+		return swt.Rows
+	}
+	
+	if startIdx >= int64(len(swt.Rows)) {
+		// No uncaptured rows in current window
+		return nil
+	}
+	
+	// Return the uncaptured portion
+	return swt.Rows[startIdx:]
+}
+
+// MarkRowsAsCaptured updates the last captured row index
+func (swt *SlidingWindowTable) MarkRowsAsCaptured(count int) {
+	swt.LastCapturedRow += int64(count)
+	if swt.LastCapturedRow > swt.TotalRowsSeen {
+		swt.LastCapturedRow = swt.TotalRowsSeen
+	}
+}
+
 // Reset clears the sliding window
 func (swt *SlidingWindowTable) Reset() {
 	swt.Rows = make([][]string, 0)
@@ -236,4 +270,5 @@ func (swt *SlidingWindowTable) Reset() {
 	swt.DataAvailableAtEnd = false
 	swt.iterator = nil
 	swt.hasMoreData = false
+	swt.LastCapturedRow = 0
 }
