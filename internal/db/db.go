@@ -27,6 +27,7 @@ type Session struct {
 	tracing          bool
 	cassandraVersion string
 	schemaCache      *SchemaCache
+	lastTraceID      []byte // Store the last trace ID for retrieval
 }
 
 // SessionOptions represents options for creating a session with command-line overrides
@@ -281,8 +282,7 @@ func (s *Session) Query(stmt string, values ...interface{}) *gocql.Query {
 	query := s.Session.Query(stmt, values...)
 	query.Consistency(s.consistency)
 	query.PageSize(s.pageSize)
-	// Note: Tracing would be enabled per query with query.Observer()
-	// For now, we'll handle tracing display separately
+	// Tracing will be handled in ExecuteSelectQuery when needed
 	return query
 }
 
@@ -314,6 +314,95 @@ func (s *Session) IsVersion4OrHigher() bool {
 // GetSchemaCache returns the schema cache
 func (s *Session) GetSchemaCache() *SchemaCache {
 	return s.schemaCache
+}
+
+// TraceInfo holds trace session summary information
+type TraceInfo struct {
+	Coordinator string
+	Duration    int
+}
+
+// GetTraceData retrieves trace data for the last executed query
+func (s *Session) GetTraceData() ([][]string, []string, *TraceInfo, error) {
+	if s.lastTraceID == nil {
+		return nil, nil, nil, fmt.Errorf("no trace data available")
+	}
+
+	// Query the system_traces.events table for trace events
+	query := `SELECT event_id, activity, source, source_elapsed, thread 
+	          FROM system_traces.events 
+	          WHERE session_id = ? 
+	          ORDER BY event_id`
+
+	iter := s.Query(query, s.lastTraceID).Iter()
+	defer iter.Close()
+
+	// Define headers
+	headers := []string{"Event", "Activity", "Source", "Source Elapsed (μs)", "Thread"}
+
+	// Collect results
+	var results [][]string
+
+	var eventID gocql.UUID
+	var activity, source, thread string
+	var sourceElapsed int
+
+	for iter.Scan(&eventID, &activity, &source, &sourceElapsed, &thread) {
+		row := []string{
+			eventID.String()[:8], // Short event ID
+			activity,
+			source,
+			fmt.Sprintf("%d", sourceElapsed),
+			thread,
+		}
+		results = append(results, row)
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to retrieve trace data: %v", err)
+	}
+
+	// Get session info
+	var traceInfo *TraceInfo
+	var coordinator string
+	var duration int
+	sessionIter := s.Query(`SELECT coordinator, duration 
+	                                FROM system_traces.sessions 
+	                                WHERE session_id = ?`, s.lastTraceID).Iter()
+	if sessionIter.Scan(&coordinator, &duration) {
+		traceInfo = &TraceInfo{
+			Coordinator: coordinator,
+			Duration:    duration,
+		}
+	}
+	_ = sessionIter.Close()
+
+	return results, headers, traceInfo, nil
+}
+
+// SetKeyspace changes the current keyspace by recreating the session
+func (s *Session) SetKeyspace(keyspace string) error {
+	// Close the current session
+	s.Close()
+
+	// Update cluster config with new keyspace
+	s.cluster.Keyspace = keyspace
+
+	// Create new session with the new keyspace
+	newSession, err := s.cluster.CreateSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session with keyspace %s: %w", keyspace, err)
+	}
+
+	// Update the session
+	s.Session = newSession
+
+	// Reinitialize schema cache for the new keyspace
+	if s.schemaCache != nil {
+		s.schemaCache = NewSchemaCache(s)
+	}
+
+	return nil
 }
 
 // createTLSConfig creates a TLS configuration based on the SSL settings

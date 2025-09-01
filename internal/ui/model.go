@@ -92,9 +92,19 @@ type MainModel struct {
 	tableHeaders             []string            // Store column headers for sticky display
 	columnWidths             []int               // Store column widths for proper alignment
 	hasTable                 bool                // Whether we're currently displaying a table
-	viewMode                 string              // "history" or "table"
+	viewMode                 string              // "history", "table", or "trace"
 	showDataTypes            bool                // Whether to show column data types in table headers
 	columnTypes              []string            // Store column data types
+	
+	// Tracing support
+	traceViewport            viewport.Model      // Viewport for trace results
+	hasTrace                 bool                // Whether we have trace data to display
+	traceData                [][]string          // Store trace results
+	traceHeaders             []string            // Store trace column headers
+	traceInfo                *db.TraceInfo       // Store trace session info
+	traceHorizontalOffset    int                 // Horizontal scroll offset for trace table
+	traceTableWidth          int                 // Full width of trace table
+	traceColumnWidths        []int               // Column widths for trace table
 
 	// Sliding window for large result sets
 	slidingWindow *SlidingWindowTable // Manages memory-limited table data
@@ -233,6 +243,9 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		columnWidths:              nil,
 		hasTable:                  false,
 		viewMode:                  "history",
+		hasTrace:                  false,
+		traceData:                 nil,
+		traceHeaders:              nil,
 		historyManager:            historyManager,
 		historySearchMode:         false,
 		historySearchQuery:        "",
@@ -261,6 +274,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Initialize viewports
 			m.historyViewport = viewport.New(newWidth, newHeight)
 			m.tableViewport = viewport.New(newWidth, newHeight)
+			m.traceViewport = viewport.New(newWidth, newHeight)
 			welcomeMsg := m.getWelcomeMessage()
 			m.fullHistoryContent = welcomeMsg
 			m.historyViewport.SetContent(welcomeMsg)
@@ -271,6 +285,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.historyViewport.Height = newHeight
 			m.tableViewport.Width = newWidth
 			m.tableViewport.Height = newHeight
+			m.traceViewport.Width = newWidth
+			m.traceViewport.Height = newHeight
 		}
 
 		m.input.Width = newWidth
@@ -413,9 +429,12 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		var vpCmd tea.Cmd
 		// Update the appropriate viewport based on mode
-		if m.viewMode == "table" && m.hasTable {
+		switch {
+		case m.viewMode == "trace" && m.hasTrace:
+			m.traceViewport, vpCmd = m.traceViewport.Update(msg)
+		case m.viewMode == "table" && m.hasTable:
 			m.tableViewport, vpCmd = m.tableViewport.Update(msg)
-		} else {
+		default:
 			m.historyViewport, vpCmd = m.historyViewport.Update(msg)
 		}
 		m.input, _ = m.input.Update(msg)

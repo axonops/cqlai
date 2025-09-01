@@ -11,6 +11,15 @@ import (
 	"github.com/axonops/cqlai/internal/logger"
 )
 
+// captureTracer implements gocql.Tracer to capture trace IDs
+type captureTracer struct {
+	traceID []byte
+}
+
+func (t *captureTracer) Trace(traceID []byte) {
+	t.traceID = traceID
+}
+
 // ExecuteCQLQuery executes a regular CQL query
 func (s *Session) ExecuteCQLQuery(query string) interface{} {
 	logger.DebugfToFile("ExecuteCQLQuery", "Called with query: %s", query)
@@ -19,11 +28,11 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 		return fmt.Errorf("not connected to database")
 	}
 
-	// Check if it's a SELECT or DESCRIBE query (DESCRIBE returns results in 4.0+)
+	// Check if it's a query that returns results
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
 	switch {
-	case strings.HasPrefix(upperQuery, "SELECT") || strings.HasPrefix(upperQuery, "DESCRIBE"):
-		logger.DebugToFile("ExecuteCQLQuery", "Routing to ExecuteSelectQuery for SELECT/DESCRIBE")
+	case strings.HasPrefix(upperQuery, "SELECT") || strings.HasPrefix(upperQuery, "DESCRIBE") || strings.HasPrefix(upperQuery, "LIST"):
+		logger.DebugToFile("ExecuteCQLQuery", "Routing to ExecuteSelectQuery for query that returns results")
 		return s.ExecuteSelectQuery(query)
 	case strings.HasPrefix(upperQuery, "USE "):
 		// Handle USE statement - gocql doesn't support USE directly
@@ -77,7 +86,22 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Track query execution time
 	startTime := time.Now()
 
-	iter := s.Query(query).Iter()
+	// Create the query
+	q := s.Query(query)
+	
+	// Enable tracing if needed and capture trace ID
+	if s.tracing {
+		tracer := &captureTracer{}
+		q = q.Trace(tracer)
+		defer func() {
+			// Store the trace ID for later retrieval
+			if tracer.traceID != nil {
+				s.lastTraceID = tracer.traceID
+			}
+		}()
+	}
+
+	iter := q.Iter()
 
 	// Check for connection errors early
 	if err := iter.Close(); err != nil {

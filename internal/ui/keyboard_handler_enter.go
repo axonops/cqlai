@@ -389,7 +389,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					m.horizontalOffset = 0    // Reset horizontal scroll
 
 					// Format as expanded vertical table
-					expandStr := FormatExpandTable(allData)
+					expandStr := FormatExpandTable(allData, m.styles)
 					m.tableViewport.SetContent(expandStr)
 					m.tableViewport.GotoTop()
 				case config.OutputFormatASCII:
@@ -478,7 +478,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						m.hasTable = false
 					case config.OutputFormatExpand:
 						// Format as expanded vertical table in the UI layer
-						expandOutput := FormatExpandTable(v.Data)
+						expandOutput := FormatExpandTable(v.Data, m.styles)
 						// Display expanded output in history viewport
 						m.fullHistoryContent += "\n" + expandOutput
 						m.historyViewport.SetContent(m.fullHistoryContent)
@@ -558,8 +558,18 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				if strings.HasPrefix(v, "Now using keyspace ") {
 					// Extract keyspace name and update session manager
 					keyspace := strings.TrimPrefix(v, "Now using keyspace ")
+					keyspace = strings.TrimSpace(keyspace)
 					if m.sessionManager != nil {
 						m.sessionManager.SetKeyspace(keyspace)
+						// Update the status bar
+						m.statusBar.Keyspace = keyspace
+					}
+					// Update the database session's keyspace
+					if m.session != nil {
+						if err := m.session.SetKeyspace(keyspace); err != nil {
+							// Log error but don't fail - the keyspace change was already successful on the server
+							logger.DebugfToFile("keyboard_handler_enter", "Failed to update session keyspace: %v", err)
+						}
 					}
 				}
 				// Text result - add to history
@@ -634,6 +644,66 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	if !executeAICommand {
 		inputText := m.input.Value()
 		command = strings.TrimSpace(inputText)
+		
+		// Check if this is just a comment line
+		if strings.HasPrefix(command, "--") || strings.HasPrefix(command, "//") {
+			// This is a line comment, process it as complete
+			// The router will strip it and return empty result
+			m.input.Reset()
+			// Add to history to show it was entered
+			m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+			m.historyViewport.SetContent(m.fullHistoryContent)
+			m.historyViewport.GotoBottom()
+			// Process the comment (router will strip it)
+			_ = router.ProcessCommand(command, m.session)
+			return m, nil
+		}
+		
+		// Check for block comment handling
+		if strings.HasPrefix(command, "/*") {
+			// Starting a block comment
+			if strings.Contains(command, "*/") {
+				// Single-line block comment - complete
+				m.input.Reset()
+				m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+				m.historyViewport.SetContent(m.fullHistoryContent)
+				m.historyViewport.GotoBottom()
+				_ = router.ProcessCommand(command, m.session)
+				return m, nil
+			} else if !m.multiLineMode {
+				// Multi-line block comment - enter special mode
+				m.multiLineMode = true
+				m.multiLineBuffer = []string{command}
+				m.input.Placeholder = "... (in block comment, end with */)"
+				m.input.Reset()
+				return m, nil
+			}
+		}
+		
+		// If we're in multi-line mode and this ends a block comment
+		if m.multiLineMode && len(m.multiLineBuffer) > 0 {
+			if strings.HasPrefix(m.multiLineBuffer[0], "/*") && strings.Contains(command, "*/") {
+				// End of multi-line block comment
+				m.multiLineBuffer = append(m.multiLineBuffer, command)
+				fullComment := strings.Join(m.multiLineBuffer, "\n")
+				m.multiLineMode = false
+				m.multiLineBuffer = nil
+				m.input.Placeholder = "Enter CQL command..."
+				m.input.Reset()
+				
+				// Add to history
+				for _, line := range strings.Split(fullComment, "\n") {
+					m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+line)
+				}
+				m.historyViewport.SetContent(m.fullHistoryContent)
+				m.historyViewport.GotoBottom()
+				
+				// Process (will be stripped as comment)
+				_ = router.ProcessCommand(fullComment, m.session)
+				return m, nil
+			}
+		}
+		
 		if command == "" && !m.multiLineMode {
 			return m, nil
 		}
@@ -741,6 +811,70 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
 	m.historyViewport.SetContent(m.fullHistoryContent)
 	m.historyViewport.GotoBottom()
+	
+	// Capture trace data if tracing is enabled and this was a query that returns results
+	upperCmd := strings.ToUpper(strings.TrimSpace(command))
+	if m.session != nil && m.session.Tracing() && 
+	   (strings.HasPrefix(upperCmd, "SELECT") || 
+	    strings.HasPrefix(upperCmd, "LIST") || 
+	    strings.HasPrefix(upperCmd, "DESCRIBE") ||
+	    strings.HasPrefix(upperCmd, "DESC")) {
+		// Give Cassandra a moment to write trace data
+		time.Sleep(50 * time.Millisecond)
+		
+		// Retrieve trace data
+		traceData, traceHeaders, traceInfo, err := m.session.GetTraceData()
+		if err == nil && len(traceData) > 0 {
+			// Add summary info as a header to the trace content
+			summaryLine := ""
+			if traceInfo != nil {
+				summaryLine = fmt.Sprintf("Trace Session - Coordinator: %s | Total Duration: %d μs\n",
+					traceInfo.Coordinator, traceInfo.Duration)
+			}
+			
+			// Combine headers and data into a single table structure
+			fullTraceData := make([][]string, 0, len(traceData)+1)
+			fullTraceData = append(fullTraceData, traceHeaders)
+			fullTraceData = append(fullTraceData, traceData...)
+			
+			// Store trace data for refreshing
+			m.traceData = fullTraceData
+			m.traceHeaders = traceHeaders
+			m.traceInfo = traceInfo
+			m.hasTrace = true
+			m.traceHorizontalOffset = 0 // Reset horizontal scroll
+			
+			// Use the existing formatTableForViewport method temporarily storing the offset
+			originalOffset := m.horizontalOffset
+			originalData := m.lastTableData
+			originalWidth := m.tableWidth
+			originalHeaders := m.tableHeaders
+			originalColWidths := m.columnWidths
+			
+			// Set trace data temporarily
+			m.horizontalOffset = m.traceHorizontalOffset
+			m.lastTableData = fullTraceData
+			
+			// Format using existing table renderer
+			traceTable := m.formatTableForViewport(fullTraceData)
+			
+			// Store trace-specific values
+			m.traceTableWidth = m.tableWidth
+			m.traceColumnWidths = m.columnWidths
+			
+			// Restore original table values
+			m.horizontalOffset = originalOffset
+			m.lastTableData = originalData
+			m.tableWidth = originalWidth
+			m.tableHeaders = originalHeaders
+			m.columnWidths = originalColWidths
+			
+			// Prepend summary line to the table
+			finalContent := summaryLine + traceTable
+			m.traceViewport.SetContent(finalContent)
+			m.traceViewport.GotoTop()
+		}
+	}
 
 	// Handle different result types
 	logger.DebugfToFile("HandleEnterKey", "Result type (2nd location): %T", result)
@@ -849,7 +983,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		case config.OutputFormatExpand:
 			// Format as expanded vertical table
 			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
-			expandOutput := FormatExpandTable(allData)
+			expandOutput := FormatExpandTable(allData, m.styles)
 
 			// Add note if there's more data
 			if m.slidingWindow.hasMoreData {
@@ -945,7 +1079,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				m.hasTable = false
 			case config.OutputFormatExpand:
 				// Format as expanded vertical table in the UI layer
-				expandOutput := FormatExpandTable(v.Data)
+				expandOutput := FormatExpandTable(v.Data, m.styles)
 				// Display expanded output in history viewport
 				m.fullHistoryContent += "\n" + expandOutput
 				m.historyViewport.SetContent(m.fullHistoryContent)
@@ -1010,6 +1144,28 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		m.viewMode = "history"
 		// Clear query metadata from top bar
 		m.topBar.HasQueryData = false
+		
+		// Check if this is a USE command result and update the keyspace
+		if strings.HasPrefix(v, "Now using keyspace ") {
+			// Extract the keyspace name
+			keyspaceName := strings.TrimPrefix(v, "Now using keyspace ")
+			keyspaceName = strings.TrimSpace(keyspaceName)
+			
+			// Update the session manager and database session
+			if m.sessionManager != nil {
+				m.sessionManager.SetKeyspace(keyspaceName)
+				// Update the status bar
+				m.statusBar.Keyspace = keyspaceName
+			}
+			// Update the database session's keyspace
+			if m.session != nil {
+				if err := m.session.SetKeyspace(keyspaceName); err != nil {
+					// Log error but don't fail - the keyspace change was already successful on the server
+					logger.DebugfToFile("keyboard_handler_enter", "Failed to update session keyspace: %v", err)
+				}
+			}
+		}
+		
 		// Wrap long lines to prevent truncation
 		wrappedResult := wrapLongLines(v, m.historyViewport.Width)
 		

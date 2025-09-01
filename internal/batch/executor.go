@@ -15,6 +15,7 @@ import (
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/router"
+	"github.com/axonops/cqlai/internal/session"
 	"github.com/axonops/cqlai/internal/ui"
 )
 
@@ -42,9 +43,10 @@ type Options struct {
 
 // Executor handles batch mode execution
 type Executor struct {
-	session *db.Session
-	options *Options
-	writer  io.Writer
+	session        *db.Session
+	sessionManager *session.Manager
+	options        *Options
+	writer         io.Writer
 }
 
 // NewExecutor creates a new batch executor
@@ -84,7 +86,7 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		options.PageSize = 100
 	}
 
-	session, err := db.NewSessionWithOptions(db.SessionOptions{
+	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{
 		Host:      cfg.Host,
 		Port:      cfg.Port,
 		Keyspace:  cfg.Keyspace,
@@ -97,10 +99,20 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)
 	}
 
+	// Create session manager for tracking keyspace changes
+	sessionMgr := session.NewManager(cfg)
+	if cfg.Keyspace != "" {
+		sessionMgr.SetKeyspace(cfg.Keyspace)
+	}
+	
+	// Initialize router with session manager
+	router.InitRouter(sessionMgr)
+
 	return &Executor{
-		session: session,
-		options: options,
-		writer:  writer,
+		session:        dbSession,
+		sessionManager: sessionMgr,
+		options:        options,
+		writer:         writer,
 	}, nil
 }
 
@@ -137,6 +149,22 @@ func (e *Executor) Execute(cql string) error {
 	case [][]string:
 		return e.outputTable(v)
 	case string:
+		// Check if this is a USE command result and update the keyspace
+		if strings.HasPrefix(v, "Now using keyspace ") {
+			// Extract the keyspace name
+			keyspaceName := strings.TrimPrefix(v, "Now using keyspace ")
+			keyspaceName = strings.TrimSpace(keyspaceName)
+			
+			// Update the session manager
+			if e.sessionManager != nil {
+				e.sessionManager.SetKeyspace(keyspaceName)
+			}
+			
+			// Update the database session's keyspace
+			if err := e.session.SetKeyspace(keyspaceName); err != nil {
+				return fmt.Errorf("failed to change keyspace: %w", err)
+			}
+		}
 		fmt.Fprintln(e.writer, v)
 		return nil
 	case error:
@@ -144,6 +172,133 @@ func (e *Executor) Execute(cql string) error {
 	default:
 		return nil
 	}
+}
+
+// stripComments removes SQL-style comments from CQL statements while preserving newlines
+func stripComments(input string) string {
+	var result strings.Builder
+	lines := strings.Split(input, "\n")
+	
+	inBlockComment := false
+	for _, line := range lines {
+		// Handle block comments /* ... */
+		for {
+			if inBlockComment {
+				endIdx := strings.Index(line, "*/")
+				if endIdx >= 0 {
+					line = line[endIdx+2:]
+					inBlockComment = false
+				} else {
+					// Entire line is within block comment
+					line = ""
+					break
+				}
+			}
+			
+			startIdx := strings.Index(line, "/*")
+			if startIdx >= 0 {
+				endIdx := strings.Index(line[startIdx:], "*/")
+				if endIdx >= 0 {
+					// Block comment on same line
+					line = line[:startIdx] + line[startIdx+endIdx+2:]
+				} else {
+					// Block comment starts but doesn't end on this line
+					line = line[:startIdx]
+					inBlockComment = true
+					break
+				}
+			} else {
+				break
+			}
+		}
+		
+		// Handle line comments -- and //
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			line = line[:idx]
+		}
+		if idx := strings.Index(line, "//"); idx >= 0 {
+			line = line[:idx]
+		}
+		
+		// Trim trailing whitespace but preserve the line structure
+		line = strings.TrimRight(line, " \t\r")
+		
+		// Add the line (even if empty) to preserve line breaks
+		if result.Len() > 0 {
+			result.WriteString("\n")
+		}
+		result.WriteString(line)
+	}
+	
+	return result.String()
+}
+
+// splitStatements intelligently splits CQL statements, handling BATCH blocks
+func splitStatements(content string) []string {
+	var statements []string
+	var currentStmt strings.Builder
+	
+	// Track if we're inside a BATCH statement
+	inBatch := false
+	
+	// Track if we're accumulating a non-empty statement
+	hasContent := false
+	
+	// Process line by line to handle BATCH blocks and regular statements
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		
+		// Skip empty lines unless we're in a batch
+		if trimmedLine == "" && !inBatch && !hasContent {
+			continue
+		}
+		
+		upperLine := strings.ToUpper(trimmedLine)
+		
+		// Check for BATCH start
+		if strings.HasPrefix(upperLine, "BEGIN BATCH") || 
+		   strings.HasPrefix(upperLine, "BEGIN UNLOGGED BATCH") ||
+		   strings.HasPrefix(upperLine, "BEGIN COUNTER BATCH") {
+			inBatch = true
+		}
+		
+		// Add line to current statement
+		if currentStmt.Len() > 0 && trimmedLine != "" {
+			currentStmt.WriteString(" ")
+		}
+		if trimmedLine != "" {
+			currentStmt.WriteString(trimmedLine)
+			hasContent = true
+		}
+		
+		// Check for statement end
+		if strings.HasSuffix(trimmedLine, ";") && hasContent {
+			if inBatch {
+				// Check if this ends the batch
+				if strings.HasPrefix(upperLine, "APPLY BATCH") {
+					inBatch = false
+					// Complete batch statement
+					statements = append(statements, currentStmt.String())
+					currentStmt.Reset()
+					hasContent = false
+				}
+				// Otherwise, continue accumulating the batch
+			} else {
+				// Regular statement ended
+				statements = append(statements, currentStmt.String())
+				currentStmt.Reset()
+				hasContent = false
+			}
+		}
+	}
+	
+	// Add any remaining statement
+	if currentStmt.Len() > 0 && hasContent {
+		statements = append(statements, currentStmt.String())
+	}
+	
+	return statements
 }
 
 // ExecuteFile executes CQL from a file
@@ -159,23 +314,31 @@ func (e *Executor) ExecuteFile(filename string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Split by semicolon to handle multiple statements
-	statements := strings.Split(string(content), ";")
-	for _, stmt := range statements {
+	// Strip comments before processing
+	cleanContent := stripComments(string(content))
+	
+	// Split statements intelligently (handling BATCH blocks)
+	statements := splitStatements(cleanContent)
+	
+	// Debug: log the number of statements found
+	if len(statements) == 1 && len(statements[0]) > 1000 {
+		// Likely the entire file was treated as one statement
+		fmt.Fprintf(os.Stderr, "Warning: Found only 1 very large statement (%d chars). Statement splitting may have failed.\n", len(statements[0]))
+		previewLen := 200
+		if len(statements[0]) < previewLen {
+			previewLen = len(statements[0])
+		}
+		fmt.Fprintf(os.Stderr, "First %d chars: %s...\n", previewLen, statements[0][:previewLen])
+	}
+	
+	for i, stmt := range statements {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue
 		}
-		
-		// Add back the semicolon for CQL statements
-		if !strings.HasPrefix(strings.ToUpper(stmt), "DESCRIBE") &&
-			!strings.HasPrefix(strings.ToUpper(stmt), "CONSISTENCY") &&
-			!strings.HasPrefix(strings.ToUpper(stmt), "SHOW") {
-			stmt += ";"
-		}
 
 		if err := e.Execute(stmt); err != nil {
-			return fmt.Errorf("error executing statement: %w", err)
+			return fmt.Errorf("error executing statement %d: %w", i+1, err)
 		}
 	}
 
@@ -186,27 +349,63 @@ func (e *Executor) ExecuteFile(filename string) error {
 func (e *Executor) ExecuteStdin() error {
 	scanner := bufio.NewScanner(os.Stdin)
 	var buffer strings.Builder
+	inBatch := false
 	
 	for scanner.Scan() {
 		line := scanner.Text()
+		trimmedLine := strings.TrimSpace(line)
+		upperLine := strings.ToUpper(trimmedLine)
+		
+		// Check for BATCH start
+		if strings.HasPrefix(upperLine, "BEGIN BATCH") || 
+		   strings.HasPrefix(upperLine, "BEGIN UNLOGGED BATCH") ||
+		   strings.HasPrefix(upperLine, "BEGIN COUNTER BATCH") {
+			inBatch = true
+		}
+		
 		buffer.WriteString(line)
 		buffer.WriteString("\n")
 		
 		// Check if we have a complete statement
-		if strings.HasSuffix(strings.TrimSpace(line), ";") {
-			stmt := strings.TrimSpace(buffer.String())
-			if stmt != "" {
-				if err := e.Execute(stmt); err != nil {
-					return err
+		if strings.HasSuffix(trimmedLine, ";") {
+			if inBatch {
+				// Check if this ends the batch
+				if strings.HasPrefix(upperLine, "APPLY BATCH") {
+					inBatch = false
+					stmt := strings.TrimSpace(buffer.String())
+					// Strip comments before executing
+					stmt = stripComments(stmt)
+					stmt = strings.TrimSpace(stmt)
+					if stmt != "" {
+						if err := e.Execute(stmt); err != nil {
+							return err
+						}
+					}
+					buffer.Reset()
 				}
+				// Otherwise, continue accumulating the batch
+			} else {
+				// Regular statement ended
+				stmt := strings.TrimSpace(buffer.String())
+				// Strip comments before executing
+				stmt = stripComments(stmt)
+				stmt = strings.TrimSpace(stmt)
+				if stmt != "" {
+					if err := e.Execute(stmt); err != nil {
+						return err
+					}
+				}
+				buffer.Reset()
 			}
-			buffer.Reset()
 		}
 	}
 
 	// Execute any remaining statement
 	if buffer.Len() > 0 {
 		stmt := strings.TrimSpace(buffer.String())
+		// Strip comments before executing
+		stmt = stripComments(stmt)
+		stmt = strings.TrimSpace(stmt)
 		if stmt != "" {
 			return e.Execute(stmt)
 		}

@@ -16,6 +16,7 @@ type StatusBarModel struct {
 	Consistency  string
 	PagingSize   int
 	Tracing      bool
+	HasTraceData bool // Whether trace data is available to view
 	Keyspace     string
 	Version      string
 	OutputFormat string
@@ -35,55 +36,59 @@ func NewStatusBarModel() StatusBarModel {
 }
 
 // View renders the status bar.
-func (m StatusBarModel) View(width int, styles *Styles) string {
+func (m StatusBarModel) View(width int, styles *Styles, currentView string) string {
 	// Define component styles
 	labelStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#888888"))
-	
+
 	keyspaceStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF87FF")).
 		Bold(true)
-	
+
 	hostStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#87D7FF"))
-	
+
 	consistencyStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFD787"))
-	
+
 	pageStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#87FFD7"))
-	
+
 	tracingOnStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF5F5F")).
 		Bold(true)
-	
+
 	tracingOffStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#5F5F5F"))
-	
+
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
+
+	traceDataStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#87AFFF")).
+		Bold(true)
 
 	// Format values
 	keyspaceDisplay := m.Keyspace
 	if keyspaceDisplay == "" {
 		keyspaceDisplay = "(none)"
 	}
-	
+
 	tracingState := "OFF"
 	tracingStyle := tracingOffStyle
 	if m.Tracing {
 		tracingState = "ON"
 		tracingStyle = tracingOnStyle
 	}
-	
+
 	// Version style
 	versionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#B8B8B8"))
-	
+
 	// Format style
 	formatStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#87AFFF"))
-	
+
 	// Build the status text with colors
 	statusText := labelStyle.Render("KS: ") + keyspaceStyle.Render(keyspaceDisplay) +
 		separatorStyle.Render(" │ ") +
@@ -98,11 +103,17 @@ func (m StatusBarModel) View(width int, styles *Styles) string {
 		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState) +
 		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Output: ") + formatStyle.Render(m.OutputFormat)
-	
+
 	// Add version if available
 	if m.Version != "" {
 		statusText += separatorStyle.Render(" │ ") +
 			labelStyle.Render("v") + versionStyle.Render(m.Version)
+	}
+
+	// Add trace data indicator if available and not in trace view
+	if m.HasTraceData && currentView != "trace" {
+		statusText += separatorStyle.Render(" │ ") +
+			traceDataStyle.Render("[F4: View Trace]")
 	}
 
 	// Apply background style to the entire bar

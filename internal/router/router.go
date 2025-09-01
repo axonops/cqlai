@@ -26,6 +26,36 @@ func GetMetaHandler() *MetaCommandHandler {
 	return metaHandler
 }
 
+// stripComments removes SQL-style comments from a command
+func stripComments(input string) string {
+	// First handle line comments (-- and //)
+	// These take precedence and terminate the line
+	if idx := strings.Index(input, "--"); idx >= 0 {
+		input = input[:idx]
+	}
+	if idx := strings.Index(input, "//"); idx >= 0 {
+		input = input[:idx]
+	}
+	
+	// Then handle block comments /* ... */
+	for {
+		startIdx := strings.Index(input, "/*")
+		if startIdx < 0 {
+			break
+		}
+		endIdx := strings.Index(input[startIdx:], "*/")
+		if endIdx < 0 {
+			// Block comment starts but doesn't end
+			input = input[:startIdx]
+			break
+		}
+		// Remove the block comment
+		input = input[:startIdx] + input[startIdx+endIdx+2:]
+	}
+	
+	return strings.TrimSpace(input)
+}
+
 // ProcessCommand processes a user command.
 func ProcessCommand(command string, session *db.Session) interface{} {
 	// Initialize meta handler if needed
@@ -33,7 +63,8 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 		metaHandler = NewMetaCommandHandler(session)
 	}
 
-	// Trim the command
+	// Strip comments and trim the command
+	command = stripComments(command)
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return ""
@@ -89,7 +120,7 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 		return handleOutputCommand(command, session)
 	}
 
-	// Handle non-DESCRIBE meta commands with the meta handler
+	// Handle simple meta commands with the meta handler
 	if strings.HasPrefix(upperCommand, "SHOW") ||
 		strings.HasPrefix(upperCommand, "TRACING") ||
 		strings.HasPrefix(upperCommand, "PAGING") ||
@@ -101,7 +132,7 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 		return metaHandler.HandleMetaCommand(command)
 	}
 
-	// DESCRIBE commands use the ANTLR parser
+	// DESCRIBE, LIST, and other complex commands use the ANTLR parser
 	logger.DebugfToFile("parseMetaCommand", "Called with: '%s'", command)
 	is := antlr.NewInputStream(command)
 	lexer := grammar.NewCqlLexer(is)

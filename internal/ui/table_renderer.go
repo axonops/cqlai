@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -11,13 +12,14 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 		return ""
 	}
 
-	// Calculate column widths
+	// Calculate column widths (using rune count for proper Unicode handling)
 	colWidths := make([]int, len(data[0]))
 	for _, row := range data {
 		for i, cell := range row {
 			plainCell := stripAnsi(cell)
-			if len(plainCell) > colWidths[i] {
-				colWidths[i] = len(plainCell)
+			cellWidth := len([]rune(plainCell)) // Count runes, not bytes
+			if cellWidth > colWidths[i] {
+				colWidths[i] = cellWidth
 			}
 		}
 	}
@@ -33,8 +35,9 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 		m.tableWidth = len(stripAnsi(fullLines[0]))
 	}
 
-	// Apply horizontal scrolling if needed
-	if m.horizontalOffset > 0 || m.tableWidth > m.tableViewport.Width {
+	// Apply horizontal scrolling only if offset is > 0
+	// If table is wider but offset is 0, show the leftmost part completely
+	if m.horizontalOffset > 0 {
 		scrolledLines := applyHorizontalScrollWithANSI(fullLines, m.horizontalOffset, m.tableViewport.Width)
 		return strings.Join(scrolledLines, "\n")
 	}
@@ -65,7 +68,7 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 			// Style header cells and ensure reset at end
 			styledCell := m.styles.AccentText.Bold(true).Render(cell) + "\x1b[0m"
 			plainCell := stripAnsi(cell)
-			padding := colWidths[i] - len(plainCell)
+			padding := colWidths[i] - len([]rune(plainCell))
 			headerRow += " " + styledCell + strings.Repeat(" ", padding) + " │"
 		}
 		lines = append(lines, headerRow)
@@ -90,7 +93,7 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 		dataRow := "│"
 		for j, cell := range row {
 			plainCell := stripAnsi(cell)
-			padding := colWidths[j] - len(plainCell)
+			padding := colWidths[j] - len([]rune(plainCell))
 			dataRow += " " + cell + strings.Repeat(" ", padding) + " │"
 		}
 		lines = append(lines, dataRow)
@@ -110,7 +113,6 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 	return lines
 }
 
-
 // refreshTableView refreshes the table view with the current data and scroll position
 func (m *MainModel) refreshTableView() {
 	if m.lastTableData == nil {
@@ -121,13 +123,13 @@ func (m *MainModel) refreshTableView() {
 	if m.viewMode == "table" && m.hasTable {
 		// Rebuild the table with new scroll position
 		tableStr := m.formatTableForViewport(m.lastTableData)
-		
+
 		// Store the current scroll position
 		currentYOffset := m.tableViewport.YOffset
-		
+
 		// Update the table viewport content
 		m.tableViewport.SetContent(tableStr)
-		
+
 		// Restore scroll position
 		m.tableViewport.YOffset = currentYOffset
 	}
@@ -157,11 +159,11 @@ func (m *MainModel) buildTableStickyHeader() string {
 	headerRow := "│"
 	for i, header := range m.tableHeaders {
 		if i < len(colWidths) {
-			padding := colWidths[i] - len(header)
+			padding := colWidths[i] - len([]rune(header))
 			if padding < 0 {
 				padding = 0
 			}
-			// Style the header 
+			// Style the header
 			styledHeader := m.styles.AccentText.Bold(true).Render(header) + "\x1b[0m"
 			headerRow += " " + styledHeader + strings.Repeat(" ", padding) + " │"
 		}
@@ -192,4 +194,49 @@ func (m *MainModel) buildTableStickyHeader() string {
 func stripAnsi(s string) string {
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	return ansiRegex.ReplaceAllString(s, "")
+}
+
+// refreshTraceView refreshes the trace viewport using the existing table renderer
+func (m *MainModel) refreshTraceView() {
+	if !m.hasTrace || m.traceData == nil {
+		return
+	}
+
+	// Create summary line
+	summaryLine := ""
+	if m.traceInfo != nil {
+		// Highlight "Trace Session" with accent color
+		highlightedTitle := m.styles.AccentText.Bold(true).Render("Trace Session")
+		summaryLine = fmt.Sprintf("%s - Coordinator: %s | Total Duration: %d μs\n",
+			highlightedTitle, m.traceInfo.Coordinator, m.traceInfo.Duration)
+	}
+
+	// Temporarily swap in trace data and settings
+	originalOffset := m.horizontalOffset
+	originalData := m.lastTableData
+	originalWidth := m.tableWidth
+	originalHeaders := m.tableHeaders
+	originalColWidths := m.columnWidths
+
+	// Set trace data temporarily
+	m.horizontalOffset = m.traceHorizontalOffset
+	m.lastTableData = m.traceData
+
+	// Format using existing table renderer
+	traceTable := m.formatTableForViewport(m.traceData)
+
+	// Store trace-specific values
+	m.traceTableWidth = m.tableWidth
+	m.traceColumnWidths = m.columnWidths
+
+	// Restore original table values
+	m.horizontalOffset = originalOffset
+	m.lastTableData = originalData
+	m.tableWidth = originalWidth
+	m.tableHeaders = originalHeaders
+	m.columnWidths = originalColWidths
+
+	// Prepend summary line to the table
+	finalContent := summaryLine + traceTable
+	m.traceViewport.SetContent(finalContent)
 }
