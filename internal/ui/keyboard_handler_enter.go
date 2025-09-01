@@ -76,17 +76,17 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			}
 		}
 
-		// Add command to history viewport
-		historyContent := m.historyViewport.View() + "\n" + m.styles.AccentText.Render("> "+command)
-		m.historyViewport.SetContent(historyContent)
+		// Add command to history
+		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+		m.historyViewport.SetContent(m.fullHistoryContent)
 		m.historyViewport.GotoBottom()
 
 		// Extract the natural language request
 		userRequest := strings.TrimSpace(command[3:])
 		if userRequest == "" {
 			// Show error for empty request
-			historyContent = m.historyViewport.View() + "\n" + m.styles.ErrorText.Render("Error: Please provide a request after .ai")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: Please provide a request after .ai")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			m.input.Reset()
 			return m, nil
@@ -262,9 +262,9 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			result := router.ProcessCommand(command, m.session)
 			m.lastQueryTime = time.Since(start)
 
-			// Add command to history viewport
-			historyContent := m.historyViewport.View() + "\n" + m.styles.AccentText.Render("> "+command)
-			m.historyViewport.SetContent(historyContent)
+			// Add command to full history and viewport
+			m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 
 			// Handle different result types
@@ -293,8 +293,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						if err := v.Iterator.Close(); err != nil {
 							logger.DebugfToFile("HandleEnterKey", "Iterator error: %v", err)
 							// Show error to user
-							historyContent = m.historyViewport.View() + "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
-							m.historyViewport.SetContent(historyContent)
+							m.fullHistoryContent += "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
+							m.historyViewport.SetContent(m.fullHistoryContent)
 							m.historyViewport.GotoBottom()
 							m.viewMode = "history"
 							m.hasTable = false
@@ -341,8 +341,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				if initialRows == 0 {
 					// No data returned
 					_ = v.Iterator.Close()
-					historyContent = m.historyViewport.View() + "\n" + "No results"
-					m.historyViewport.SetContent(historyContent)
+					m.fullHistoryContent += "\n" + "No results"
+					m.historyViewport.SetContent(m.fullHistoryContent)
 					m.historyViewport.GotoBottom()
 					m.viewMode = "history"
 					m.hasTable = false
@@ -354,6 +354,13 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				// Store the iterator for later use
 				m.slidingWindow.iterator = v.Iterator
 				m.slidingWindow.hasMoreData = true // Assume more data until proven otherwise
+
+				// Write initial rows to capture file if capturing
+				metaHandler := router.GetMetaHandler()
+				if metaHandler != nil && metaHandler.IsCapturing() && len(m.slidingWindow.Rows) > 0 {
+					_ = metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
+					m.slidingWindow.MarkRowsAsCaptured(len(m.slidingWindow.Rows))
+				}
 
 				// Update UI
 				m.topBar.HasQueryData = true
@@ -464,8 +471,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						// Format as ASCII table in the UI layer
 						asciiOutput := FormatASCIITable(v.Data)
 						// Display ASCII formatted output in history viewport
-						historyContent = m.historyViewport.View() + "\n" + asciiOutput
-						m.historyViewport.SetContent(historyContent)
+						m.fullHistoryContent += "\n" + asciiOutput
+						m.historyViewport.SetContent(m.fullHistoryContent)
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
@@ -473,8 +480,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						// Format as expanded vertical table in the UI layer
 						expandOutput := FormatExpandTable(v.Data)
 						// Display expanded output in history viewport
-						historyContent = m.historyViewport.View() + "\n" + expandOutput
-						m.historyViewport.SetContent(historyContent)
+						m.fullHistoryContent += "\n" + expandOutput
+						m.historyViewport.SetContent(m.fullHistoryContent)
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
@@ -491,8 +498,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 							}
 						}
 						// Display JSON output in history viewport
-						historyContent = m.historyViewport.View() + "\n" + jsonOutput
-						m.historyViewport.SetContent(historyContent)
+						m.fullHistoryContent += "\n" + jsonOutput
+						m.historyViewport.SetContent(m.fullHistoryContent)
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
@@ -564,9 +571,35 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				m.topBar.HasQueryData = false
 				// Wrap long lines to prevent truncation
 				wrappedResult := wrapLongLines(v, m.historyViewport.Width)
-				newContent := m.historyViewport.View() + "\n" + wrappedResult
-				m.historyViewport.SetContent(newContent)
-				m.historyViewport.GotoBottom()
+				
+				// Save the current line count before adding new content
+				oldLineCount := m.historyViewport.TotalLineCount()
+				
+				m.fullHistoryContent += "\n" + wrappedResult
+				m.historyViewport.SetContent(m.fullHistoryContent)
+				
+				// Write to capture file if capturing
+				metaHandler := router.GetMetaHandler()
+				if metaHandler != nil && metaHandler.IsCapturing() {
+					_ = metaHandler.WriteCaptureText(command, v)
+				}
+				
+				// Check if this is a DESCRIBE command
+				upperCmd := strings.ToUpper(strings.TrimSpace(command))
+				isDescribe := strings.HasPrefix(upperCmd, "DESCRIBE") || strings.HasPrefix(upperCmd, "DESC ")
+				
+				if isDescribe {
+					// For DESCRIBE commands, position to show the start of the output
+					// Calculate where the new output starts
+					if oldLineCount > 0 {
+						m.historyViewport.YOffset = oldLineCount + 1 // +1 for the newline we added
+					} else {
+						m.historyViewport.YOffset = 0
+					}
+				} else {
+					// For other commands, scroll to bottom as usual
+					m.historyViewport.GotoBottom()
+				}
 			case error:
 				// Error result - add to history
 				m.tableHeaders = nil
@@ -576,8 +609,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				m.hasTable = false
 				m.viewMode = "history"
 				errorMsg := m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", v))
-				newContent := m.historyViewport.View() + "\n" + errorMsg
-				m.historyViewport.SetContent(newContent)
+				m.fullHistoryContent += "\n" + errorMsg
+				m.historyViewport.SetContent(m.fullHistoryContent)
 				m.historyViewport.GotoBottom()
 			}
 
@@ -590,8 +623,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			m.input.Reset()
 
 			// Add cancellation message to history
-			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("Command cancelled.")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Command cancelled.")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			return m, nil
 		}
@@ -657,8 +690,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		m.modal = NewConfirmationModal(command)
 
 		// Add command to history
-		historyContent := m.historyViewport.View() + "\n" + m.styles.AccentText.Render("> "+command)
-		m.historyViewport.SetContent(historyContent)
+		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+		m.historyViewport.SetContent(m.fullHistoryContent)
 		m.historyViewport.GotoBottom()
 
 		m.input.Reset()
@@ -685,6 +718,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	}
 
 	if upperCommand == "CLEAR" || upperCommand == "CLS" {
+		m.fullHistoryContent = ""
 		m.historyViewport.SetContent("")
 		m.input.Reset()
 		m.lastCommand = ""
@@ -704,8 +738,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	m.lastQueryTime = time.Since(start)
 
 	// Add command to history viewport
-	historyContent := m.historyViewport.View() + "\n" + m.styles.AccentText.Render("> "+command)
-	m.historyViewport.SetContent(historyContent)
+	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+	m.historyViewport.SetContent(m.fullHistoryContent)
 	m.historyViewport.GotoBottom()
 
 	// Handle different result types
@@ -734,8 +768,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				if err := v.Iterator.Close(); err != nil {
 					logger.DebugfToFile("HandleEnterKey", "Iterator error: %v", err)
 					// Show error to user
-					historyContent := m.historyViewport.View() + "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
-					m.historyViewport.SetContent(historyContent)
+					m.fullHistoryContent += "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
+					m.historyViewport.SetContent(m.fullHistoryContent)
 					m.historyViewport.GotoBottom()
 					m.viewMode = "history"
 					m.hasTable = false
@@ -782,8 +816,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		if initialRows == 0 {
 			// No data returned
 			_ = v.Iterator.Close()
-			historyContent := m.historyViewport.View() + "\n" + "No results"
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + "No results"
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			m.viewMode = "history"
 			m.hasTable = false
@@ -823,8 +857,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			}
 
 			// Display expanded output in history viewport
-			historyContent := m.historyViewport.View() + "\n" + expandOutput
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + expandOutput
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			m.viewMode = "history"
 			m.hasTable = false
@@ -846,8 +880,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			}
 
 			// Display ASCII formatted output in history viewport
-			historyContent := m.historyViewport.View() + "\n" + asciiOutput
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + asciiOutput
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 			m.viewMode = "history"
 			m.hasTable = false
@@ -904,8 +938,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				// Format as ASCII table in the UI layer
 				asciiOutput := FormatASCIITable(v.Data)
 				// Display ASCII formatted output in history viewport
-				historyContent := m.historyViewport.View() + "\n" + asciiOutput
-				m.historyViewport.SetContent(historyContent)
+				m.fullHistoryContent += "\n" + asciiOutput
+				m.historyViewport.SetContent(m.fullHistoryContent)
 				m.historyViewport.GotoBottom()
 				m.viewMode = "history"
 				m.hasTable = false
@@ -913,8 +947,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				// Format as expanded vertical table in the UI layer
 				expandOutput := FormatExpandTable(v.Data)
 				// Display expanded output in history viewport
-				historyContent := m.historyViewport.View() + "\n" + expandOutput
-				m.historyViewport.SetContent(historyContent)
+				m.fullHistoryContent += "\n" + expandOutput
+				m.historyViewport.SetContent(m.fullHistoryContent)
 				m.historyViewport.GotoBottom()
 				m.viewMode = "history"
 				m.hasTable = false
@@ -978,9 +1012,35 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		m.topBar.HasQueryData = false
 		// Wrap long lines to prevent truncation
 		wrappedResult := wrapLongLines(v, m.historyViewport.Width)
-		newContent := m.historyViewport.View() + "\n" + wrappedResult
-		m.historyViewport.SetContent(newContent)
-		m.historyViewport.GotoBottom()
+		
+		// Save the current line count before adding new content
+		oldLineCount := m.historyViewport.TotalLineCount()
+		
+		m.fullHistoryContent += "\n" + wrappedResult
+		m.historyViewport.SetContent(m.fullHistoryContent)
+		
+		// Write to capture file if capturing
+		metaHandler := router.GetMetaHandler()
+		if metaHandler != nil && metaHandler.IsCapturing() {
+			_ = metaHandler.WriteCaptureText(command, v)
+		}
+		
+		// Check if this is a DESCRIBE command
+		upperCmd := strings.ToUpper(strings.TrimSpace(command))
+		isDescribe := strings.HasPrefix(upperCmd, "DESCRIBE") || strings.HasPrefix(upperCmd, "DESC ")
+		
+		if isDescribe {
+			// For DESCRIBE commands, position to show the start of the output
+			// Calculate where the new output starts
+			if oldLineCount > 0 {
+				m.historyViewport.YOffset = oldLineCount + 1 // +1 for the newline we added
+			} else {
+				m.historyViewport.YOffset = 0
+			}
+		} else {
+			// For other commands, scroll to bottom as usual
+			m.historyViewport.GotoBottom()
+		}
 	case error:
 		// Error result - add to history
 		m.tableHeaders = nil
@@ -990,8 +1050,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		// Clear query metadata from top bar
 		m.topBar.HasQueryData = false
 		errorMsg := m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", v))
-		newContent := m.historyViewport.View() + "\n" + errorMsg
-		m.historyViewport.SetContent(newContent)
+		m.fullHistoryContent += "\n" + errorMsg
+		m.historyViewport.SetContent(m.fullHistoryContent)
 		m.historyViewport.GotoBottom()
 	}
 

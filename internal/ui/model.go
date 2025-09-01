@@ -62,6 +62,7 @@ type MainModel struct {
 	lastCommand              string
 	commandHistory           []string
 	historyIndex             int
+	fullHistoryContent       string // Full history content (not limited by viewport)
 	session                  *db.Session
 	sessionManager           *session.Manager // Application state manager
 	aiConfig                 *config.AIConfig // AI configuration
@@ -219,6 +220,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		styles:                    styles,
 		commandHistory:            commandHistory,
 		historyIndex:              -1,
+		fullHistoryContent:        "", // Will be initialized with welcome message in Init()
 		completionEngine:          completionEngine,
 		completions:               []string{},
 		completionIndex:           -1,
@@ -259,7 +261,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Initialize viewports
 			m.historyViewport = viewport.New(newWidth, newHeight)
 			m.tableViewport = viewport.New(newWidth, newHeight)
-			m.historyViewport.SetContent(m.getWelcomeMessage())
+			welcomeMsg := m.getWelcomeMessage()
+			m.fullHistoryContent = welcomeMsg
+			m.historyViewport.SetContent(welcomeMsg)
 			m.ready = true
 		} else {
 			// Resize viewports
@@ -333,8 +337,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.aiSelectionModal = nil
 			m.aiConversationID = ""
 			// Add cancellation message
-			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("AI generation cancelled.")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("AI generation cancelled.")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 		} else {
 			logger.DebugfToFile("AI", "User selected %s: %s", msg.SelectionType, msg.Selection)
@@ -377,8 +381,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.aiInfoReplyModal = nil
 			m.aiConversationID = ""
 			// Add cancellation message
-			historyContent := m.historyViewport.View() + "\n" + m.styles.MutedText.Render("AI generation cancelled.")
-			m.historyViewport.SetContent(historyContent)
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("AI generation cancelled.")
+			m.historyViewport.SetContent(m.fullHistoryContent)
 			m.historyViewport.GotoBottom()
 		} else {
 			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
