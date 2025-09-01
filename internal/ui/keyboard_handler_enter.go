@@ -34,29 +34,15 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	// Handle AI selection modal if active
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
-		if m.aiSelectionModal.InputMode {
-			// Confirm custom input
-			selection := m.aiSelectionModal.GetSelection()
-			selectionType := m.aiSelectionModal.SelectionType
-			m.aiSelectionModal.Active = false
-			return m, func() tea.Msg {
-				return AISelectionResultMsg{
-					Selection:     selection,
-					SelectionType: selectionType,
-					Cancelled:     false,
-				}
-			}
-		} else {
-			// Confirm selected option
-			selection := m.aiSelectionModal.GetSelection()
-			selectionType := m.aiSelectionModal.SelectionType
-			m.aiSelectionModal.Active = false
-			return m, func() tea.Msg {
-				return AISelectionResultMsg{
-					Selection:     selection,
-					SelectionType: selectionType,
-					Cancelled:     false,
-				}
+		// Confirm selection (either custom input or selected option)
+		selection := m.aiSelectionModal.GetSelection()
+		selectionType := m.aiSelectionModal.SelectionType
+		m.aiSelectionModal.Active = false
+		return m, func() tea.Msg {
+			return AISelectionResultMsg{
+				Selection:     selection,
+				SelectionType: selectionType,
+				Cancelled:     false,
 			}
 		}
 	}
@@ -70,7 +56,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	command := strings.TrimSpace(m.input.Value())
 
-	// Note: We removed the follow-up mode check here since we're now handling 
+	// Note: We removed the follow-up mode check here since we're now handling
 	// follow-up questions within the modal itself
 
 	// Handle AI command
@@ -132,7 +118,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		newValue := ""
 
 		// Special case: if input ends with a dot (keyspace.), just append the table name
-		if strings.HasSuffix(currentInput, ".") {
+		if strings.HasSuffix(currentInput, ".") { //nolint:gocritic // more readable as if
 			newValue = currentInput + selectedCompletion
 		} else if strings.HasSuffix(currentInput, " ") {
 			// Just append the completion
@@ -145,7 +131,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				lastWord := currentInput[lastSpace+1:]
 
 				// Check for keyspace.table pattern
-				if strings.Contains(lastWord, ".") {
+				if strings.Contains(lastWord, ".") { //nolint:gocritic // more readable as if
 					// For keyspace.table patterns, always replace the part after the dot
 					// The completion engine returns just the table name
 					dotIndex := strings.LastIndex(currentInput, ".")
@@ -179,7 +165,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	// Check if AI modal is showing
 	if m.showAIModal {
-		if m.aiModal.State == AIModalStatePreview {
+		switch m.aiModal.State {
+		case AIModalStatePreview:
 			// Check if this is an INFO operation
 			if m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
 				// If there's follow-up input, submit it
@@ -187,13 +174,13 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					followUpQuestion := m.aiModal.FollowUpInput
 					logger.DebugfToFile("AI", "User submitting follow-up question: %s", followUpQuestion)
 					logger.DebugfToFile("AI", "Current conversation ID: %s", m.aiConversationID)
-					
+
 					// Clear the input and set state to generating
 					m.aiModal.FollowUpInput = ""
 					m.aiModal.CursorPosition = 0
 					m.aiModal.State = AIModalStateGenerating
 					m.aiModal.UserRequest = followUpQuestion
-					
+
 					// Continue the conversation
 					return m, continueAIConversation(m.aiConfig, m.aiConversationID, followUpQuestion)
 				}
@@ -236,7 +223,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					return m, nil
 				}
 			}
-		} else if m.aiModal.State == AIModalStateError {
+		case AIModalStateError:
 			// Close error modal
 			m.showAIModal = false
 			m.aiModal = AIModal{}
@@ -353,7 +340,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				// Check if we got any data
 				if initialRows == 0 {
 					// No data returned
-					v.Iterator.Close()
+					_ = v.Iterator.Close()
 					historyContent = m.historyViewport.View() + "\n" + "No results"
 					m.historyViewport.SetContent(historyContent)
 					m.historyViewport.GotoBottom()
@@ -381,7 +368,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				if m.sessionManager != nil {
 					outputFormat = m.sessionManager.GetOutputFormat()
 				}
-				if outputFormat == config.OutputFormatExpand {
+				switch outputFormat {
+				case config.OutputFormatExpand:
 					// EXPAND format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
@@ -397,7 +385,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					expandStr := FormatExpandTable(allData)
 					m.tableViewport.SetContent(expandStr)
 					m.tableViewport.GotoTop()
-				} else if outputFormat == config.OutputFormatASCII {
+				case config.OutputFormatASCII:
 					// ASCII format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
@@ -413,7 +401,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					asciiStr := FormatASCIITable(allData)
 					m.tableViewport.SetContent(asciiStr)
 					m.tableViewport.GotoTop()
-				} else if outputFormat == config.OutputFormatJSON {
+				case config.OutputFormatJSON:
 					// JSON format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
@@ -434,7 +422,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					}
 					m.tableViewport.SetContent(jsonStr)
 					m.tableViewport.GotoTop()
-				} else {
+				default:
 					// TABLE format - use table viewport
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
@@ -471,7 +459,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", outputFormat)
 
 					// Check output format
-					if outputFormat == config.OutputFormatASCII {
+					switch outputFormat {
+					case config.OutputFormatASCII:
 						// Format as ASCII table in the UI layer
 						asciiOutput := FormatASCIITable(v.Data)
 						// Display ASCII formatted output in history viewport
@@ -480,7 +469,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
-					} else if outputFormat == config.OutputFormatExpand {
+					case config.OutputFormatExpand:
 						// Format as expanded vertical table in the UI layer
 						expandOutput := FormatExpandTable(v.Data)
 						// Display expanded output in history viewport
@@ -489,7 +478,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
-					} else if outputFormat == config.OutputFormatJSON {
+					case config.OutputFormatJSON:
 						// JSON format - display raw JSON rows
 						// With SELECT JSON, each row is a JSON string
 						jsonOutput := ""
@@ -507,7 +496,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						m.historyViewport.GotoBottom()
 						m.viewMode = "history"
 						m.hasTable = false
-					} else {
+					default:
 						// Use table viewport for TABLE format
 						// Store table data and headers
 						m.lastTableData = v.Data
@@ -529,7 +518,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						// Extract headers and rows from data
 						headers := v.Data[0]
 						rows := v.Data[1:]
-						metaHandler.WriteCaptureResult(command, headers, rows)
+						_ = metaHandler.WriteCaptureResult(command, headers, rows)
 					}
 				}
 			case [][]string:
@@ -554,7 +543,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 						// Extract headers and rows from data
 						headers := v[0]
 						rows := v[1:]
-						metaHandler.WriteCaptureResult(command, headers, rows)
+						_ = metaHandler.WriteCaptureResult(command, headers, rows)
 					}
 				}
 			case string:
@@ -792,7 +781,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		// Check if we got any data
 		if initialRows == 0 {
 			// No data returned
-			v.Iterator.Close()
+			_ = v.Iterator.Close()
 			historyContent := m.historyViewport.View() + "\n" + "No results"
 			m.historyViewport.SetContent(historyContent)
 			m.historyViewport.GotoBottom()
@@ -822,7 +811,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		}
 
 		// Prepare display based on format
-		if outputFormat == config.OutputFormatExpand {
+		switch outputFormat {
+		case config.OutputFormatExpand:
 			// Format as expanded vertical table
 			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
 			expandOutput := FormatExpandTable(allData)
@@ -841,11 +831,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 			// Close iterator since we won't paginate in expand mode
 			if v.Iterator != nil {
-				v.Iterator.Close()
+				_ = v.Iterator.Close()
 			}
 			m.slidingWindow.iterator = nil
 			m.slidingWindow.hasMoreData = false
-		} else if outputFormat == config.OutputFormatASCII {
+		case config.OutputFormatASCII:
 			// Format as ASCII table
 			allData := append([][]string{v.Headers}, m.slidingWindow.Rows...)
 			asciiOutput := FormatASCIITable(allData)
@@ -864,11 +854,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 			// Close iterator since we won't paginate in ASCII mode
 			if v.Iterator != nil {
-				v.Iterator.Close()
+				_ = v.Iterator.Close()
 			}
 			m.slidingWindow.iterator = nil
 			m.slidingWindow.hasMoreData = false
-		} else {
+		default:
 			// TABLE format - use table viewport
 			m.tableHeaders = v.Headers
 			m.columnTypes = v.ColumnTypes
@@ -890,7 +880,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		// Write to capture file if capturing
 		metaHandler := router.GetMetaHandler()
 		if metaHandler != nil && metaHandler.IsCapturing() && len(m.slidingWindow.Rows) > 0 {
-			metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
+			_ = metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
 		}
 
 	case db.QueryResult:
@@ -909,7 +899,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			}
 
 			// Check output format
-			if outputFormat == config.OutputFormatASCII {
+			switch outputFormat {
+			case config.OutputFormatASCII:
 				// Format as ASCII table in the UI layer
 				asciiOutput := FormatASCIITable(v.Data)
 				// Display ASCII formatted output in history viewport
@@ -918,7 +909,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				m.historyViewport.GotoBottom()
 				m.viewMode = "history"
 				m.hasTable = false
-			} else if outputFormat == config.OutputFormatExpand {
+			case config.OutputFormatExpand:
 				// Format as expanded vertical table in the UI layer
 				expandOutput := FormatExpandTable(v.Data)
 				// Display expanded output in history viewport
@@ -927,7 +918,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				m.historyViewport.GotoBottom()
 				m.viewMode = "history"
 				m.hasTable = false
-			} else {
+			default:
 				// Use table viewport for TABLE format
 				// Store table data and headers
 				m.lastTableData = v.Data
@@ -949,7 +940,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				// Extract headers and rows from data
 				headers := v.Data[0]
 				rows := v.Data[1:]
-				metaHandler.WriteCaptureResult(command, headers, rows)
+				_ = metaHandler.WriteCaptureResult(command, headers, rows)
 			}
 		}
 	case [][]string:
@@ -974,7 +965,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				// Extract headers and rows from data
 				headers := v[0]
 				rows := v[1:]
-				metaHandler.WriteCaptureResult(command, headers, rows)
+				_ = metaHandler.WriteCaptureResult(command, headers, rows)
 			}
 		}
 	case string:

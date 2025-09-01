@@ -170,7 +170,7 @@ func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClie
 		return NewAnthropicClient(aiConfig.APIKey, aiConfig.Model), nil
 	case ProviderOllama:
 		if providerConfig == nil || providerConfig.Ollama == nil {
-			return nil, fmt.Errorf("Ollama configuration is missing from cqlai.json")
+			return nil, fmt.Errorf("ollama configuration is missing from cqlai.json")
 		}
 		return NewOllamaClient(providerConfig.Ollama), nil
 	default:
@@ -196,9 +196,7 @@ func (m *MockAIClient) SetAPIKey(key string) {
 // GenerateCQLFromRequest is a high-level function that processes user requests and may generate CQL or return informational responses
 func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *config.AIConfig, userRequest string) (*AIResult, string, error) {
 	// Initialize local AI for fuzzy search if needed
-	if err := InitializeLocalAI(session); err != nil {
-		// Continue without local AI
-	}
+	_ = InitializeLocalAI(session) // Ignore error and continue without local AI
 
 	// Get minimal schema context (just list of keyspaces for initial context)
 	schemaContext := "Available keyspaces: "

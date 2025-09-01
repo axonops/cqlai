@@ -27,10 +27,10 @@ func (s *Session) DescribeIndexQuery(keyspace string, indexName string) (*IndexI
 	var options map[string]string
 
 	if !iter.Scan(&tableName, &idxName, &kind, &options) {
-		iter.Close()
+		_ = iter.Close()
 		return nil, fmt.Errorf("index '%s' not found in keyspace '%s'", indexName, keyspace)
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	return &IndexInfo{
 		TableName: tableName,

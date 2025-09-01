@@ -70,14 +70,14 @@ func ExecuteToolCallTyped(toolName ToolName, params ToolParams) *CommandResult {
 		}
 
 	case ToolInfo:
-		p := params.(InfoResponseParams)
+		p := params.(*InfoResponseParams)
 		logger.DebugfToFile("Tools", "Info tool called with response_type=%s, title=%s, content=%s", 
 			p.ResponseType, p.Title, p.Content)
 		// Return info response as a special success case
 		return &CommandResult{
 			Success:      true,
 			Data:         fmt.Sprintf("Informational response provided: %s", p.Title), // More meaningful message
-			InfoResponse: &p, // Store the info response
+			InfoResponse: p, // Store the info response
 		}
 
 	default:

@@ -172,7 +172,7 @@ func (sc *SchemaCache) Refresh() error {
 				columnType := row[4]
 				position := 0
 				if row[5] != "" {
-					fmt.Sscanf(row[5], "%d", &position)
+					_, _ = fmt.Sscanf(row[5], "%d", &position)
 				}
 				
 				columnInfo := ColumnInfo{
@@ -240,9 +240,10 @@ func (sc *SchemaCache) GetTableSchema(keyspace, table string) (*TableSchema, err
 			Position: col.Position,
 		}
 		
-		if col.Kind == "partition_key" {
+		switch col.Kind {
+		case "partition_key":
 			partitionKeys = append(partitionKeys, col.Name)
-		} else if col.Kind == "clustering" {
+		case "clustering":
 			clusteringKeys = append(clusteringKeys, col.Name)
 		}
 	}
@@ -286,32 +287,6 @@ func tokenize(s string) []string {
 }
 
 // Helper functions
-func containsAny(s string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if contains(s, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[:len(substr)] == substr || 
-		   len(s) >= len(substr) && s[len(s)-len(substr):] == substr ||
-		   findSubstring(s, substr) != -1
-}
-
-func findSubstring(s, substr string) int {
-	if len(substr) == 0 {
-		return 0
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
-}
 
 func splitByDelimiter(s string, delimiter rune) []string {
 	var parts []string
@@ -360,16 +335,3 @@ func isUpper(r rune) bool {
 	return r >= 'A' && r <= 'Z'
 }
 
-func deduplicate(strings []string) []string {
-	seen := make(map[string]bool)
-	result := []string{}
-	
-	for _, s := range strings {
-		if !seen[s] {
-			seen[s] = true
-			result = append(result, s)
-		}
-	}
-	
-	return result
-}

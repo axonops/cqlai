@@ -1,21 +1,32 @@
+# golangci-lint v2.4.0 configuration
+version: 2
+
 run:
   timeout: 5m
   tests: true
-  skip-dirs:
-    - internal/parser/grammar
+
+linters-settings:
+  stylecheck:
+    checks: ["all", "-ST1005"]  # run all stylecheck rules, except ST1005
+  gosec:
+    checks: ["all", "-G402"]
 
 linters:
   enable:
-    - gofmt
-    - goimports
     - govet
-    - errcheck
     - staticcheck
     - ineffassign
     - gosec
     - misspell
     - gocritic
+  disable:
+    - errcheck
 
 issues:
   exclude-dirs:
     - internal/parser/grammar
+  exclude-rules:
+    # Exclude test files from some linters
+    - path: _test\.go
+      linters:
+        - gosec

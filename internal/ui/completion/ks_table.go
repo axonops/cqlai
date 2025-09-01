@@ -41,7 +41,7 @@ func (ce *CompletionEngine) handleKeyspaceTableCompletion(input string) []string
 					// Let the parser-based completion handle what comes next
 					if isCompleteTable {
 						// Debug logging
-						if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 							fmt.Fprintf(debugFile, "[DEBUG] Complete table name detected: %s.%s, falling through to parser\n", ks, afterDot)
 							defer debugFile.Close()
 						}

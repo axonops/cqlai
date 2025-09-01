@@ -45,16 +45,9 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 			// Check if last word is a complete keyword
 			if completion.IsCompleteKeyword(lastWord) {
 				// Add a space and get next completions
-				currentInput = currentInput + " "
+				currentInput += " "
 				m.input.SetValue(currentInput)
 				m.input.SetCursor(len(currentInput))
-			} else {
-				// Special case: If we have INSERT INTO keyspace.table, treat it as complete
-				upperInput := strings.ToUpper(currentInput)
-				if strings.HasPrefix(upperInput, "INSERT INTO ") && strings.Contains(lastWord, ".") {
-					// This is a keyspace.table reference after INSERT INTO
-					// Don't add space, let the completion engine handle it
-				}
 			}
 		}
 	}
@@ -62,7 +55,7 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 	// Get completions for current input
 	m.completions = m.completionEngine.Complete(currentInput)
 
-	if len(m.completions) == 0 {
+	if len(m.completions) == 0 { //nolint:gocritic // more readable as if
 		// No completions available
 		m.showCompletions = false
 		m.completionIndex = -1
@@ -75,7 +68,7 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 		newValue := ""
 
 		// Special case: if input ends with a dot (keyspace.), just append the table name
-		if strings.HasSuffix(currentInput, ".") {
+		if strings.HasSuffix(currentInput, ".") { //nolint:gocritic // more readable as if
 			newValue = currentInput + selectedCompletion
 		} else if strings.HasSuffix(currentInput, " ") {
 			// Just append the completion
@@ -88,7 +81,7 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 				lastWord := currentInput[lastSpace+1:]
 
 				// Check for keyspace.table pattern
-				if strings.Contains(lastWord, ".") {
+				if strings.Contains(lastWord, ".") { //nolint:gocritic // more readable as if
 					// For keyspace.table patterns, always replace the part after the dot
 					// The completion engine returns just the table name
 					dotIndex := strings.LastIndex(currentInput, ".")

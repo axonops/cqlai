@@ -131,9 +131,10 @@ func extractJSONObject(text string) string {
 		}
 
 		if !inString {
-			if ch == '{' {
+			switch ch {
+			case '{':
 				braceCount++
-			} else if ch == '}' {
+			case '}':
 				braceCount--
 				if braceCount == 0 {
 					return text[start : i+1]

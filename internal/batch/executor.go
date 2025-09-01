@@ -148,7 +148,7 @@ func (e *Executor) Execute(cql string) error {
 
 // ExecuteFile executes CQL from a file
 func (e *Executor) ExecuteFile(filename string) error {
-	file, err := os.Open(filename)
+	file, err := os.Open(filename) // #nosec G304 - User-provided file path is expected
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
@@ -220,9 +220,10 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	defer result.Iterator.Close()
 
 	// For CSV and JSON, we need to handle differently
-	if e.options.Format == OutputFormatCSV {
+	switch e.options.Format {
+	case OutputFormatCSV:
 		return e.outputStreamingCSV(ctx, result)
-	} else if e.options.Format == OutputFormatJSON {
+	case OutputFormatJSON:
 		return e.outputStreamingJSON(ctx, result)
 	}
 

@@ -112,7 +112,7 @@ func (p InfoMessageParams) Validate() error {
 	return nil
 }
 
-func (p InfoResponseParams) Validate() error {
+func (p *InfoResponseParams) Validate() error {
 	if p.Content == "" {
 		return fmt.Errorf("content is required")
 	}
@@ -226,7 +226,7 @@ func ParseToolParams(toolName ToolName, rawParams json.RawMessage) (ToolParams, 
 		if err := json.Unmarshal(rawParams, &params); err != nil {
 			return nil, fmt.Errorf("invalid info response parameters: %w", err)
 		}
-		return params, nil
+		return &params, nil
 
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)

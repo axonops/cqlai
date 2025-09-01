@@ -72,7 +72,7 @@ func (m *MainModel) View() string {
 	// Add scroll indicator if content is scrollable
 	if activeViewport.TotalLineCount() > activeViewport.Height {
 		scrollPercent := activeViewport.ScrollPercent()
-		if scrollPercent == 0 {
+		if scrollPercent == 0 { //nolint:gocritic // more readable as if
 			scrollInfo += " [TOP]"
 		} else if scrollPercent >= 0.99 {
 			scrollInfo += " [BOTTOM]"
@@ -83,7 +83,7 @@ func (m *MainModel) View() string {
 
 	// Add horizontal scroll indicator if table is wider than viewport
 	if m.hasTable && m.viewMode == "table" && m.tableWidth > m.tableViewport.Width {
-		if m.horizontalOffset == 0 {
+		if m.horizontalOffset == 0 { //nolint:gocritic // more readable as if
 			scrollInfo += " | H:LEFT"
 		} else if m.horizontalOffset >= m.tableWidth-m.tableViewport.Width {
 			scrollInfo += " | H:RIGHT"
@@ -106,10 +106,11 @@ func (m *MainModel) View() string {
 	// Add output format indicator
 	if m.sessionManager != nil {
 		outputFormat := m.sessionManager.GetOutputFormat()
-		if outputFormat == config.OutputFormatExpand {
+		switch outputFormat {
+		case config.OutputFormatExpand:
 			expandStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF")).Bold(true)
 			scrollInfo += " " + expandStyle.Render("[EXPAND ON]")
-		} else if outputFormat == config.OutputFormatASCII {
+		case config.OutputFormatASCII:
 			asciiStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
 			scrollInfo += " " + asciiStyle.Render("[ASCII]")
 		}
@@ -131,7 +132,7 @@ func (m *MainModel) View() string {
 		// Don't show F2 hint here since it's in the status bar for table view
 		if len(hints) > 0 {
 			hint := m.styles.MutedText.Render("  (" + strings.Join(hints, " | ") + ")")
-			inputSection = inputSection + hint
+			inputSection += hint
 		}
 	}
 

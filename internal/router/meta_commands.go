@@ -79,7 +79,7 @@ func (h *MetaCommandHandler) handleConsistency(command string) interface{} {
 		} else if len(parts) == 3 && parts[1] == "EACH" {
 			level = parts[1] + "_" + parts[2]
 		}
-		
+
 		if err := h.session.SetConsistency(level); err != nil {
 			return fmt.Sprintf("Error setting consistency: %v", err)
 		}
@@ -98,10 +98,10 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 		iter := h.session.Query("SELECT release_version FROM system.local").Iter()
 		var version string
 		if iter.Scan(&version) {
-			iter.Close()
+			_ = iter.Close()
 			return fmt.Sprintf("Cassandra version: %s", version)
 		}
-		iter.Close()
+		_ = iter.Close()
 		return "Unable to get Cassandra version"
 	}
 
@@ -110,13 +110,13 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 		iter := h.session.Query("SELECT rpc_address, data_center, rack FROM system.local").Iter()
 		var host, datacenter, rack string
 		if iter.Scan(&host, &datacenter, &rack) {
-			iter.Close()
+			_ = iter.Close()
 			result := fmt.Sprintf("Connected to: %s\n", host)
 			result += fmt.Sprintf("Datacenter: %s\n", datacenter)
 			result += fmt.Sprintf("Rack: %s", rack)
 			return result
 		}
-		iter.Close()
+		_ = iter.Close()
 		return "Unable to get host information"
 	}
 
@@ -237,7 +237,7 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 	}
 
 	// Read the file
-	content, err := os.ReadFile(filename)
+	content, err := os.ReadFile(filename) // #nosec G304 - User-provided source filename
 	if err != nil {
 		return fmt.Sprintf("Error reading file: %v", err)
 	}
@@ -299,10 +299,10 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 				// Seek back to remove trailing comma if exists
 				info, _ := h.captureOutput.Stat()
 				if info.Size() > 2 {
-					h.captureOutput.Seek(-2, 2) // Go to end minus 2 chars
-					h.captureOutput.WriteString("\n]\n")
+					_, _ = h.captureOutput.Seek(-2, 2) // Go to end minus 2 chars
+					_, _ = h.captureOutput.WriteString("\n]\n")
 				} else {
-					h.captureOutput.WriteString("]\n")
+					_, _ = h.captureOutput.WriteString("]\n")
 				}
 			} else if h.captureFormat == "csv" && h.csvWriter != nil {
 				// Flush CSV writer
@@ -310,7 +310,7 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 				h.csvWriter = nil
 			}
 
-			h.captureOutput.Close()
+			_ = h.captureOutput.Close()
 			h.captureOutput = nil
 			result := fmt.Sprintf("Stopped capturing to %s", h.captureFile)
 			h.captureFile = ""
@@ -326,10 +326,11 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 
 	if len(parts) >= 2 {
 		upperFormat := strings.ToUpper(parts[1])
-		if upperFormat == "JSON" {
+		switch upperFormat {
+		case "JSON":
 			format = "json"
 			filenameStart = 2
-		} else if upperFormat == "CSV" {
+		case "CSV":
 			format = "csv"
 			filenameStart = 2
 		}
@@ -353,9 +354,9 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 
 	// Add appropriate extension if not provided
 	if format == "json" && !strings.HasSuffix(filename, ".json") {
-		filename = filename + ".json"
+		filename += ".json"
 	} else if format == "csv" && !strings.HasSuffix(filename, ".csv") {
-		filename = filename + ".csv"
+		filename += ".csv"
 	}
 
 	// Close existing capture file if any
@@ -364,11 +365,11 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 			h.csvWriter.Flush()
 			h.csvWriter = nil
 		}
-		h.captureOutput.Close()
+		_ = h.captureOutput.Close()
 	}
 
 	// Open new capture file
-	file, err := os.Create(filename)
+	file, err := os.Create(filename) // #nosec G304 - User-provided capture filename
 	if err != nil {
 		return fmt.Sprintf("Error opening capture file: %v", err)
 	}
@@ -377,10 +378,11 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	h.captureFile = filename
 	h.captureFormat = format
 
-	if format == "json" {
+	switch format {
+	case "json":
 		// Write opening bracket for JSON array
-		file.WriteString("[\n")
-	} else if format == "csv" {
+		_, _ = file.WriteString("[\n")
+	case "csv":
 		// Create CSV writer
 		h.csvWriter = csv.NewWriter(file)
 	}
@@ -498,7 +500,7 @@ func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string
 	case "csv":
 		// Write headers as first row (with query command as comment)
 		// Write comment with the query
-		h.csvWriter.Write([]string{"# Query: " + command})
+		_ = h.csvWriter.Write([]string{"# Query: " + command})
 
 		// Write headers
 		if err := h.csvWriter.Write(headers); err != nil {
@@ -513,7 +515,7 @@ func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string
 		}
 
 		// Add empty row to separate queries
-		h.csvWriter.Write([]string{})
+		_ = h.csvWriter.Write([]string{})
 
 		// Flush to ensure data is written
 		h.csvWriter.Flush()
@@ -563,25 +565,25 @@ func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string
 		// Check if this is the first entry
 		info, _ := h.captureOutput.Stat()
 		if info.Size() > 2 { // More than just "[\n"
-			h.captureOutput.WriteString(",\n")
+			_, _ = h.captureOutput.WriteString(",\n")
 		}
-		h.captureOutput.WriteString("  ")
-		h.captureOutput.Write(jsonBytes)
+		_, _ = h.captureOutput.WriteString("  ")
+		_, _ = h.captureOutput.Write(jsonBytes)
 
 	default:
 		// Text format - write the command and a simple table representation
-		h.captureOutput.WriteString(fmt.Sprintf("\n> %s\n", command))
-		h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
+		_, _ = fmt.Fprintf(h.captureOutput, "\n> %s\n", command)
+		_, _ = h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
 
 		// Write headers
-		h.captureOutput.WriteString(strings.Join(headers, "\t") + "\n")
+		_, _ = h.captureOutput.WriteString(strings.Join(headers, "\t") + "\n")
 
 		// Write rows
 		for _, row := range rows {
-			h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
+			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
 		}
 
-		h.captureOutput.WriteString(fmt.Sprintf("\n(%d rows)\n\n", len(rows)))
+		_, _ = fmt.Fprintf(h.captureOutput, "\n(%d rows)\n\n", len(rows))
 	}
 
 	return nil
@@ -593,14 +595,14 @@ func (h *MetaCommandHandler) Close() {
 		// If JSON format, close the array
 		if h.captureFormat == "json" {
 			// Remove trailing comma and newline if present, then close array
-			h.captureOutput.Seek(-2, 1) // Go back 2 chars (comma and newline)
-			h.captureOutput.WriteString("\n]\n")
+			_, _ = h.captureOutput.Seek(-2, 1) // Go back 2 chars (comma and newline)
+			_, _ = h.captureOutput.WriteString("\n]\n")
 		} else if h.captureFormat == "csv" && h.csvWriter != nil {
 			// Flush CSV writer
 			h.csvWriter.Flush()
 			h.csvWriter = nil
 		}
-		h.captureOutput.Close()
+		_ = h.captureOutput.Close()
 		h.captureOutput = nil
 		h.captureFile = ""
 		h.captureFormat = "text"

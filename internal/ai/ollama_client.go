@@ -99,7 +99,7 @@ func getOllamaTools() []ollamaTool {
 // ProcessRequestWithTools implements tool calling for Ollama (if supported by the model)
 func (c *OllamaClient) ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error) {
 	if c.config.URL == "" {
-		return nil, fmt.Errorf("Ollama URL is not configured")
+		return nil, fmt.Errorf("ollama URL is not configured")
 	}
 
 	// Build the initial messages
@@ -150,7 +150,7 @@ func (c *OllamaClient) ProcessRequestWithTools(ctx context.Context, prompt strin
 
 		if resp.StatusCode != http.StatusOK {
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			return nil, fmt.Errorf("Ollama API error %d: %s", resp.StatusCode, string(bodyBytes))
+			return nil, fmt.Errorf("ollama API error %d: %s", resp.StatusCode, string(bodyBytes))
 		}
 
 		var ollamaResp ollamaResponse

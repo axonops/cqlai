@@ -297,12 +297,14 @@ func (v *CqlCommandVisitorImpl) describeTables() interface{} {
 		// Format primary key
 		var primaryKeys []string
 		if len(t.PartitionKeys) > 0 {
-			if len(t.PartitionKeys) == 1 && len(t.ClusteringKeys) == 0 {
+			if len(t.PartitionKeys) == 1 && len(t.ClusteringKeys) == 0 { //nolint:gocritic // more readable as if
 				// Single partition key only
 				primaryKeys = t.PartitionKeys
 			} else if len(t.PartitionKeys) == 1 && len(t.ClusteringKeys) > 0 {
 				// Single partition key with clustering keys
-				primaryKeys = append(t.PartitionKeys, t.ClusteringKeys...)
+				primaryKeys = make([]string, 0, len(t.PartitionKeys)+len(t.ClusteringKeys))
+				primaryKeys = append(primaryKeys, t.PartitionKeys...)
+				primaryKeys = append(primaryKeys, t.ClusteringKeys...)
 			} else {
 				// Composite partition key
 				primaryKeys = append([]string{fmt.Sprintf("(%s)", strings.Join(t.PartitionKeys, ","))}, t.ClusteringKeys...)
@@ -343,7 +345,7 @@ func (v *CqlCommandVisitorImpl) describeTables() interface{} {
 
 		// Format GC grace (convert seconds to days/hours)
 		gcGraceStr := fmt.Sprintf("%d", t.GcGrace)
-		if t.GcGrace >= 86400 {
+		if t.GcGrace >= 86400 { //nolint:gocritic // more readable as if
 			days := t.GcGrace / 86400
 			gcGraceStr = fmt.Sprintf("%dd", days)
 		} else if t.GcGrace >= 3600 {

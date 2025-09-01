@@ -29,7 +29,7 @@ func NewHistoryManager() (*HistoryManager, error) {
 
 	// Create ~/.cqlai directory if it doesn't exist
 	cqlaiDir := filepath.Join(home, ".cqlai")
-	if err := os.MkdirAll(cqlaiDir, 0755); err != nil {
+	if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
 	}
 
@@ -98,7 +98,7 @@ func (hm *HistoryManager) SaveCommand(command string) error {
 	}
 
 	// Append to file
-	file, err := os.OpenFile(hm.historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(hm.historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open history file: %v", err)
 	}

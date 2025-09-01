@@ -32,7 +32,7 @@ func (s *Session) DescribeTypesQuery(keyspace string) ([]TypeListInfo, error) {
 			Name: typeName,
 		})
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, err
 	}
@@ -53,10 +53,10 @@ func (s *Session) DescribeTypeQuery(keyspace string, typeName string) (*TypeInfo
 	var fieldTypes []string
 
 	if !iter.Scan(&name, &fieldNames, &fieldTypes) {
-		iter.Close()
+		_ = iter.Close()
 		return nil, fmt.Errorf("type '%s' not found in keyspace '%s'", typeName, keyspace)
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	return &TypeInfo{
 		Name:       name,
@@ -73,7 +73,7 @@ func (s *Session) DBDescribeTypes(sessionMgr *session.Manager) (interface{}, []T
 		result := s.ExecuteCQLQuery("DESCRIBE TYPES")
 		return result, nil, nil // Server-side result, no TypeListInfo needed
 	}
-	
+
 	// Fall back to manual construction for pre-4.0
 	currentKeyspace := ""
 	if sessionMgr != nil {
@@ -109,11 +109,11 @@ func (s *Session) DBDescribeType(sessionMgr *session.Manager, typeName string) (
 			}
 			describeCmd = fmt.Sprintf("DESCRIBE TYPE %s.%s", currentKeyspace, typeName)
 		}
-		
+
 		result := s.ExecuteCQLQuery(describeCmd)
 		return result, nil, nil // Server-side result, no TypeInfo needed
 	}
-	
+
 	// Fall back to manual construction for pre-4.0
 	currentKeyspace := ""
 	if sessionMgr != nil {

@@ -72,7 +72,12 @@ func retryWithBackoff[T any](ctx context.Context, maxRetries int, fn func(contex
 
 		if attempt < maxRetries-1 {
 			// Calculate backoff with jitter
-			backoff := time.Duration(1<<uint(attempt)) * time.Second
+			// Cap exponent at 10 to prevent overflow
+			exp := attempt
+			if exp > 10 {
+				exp = 10
+			}
+			backoff := time.Duration(1<<uint(exp)) * time.Second // #nosec G115 - exp is capped at 10
 			// Add 10% jitter to avoid thundering herd
 			jitter := time.Duration(float64(backoff) * 0.1)
 			sleepTime := backoff + jitter
@@ -166,7 +171,7 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 			})
 		})
 		if err != nil {
-			return nil, fmt.Errorf("Anthropic API error: %v", err)
+			return nil, fmt.Errorf("anthropic API error: %v", err)
 		}
 
 		// Add the assistant's response to messages

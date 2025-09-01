@@ -14,7 +14,6 @@ type CompletionEngine struct {
 	session        *db.Session
 	sessionManager *session.Manager
 	cache          *completionCache
-	lastInput      string // Store last input for context
 }
 
 // NewCompletionEngine creates a new completion engine
@@ -37,7 +36,7 @@ func (ce *CompletionEngine) Complete(input string) []string {
 // CompleteLegacy returns possible completions for the given input using the old implementation
 func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 	// Debug output
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Complete called with input: '%s'\n", input)
 		defer debugFile.Close()
 	}
@@ -92,7 +91,7 @@ func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 			closeCount := strings.Count(afterValues, ")")
 			if closeCount >= openCount && closeCount > 0 {
 				// Complete INSERT statement - return no suggestions
-				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 					fmt.Fprintf(debugFile, "[DEBUG] Complete INSERT statement detected, returning no suggestions\n")
 					defer debugFile.Close()
 				}
@@ -102,7 +101,7 @@ func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 	}
 
 	// Use the parser-based completion engine
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Using parser-based completion for: '%s'\n", input)
 		defer debugFile.Close()
 	}
@@ -110,19 +109,19 @@ func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 	parserEngine := NewParserBasedCompletionEngine(ce)
 	suggestions := parserEngine.GetTokenCompletions(input)
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Parser returned %d suggestions\n", len(suggestions))
 		defer debugFile.Close()
 	}
 
 	// If parser doesn't return suggestions, fall back to legacy approach
 	if len(suggestions) == 0 {
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Falling back to legacy completion\n")
 			defer debugFile.Close()
 		}
 		legacySuggestions := ce.completeLegacy(input)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Legacy completion returned %d suggestions: %v\n", len(legacySuggestions), legacySuggestions)
 			defer debugFile.Close()
 		}
@@ -169,7 +168,7 @@ func (ce *CompletionEngine) completeLegacy(input string) []string {
 	afterSpace := endsWithSpace
 
 	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] completeLegacy: input='%s', words=%v, afterSpace=%v, wordToComplete='%s'\n",
 			input, words, afterSpace, wordToComplete)
 		defer debugFile.Close()
@@ -179,30 +178,31 @@ func (ce *CompletionEngine) completeLegacy(input string) []string {
 	var suggestions []string
 	
 	// Debug the decision logic
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] COMPLETION LOGIC: len(words)=%d, afterSpace=%v\n", len(words), afterSpace)
 		defer debugFile.Close()
 	}
 	
-	if len(words) == 0 {
+	switch {
+	case len(words) == 0:
 		suggestions = ce.getTopLevelCommands()
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] BRANCH: No words - using top-level commands: %d suggestions\n", len(suggestions))
 			defer debugFile.Close()
 		}
-	} else if len(words) == 1 && !afterSpace {
+	case len(words) == 1 && !afterSpace:
 		// Single partial word - check against top-level commands
 		suggestions = ce.getTopLevelCommands()
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] BRANCH: Single partial word '%s' - using top-level commands: %d suggestions\n", words[0], len(suggestions))
 			if len(suggestions) > 0 {
 				fmt.Fprintf(debugFile, "[DEBUG] First few commands: %v\n", suggestions[:5])
 			}
 			defer debugFile.Close()
 		}
-	} else {
+	default:
 		suggestions = ce.getCompletionsForContext(words, afterSpace)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] BRANCH: Using context - getCompletionsForContext returned %d suggestions\n", len(suggestions))
 			defer debugFile.Close()
 		}
@@ -217,7 +217,7 @@ func (ce *CompletionEngine) completeLegacy(input string) []string {
 				filtered = append(filtered, s)
 			}
 		}
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] After filtering for '%s' (upper: '%s'): %d matches: %v\n", wordToComplete, upperWord, len(filtered), filtered)
 			defer debugFile.Close()
 		}

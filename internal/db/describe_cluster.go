@@ -17,7 +17,7 @@ func (s *Session) DescribeClusterQuery() (*ClusterInfo, error) {
 	
 	var clusterName, partitioner, version string
 	if iter.Scan(&clusterName, &partitioner, &version) {
-		iter.Close()
+		_ = iter.Close()
 		return &ClusterInfo{
 			ClusterName: clusterName,
 			Partitioner: partitioner,

@@ -72,7 +72,7 @@ func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []
 		return []string{}
 	case "AND":
 		// Could be in SET, WHERE, or USING clause
-		if hasUsing && !hasWhere {
+		if hasUsing && !hasWhere { //nolint:gocritic // more readable as if
 			return UsingOptions
 		} else if hasWhere && wherePos >= 0 {
 			// In WHERE clause

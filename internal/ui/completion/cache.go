@@ -118,7 +118,7 @@ func (ce *CompletionEngine) refreshKeyspaceCache() {
 	for iter.Scan(&keyspaceName) {
 		ce.cache.keyspaces = append(ce.cache.keyspaces, keyspaceName)
 	}
-	iter.Close()
+	_ = iter.Close()
 }
 
 // refreshTableCache updates the table cache for a specific keyspace
@@ -138,7 +138,7 @@ func (ce *CompletionEngine) refreshTableCache(keyspace string) {
 	for iter.Scan(&tableName) {
 		ce.cache.tables[keyspace] = append(ce.cache.tables[keyspace], tableName)
 	}
-	iter.Close()
+	_ = iter.Close()
 }
 
 // refreshColumnCache updates the column cache for a specific table
@@ -159,7 +159,7 @@ func (ce *CompletionEngine) refreshColumnCache(keyspace, table string) {
 	for iter.Scan(&columnName) {
 		ce.cache.columns[cacheKey] = append(ce.cache.columns[cacheKey], columnName)
 	}
-	iter.Close()
+	_ = iter.Close()
 }
 
 // getColumnNamesForCurrentTable returns column names for the table in FROM clause
@@ -254,7 +254,7 @@ func (ce *CompletionEngine) getColumnTypeTemplate(tableName string, columnNames 
 	for iter.Scan(&columnName, &columnType) {
 		columnTypes[columnName] = columnType
 	}
-	iter.Close()
+	_ = iter.Close()
 	
 	// Build the template
 	var templates []string

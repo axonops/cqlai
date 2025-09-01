@@ -21,10 +21,11 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 
 	// Check if it's a SELECT or DESCRIBE query (DESCRIBE returns results in 4.0+)
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	if strings.HasPrefix(upperQuery, "SELECT") || strings.HasPrefix(upperQuery, "DESCRIBE") {
+	switch {
+	case strings.HasPrefix(upperQuery, "SELECT") || strings.HasPrefix(upperQuery, "DESCRIBE"):
 		logger.DebugToFile("ExecuteCQLQuery", "Routing to ExecuteSelectQuery for SELECT/DESCRIBE")
 		return s.ExecuteSelectQuery(query)
-	} else if strings.HasPrefix(upperQuery, "USE ") {
+	case strings.HasPrefix(upperQuery, "USE "):
 		// Handle USE statement - gocql doesn't support USE directly
 		// Return the keyspace name for the UI/router layer to handle
 		parts := strings.Fields(query)
@@ -35,16 +36,16 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 			var exists string
 			iter := s.Query("SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name = ?", keyspace).Iter()
 			if !iter.Scan(&exists) {
-				iter.Close()
-				return fmt.Errorf("Keyspace '%s' does not exist", keyspace)
+				_ = iter.Close()
+				return fmt.Errorf("keyspace '%s' does not exist", keyspace)
 			}
-			iter.Close()
+			_ = iter.Close()
 
 			// Return success - the router/UI will handle updating the current keyspace
 			return fmt.Sprintf("Now using keyspace %s", keyspace)
 		}
 		return "Invalid USE statement"
-	} else {
+	default:
 		// Execute non-SELECT query
 		if err := s.Query(query).Exec(); err != nil {
 			// Check if it's a connection error
@@ -52,7 +53,7 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 			if strings.Contains(errStr, "connection refused") ||
 				strings.Contains(errStr, "no connections") ||
 				strings.Contains(errStr, "unable to connect") {
-				return fmt.Errorf("Connection lost to Cassandra. Please check if the server is running")
+				return fmt.Errorf("connection lost to Cassandra - please check if the server is running")
 			}
 			return fmt.Errorf("query failed: %v", err)
 		}
@@ -84,7 +85,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		if strings.Contains(errStr, "connection refused") ||
 			strings.Contains(errStr, "no connections") ||
 			strings.Contains(errStr, "unable to connect") {
-			return fmt.Errorf("Connection lost to Cassandra. Please check if the server is running")
+			return fmt.Errorf("connection lost to Cassandra - please check if the server is running")
 		}
 		// Re-create the iterator if no connection error
 		iter = s.Query(query).Iter()
@@ -144,9 +145,10 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		// Add indicators for key columns
 		if keyInfo, exists := keyColumns[col.Name]; exists {
 			logger.DebugfToFile("executeSelectQuery", "Adding indicator for %s: %s", col.Name, keyInfo.Kind)
-			if keyInfo.Kind == "partition_key" {
+			switch keyInfo.Kind {
+			case "partition_key":
 				headers[i] += " (PK)"
-			} else if keyInfo.Kind == "clustering" {
+			case "clustering":
 				headers[i] += " (C)"
 			}
 		} else {
@@ -296,9 +298,10 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 
 		// Add indicators for key columns
 		if keyInfo, exists := keyColumns[col.Name]; exists {
-			if keyInfo.Kind == "partition_key" {
+			switch keyInfo.Kind {
+			case "partition_key":
 				headers[i] += " (PK)"
-			} else if keyInfo.Kind == "clustering" {
+			case "clustering":
 				headers[i] += " (C)"
 			}
 		}
@@ -318,24 +321,24 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 // This is now a public method so it can be called from the router/UI layer when needed
 func ConvertToJSONQuery(query string) string {
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	
+
 	// Check if it's already a JSON query
 	if strings.Contains(upperQuery, "SELECT JSON") || strings.Contains(upperQuery, "SELECT DISTINCT JSON") {
 		return query
 	}
-	
+
 	// Only convert SELECT queries
 	if !strings.HasPrefix(upperQuery, "SELECT") {
 		return query
 	}
-	
+
 	// Handle SELECT DISTINCT
 	if strings.HasPrefix(upperQuery, "SELECT DISTINCT") {
 		// Replace "SELECT DISTINCT" with "SELECT DISTINCT JSON"
 		re := regexp.MustCompile(`(?i)^SELECT\s+DISTINCT\s+`)
 		return re.ReplaceAllString(query, "SELECT DISTINCT JSON ")
 	}
-	
+
 	// Handle regular SELECT
 	// Replace "SELECT" with "SELECT JSON"
 	re := regexp.MustCompile(`(?i)^SELECT\s+`)

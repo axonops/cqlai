@@ -19,7 +19,7 @@ func (s *Session) AddToBatch(batch *gocql.Batch, query string) {
 
 // CreateBatch creates a new batch with the specified type
 func (s *Session) CreateBatch(batchType gocql.BatchType) *gocql.Batch {
-	return s.Session.NewBatch(batchType)
+	return s.Batch(batchType)
 }
 
 // ExecuteBatch executes a batch of statements
@@ -27,5 +27,5 @@ func (s *Session) ExecuteBatch(batch *gocql.Batch) error {
 	if batch == nil {
 		return fmt.Errorf("no batch to execute")
 	}
-	return s.Session.ExecuteBatch(batch)
+	return batch.Exec()
 }

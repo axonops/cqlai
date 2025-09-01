@@ -86,13 +86,14 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 	case "BY":
 		if len(words) > 1 {
 			prevWord := words[len(words)-2]
-			if prevWord == "ORDER" {
+			switch prevWord {
+			case "ORDER":
 				// After ORDER BY, suggest column names
 				return ce.getColumnNamesForCurrentTable(words, fromIndex)
-			} else if prevWord == "GROUP" {
+			case "GROUP":
 				// After GROUP BY, suggest column names
 				return ce.getColumnNamesForCurrentTable(words, fromIndex)
-			} else if prevWord == "PARTITION" {
+			case "PARTITION":
 				// After PARTITION BY (in window functions)
 				return ce.getColumnNamesForCurrentTable(words, fromIndex)
 			}
@@ -234,7 +235,7 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 // Context-specific suggestion methods
 func (pce *ParserBasedCompletionEngine) getSelectSuggestions(tokens []string) []string {
 	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] getSelectSuggestions called with tokens: %v\n", tokens)
 		defer debugFile.Close()
 	}
@@ -305,7 +306,7 @@ func (pce *ParserBasedCompletionEngine) getSelectSuggestions(tokens []string) []
 				hasTableName = true
 
 				// Debug logging
-				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 					fmt.Fprintf(debugFile, "[DEBUG] Detected keyspace.table pattern: %s.%s\n", tokens[fromIndex+1], tokens[fromIndex+3])
 					defer debugFile.Close()
 				}
@@ -333,7 +334,7 @@ func (pce *ParserBasedCompletionEngine) getSelectSuggestions(tokens []string) []
 	}
 
 	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Returning SELECT suggestions: %v (hasTableName=%v)\n", suggestions, hasTableName)
 		defer debugFile.Close()
 	}
