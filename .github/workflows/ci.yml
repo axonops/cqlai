@@ -27,12 +27,17 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Download dependencies
+        run: |
+          go mod download
+          go mod vendor
+
       - name: Install golangci-lint
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
 
       - name: Run golangci-lint
-        run: golangci-lint run --timeout=5m
+        run: golangci-lint run --timeout=5m --modules-download-mode=vendor
 
   test:
     name: Test
