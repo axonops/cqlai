@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/db"
 )
 
 // describeTable shows detailed information about a specific table
@@ -267,6 +269,15 @@ var compressionAbbrev = map[string]string{
 
 // describeTables lists all tables in the current keyspace.
 func (v *CqlCommandVisitorImpl) describeTables() interface{} {
+	// Get current keyspace first
+	currentKeyspace := ""
+	if sessionManager != nil {
+		currentKeyspace = sessionManager.CurrentKeyspace()
+	}
+	if currentKeyspace == "" {
+		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+	}
+
 	serverResult, tables, err := v.session.DBDescribeTables(sessionManager)
 
 	if err != nil {
@@ -277,7 +288,93 @@ func (v *CqlCommandVisitorImpl) describeTables() interface{} {
 	}
 
 	if serverResult != nil {
-		// Server-side DESCRIBE result, return as-is
+		// Check if we got a StreamingQueryResult that needs filtering
+		if streamResult, ok := serverResult.(db.StreamingQueryResult); ok {
+			// For Cassandra 5.0, DESCRIBE TABLES returns all tables from all keyspaces
+			// We need to consume the iterator and filter the results
+
+			// Find keyspace_name column index
+			keyspaceColIdx := -1
+			nameColIdx := -1
+			for idx, colName := range streamResult.ColumnNames {
+				switch colName {
+				case "keyspace_name":
+					keyspaceColIdx = idx
+				case "name":
+					nameColIdx = idx
+				}
+			}
+
+			if keyspaceColIdx >= 0 && nameColIdx >= 0 {
+				// Consume the iterator and collect filtered table names
+				filteredResults := [][]string{{"name"}}
+
+				for {
+					rowMap := make(map[string]interface{})
+					if !streamResult.Iterator.MapScan(rowMap) {
+						break
+					}
+
+					// Check if this row belongs to current keyspace
+					if ks, ok := rowMap["keyspace_name"].(string); ok && ks == currentKeyspace {
+						if name, ok := rowMap["name"].(string); ok {
+							filteredResults = append(filteredResults, []string{name})
+						}
+					}
+				}
+
+				// Close the iterator
+				_ = streamResult.Iterator.Close()
+
+				// Return as a regular QueryResult
+				return db.QueryResult{
+					Data:        filteredResults,
+					ColumnTypes: []string{"text"},
+					Duration:    0, // We don't have duration info from streaming
+					RowCount:    len(filteredResults) - 1,
+				}
+			}
+		}
+
+		// For regular QueryResult, apply filtering
+		if queryResult, ok := serverResult.(db.QueryResult); ok && len(queryResult.Data) > 0 {
+			// Find keyspace column
+			headers := queryResult.Data[0]
+			keyspaceColIdx := -1
+			nameColIdx := -1
+
+			for idx, header := range headers {
+				switch header {
+				case "keyspace_name":
+					keyspaceColIdx = idx
+				case "name":
+					nameColIdx = idx
+				}
+			}
+
+			if keyspaceColIdx >= 0 && nameColIdx >= 0 {
+				// Filter results
+				filteredResults := [][]string{{"name"}}
+
+				for i := 1; i < len(queryResult.Data); i++ {
+					row := queryResult.Data[i]
+					if len(row) > keyspaceColIdx && row[keyspaceColIdx] == currentKeyspace {
+						if len(row) > nameColIdx {
+							filteredResults = append(filteredResults, []string{row[nameColIdx]})
+						}
+					}
+				}
+
+				return db.QueryResult{
+					Data:        filteredResults,
+					ColumnTypes: []string{"text"},
+					Duration:    queryResult.Duration,
+					RowCount:    len(filteredResults) - 1,
+				}
+			}
+		}
+
+		// Return original if we can't filter
 		return serverResult
 	}
 

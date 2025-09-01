@@ -24,9 +24,12 @@ func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// Scroll the appropriate viewport
 	var cmd tea.Cmd
-	if m.viewMode == "table" && m.hasTable {
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		m.traceViewport, cmd = m.traceViewport.Update(msg)
+	case m.viewMode == "table" && m.hasTable:
 		m.tableViewport, cmd = m.tableViewport.Update(msg)
-	} else {
+	default:
 		m.historyViewport, cmd = m.historyViewport.Update(msg)
 	}
 	return m, cmd
@@ -42,7 +45,10 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// Scroll the appropriate viewport
 	var cmd tea.Cmd
-	if m.viewMode == "table" && m.hasTable {
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		m.traceViewport, cmd = m.traceViewport.Update(msg)
+	case m.viewMode == "table" && m.hasTable:
 		m.tableViewport, cmd = m.tableViewport.Update(msg)
 
 		// Check if we need to load more data
@@ -75,7 +81,7 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 						case config.OutputFormatASCII:
 							contentStr = FormatASCIITable(allData)
 						case config.OutputFormatExpand:
-							contentStr = FormatExpandTable(allData)
+							contentStr = FormatExpandTable(allData, m.styles)
 						default:
 							contentStr = m.formatTableForViewport(allData)
 						}
@@ -90,7 +96,7 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				}
 			}
 		}
-	} else {
+	default:
 		m.historyViewport, cmd = m.historyViewport.Update(msg)
 	}
 	return m, cmd
@@ -146,12 +152,18 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// If Alt is held, scroll viewport up by one line
 	if msg.Alt {
-		if m.viewMode == "table" && m.hasTable {
-			// Scroll up by one line
+		switch {
+		case m.viewMode == "trace" && m.hasTrace:
+			// Scroll trace up by one line
+			if m.traceViewport.YOffset > 0 {
+				m.traceViewport.YOffset--
+			}
+		case m.viewMode == "table" && m.hasTable:
+			// Scroll table up by one line
 			if m.tableViewport.YOffset > 0 {
 				m.tableViewport.YOffset--
 			}
-		} else {
+		default:
 			// Scroll history up by one line
 			if m.historyViewport.YOffset > 0 {
 				m.historyViewport.YOffset--
@@ -218,8 +230,18 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// If Alt is held, scroll viewport down by one line
 	if msg.Alt {
-		if m.viewMode == "table" && m.hasTable {
-			// Scroll down by one line
+		switch {
+		case m.viewMode == "trace" && m.hasTrace:
+			// Scroll trace down by one line
+			maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+			if maxOffset < 0 {
+				maxOffset = 0
+			}
+			if m.traceViewport.YOffset < maxOffset {
+				m.traceViewport.YOffset++
+			}
+		case m.viewMode == "table" && m.hasTable:
+			// Scroll table down by one line
 			maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height
 			if maxOffset < 0 {
 				maxOffset = 0
@@ -258,7 +280,7 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 								case config.OutputFormatASCII:
 									contentStr = FormatASCIITable(allData)
 								case config.OutputFormatExpand:
-									contentStr = FormatExpandTable(allData)
+									contentStr = FormatExpandTable(allData, m.styles)
 								case config.OutputFormatJSON:
 									// Format JSON output - each row is a JSON string
 									jsonStr := ""
@@ -283,7 +305,7 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 					}
 				}
 			}
-		} else {
+		default:
 			// Scroll history down by one line
 			maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
 			if maxOffset < 0 {
@@ -315,16 +337,30 @@ func (m *MainModel) handleLeftArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		m.modal.PrevChoice()
 		return m, nil
 	}
-	// If Alt is held, scroll table left
+	// If Alt is held, scroll table/trace left
 	if msg.Alt {
-		if m.horizontalOffset > 0 {
-			m.horizontalOffset -= 10
-			if m.horizontalOffset < 0 {
-				m.horizontalOffset = 0
+		switch {
+		case m.viewMode == "trace" && m.hasTrace:
+			// Scroll trace table left
+			if m.traceHorizontalOffset > 0 {
+				m.traceHorizontalOffset -= 10
+				if m.traceHorizontalOffset < 0 {
+					m.traceHorizontalOffset = 0
+				}
+				// Refresh the trace view using existing table renderer
+				m.refreshTraceView()
 			}
-			// Refresh the table view if we have table data
-			if m.lastTableData != nil {
-				m.refreshTableView()
+		case m.viewMode == "table" && m.hasTable:
+			// Scroll data table left
+			if m.horizontalOffset > 0 {
+				m.horizontalOffset -= 10
+				if m.horizontalOffset < 0 {
+					m.horizontalOffset = 0
+				}
+				// Refresh the table view if we have table data
+				if m.lastTableData != nil {
+					m.refreshTableView()
+				}
 			}
 		}
 		return m, nil
@@ -348,19 +384,35 @@ func (m *MainModel) handleRightArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		m.modal.NextChoice()
 		return m, nil
 	}
-	// If Alt is held, scroll table right
+	// If Alt is held, scroll table/trace right
 	if msg.Alt {
-		// Only scroll right if table is wider than viewport
-		if m.tableWidth > m.tableViewport.Width {
-			maxOffset := m.tableWidth - m.tableViewport.Width + 10 // Add some buffer
-			if m.horizontalOffset < maxOffset {
-				m.horizontalOffset += 10
-				if m.horizontalOffset > maxOffset {
-					m.horizontalOffset = maxOffset
+		switch {
+		case m.viewMode == "trace" && m.hasTrace:
+			// Scroll trace table right
+			if m.traceTableWidth > m.traceViewport.Width {
+				maxOffset := m.traceTableWidth - m.traceViewport.Width + 10 // Add some buffer
+				if m.traceHorizontalOffset < maxOffset {
+					m.traceHorizontalOffset += 10
+					if m.traceHorizontalOffset > maxOffset {
+						m.traceHorizontalOffset = maxOffset
+					}
+					// Refresh the trace view using existing table renderer
+					m.refreshTraceView()
 				}
-				// Refresh the table view if we have table data
-				if m.lastTableData != nil {
-					m.refreshTableView()
+			}
+		case m.viewMode == "table" && m.hasTable:
+			// Scroll data table right
+			if m.tableWidth > m.tableViewport.Width {
+				maxOffset := m.tableWidth - m.tableViewport.Width + 10 // Add some buffer
+				if m.horizontalOffset < maxOffset {
+					m.horizontalOffset += 10
+					if m.horizontalOffset > maxOffset {
+						m.horizontalOffset = maxOffset
+					}
+					// Refresh the table view if we have table data
+					if m.lastTableData != nil {
+						m.refreshTableView()
+					}
 				}
 			}
 		}

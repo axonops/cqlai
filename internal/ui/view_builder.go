@@ -22,6 +22,7 @@ func (m *MainModel) View() string {
 		}
 		m.statusBar.Keyspace = currentKeyspace
 		m.statusBar.Tracing = m.session.Tracing()
+		m.statusBar.HasTraceData = m.hasTrace
 		m.statusBar.Consistency = m.session.Consistency()
 		m.statusBar.PagingSize = m.session.PageSize()
 		m.statusBar.Version = m.session.CassandraVersion()
@@ -46,13 +47,23 @@ func (m *MainModel) View() string {
 
 	// Get the active viewport for scroll info
 	activeViewport := m.historyViewport
-	if m.viewMode == "table" && m.hasTable {
+	switch {
+	case m.viewMode == "table" && m.hasTable:
 		activeViewport = m.tableViewport
+	case m.viewMode == "trace" && m.hasTrace:
+		activeViewport = m.traceViewport
 	}
 
 	// Add mode indicator and scroll info
 	var scrollInfo string
-	if m.hasTable {
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		modeIndicator := m.styles.AccentText.Render("[TRACE VIEW]")
+		scrollInfo = " " + modeIndicator
+		if m.hasTable {
+			scrollInfo += " " + m.styles.MutedText.Render("[F4: Back]")
+		}
+	case m.hasTable:
 		// Show view mode indicator when table is available
 		if m.viewMode == "table" {
 			modeIndicator := m.styles.AccentText.Render("[TABLE VIEW]")
@@ -63,9 +74,15 @@ func (m *MainModel) View() string {
 			} else {
 				scrollInfo += " " + m.styles.MutedText.Render("[F2: Show Types]")
 			}
+			if m.hasTrace {
+				scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
+			}
 		} else {
 			modeIndicator := m.styles.MutedText.Render("[HISTORY VIEW]")
 			scrollInfo = " " + modeIndicator
+			if m.hasTrace {
+				scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
+			}
 		}
 	}
 
@@ -81,8 +98,20 @@ func (m *MainModel) View() string {
 		}
 	}
 
-	// Add horizontal scroll indicator if table is wider than viewport
-	if m.hasTable && m.viewMode == "table" && m.tableWidth > m.tableViewport.Width {
+	// Add horizontal scroll indicator if table/trace is wider than viewport
+	switch {
+	case m.viewMode == "trace" && m.hasTrace && m.traceTableWidth > m.traceViewport.Width:
+		if m.traceHorizontalOffset == 0 { //nolint:gocritic // more readable as if
+			scrollInfo += " | H:LEFT"
+		} else if m.traceHorizontalOffset >= m.traceTableWidth-m.traceViewport.Width {
+			scrollInfo += " | H:RIGHT"
+		} else {
+			// Calculate horizontal scroll percentage
+			maxOffset := m.traceTableWidth - m.traceViewport.Width
+			hScrollPercent := float64(m.traceHorizontalOffset) / float64(maxOffset)
+			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
+		}
+	case m.hasTable && m.viewMode == "table" && m.tableWidth > m.tableViewport.Width:
 		if m.horizontalOffset == 0 { //nolint:gocritic // more readable as if
 			scrollInfo += " | H:LEFT"
 		} else if m.horizontalOffset >= m.tableWidth-m.tableViewport.Width {
@@ -140,10 +169,14 @@ func (m *MainModel) View() string {
 	var viewportContent string
 	var viewportWidth int
 
-	if m.viewMode == "table" && m.hasTable {
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		viewportWidth = m.traceViewport.Width
+		viewportContent = m.traceViewport.View()
+	case m.viewMode == "table" && m.hasTable:
 		viewportWidth = m.tableViewport.Width
 		viewportContent = m.tableViewport.View()
-	} else {
+	default:
 		viewportContent = m.historyViewport.View()
 		viewportWidth = m.historyViewport.Width
 	}
@@ -183,7 +216,7 @@ func (m *MainModel) View() string {
 		topBar,
 		viewportSection,
 		inputSection,
-		m.statusBar.View(viewportWidth, m.styles)+scrollInfo,
+		m.statusBar.View(viewportWidth, m.styles, m.viewMode)+scrollInfo,
 	)
 
 	// Calculate the actual screen dimensions

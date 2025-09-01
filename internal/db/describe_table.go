@@ -245,14 +245,7 @@ func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string)
 
 // DBDescribeTables handles version detection and returns appropriate data
 func (s *Session) DBDescribeTables(sessionMgr *session.Manager) (interface{}, []TableListInfo, error) {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// Use server-side DESCRIBE TABLES
-		result := s.ExecuteCQLQuery("DESCRIBE TABLES")
-		return result, nil, nil // Server-side result, no TableListInfo needed
-	}
-	
-	// Fall back to manual construction for pre-4.0
+	// Get current keyspace - required for both paths
 	currentKeyspace := ""
 	if sessionMgr != nil {
 		currentKeyspace = sessionMgr.CurrentKeyspace()
@@ -260,7 +253,16 @@ func (s *Session) DBDescribeTables(sessionMgr *session.Manager) (interface{}, []
 	if currentKeyspace == "" {
 		return nil, nil, fmt.Errorf("no keyspace selected")
 	}
-
+	
+	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
+	if s.IsVersion4OrHigher() {
+		// In Cassandra 5.0, DESCRIBE TABLES returns all tables from all keyspaces
+		// The filtering will be done at the router layer
+		result := s.ExecuteCQLQuery("DESCRIBE TABLES")
+		return result, nil, nil // Server-side result, no TableListInfo needed
+	}
+	
+	// Fall back to manual construction for pre-4.0
 	tables, err := s.DescribeTablesQuery(currentKeyspace)
 	if err != nil {
 		return nil, nil, err

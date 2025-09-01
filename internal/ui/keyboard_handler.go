@@ -249,6 +249,22 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		}
 		return m, nil
+		
+	case tea.KeyF4:
+		// F4 to switch to trace view if trace data is available
+		if m.hasTrace {
+			if m.viewMode != "trace" {
+				m.viewMode = "trace"
+			} else {
+				// Toggle back to history or table view
+				if m.hasTable {
+					m.viewMode = "table"
+				} else {
+					m.viewMode = "history"
+				}
+			}
+		}
+		return m, nil
 
 	case tea.KeySpace:
 		return m.handleSpaceKey(msg)
