@@ -32,11 +32,10 @@ jobs:
           go mod download
           go mod vendor
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v2.4.0
-          args: --timeout=5m
+      - name: Install and run golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /tmp v2.4.0
+          /tmp/golangci-lint run --timeout=5m
 
   test:
     name: Test
