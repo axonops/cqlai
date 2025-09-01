@@ -35,8 +35,8 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
-          args: --timeout=5m --skip-dirs=internal/parser/grammar
+          version: v2.4.0
+          args: --timeout=5m
 
   test:
     name: Test

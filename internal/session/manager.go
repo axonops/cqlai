@@ -18,9 +18,7 @@ type Manager struct {
 // NewManager creates a new session manager
 func NewManager(cfg *config.Config) *Manager {
 	outputFormat := config.OutputFormatTable // Default
-	if cfg != nil {
-		// Could read from config if we add output format to config
-	}
+	// Could read from config if we add output format to config
 
 	return &Manager{
 		currentKeyspace:     "",

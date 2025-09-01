@@ -100,7 +100,7 @@ func LoadConfig() (*Config, error) {
 	var foundPath string
 
 	for _, path := range configPaths {
-		configData, err = os.ReadFile(path)
+		configData, err = os.ReadFile(path) // #nosec G304 - Config file path is validated
 		if err == nil {
 			foundPath = path
 			break
@@ -302,7 +302,7 @@ func ParseOutputFormat(format string) (OutputFormat, error) {
 
 // loadCQLSHRC loads configuration from a CQLSHRC file
 func loadCQLSHRC(path string, config *Config) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 - Config file path is validated
 	if err != nil {
 		return err
 	}
@@ -428,7 +428,7 @@ func loadCredentialsFile(path string, config *Config) error {
 		path = filepath.Join(os.Getenv("HOME"), path[1:])
 	}
 
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 - Config file path is validated
 	if err != nil {
 		return err
 	}

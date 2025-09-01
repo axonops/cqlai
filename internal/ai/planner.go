@@ -288,10 +288,7 @@ func renderDescribe(plan *AIResult) (string, error) {
 		sb.WriteString("KEYSPACES")
 	case "TABLES":
 		sb.WriteString("TABLES")
-		if plan.Keyspace != "" {
-			// This would be "DESCRIBE TABLES" which shows all tables
-			// If keyspace is specified, we need to use "DESCRIBE KEYSPACE <name>"
-		}
+		// If keyspace is specified, it will be handled by the outer logic
 	case "CLUSTER":
 		sb.WriteString("CLUSTER")
 	case "SCHEMA":

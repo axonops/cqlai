@@ -33,7 +33,7 @@ usercert = ~/certs/client.cert
 validate = false
 `
 
-	if err := os.WriteFile(cqlshrcPath, []byte(cqlshrcContent), 0644); err != nil {
+	if err := os.WriteFile(cqlshrcPath, []byte(cqlshrcContent), 0600); err != nil {
 		t.Fatalf("Failed to create test cqlshrc file: %v", err)
 	}
 

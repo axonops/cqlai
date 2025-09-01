@@ -51,10 +51,10 @@ func (s *Session) DescribeMaterializedViewQuery(keyspace string, viewName string
 		&compaction, &compression, &crcCheckChance, &dclocalReadRepairChance, &defaultTTL,
 		&gcGrace, &maxIndexInterval, &memtableFlushPeriod, &minIndexInterval,
 		&readRepairChance, &speculativeRetry) {
-		iter.Close()
+		_ = iter.Close()
 		return nil, fmt.Errorf("materialized view '%s' not found in keyspace '%s'", viewName, keyspace)
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	// Get view columns for primary key info
 	colQuery := `SELECT column_name, type, kind 
@@ -67,13 +67,14 @@ func (s *Session) DescribeMaterializedViewQuery(keyspace string, viewName string
 	var colName, colType, colKind string
 
 	for colIter.Scan(&colName, &colType, &colKind) {
-		if colKind == "partition_key" {
+		switch colKind {
+		case "partition_key":
 			partitionKeys = append(partitionKeys, colName)
-		} else if colKind == "clustering" {
+		case "clustering":
 			clusteringKeys = append(clusteringKeys, colName)
 		}
 	}
-	colIter.Close()
+	_ = colIter.Close()
 
 	return &MaterializedViewInfo{
 		Name:                    name,
@@ -116,11 +117,11 @@ func (s *Session) DBDescribeMaterializedView(sessionMgr *session.Manager, viewNa
 			}
 			describeCmd = fmt.Sprintf("DESCRIBE MATERIALIZED VIEW %s.%s", currentKeyspace, viewName)
 		}
-		
+
 		result := s.ExecuteCQLQuery(describeCmd)
 		return result, nil, nil // Server-side result, no MaterializedViewInfo needed
 	}
-	
+
 	// Fall back to manual construction for pre-4.0
 	currentKeyspace := ""
 	if sessionMgr != nil {

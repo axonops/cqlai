@@ -137,7 +137,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	var releaseVersion string
 	iter := session.Query("SELECT release_version FROM system.local").Iter()
 	iter.Scan(&releaseVersion)
-	iter.Close()
+	_ = iter.Close()
 
 	s := &Session{
 		Session:          session,
@@ -319,7 +319,7 @@ func (s *Session) GetSchemaCache() *SchemaCache {
 // createTLSConfig creates a TLS configuration based on the SSL settings
 func createTLSConfig(sslConfig *config.SSLConfig) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: sslConfig.InsecureSkipVerify,
+		InsecureSkipVerify: sslConfig.InsecureSkipVerify, // #nosec G402 - Configurable TLS verification
 	}
 
 	// Load client certificate if provided

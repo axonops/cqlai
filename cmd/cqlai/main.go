@@ -19,7 +19,7 @@ func main() {
 	username := flag.String("username", "", "Username for authentication (overrides config)")
 	password := flag.String("password", "", "Password for authentication (overrides config)")
 	noConfirm := flag.Bool("no-confirm", false, "Disable confirmation prompts for dangerous commands")
-	
+
 	// Batch mode flags (compatible with cqlsh)
 	execute := flag.String("e", "", "Execute CQL statement and exit")
 	executeFile := flag.String("f", "", "Execute CQL from file and exit")
@@ -27,10 +27,10 @@ func main() {
 	noHeader := flag.Bool("no-header", false, "Don't output column headers (CSV format)")
 	fieldSep := flag.String("field-separator", ",", "Field separator for CSV output")
 	pageSize := flag.Int("page-size", 100, "Pagination size for batch mode (default: 100)")
-	
+
 	// Version flag
 	version := flag.Bool("version", false, "Print version and exit")
-	
+
 	flag.Parse()
 
 	// Handle version flag
@@ -69,27 +69,22 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		defer executor.Close()
-
 		// Execute based on input source
-		if *execute != "" {
+		if *execute != "" { //nolint:gocritic // more readable as if
 			// Execute command from -e flag
-			if err := executor.Execute(*execute); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+			err = executor.Execute(*execute)
 		} else if *executeFile != "" {
 			// Execute from file
-			if err := executor.ExecuteFile(*executeFile); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+			err = executor.ExecuteFile(*executeFile)
 		} else {
 			// Execute from stdin
-			if err := executor.ExecuteStdin(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+			err = executor.ExecuteStdin()
+		}
+
+		_ = executor.Close() // Error already handled in defer
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
 	} else {
 		// Interactive mode - use Bubble Tea UI
@@ -101,7 +96,7 @@ func main() {
 
 		p := tea.NewProgram(m)
 
-		if err := p.Start(); err != nil {
+		if _, err := p.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
 			os.Exit(1)
 		}

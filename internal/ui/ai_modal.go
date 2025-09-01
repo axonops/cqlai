@@ -129,13 +129,14 @@ func (m *AIModal) SetError(err error) {
 
 // NextChoice moves to the next choice
 func (m *AIModal) NextChoice() {
-	if m.State == AIModalStatePreview {
+	switch m.State {
+	case AIModalStatePreview:
 		if m.Plan != nil && m.Plan.Operation == "INFO" {
 			m.Selected = (m.Selected + 1) % 2 // 0: Done, 1: Reply
 		} else {
 			m.Selected = (m.Selected + 1) % 3 // 0: Cancel, 1: Execute, 2: Edit
 		}
-	} else if m.State == AIModalStateError {
+	case AIModalStateError:
 		m.Selected = 0 // Only cancel available on error
 	}
 }
@@ -429,7 +430,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 	var contentTitle string
 	var currentContent string
 
-	if m.Plan != nil && m.Plan.Operation == "INFO" {
+	if m.Plan != nil && m.Plan.Operation == "INFO" { //nolint:gocritic // more readable as if
 		contentTitle = m.Plan.InfoTitle
 		if contentTitle == "" {
 			contentTitle = "Information:"
@@ -577,7 +578,7 @@ func (m *AIModal) renderInfoFollowUp(titleStyle lipgloss.Style, styles *Styles) 
 	if m.CursorPosition <= len(inputContent) {
 		inputContent = inputContent[:m.CursorPosition] + "█" + inputContent[m.CursorPosition:]
 	} else {
-		inputContent = inputContent + "█"
+		inputContent += "█"
 	}
 
 	if inputContent == "█" {
@@ -630,7 +631,7 @@ func (m *AIModal) renderFollowUp(titleStyle lipgloss.Style, styles *Styles) stri
 	if m.CursorPosition <= len(inputContent) {
 		inputContent = inputContent[:m.CursorPosition] + "█" + inputContent[m.CursorPosition:]
 	} else {
-		inputContent = inputContent + "█"
+		inputContent += "█"
 	}
 
 	if inputContent == "█" {

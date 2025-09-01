@@ -30,9 +30,7 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 		// Get schema context
 		schemaContext := ""
 		// Try to get from globalAI if available
-		if err := ai.InitializeLocalAI(session); err == nil {
-			// globalAI should now be initialized
-		}
+		_ = ai.InitializeLocalAI(session) // Ignore error
 		
 		// Get minimal schema context
 		schemaContext = "Available keyspaces: "

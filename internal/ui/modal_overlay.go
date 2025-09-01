@@ -34,7 +34,7 @@ func OverlayModalOnView(background string, modal ModalOverlay) string {
 			
 			// Ensure the background line is long enough
 			if len(bgLine) < modal.X + modalLineWidth {
-				bgLine = bgLine + strings.Repeat(" ", modal.X + modalLineWidth - len(bgLine))
+				bgLine += strings.Repeat(" ", modal.X + modalLineWidth - len(bgLine))
 			}
 			
 			// Get the part before the modal

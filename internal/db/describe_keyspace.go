@@ -31,10 +31,10 @@ func (s *Session) DescribeKeyspaceQuery(keyspaceName string) (*KeyspaceInfo, err
 	var replication map[string]string
 
 	if !iter.Scan(&name, &durableWrites, &replication) {
-		iter.Close()
+		_ = iter.Close()
 		return nil, fmt.Errorf("keyspace '%s' not found", keyspaceName)
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	return &KeyspaceInfo{
 		Name:          name,

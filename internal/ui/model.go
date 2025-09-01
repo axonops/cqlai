@@ -290,14 +290,15 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Error != nil {
 				// Check if this is an interaction request
 				if interactionReq, ok := msg.Error.(*ai.InteractionRequest); ok {
-					if interactionReq.Type == "selection" {
+					switch interactionReq.Type {
+					case "selection":
 						logger.DebugfToFile("AI", "User selection needed for: %s", interactionReq.SelectionType)
 						// Hide the AI modal temporarily
 						m.showAIModal = false
 						// Show selection modal
 						m.aiSelectionModal = NewAISelectionModal(interactionReq.SelectionType, interactionReq.SelectionOptions)
 						return m, nil
-					} else if interactionReq.Type == "info" {
+					case "info":
 						logger.DebugfToFile("AI", "More info needed: %s", interactionReq.InfoMessage)
 						// Hide the AI modal temporarily
 						m.showAIModal = false

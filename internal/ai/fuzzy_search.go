@@ -45,7 +45,7 @@ func (r *Resolver) FindTables(query string, limit int) []TableCandidate {
 			matchType := ""
 
 			// Exact match
-			if tableLower == query {
+			if tableLower == query { //nolint:gocritic // more readable as if
 				score = 1.0
 				matchType = "exact"
 			} else if strings.Contains(tableLower, query) || strings.Contains(query, tableLower) {
@@ -161,10 +161,7 @@ func (r *Resolver) FindTablesWithFuzzy(query string, limit int) []TableCandidate
 	tableMap := make(map[string]db.CachedTableInfo)
 
 	// Also check if query matches keyspaces
-	for _, keyspace := range r.cache.Keyspaces {
-		// Add keyspace name to search list
-		tableList = append(tableList, keyspace)
-	}
+	tableList = append(tableList, r.cache.Keyspaces...)
 
 	for keyspace, tables := range r.cache.Tables {
 		logger.DebugfToFile("Resolver", "Keyspace %s has %d tables", keyspace, len(tables))

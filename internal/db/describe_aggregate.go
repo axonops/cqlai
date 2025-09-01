@@ -67,10 +67,10 @@ func (s *Session) DescribeAggregateQuery(keyspace string, aggregateName string) 
 	var argumentTypes []string
 
 	if !iter.Scan(&name, &argumentTypes, &stateFunc, &stateType, &finalFunc, &initCond, &returnType) {
-		iter.Close()
+		_ = iter.Close()
 		return nil, fmt.Errorf("aggregate '%s' not found in keyspace '%s'", aggregateName, keyspace)
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	return &AggregateInfo{
 		Name:          name,

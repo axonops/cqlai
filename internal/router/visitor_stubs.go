@@ -45,7 +45,7 @@ func (v *CqlCommandVisitorImpl) VisitSelect_(ctx *grammar.Select_Context) interf
 	logPath := cwd + "/cqlai_debug.log"
 
 	// Open or create debug log file in current working directory
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) // #nosec G304 - Debug log in cwd
 	if err != nil {
 		// If we can't open the log file, fall back to stdout
 		fmt.Printf("[WARNING] Could not open debug log file at %s: %v\n", logPath, err)
@@ -56,7 +56,7 @@ func (v *CqlCommandVisitorImpl) VisitSelect_(ctx *grammar.Select_Context) interf
 	}
 	defer func() {
 		if logFile != os.Stdout {
-			logFile.Close()
+			_ = logFile.Close()
 		}
 	}()
 
@@ -65,7 +65,7 @@ func (v *CqlCommandVisitorImpl) VisitSelect_(ctx *grammar.Select_Context) interf
 		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 		msg := fmt.Sprintf(format, args...)
 		fmt.Fprintf(logFile, "[%s] %s\n", timestamp, msg)
-		logFile.Sync() // Ensure it's written immediately
+		_ = logFile.Sync() // Ensure it's written immediately
 	}
 
 	// Add logging for debugging

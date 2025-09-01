@@ -36,8 +36,7 @@ func NewAIInfoRequestModal(message string) *AIInfoRequestModal {
 
 // Update handles input for the modal
 func (m *AIInfoRequestModal) Update(msg tea.Msg) (*AIInfoRequestModal, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch msg.Type {
 		case tea.KeyEscape:
 			// Cancel the modal

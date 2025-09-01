@@ -6,9 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	statusBarStyle = lipgloss.NewStyle().Padding(0, 1)
-)
+var ()
 
 // StatusBarModel is the Bubble Tea model for the status bar.
 type StatusBarModel struct {

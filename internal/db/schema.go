@@ -59,7 +59,7 @@ func (s *Session) GetSchemaCatalog() (*SchemaCatalog, error) {
 		
 		// Get tables for this keyspace
 		if err := s.loadTablesForKeyspace(ks); err != nil {
-			iter.Close()
+			_ = iter.Close()
 			return nil, fmt.Errorf("failed to load tables for keyspace %s: %v", keyspaceName, err)
 		}
 		
@@ -194,9 +194,10 @@ func (s *Session) GetSchemaContext(limit int) (string, error) {
 			
 			for _, col := range table.Columns {
 				marker := ""
-				if col.Kind == "partition_key" {
+				switch col.Kind {
+				case "partition_key":
 					marker = " (PK)"
-				} else if col.Kind == "clustering" {
+				case "clustering":
 					marker = " (CK)"
 				}
 				sb.WriteString(fmt.Sprintf("      - %s: %s%s\n", col.Name, col.Type, marker))

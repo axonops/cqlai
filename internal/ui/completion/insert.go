@@ -164,7 +164,7 @@ func (ce *CompletionEngine) getInsertCompletions(words []string, wordPos int) []
 
 func (pce *ParserBasedCompletionEngine) getInsertSuggestions(tokens []string) []string {
 	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] getInsertSuggestions called with tokens: %v\n", tokens)
 		defer debugFile.Close()
 	}
@@ -281,16 +281,16 @@ func (pce *ParserBasedCompletionEngine) getInsertSuggestions(tokens []string) []
 		// The VALUES clause is likely complete if we have tokens after VALUES
 		// Just suggest what can come after a complete VALUES clause
 		result := []string{"IF", "USING"}
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] getInsertSuggestions returning (after VALUES): %v\n", result)
-			debugFile.Close()
+			_ = debugFile.Close()
 		}
 		return result
 	}
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] getInsertSuggestions returning empty\n")
-		debugFile.Close()
+		_ = debugFile.Close()
 	}
 	return []string{}
 }
@@ -300,7 +300,7 @@ func (ce *CompletionEngine) handleInsertIntoCompletion(input string, afterInto s
 	afterIntoTrimmed := strings.TrimSpace(afterInto)
 
 	// Debug output
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] INSERT INTO pattern detected. Input: '%s', After INTO: '%s' (trimmed: '%s')\n", input, afterInto, afterIntoTrimmed)
 		defer debugFile.Close()
 	}
@@ -311,7 +311,7 @@ func (ce *CompletionEngine) handleInsertIntoCompletion(input string, afterInto s
 	} else if strings.Contains(afterIntoTrimmed, "(") && strings.Contains(afterIntoTrimmed, ")") &&
 		!strings.Contains(afterIntoTrimmed, "VALUES") {
 		// We have columns specified but no VALUES yet - suggest VALUES
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Columns specified in INSERT INTO, no VALUES yet\n")
 			defer debugFile.Close()
 		}
@@ -333,19 +333,20 @@ func (ce *CompletionEngine) handleInsertValuesCompletion(input string, afterInto
 	afterValues := afterIntoTrimmed[strings.Index(afterIntoTrimmed, "VALUES")+6:]
 	afterValues = strings.TrimSpace(afterValues)
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] VALUES found. After VALUES: '%s'\n", afterValues)
 		defer debugFile.Close()
 	}
 
-	if afterValues == "" {
+	switch {
+	case afterValues == "":
 		// Just "VALUES" - suggest opening parenthesis
 		// Return just the next token, not the full input
 		return []string{"("}
-	} else if afterValues == "(" {
+	case afterValues == "(":
 		// After "VALUES (", suggest data type template
 		return ce.handleInsertValueTemplateCompletion(input, afterIntoTrimmed)
-	} else if strings.Contains(afterValues, ")") {
+	case strings.Contains(afterValues, ")"):
 		// Check if VALUES clause has balanced parentheses
 		openCount := strings.Count(afterValues, "(")
 		closeCount := strings.Count(afterValues, ")")
@@ -388,7 +389,7 @@ func (ce *CompletionEngine) handleInsertValueTemplateCompletion(input string, af
 		}
 	}
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] After VALUES (, table='%s', columns=%v\n", tableName, columnNames)
 		defer debugFile.Close()
 	}
@@ -409,7 +410,7 @@ func (ce *CompletionEngine) handleInsertKeyspaceTableCompletion(input string, af
 	// Split to check if we have keyspace.table or just keyspace.
 	parts := strings.Split(afterIntoTrimmed, ".")
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Keyspace.table check: '%s', parts=%v\n", afterIntoTrimmed, parts)
 		defer debugFile.Close()
 	}
@@ -420,7 +421,7 @@ func (ce *CompletionEngine) handleInsertKeyspaceTableCompletion(input string, af
 
 		if tableNamePart == "" {
 			// This is "keyspace." - should suggest table names
-			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 				fmt.Fprintf(debugFile, "[DEBUG] Incomplete keyspace. pattern, keyspace='%s'\n", keyspaceName)
 				defer debugFile.Close()
 			}
@@ -428,7 +429,7 @@ func (ce *CompletionEngine) handleInsertKeyspaceTableCompletion(input string, af
 			// Get tables for this keyspace
 			tables := ce.getTablesForKeyspace(keyspaceName)
 
-			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 				fmt.Fprintf(debugFile, "[DEBUG] Returning %d table completions for keyspace %s\n", len(tables), keyspaceName)
 				defer debugFile.Close()
 			}
@@ -460,7 +461,7 @@ func (ce *CompletionEngine) handleInsertTableNameCompletion(input string, keyspa
 		}
 	}
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Table part '%s', exact match: %v, matching tables: %v\n",
 			tableNamePart, exactMatch, matchingTables)
 		defer debugFile.Close()
@@ -468,13 +469,13 @@ func (ce *CompletionEngine) handleInsertTableNameCompletion(input string, keyspa
 
 	if exactMatch {
 		// This is a complete, valid table name - suggest what comes after
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Complete keyspace.table: '%s'\n", afterIntoTrimmed)
 			defer debugFile.Close()
 		}
 
 		columns := ce.getColumnNamesForTable(afterIntoTrimmed)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Got %d columns for table %s\n", len(columns), afterIntoTrimmed)
 			defer debugFile.Close()
 		}
@@ -496,7 +497,7 @@ func (ce *CompletionEngine) handleInsertTableNameCompletion(input string, keyspa
 		completions = append(completions, "USING")
 
 		// Return these completions (just the next tokens, not full lines)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Returning %d completions for complete keyspace.table\n", len(completions))
 			defer debugFile.Close()
 		}
@@ -504,7 +505,7 @@ func (ce *CompletionEngine) handleInsertTableNameCompletion(input string, keyspa
 	} else if len(matchingTables) > 0 {
 		// This is a partial table name - suggest matching table names
 		// Return just the table names
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Returning %d partial table completions\n", len(matchingTables))
 			defer debugFile.Close()
 		}

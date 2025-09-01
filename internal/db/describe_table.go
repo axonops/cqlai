@@ -43,7 +43,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	checkIter := s.Query(checkQuery, keyspace, tableName).Iter()
 	var checkName string
 	if !checkIter.Scan(&checkName) {
-		checkIter.Close()
+		_ = checkIter.Close()
 		
 		// Get available tables for better error message
 		availQuery := `SELECT table_name FROM system_schema.tables WHERE keyspace_name = ?`
@@ -53,7 +53,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 		for availIter.Scan(&availName) {
 			availableTables = append(availableTables, availName)
 		}
-		availIter.Close()
+		_ = availIter.Close()
 		
 		availableStr := "none"
 		if len(availableTables) > 0 {
@@ -61,7 +61,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 		}
 		return nil, fmt.Errorf("table '%s' not found in keyspace '%s'. Available tables: %s", tableName, keyspace, availableStr)
 	}
-	checkIter.Close()
+	_ = checkIter.Close()
 
 	// Get table properties
 	tableQuery := `SELECT * FROM system_schema.tables WHERE keyspace_name = ? AND table_name = ?`
@@ -69,10 +69,10 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	
 	tableProps := make(map[string]interface{})
 	if !iter.MapScan(tableProps) {
-		iter.Close()
+		_ = iter.Close()
 		return nil, fmt.Errorf("could not retrieve table properties")
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	// Get columns
 	colQuery := `SELECT column_name, type, kind, position 
@@ -96,13 +96,14 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 			Position: colPosition,
 		})
 		
-		if colKind == "partition_key" {
+		switch colKind {
+		case "partition_key":
 			partitionKeys = append(partitionKeys, colName)
-		} else if colKind == "clustering" {
+		case "clustering":
 			clusteringKeys = append(clusteringKeys, colName)
 		}
 	}
-	colIter.Close()
+	_ = colIter.Close()
 
 	// Sort columns: partition keys first, then clustering keys, then regular columns
 	sort.Slice(columns, func(i, j int) bool {
@@ -172,13 +173,14 @@ func (s *Session) DescribeTablesQuery(keyspace string) ([]TableListInfo, error) 
 		var ckNames []string
 
 		for colIter.Scan(&colName, &colKind) {
-			if colKind == "partition_key" {
+			switch colKind {
+			case "partition_key":
 				pkNames = append(pkNames, colName)
-			} else if colKind == "clustering" {
+			case "clustering":
 				ckNames = append(ckNames, colName)
 			}
 		}
-		colIter.Close()
+		_ = colIter.Close()
 
 		tables[i].PartitionKeys = pkNames
 		tables[i].ClusteringKeys = ckNames
@@ -204,17 +206,15 @@ func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string)
 		// The server returns a result set with columns like 'keyspace_name', 'type', 'name', 'create_statement'
 		result := make(map[string]interface{})
 		if iter.MapScan(result) {
-			iter.Close()
+			_ = iter.Close()
 			
 			if createStmt, ok := result["create_statement"]; ok {
 				return fmt.Sprintf("%v", createStmt), nil, nil
 			}
 		}
 		
-		err := iter.Close()
-		if err == nil {
-			// Server-side DESCRIBE returned no results, fall back to manual
-		}
+		_ = iter.Close()
+		// Server-side DESCRIBE returned no results, fall back to manual
 	}
 	
 	// Fall back to manual construction for pre-4.0 or if server-side failed

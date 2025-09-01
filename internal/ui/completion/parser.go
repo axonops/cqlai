@@ -50,7 +50,7 @@ func (pce *ParserBasedCompletionEngine) GetTokenCompletions(input string) []stri
 	endsWithSpace := strings.HasSuffix(input, " ")
 
 	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		tokenStrs := []string{}
 		for _, t := range tokens {
 			if t.GetTokenType() != antlr.TokenEOF {
@@ -112,7 +112,7 @@ func (pce *ParserBasedCompletionEngine) GetTokenCompletions(input string) []stri
 		partial := lastToken.GetText()
 
 		// Debug logging
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Checking last token: '%s', total tokens: %d\n", partial, len(tokens))
 			if len(tokens) >= 2 {
 				fmt.Fprintf(debugFile, "[DEBUG] Second to last token: '%s'\n", tokens[len(tokens)-2].GetText())
@@ -143,7 +143,7 @@ func (pce *ParserBasedCompletionEngine) GetTokenCompletions(input string) []stri
 				}
 			}
 
-			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 				fmt.Fprintf(debugFile, "[DEBUG] Checking for keyspace.table: secondToLast='%s'\n", secondToLast)
 				defer debugFile.Close()
 			}
@@ -152,7 +152,7 @@ func (pce *ParserBasedCompletionEngine) GetTokenCompletions(input string) []stri
 				// We have pattern: something . table
 				// This is a complete table reference in keyspace.table format
 				// Treat it as complete and get suggestions for what comes next
-				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 					fmt.Fprintf(debugFile, "[DEBUG] Detected complete keyspace.table pattern, getting next suggestions\n")
 					defer debugFile.Close()
 				}
@@ -180,7 +180,7 @@ func (pce *ParserBasedCompletionEngine) GetTokenCompletions(input string) []stri
 		}
 
 		// Debug: log what we got
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] Partial token '%s', got %d suggestions before filtering\n", partial, len(suggestions))
 			if len(suggestions) > 0 && len(suggestions) <= 10 {
 				fmt.Fprintf(debugFile, "[DEBUG] Suggestions: %v\n", suggestions)
@@ -197,7 +197,7 @@ func (pce *ParserBasedCompletionEngine) GetTokenCompletions(input string) []stri
 			}
 		}
 
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			fmt.Fprintf(debugFile, "[DEBUG] After filtering for '%s' (upper: '%s'): %d matches\n", partial, upperPartial, len(filtered))
 			defer debugFile.Close()
 		}

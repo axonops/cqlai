@@ -86,7 +86,7 @@ const (
 
 // Error messages
 const (
-	ErrNoAPIKey          = "API key is required for %s"
+	ErrNoAPIKey          = "API key is required for %s" // #nosec G101 - This is an error message, not a credential
 	ErrUnsupportedMethod = "%s client does not support %s"
 	ErrInvalidProvider   = "unsupported AI provider: %s"
 	ErrJSONParsing       = "failed to parse JSON response"

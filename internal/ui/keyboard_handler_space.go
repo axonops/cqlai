@@ -51,7 +51,7 @@ func (m *MainModel) handleSpaceKey(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		newValue := ""
 
 		// Special case: if input ends with a dot (keyspace.), just append the table name
-		if strings.HasSuffix(currentInput, ".") {
+		if strings.HasSuffix(currentInput, ".") { //nolint:gocritic // more readable as if
 			newValue = currentInput + selectedCompletion
 		} else if strings.HasSuffix(currentInput, " ") {
 			// Just append the completion
@@ -64,7 +64,7 @@ func (m *MainModel) handleSpaceKey(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				lastWord := currentInput[lastSpace+1:]
 
 				// Check for keyspace.table pattern
-				if strings.Contains(lastWord, ".") {
+				if strings.Contains(lastWord, ".") { //nolint:gocritic // more readable as if
 					// For keyspace.table patterns, always replace the part after the dot
 					// The completion engine returns just the table name
 					dotIndex := strings.LastIndex(currentInput, ".")

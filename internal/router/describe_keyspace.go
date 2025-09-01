@@ -74,11 +74,12 @@ func (v *CqlCommandVisitorImpl) describeKeyspaces() interface{} {
 			strategy = parts[len(parts)-1]
 		}
 
-		if strategy == "SimpleStrategy" {
+		switch strategy {
+		case "SimpleStrategy":
 			if rf, ok := ks.Replication["replication_factor"]; ok {
 				factor = rf
 			}
-		} else if strategy == "NetworkTopologyStrategy" {
+		case "NetworkTopologyStrategy":
 			// Show datacenter replication settings
 			var dcs []string
 			for k, val := range ks.Replication {
