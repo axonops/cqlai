@@ -1,5 +1,3 @@
-version: v1.55.2
-
 run:
   timeout: 5m
   tests: true
@@ -15,18 +13,13 @@ linters:
     - staticcheck
     - unused
     - gosimple
-    - structcheck
-    - varcheck
     - ineffassign
-    - deadcode
     - typecheck
     - gosec
-    - megacheck
     - misspell
     - unparam
     - nakedret
     - prealloc
-    - scopelint
     - gocritic
     - gochecknoinits
     - gocyclo
@@ -42,7 +35,6 @@ linters:
     - godot
     - testpackage
     - nestif
-    - exportloopref
     - exhaustive
     - sqlclosecheck
     - nolintlint
@@ -54,8 +46,6 @@ linters:
     - gofumpt
     - goconst
     - lll
-    - maligned
-    - interfacer
 
 linters-settings:
   gocyclo:

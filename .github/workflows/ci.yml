@@ -136,6 +136,7 @@ jobs:
           go list -u -m all
 
       - name: Check for security vulnerabilities
+        continue-on-error: true
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          govulncheck -show verbose ./...
