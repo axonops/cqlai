@@ -1,0 +1,144 @@
+name: Cassandra Multi-Version Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cassandra-version:
+          - { version: "2.1", image: "cassandra:2.1" }
+          - { version: "3.0", image: "cassandra:3.0" }
+          - { version: "3.11", image: "cassandra:3.11" }
+          - { version: "4.0", image: "cassandra:4.0" }
+          - { version: "4.1", image: "cassandra:4.1" }
+          - { version: "5.0", image: "cassandra:5.0" }
+    
+    name: Test Cassandra ${{ matrix.cassandra-version.version }}
+    
+    services:
+      cassandra:
+        image: ${{ matrix.cassandra-version.image }}
+        ports:
+          - 9042:9042
+        options: >-
+          --health-cmd "cqlsh -e 'describe cluster'"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 10
+          --health-start-period 60s
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod verify
+      
+      - name: Build cqlai
+        run: go build -o cqlai cmd/cqlai/main.go
+      
+      - name: Wait for Cassandra to be fully ready
+        run: |
+          echo "Waiting for Cassandra to be fully ready..."
+          for i in {1..30}; do
+            if docker exec $(docker ps -q -f ancestor=${{ matrix.cassandra-version.image }}) cqlsh -e "DESCRIBE CLUSTER" 2>/dev/null; then
+              echo "Cassandra is ready!"
+              break
+            fi
+            echo "Waiting for Cassandra... ($i/30)"
+            sleep 5
+          done
+      
+      - name: Run version-specific tests
+        run: |
+          echo "Running tests for Cassandra ${{ matrix.cassandra-version.version }}"
+          
+          # Create test configuration
+          cat > cqlai-test.json <<EOF
+          {
+            "host": "127.0.0.1",
+            "port": 9042,
+            "username": "",
+            "password": "",
+            "keyspace": "",
+            "consistency": "ONE",
+            "pageSize": 100,
+            "timeout": "10s",
+            "connectTimeout": "10s"
+          }
+          EOF
+          
+          # Run the test file for this version
+          echo "Executing test file: test/cassandra_${{ matrix.cassandra-version.version }}_test.cql"
+          ./cqlai -c cqlai-test.json -f test/cassandra_${{ matrix.cassandra-version.version }}_test.cql --batch
+          
+          # Check exit code
+          if [ $? -eq 0 ]; then
+            echo "✅ Tests passed for Cassandra ${{ matrix.cassandra-version.version }}"
+          else
+            echo "❌ Tests failed for Cassandra ${{ matrix.cassandra-version.version }}"
+            exit 1
+          fi
+      
+      - name: Run basic connectivity test
+        run: |
+          echo "Running basic connectivity test..."
+          ./cqlai -c cqlai-test.json --batch <<EOF
+          CREATE KEYSPACE IF NOT EXISTS test_connectivity
+          WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1};
+          
+          USE test_connectivity;
+          
+          CREATE TABLE IF NOT EXISTS test_table (
+              id uuid PRIMARY KEY,
+              data text
+          );
+          
+          INSERT INTO test_table (id, data) VALUES (uuid(), 'test data');
+          
+          SELECT * FROM test_table;
+          
+          DROP KEYSPACE test_connectivity;
+          EOF
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Basic connectivity test passed"
+          else
+            echo "❌ Basic connectivity test failed"
+            exit 1
+          fi
+
+  test-summary:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Test Summary
+        run: |
+          echo "## Cassandra Multi-Version Test Summary"
+          echo ""
+          echo "All Cassandra version tests have completed."
+          echo ""
+          echo "Tested versions:"
+          echo "- Cassandra 2.1"
+          echo "- Cassandra 3.0"
+          echo "- Cassandra 3.11"
+          echo "- Cassandra 4.0"
+          echo "- Cassandra 4.1"
+          echo "- Cassandra 5.0"
