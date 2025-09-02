@@ -102,6 +102,21 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 		logger.DebugToFile("ProcessCommand", "Routing to parseMetaCommand")
 		return parseMetaCommand(command, session)
 	} else {
+		// Check if we need to transform SELECT to SELECT JSON
+		if sessionManager != nil && sessionManager.GetOutputFormat() == config.OutputFormatJSON {
+			// Check if it's a SELECT query that should be transformed
+			if strings.HasPrefix(upperCommand, "SELECT") && !strings.Contains(upperCommand, "SELECT JSON") {
+				// Transform SELECT to SELECT JSON
+				// Find the position of SELECT and insert JSON after it
+				selectPos := strings.Index(upperCommand, "SELECT")
+				if selectPos >= 0 {
+					// Insert JSON after SELECT
+					modifiedCommand := command[:selectPos+6] + " JSON" + command[selectPos+6:]
+					logger.DebugfToFile("ProcessCommand", "Transformed query to: %s", modifiedCommand)
+					return session.ExecuteCQLQuery(modifiedCommand)
+				}
+			}
+		}
 		// Execute as regular CQL query
 		logger.DebugToFile("ProcessCommand", "Routing to executeCQLQuery")
 		return session.ExecuteCQLQuery(command)
