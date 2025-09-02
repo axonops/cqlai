@@ -87,13 +87,15 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 	}
 
 	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{
-		Host:      cfg.Host,
-		Port:      cfg.Port,
-		Keyspace:  cfg.Keyspace,
-		Username:  cfg.Username,
-		Password:  cfg.Password,
-		SSL:       cfg.SSL,
-		BatchMode: true, // Disable schema caching in batch mode
+		Host:           cfg.Host,
+		Port:           cfg.Port,
+		Keyspace:       cfg.Keyspace,
+		Username:       cfg.Username,
+		Password:       cfg.Password,
+		SSL:            cfg.SSL,
+		BatchMode:      true, // Disable schema caching in batch mode
+		ConnectTimeout: options.ConnOptions.ConnectTimeout,
+		RequestTimeout: options.ConnOptions.RequestTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)

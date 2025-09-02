@@ -26,6 +26,8 @@ type ConnectionOptions struct {
 	Username            string
 	Password            string
 	RequireConfirmation bool
+	ConnectTimeout      int // Connection timeout in seconds
+	RequestTimeout      int // Request timeout in seconds
 }
 
 // AISelectionResultMsg is sent when user completes a selection
@@ -189,12 +191,14 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	}
 
 	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{
-		Host:     cfg.Host,
-		Port:     cfg.Port,
-		Keyspace: cfg.Keyspace,
-		Username: cfg.Username,
-		Password: cfg.Password,
-		SSL:      cfg.SSL,
+		Host:           cfg.Host,
+		Port:           cfg.Port,
+		Keyspace:       cfg.Keyspace,
+		Username:       cfg.Username,
+		Password:       cfg.Password,
+		SSL:            cfg.SSL,
+		ConnectTimeout: options.ConnectTimeout,
+		RequestTimeout: options.RequestTimeout,
 	})
 	if err != nil {
 		return nil, err
