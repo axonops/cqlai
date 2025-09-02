@@ -1,0 +1,201 @@
+-- Cassandra 3.11 Test Suite
+-- Compatible with Cassandra 3.11.x
+
+-- Create test keyspace
+CREATE KEYSPACE IF NOT EXISTS cqlai_test_311
+WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+USE cqlai_test_311;
+
+-- Duration type (new in 3.11)
+CREATE TABLE IF NOT EXISTS durations_test (
+    id uuid PRIMARY KEY,
+    name text,
+    time_spent duration
+);
+
+INSERT INTO durations_test (id, name, time_spent) 
+VALUES (uuid(), 'Task 1', 2h30m);
+
+INSERT INTO durations_test (id, name, time_spent) 
+VALUES (uuid(), 'Task 2', 1d12h);
+
+INSERT INTO durations_test (id, name, time_spent) 
+VALUES (uuid(), 'Task 3', 3mo2d);
+
+SELECT * FROM durations_test;
+
+-- Group by support (improved in 3.11)
+CREATE TABLE IF NOT EXISTS sales (
+    store_id int,
+    sale_date date,
+    product_id uuid,
+    quantity int,
+    price decimal,
+    PRIMARY KEY ((store_id), sale_date, product_id)
+);
+
+INSERT INTO sales (store_id, sale_date, product_id, quantity, price)
+VALUES (1, '2024-01-01', uuid(), 5, 29.99);
+
+INSERT INTO sales (store_id, sale_date, product_id, quantity, price)
+VALUES (1, '2024-01-01', uuid(), 3, 19.99);
+
+INSERT INTO sales (store_id, sale_date, product_id, quantity, price)
+VALUES (1, '2024-01-02', uuid(), 7, 39.99);
+
+INSERT INTO sales (store_id, sale_date, product_id, quantity, price)
+VALUES (2, '2024-01-01', uuid(), 10, 49.99);
+
+-- GROUP BY queries
+SELECT store_id, sale_date, SUM(quantity) as total_quantity, SUM(price) as total_price
+FROM sales
+GROUP BY store_id, sale_date;
+
+SELECT store_id, COUNT(*) as transaction_count
+FROM sales
+GROUP BY store_id;
+
+-- Improved materialized views
+CREATE TABLE IF NOT EXISTS products (
+    product_id uuid,
+    category text,
+    product_name text,
+    price decimal,
+    in_stock boolean,
+    PRIMARY KEY (product_id)
+);
+
+INSERT INTO products (product_id, category, product_name, price, in_stock)
+VALUES (uuid(), 'Electronics', 'Laptop', 999.99, true);
+
+INSERT INTO products (product_id, category, product_name, price, in_stock)
+VALUES (uuid(), 'Electronics', 'Phone', 599.99, true);
+
+INSERT INTO products (product_id, category, product_name, price, in_stock)
+VALUES (uuid(), 'Books', 'CQL Guide', 39.99, false);
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS products_by_category AS
+    SELECT * FROM products
+    WHERE category IS NOT NULL AND product_id IS NOT NULL
+    PRIMARY KEY (category, product_id);
+
+SELECT * FROM products_by_category WHERE category = 'Electronics';
+
+-- CDC (Change Data Capture) table property (new in 3.11)
+CREATE TABLE IF NOT EXISTS audit_log (
+    id timeuuid PRIMARY KEY,
+    user_id uuid,
+    action text,
+    timestamp timestamp,
+    details text
+) WITH cdc = true;
+
+INSERT INTO audit_log (id, user_id, action, timestamp, details)
+VALUES (now(), uuid(), 'LOGIN', toTimestamp(now()), 'User logged in successfully');
+
+INSERT INTO audit_log (id, user_id, action, timestamp, details)
+VALUES (now(), uuid(), 'UPDATE', toTimestamp(now()), 'Profile updated');
+
+SELECT * FROM audit_log;
+
+-- Improved SASI indexes
+CREATE TABLE IF NOT EXISTS documents (
+    doc_id uuid PRIMARY KEY,
+    title text,
+    content text,
+    tags set<text>,
+    created_date date
+);
+
+CREATE CUSTOM INDEX IF NOT EXISTS docs_title_idx ON documents (title)
+USING 'org.apache.cassandra.index.sasi.SASIIndex'
+WITH OPTIONS = {
+    'mode': 'PREFIX',
+    'case_sensitive': 'false'
+};
+
+CREATE CUSTOM INDEX IF NOT EXISTS docs_content_idx ON documents (content)
+USING 'org.apache.cassandra.index.sasi.SASIIndex'
+WITH OPTIONS = {
+    'mode': 'CONTAINS',
+    'case_sensitive': 'false',
+    'analyzed': 'true',
+    'analyzer_class': 'org.apache.cassandra.index.sasi.analyzer.StandardAnalyzer'
+};
+
+INSERT INTO documents (doc_id, title, content, tags, created_date)
+VALUES (uuid(), 'Introduction to CQL', 'This is a comprehensive guide to CQL...', 
+        {'cql', 'cassandra', 'tutorial'}, '2024-01-15');
+
+INSERT INTO documents (doc_id, title, content, tags, created_date)
+VALUES (uuid(), 'Advanced Cassandra', 'Deep dive into Cassandra internals...', 
+        {'cassandra', 'advanced', 'internals'}, '2024-01-20');
+
+-- SASI queries
+SELECT * FROM documents WHERE title LIKE 'Intro%';
+SELECT * FROM documents WHERE content LIKE '%comprehensive%';
+
+-- Cast functions (improved in 3.11)
+CREATE TABLE IF NOT EXISTS type_conversions (
+    id uuid PRIMARY KEY,
+    int_value int,
+    text_value text,
+    bigint_value bigint
+);
+
+INSERT INTO type_conversions (id, int_value, text_value, bigint_value)
+VALUES (uuid(), 123, '456', 789);
+
+-- Using CAST
+SELECT id, CAST(int_value AS text) AS int_as_text,
+       CAST(text_value AS int) AS text_as_int,
+       CAST(bigint_value AS text) AS bigint_as_text
+FROM type_conversions;
+
+-- Improved user-defined functions
+CREATE OR REPLACE FUNCTION IF NOT EXISTS calculate_tax(price decimal, rate decimal)
+    RETURNS NULL ON NULL INPUT
+    RETURNS decimal
+    LANGUAGE java
+    AS 'return price.multiply(rate);';
+
+-- Improved user-defined aggregates
+CREATE OR REPLACE FUNCTION IF NOT EXISTS state_sum(state tuple<int, bigint>, value int)
+    RETURNS NULL ON NULL INPUT
+    RETURNS tuple<int, bigint>
+    LANGUAGE java
+    AS '
+        if (state == null) {
+            state = com.datastax.driver.core.TupleType.of(
+                com.datastax.driver.core.DataType.cint(),
+                com.datastax.driver.core.DataType.bigint()
+            ).newValue(0, 0L);
+        }
+        int count = state.getInt(0);
+        long sum = state.getLong(1);
+        return com.datastax.driver.core.TupleType.of(
+            com.datastax.driver.core.DataType.cint(),
+            com.datastax.driver.core.DataType.bigint()
+        ).newValue(count + 1, sum + value);
+    ';
+
+CREATE OR REPLACE FUNCTION IF NOT EXISTS final_avg(state tuple<int, bigint>)
+    RETURNS NULL ON NULL INPUT
+    RETURNS double
+    LANGUAGE java
+    AS '
+        if (state == null) return null;
+        int count = state.getInt(0);
+        long sum = state.getLong(1);
+        return count == 0 ? 0.0 : (double) sum / count;
+    ';
+
+CREATE OR REPLACE AGGREGATE IF NOT EXISTS custom_avg(int)
+    SFUNC state_sum
+    STYPE tuple<int, bigint>
+    FINALFUNC final_avg
+    INITCOND (0, 0);
+
+-- Clean up
+DROP KEYSPACE IF EXISTS cqlai_test_311;
