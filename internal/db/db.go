@@ -106,19 +106,21 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	cluster.Consistency = gocql.LocalOne
 	
 	// Set timeouts based on options, config, or use defaults
-	if options.RequestTimeout > 0 {
+	switch {
+	case options.RequestTimeout > 0:
 		cluster.Timeout = time.Duration(options.RequestTimeout) * time.Second
-	} else if cfg.RequestTimeout > 0 {
+	case cfg.RequestTimeout > 0:
 		cluster.Timeout = time.Duration(cfg.RequestTimeout) * time.Second
-	} else {
+	default:
 		cluster.Timeout = 10 * time.Second
 	}
 	
-	if options.ConnectTimeout > 0 {
+	switch {
+	case options.ConnectTimeout > 0:
 		cluster.ConnectTimeout = time.Duration(options.ConnectTimeout) * time.Second
-	} else if cfg.ConnectTimeout > 0 {
+	case cfg.ConnectTimeout > 0:
 		cluster.ConnectTimeout = time.Duration(cfg.ConnectTimeout) * time.Second
-	} else {
+	default:
 		cluster.ConnectTimeout = 10 * time.Second
 	}
 	
