@@ -80,13 +80,6 @@ INSERT INTO users (user_id, username, email, created_at, age, active)
 VALUES (uuid(), 'temp_user', 'temp@example.com', dateOf(now()), 20, true)
 USING TTL 3600;
 
--- Index creation
-CREATE INDEX IF NOT EXISTS users_username_idx ON users (username);
-CREATE INDEX IF NOT EXISTS users_age_idx ON users (age);
-
--- Query with index
-SELECT * FROM users WHERE username = 'john_doe';
-SELECT * FROM users WHERE age > 20 ALLOW FILTERING;
 
 -- Batch operations
 BEGIN BATCH
