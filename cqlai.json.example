@@ -5,6 +5,8 @@
    "username": "cassandra",
    "password": "cassandra",
    "requireConfirmation": true,
+   "connectTimeout": 5,
+   "requestTimeout": 10,
    "ssl": {
       "enabled": false,
       "certPath": "/path/to/client-cert.pem",
