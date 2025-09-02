@@ -29,9 +29,8 @@ CREATE TABLE IF NOT EXISTS products (
     tags set<text>
 );
 
--- Create index with WHERE clause (new in 4.1)
-CREATE INDEX IF NOT EXISTS products_in_stock_idx ON products (price) 
-WHERE in_stock = true;
+-- Create standard index (WHERE clause for partial indexes not supported in this way)
+CREATE INDEX IF NOT EXISTS products_price_idx ON products (price);
 
 INSERT INTO products (product_id, name, category, price, in_stock, tags)
 VALUES (uuid(), 'Laptop', 'Electronics', 999.99, true, {'computer', 'portable'});

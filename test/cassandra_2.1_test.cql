@@ -24,9 +24,12 @@ VALUES (uuid(), 'john_doe', 'john@example.com', dateOf(now()), 30, true);
 INSERT INTO users (user_id, username, email, created_at, age, active) 
 VALUES (uuid(), 'jane_smith', 'jane@example.com', dateOf(now()), 25, false);
 
+-- Create index for filtering
+CREATE INDEX IF NOT EXISTS users_active_idx ON users (active);
+
 -- Basic SELECT queries
 SELECT * FROM users;
-SELECT username, email FROM users WHERE active = true ALLOW FILTERING;
+SELECT username, email FROM users WHERE active = true;
 SELECT COUNT(*) FROM users;
 
 -- Table with compound primary key
