@@ -91,9 +91,9 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${PROJECT_NAME}-${{ matrix.suffix }}
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.suffix }}
           path: |
-            ${PROJECT_NAME}-${{ matrix.suffix }}.*
+            ${{ env.PROJECT_NAME }}-${{ matrix.suffix }}.*
           retention-days: 7
 
   # Build Linux packages (DEB and RPM)
@@ -285,7 +285,7 @@ jobs:
       - name: Download linux amd64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${PROJECT_NAME}-linux-amd64
+          name: ${{ env.PROJECT_NAME }}-linux-amd64
           path: dist/
 
       - name: Install Syft
