@@ -128,16 +128,27 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		}
 	}
 
-	// Try to connect with protocol version 4 first, then fall back to 3 if needed
-	cluster.ProtoVersion = 4
-	session, err := cluster.CreateSession()
-	if err != nil {
-		// If connection fails, try with protocol version 3 (for older Cassandra versions like 2.1)
-		cluster.ProtoVersion = 3
+	// Try to connect with progressively lower protocol versions
+	// Protocol v5: Cassandra 3.10+, 4.0+, 5.0+
+	// Protocol v4: Cassandra 3.0+
+	// Protocol v3: Cassandra 2.1+
+	var session *gocql.Session
+	protocolVersions := []int{5, 4, 3}
+	
+	for _, protoVer := range protocolVersions {
+		cluster.ProtoVersion = protoVer
 		session, err = cluster.CreateSession()
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to Cassandra: %v", err)
+		if err == nil {
+			// Successfully connected
+			logger.DebugfToFile("Session", "Connected with protocol version %d", protoVer)
+			break
 		}
+		// Log the failure and try next version
+		logger.DebugfToFile("Session", "Failed to connect with protocol version %d: %v", protoVer, err)
+	}
+	
+	if session == nil {
+		return nil, fmt.Errorf("failed to connect to Cassandra with any supported protocol version: %v", err)
 	}
 
 	// Get Cassandra version
