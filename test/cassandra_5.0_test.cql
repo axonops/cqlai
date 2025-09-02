@@ -76,8 +76,7 @@ CREATE TABLE IF NOT EXISTS ucs_table (
     timestamp timestamp
 ) WITH compaction = {
     'class': 'UnifiedCompactionStrategy',
-    'scaling_parameters': 'T4',
-    'min_sstable_size_in_mb': 100
+    'scaling_parameters': 'T4'
 };
 
 INSERT INTO ucs_table (id, data, timestamp)
