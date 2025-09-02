@@ -77,8 +77,7 @@ SELECT id,
        text_data,
        numeric_data,
        timestamp_data,
-       -- Collection element access
-       list_data[0] as first_element
+       list_data
 FROM function_test;
 
 -- Improved permissions and RBAC

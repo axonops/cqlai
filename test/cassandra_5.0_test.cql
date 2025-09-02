@@ -102,10 +102,7 @@ CREATE TABLE IF NOT EXISTS trie_improvements (
     id uuid PRIMARY KEY,
     indexed_data text,
     value int
-) WITH memtable = {
-    'class': 'TrieMemtable',
-    'shards': 4
-};
+) WITH memtable = 'TrieMemtable';
 
 CREATE INDEX IF NOT EXISTS trie_indexed_data ON trie_improvements (indexed_data);
 
