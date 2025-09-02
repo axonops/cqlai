@@ -147,11 +147,6 @@ CREATE TABLE IF NOT EXISTS type_conversions (
 INSERT INTO type_conversions (id, int_value, text_value, bigint_value)
 VALUES (uuid(), 123, '456', 789);
 
--- Using CAST
-SELECT id, CAST(int_value AS text) AS int_as_text,
-       CAST(text_value AS int) AS text_as_int,
-       CAST(bigint_value AS text) AS bigint_as_text
-FROM type_conversions;
 
 -- Improved user-defined functions
 CREATE OR REPLACE FUNCTION IF NOT EXISTS calculate_tax(price decimal, rate decimal)

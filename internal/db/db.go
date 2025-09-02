@@ -104,7 +104,6 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	cluster.Consistency = gocql.LocalOne
 	cluster.Timeout = 10 * time.Second
 	cluster.ConnectTimeout = 10 * time.Second
-	cluster.ProtoVersion = 4
 	cluster.DisableInitialHostLookup = true
 
 	if cfg.Keyspace != "" {
@@ -129,9 +128,16 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		}
 	}
 
+	// Try to connect with protocol version 4 first, then fall back to 3 if needed
+	cluster.ProtoVersion = 4
 	session, err := cluster.CreateSession()
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to Cassandra: %v", err)
+		// If connection fails, try with protocol version 3 (for older Cassandra versions like 2.1)
+		cluster.ProtoVersion = 3
+		session, err = cluster.CreateSession()
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to Cassandra: %v", err)
+		}
 	}
 
 	// Get Cassandra version
