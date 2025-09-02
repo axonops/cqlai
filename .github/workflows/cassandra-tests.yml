@@ -68,8 +68,8 @@ jobs:
         run: |
           echo "Running tests for Cassandra ${{ matrix.cassandra-version.version }}"
           
-          # Create test configuration
-          cat > cqlai-test.json <<EOF
+          # Create configuration file
+          cat > cqlai.json <<EOF
           {
             "host": "127.0.0.1",
             "port": 9042,
@@ -85,7 +85,7 @@ jobs:
           
           # Run the test file for this version
           echo "Executing test file: test/cassandra_${{ matrix.cassandra-version.version }}_test.cql"
-          ./cqlai -c cqlai-test.json -f test/cassandra_${{ matrix.cassandra-version.version }}_test.cql --batch
+          ./cqlai -f test/cassandra_${{ matrix.cassandra-version.version }}_test.cql
           
           # Check exit code
           if [ $? -eq 0 ]; then
@@ -98,7 +98,9 @@ jobs:
       - name: Run basic connectivity test
         run: |
           echo "Running basic connectivity test..."
-          ./cqlai -c cqlai-test.json --batch <<EOF
+          
+          # Create basic connectivity test file
+          cat > basic_connectivity_test.cql <<EOF
           CREATE KEYSPACE IF NOT EXISTS test_connectivity
           WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1};
           
@@ -115,6 +117,8 @@ jobs:
           
           DROP KEYSPACE test_connectivity;
           EOF
+          
+          ./cqlai -f basic_connectivity_test.cql
           
           if [ $? -eq 0 ]; then
             echo "✅ Basic connectivity test passed"
