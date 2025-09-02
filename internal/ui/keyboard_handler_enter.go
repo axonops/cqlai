@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -374,7 +375,9 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				outputFormat := config.OutputFormatTable
 				if m.sessionManager != nil {
 					outputFormat = m.sessionManager.GetOutputFormat()
+					logger.DebugfToFile("HandleEnterKey", "Got output format from session manager: %v", outputFormat)
 				}
+				logger.DebugfToFile("HandleEnterKey", "Using output format: %v", outputFormat)
 				switch outputFormat {
 				case config.OutputFormatExpand:
 					// EXPAND format - use table viewport for pagination support
@@ -409,6 +412,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					m.tableViewport.SetContent(asciiStr)
 					m.tableViewport.GotoTop()
 				case config.OutputFormatJSON:
+					logger.DebugToFile("HandleEnterKey", "Formatting output as JSON")
 					// JSON format - use table viewport for pagination support
 					m.tableHeaders = v.Headers
 					m.columnTypes = v.ColumnTypes
@@ -420,13 +424,34 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					m.lastTableData = allData // Store for pagination
 					m.horizontalOffset = 0    // Reset horizontal scroll
 
-					// Format JSON output - each row is a JSON string
+					// Convert table data to JSON format
 					jsonStr := ""
-					for _, row := range m.slidingWindow.Rows {
-						if len(row) > 0 {
-							jsonStr += row[0] + "\n"
+					// Check if we have a single [json] column from SELECT JSON
+					if len(v.Headers) == 1 && v.Headers[0] == "[json]" {
+						// This is already JSON from SELECT JSON - just extract it
+						for _, row := range m.slidingWindow.Rows {
+							if len(row) > 0 {
+								jsonStr += row[0] + "\n"
+							}
+						}
+					} else {
+						// Convert regular table data to JSON
+						for _, row := range m.slidingWindow.Rows {
+							jsonMap := make(map[string]interface{})
+							for i, header := range v.Headers {
+								if i < len(row) {
+									jsonMap[header] = row[i]
+								}
+							}
+							jsonBytes, err := json.Marshal(jsonMap)
+							if err == nil {
+								jsonStr += string(jsonBytes) + "\n"
+							} else {
+								logger.DebugfToFile("HandleEnterKey", "Error marshaling row to JSON: %v", err)
+							}
 						}
 					}
+					logger.DebugfToFile("HandleEnterKey", "Generated JSON with %d characters", len(jsonStr))
 					m.tableViewport.SetContent(jsonStr)
 					m.tableViewport.GotoTop()
 				default:
@@ -468,41 +493,74 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 					// Check output format
 					switch outputFormat {
 					case config.OutputFormatASCII:
-						// Format as ASCII table in the UI layer
+						// ASCII format - use table viewport for scrolling support
+						// Store table data and headers
+						m.lastTableData = v.Data
+						m.tableHeaders = v.Data[0]    // Store the header row
+						m.columnTypes = v.ColumnTypes // Store column types
+						m.horizontalOffset = 0
+						m.hasTable = true
+						m.viewMode = "table"
+
+						// Format as ASCII table
 						asciiOutput := FormatASCIITable(v.Data)
-						// Display ASCII formatted output in history viewport
-						m.fullHistoryContent += "\n" + asciiOutput
-						m.historyViewport.SetContent(m.fullHistoryContent)
-						m.historyViewport.GotoBottom()
-						m.viewMode = "history"
-						m.hasTable = false
+						m.tableViewport.SetContent(asciiOutput)
+						m.tableViewport.GotoTop() // Start at top of table
 					case config.OutputFormatExpand:
-						// Format as expanded vertical table in the UI layer
+						// EXPAND format - use table viewport for scrolling support
+						// Store table data and headers
+						m.lastTableData = v.Data
+						m.tableHeaders = v.Data[0]    // Store the header row
+						m.columnTypes = v.ColumnTypes // Store column types
+						m.horizontalOffset = 0
+						m.hasTable = true
+						m.viewMode = "table"
+
+						// Format as expanded vertical table
 						expandOutput := FormatExpandTable(v.Data, m.styles)
-						// Display expanded output in history viewport
-						m.fullHistoryContent += "\n" + expandOutput
-						m.historyViewport.SetContent(m.fullHistoryContent)
-						m.historyViewport.GotoBottom()
-						m.viewMode = "history"
-						m.hasTable = false
+						m.tableViewport.SetContent(expandOutput)
+						m.tableViewport.GotoTop() // Start at top of table
 					case config.OutputFormatJSON:
-						// JSON format - display raw JSON rows
-						// With SELECT JSON, each row is a JSON string
+						// JSON format - use table viewport for scrolling support
+						// Store table data and headers
+						m.lastTableData = v.Data
+						m.tableHeaders = v.Data[0]    // Store the header row
+						m.columnTypes = v.ColumnTypes // Store column types
+						m.horizontalOffset = 0
+						m.hasTable = true
+						m.viewMode = "table"
+
+						// Check if this is already JSON from SELECT JSON
 						jsonOutput := ""
 						if len(v.Data) > 1 {
-							// Skip header row for JSON output
-							for _, row := range v.Data[1:] {
-								if len(row) > 0 {
-									jsonOutput += row[0] + "\n"
+							headers := v.Data[0]
+							// Check if we have a single [json] column from SELECT JSON
+							if len(headers) == 1 && headers[0] == "[json]" {
+								// This is already JSON from SELECT JSON - just extract it
+								for _, row := range v.Data[1:] {
+									if len(row) > 0 {
+										jsonOutput += row[0] + "\n"
+									}
+								}
+							} else {
+								// Convert regular table data to JSON
+								for _, row := range v.Data[1:] {
+									jsonMap := make(map[string]interface{})
+									for i, header := range headers {
+										if i < len(row) {
+											jsonMap[header] = row[i]
+										}
+									}
+									jsonBytes, err := json.Marshal(jsonMap)
+									if err == nil {
+										jsonOutput += string(jsonBytes) + "\n"
+									}
 								}
 							}
 						}
-						// Display JSON output in history viewport
-						m.fullHistoryContent += "\n" + jsonOutput
-						m.historyViewport.SetContent(m.fullHistoryContent)
-						m.historyViewport.GotoBottom()
-						m.viewMode = "history"
-						m.hasTable = false
+						// Display JSON output in table viewport
+						m.tableViewport.SetContent(jsonOutput)
+						m.tableViewport.GotoTop() // Start at top of table
 					default:
 						// Use table viewport for TABLE format
 						// Store table data and headers

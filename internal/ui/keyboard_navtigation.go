@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"encoding/json"
+	
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
@@ -82,6 +84,34 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 							contentStr = FormatASCIITable(allData)
 						case config.OutputFormatExpand:
 							contentStr = FormatExpandTable(allData, m.styles)
+						case config.OutputFormatJSON:
+							// Check if we have a single [json] column from SELECT JSON
+							if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
+								// This is already JSON from SELECT JSON - just extract it
+								jsonStr := ""
+								for _, row := range m.slidingWindow.Rows {
+									if len(row) > 0 {
+										jsonStr += row[0] + "\n"
+									}
+								}
+								contentStr = jsonStr
+							} else {
+								// Convert regular table data to JSON
+								jsonStr := ""
+								for _, row := range m.slidingWindow.Rows {
+									jsonMap := make(map[string]interface{})
+									for i, header := range m.slidingWindow.Headers {
+										if i < len(row) {
+											jsonMap[header] = row[i]
+										}
+									}
+									jsonBytes, err := json.Marshal(jsonMap)
+									if err == nil {
+										jsonStr += string(jsonBytes) + "\n"
+									}
+								}
+								contentStr = jsonStr
+							}
 						default:
 							contentStr = m.formatTableForViewport(allData)
 						}
@@ -282,14 +312,33 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 								case config.OutputFormatExpand:
 									contentStr = FormatExpandTable(allData, m.styles)
 								case config.OutputFormatJSON:
-									// Format JSON output - each row is a JSON string
-									jsonStr := ""
-									for _, row := range m.slidingWindow.Rows {
-										if len(row) > 0 {
-											jsonStr += row[0] + "\n"
+									// Check if we have a single [json] column from SELECT JSON
+									if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
+										// This is already JSON from SELECT JSON - just extract it
+										jsonStr := ""
+										for _, row := range m.slidingWindow.Rows {
+											if len(row) > 0 {
+												jsonStr += row[0] + "\n"
+											}
 										}
+										contentStr = jsonStr
+									} else {
+										// Convert regular table data to JSON
+										jsonStr := ""
+										for _, row := range m.slidingWindow.Rows {
+											jsonMap := make(map[string]interface{})
+											for i, header := range m.slidingWindow.Headers {
+												if i < len(row) {
+													jsonMap[header] = row[i]
+												}
+											}
+											jsonBytes, err := json.Marshal(jsonMap)
+											if err == nil {
+												jsonStr += string(jsonBytes) + "\n"
+											}
+										}
+										contentStr = jsonStr
 									}
-									contentStr = jsonStr
 								default:
 									contentStr = m.formatTableForViewport(allData)
 								}

@@ -184,7 +184,8 @@ jobs:
             --prefix / \
             .
           
-          mv *.deb ${PROJECT_NAME}_${VERSION}_${DEB_ARCH}.deb
+          # FPM already creates the file with the correct name, just verify it exists
+          ls -la *.deb
 
       - name: Build RPM package
         run: |
@@ -198,6 +199,7 @@ jobs:
           fpm -s dir -t rpm \
             --name ${PROJECT_NAME} \
             --version ${VERSION} \
+            --iteration 1 \
             --architecture ${RPM_ARCH} \
             --description "Modern Cassandra CQL Shell with AI assistance" \
             --maintainer "CQLAI Team" \
@@ -211,7 +213,8 @@ jobs:
             --prefix / \
             .
           
-          mv *.rpm ${PROJECT_NAME}-${VERSION}-1.${RPM_ARCH}.rpm
+          # FPM creates the file with the correct name, just verify it exists
+          ls -la *.rpm
 
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
