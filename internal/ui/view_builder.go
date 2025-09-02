@@ -157,7 +157,7 @@ func (m *MainModel) View() string {
 	// Add hints about function keys when table is available
 	if m.hasTable && m.input.Value() == "" {
 		hints := []string{}
-		hints = append(hints, "F1: switch views")
+		hints = append(hints, "F3: switch views")
 		// Don't show F2 hint here since it's in the status bar for table view
 		if len(hints) > 0 {
 			hint := m.styles.MutedText.Render("  (" + strings.Join(hints, " | ") + ")")
@@ -400,7 +400,11 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.MutedText.Render("  • Alt+← / Alt+→ - Horizontal scroll for wide tables"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F1 - Switch between history/table view"))
+	welcome.WriteString(m.styles.MutedText.Render("  • F2 - Toggle column data types display"))
+	welcome.WriteString("\n")
+	welcome.WriteString(m.styles.MutedText.Render("  • F3 - Switch between history/table view"))
+	welcome.WriteString("\n")
+	welcome.WriteString(m.styles.MutedText.Render("  • F4 - View trace data (when tracing is enabled)"))
 	welcome.WriteString("\n\n")
 
 	return welcome.String()

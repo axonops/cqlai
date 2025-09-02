@@ -1,6 +1,11 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+	
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+)
 
 // Styles contains the styles for the application.
 type Styles struct {
@@ -22,12 +27,29 @@ type Styles struct {
 func DefaultStyles() *Styles {
 	st := &Styles{}
 
+	// Allow users to override color mode if needed
+	// but don't force it by default - let lipgloss auto-detect
+	colorMode := os.Getenv("CQLAI_COLOR_MODE")
+	switch colorMode {
+	case "ascii":
+		lipgloss.SetColorProfile(termenv.Ascii)
+	case "ansi":
+		lipgloss.SetColorProfile(termenv.ANSI)
+	case "256":
+		lipgloss.SetColorProfile(termenv.ANSI256)
+	case "truecolor":
+		lipgloss.SetColorProfile(termenv.TrueColor)
+	// default: let lipgloss auto-detect the best color mode
+	}
+
+	// Use hex colors for better consistency across terminals
+	// These will be automatically adapted to the terminal's capabilities
 	st.Accent = lipgloss.Color("#00BFFF") // DeepSkyBlue
 	st.Ok = lipgloss.Color("#00FF00")     // Lime
-	st.Warn = lipgloss.Color("#FFFF00")    // Yellow
+	st.Warn = lipgloss.Color("#FFFF00")   // Yellow
 	st.Error = lipgloss.Color("#FF0000")   // Red
-	st.Muted = lipgloss.Color("#808080")    // Gray
-	st.Border = lipgloss.Color("#444444")
+	st.Muted = lipgloss.Color("#808080")   // Gray
+	st.Border = lipgloss.Color("#444444")  // Dark Gray
 
 	st.AccentText = lipgloss.NewStyle().Foreground(st.Accent)
 	st.MutedText = lipgloss.NewStyle().Foreground(st.Muted)
