@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS bti_format_test (
     id uuid PRIMARY KEY,
     data text
 ) WITH compaction = {
-    'class': 'UnifiedCompactionStrategy'
+    'class': 'SizeTieredCompactionStrategy'
 };
 
 INSERT INTO bti_format_test (id, data)
