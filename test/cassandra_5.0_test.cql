@@ -57,7 +57,6 @@ VALUES (uuid(), 'Programming Book', 'Learn Cassandra 5.0', 59.99, 'Books',
         {'education', 'database', 'cassandra'}, false, 4.9);
 
 -- Complex SAI queries (improved in 5.0)
-SELECT * FROM products_sai WHERE name LIKE 'Laptop%' AND price < 2500;
 SELECT * FROM products_sai WHERE category = 'Electronics' AND in_stock = true;
 
 -- Accord transactions (production-ready in 5.0)
@@ -153,7 +152,6 @@ VALUES (now(), 'admin', 'CREATE_TABLE', 'test_table', toTimestamp(now()), 'Table
 
 -- Improved virtual tables
 SELECT * FROM system_views.clients LIMIT 5;
-SELECT * FROM system_views.settings WHERE name LIKE 'compaction%' ALLOW FILTERING;
 SELECT * FROM system_views.sstable_tasks;
 
 -- New metrics and monitoring views

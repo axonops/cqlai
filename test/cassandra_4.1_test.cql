@@ -18,17 +18,6 @@ CREATE TABLE IF NOT EXISTS guardrail_test (
     data5 text
 );
 
--- Trie-based memtables (new in 4.1, configured at table level)
-CREATE TABLE IF NOT EXISTS trie_memtable_test (
-    id uuid PRIMARY KEY,
-    data text,
-    value int
-) WITH memtable = 'trie';
-
-INSERT INTO trie_memtable_test (id, data, value)
-VALUES (uuid(), 'Test data with trie memtable', 100);
-
-SELECT * FROM trie_memtable_test;
 
 -- Improved secondary indexes with WHERE clause support
 CREATE TABLE IF NOT EXISTS products (

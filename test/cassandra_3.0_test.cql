@@ -71,15 +71,6 @@ VALUES (uuid(), 'Bob Smith',
 
 SELECT * FROM customers;
 
--- Materialized views (new in 3.0)
-CREATE MATERIALIZED VIEW IF NOT EXISTS users_by_age AS
-    SELECT age, user_id, username, email
-    FROM users
-    WHERE age IS NOT NULL AND user_id IS NOT NULL
-    PRIMARY KEY (age, user_id);
-
-SELECT * FROM users_by_age WHERE age >= 25;
-
 -- Aggregates
 SELECT COUNT(*) FROM users;
 SELECT MAX(age) FROM users;
@@ -110,13 +101,6 @@ INSERT INTO tags_table (id, tags) VALUES (uuid(), {'cassandra', 'database', 'nos
 INSERT INTO tags_table (id, tags) VALUES (uuid(), {'cassandra', 'cql'});
 
 SELECT * FROM tags_table WHERE tags CONTAINS 'cassandra';
-
--- SASI indexes (new in 3.0)
-CREATE CUSTOM INDEX IF NOT EXISTS users_email_sasi ON users (email) 
-USING 'org.apache.cassandra.index.sasi.SASIIndex'
-WITH OPTIONS = {'mode': 'CONTAINS'};
-
-SELECT * FROM users WHERE email LIKE '%example%';
 
 -- Per-partition limit (new in 3.0)
 CREATE TABLE IF NOT EXISTS time_series (

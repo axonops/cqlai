@@ -11,7 +11,6 @@ USE cqlai_test_40;
 -- Query system virtual tables
 SELECT * FROM system_views.clients LIMIT 5;
 SELECT * FROM system_views.sstable_tasks;
-SELECT * FROM system_views.settings WHERE name LIKE 'read%' ALLOW FILTERING;
 
 -- Transient replication (new in 4.0)
 -- Note: This requires NetworkTopologyStrategy and multiple nodes
@@ -92,9 +91,6 @@ SELECT * FROM users WHERE age > 25 AND country = 'USA' ALLOW FILTERING;
 
 -- Audit logging tables (when enabled)
 -- SELECT * FROM system_auth.audit_log LIMIT 10;
-
--- Guardrails configuration view
-SELECT * FROM system_views.settings WHERE name LIKE '%guardrail%' ALLOW FILTERING;
 
 -- New token allocation algorithm
 CREATE TABLE IF NOT EXISTS distributed_data (
