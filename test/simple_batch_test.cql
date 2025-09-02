@@ -11,6 +11,8 @@ CREATE TABLE test_table (
     data text
 );
 
+TRACING ON;
+
 -- Test regular inserts
 INSERT INTO test_table (id, data) VALUES (1, 'first');
 INSERT INTO test_table (id, data) VALUES (2, 'second');

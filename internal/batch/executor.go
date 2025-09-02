@@ -141,13 +141,29 @@ func (e *Executor) Execute(cql string) error {
 	result := router.ProcessCommand(cql, e.session)
 
 	// Handle the result based on type
+	var err error
 	switch v := result.(type) {
 	case db.StreamingQueryResult:
-		return e.handleStreamingResult(ctx, v)
+		err = e.handleStreamingResult(ctx, v)
+		// Check for tracing data after streaming result
+		if err == nil && e.session.Tracing() {
+			e.printTraceData()
+		}
+		return err
 	case db.QueryResult:
-		return e.handleQueryResult(v)
+		err = e.handleQueryResult(v)
+		// Check for tracing data after query result
+		if err == nil && e.session.Tracing() {
+			e.printTraceData()
+		}
+		return err
 	case [][]string:
-		return e.outputTable(v)
+		err = e.outputTable(v)
+		// Check for tracing data after table output
+		if err == nil && e.session.Tracing() {
+			e.printTraceData()
+		}
+		return err
 	case string:
 		// Check if this is a USE command result and update the keyspace
 		if strings.HasPrefix(v, "Now using keyspace ") {
@@ -491,6 +507,34 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 				rows = [][]string{}
 			}
 		}
+	}
+}
+
+// printTraceData prints tracing information if available
+func (e *Executor) printTraceData() {
+	// Get trace data from the session
+	traceData, headers, traceInfo, err := e.session.GetTraceData()
+	if err != nil {
+		// Silently ignore if no trace data is available
+		return
+	}
+
+	// Print a separator
+	fmt.Fprintln(e.writer, "\nTracing session:")
+	
+	// Print trace session info
+	if traceInfo != nil {
+		fmt.Fprintf(e.writer, "Coordinator: %s | Total Duration: %d μs\n", 
+			traceInfo.Coordinator, traceInfo.Duration)
+	}
+	
+	// Format and print the trace data as a table
+	if len(traceData) > 0 {
+		// Combine headers and data
+		fullData := append([][]string{headers}, traceData...)
+		// Use ASCII table format for trace data
+		output := ui.FormatASCIITable(fullData)
+		fmt.Fprint(e.writer, output)
 	}
 }
 
