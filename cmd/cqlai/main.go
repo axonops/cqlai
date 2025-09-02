@@ -21,6 +21,7 @@ func main() {
 	noConfirm := flag.Bool("no-confirm", false, "Disable confirmation prompts for dangerous commands")
 	connectTimeout := flag.Int("connect-timeout", 10, "Connection timeout in seconds (default: 10, same as cqlsh)")
 	requestTimeout := flag.Int("request-timeout", 10, "Request timeout in seconds (default: 10, same as cqlsh)")
+	debug := flag.Bool("debug", false, "Enable debug logging")
 
 	// Batch mode flags (compatible with cqlsh)
 	execute := flag.String("e", "", "Execute CQL statement and exit")
@@ -51,6 +52,7 @@ func main() {
 		RequireConfirmation: !*noConfirm,
 		ConnectTimeout:      *connectTimeout,
 		RequestTimeout:      *requestTimeout,
+		Debug:               *debug,
 	}
 
 	// Check if we're in batch mode

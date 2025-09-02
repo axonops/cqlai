@@ -26,8 +26,9 @@ type ConnectionOptions struct {
 	Username            string
 	Password            string
 	RequireConfirmation bool
-	ConnectTimeout      int // Connection timeout in seconds
-	RequestTimeout      int // Request timeout in seconds
+	ConnectTimeout      int  // Connection timeout in seconds
+	RequestTimeout      int  // Request timeout in seconds
+	Debug               bool // Enable debug logging
 }
 
 // AISelectionResultMsg is sent when user completes a selection
@@ -166,6 +167,11 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 				Provider: "mock",
 			},
 		}
+	}
+	
+	// Enable debug logging if configured (from config file or command-line)
+	if cfg.Debug || options.Debug {
+		logger.SetDebugEnabled(true)
 	}
 
 	// Override with command-line options
