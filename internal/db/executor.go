@@ -90,12 +90,13 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	q := s.Query(query)
 	
 	// Enable tracing if needed and capture trace ID
+	var tracer *captureTracer
 	if s.tracing {
-		tracer := &captureTracer{}
+		tracer = &captureTracer{}
 		q = q.Trace(tracer)
 		defer func() {
 			// Store the trace ID for later retrieval
-			if tracer.traceID != nil {
+			if tracer != nil && tracer.traceID != nil {
 				s.lastTraceID = tracer.traceID
 			}
 		}()
@@ -112,10 +113,18 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 			return fmt.Errorf("connection lost to Cassandra - please check if the server is running")
 		}
 		// Re-create the iterator if no connection error
-		iter = s.Query(query).Iter()
+		q = s.Query(query)
+		if s.tracing && tracer != nil {
+			q = q.Trace(tracer)
+		}
+		iter = q.Iter()
 	} else {
 		// Re-create the iterator since we closed it
-		iter = s.Query(query).Iter()
+		q = s.Query(query)
+		if s.tracing && tracer != nil {
+			q = q.Trace(tracer)
+		}
+		iter = q.Iter()
 	}
 
 	// Get column info
@@ -276,6 +285,20 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	// Use the session's page size for pagination
 	q := s.Query(query)
 	q.PageSize(s.pageSize)
+	
+	// Enable tracing if needed and capture trace ID
+	var tracer *captureTracer
+	if s.tracing {
+		tracer = &captureTracer{}
+		q = q.Trace(tracer)
+		defer func() {
+			// Store the trace ID for later retrieval
+			if tracer != nil && tracer.traceID != nil {
+				s.lastTraceID = tracer.traceID
+			}
+		}()
+	}
+	
 	iter := q.Iter()
 
 	// Get column info
