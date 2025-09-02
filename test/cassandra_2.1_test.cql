@@ -65,16 +65,16 @@ VALUES (uuid(),
 
 SELECT * FROM user_profiles;
 
--- Counter table
+-- Counter table (using timestamp instead of date for 2.1 compatibility)
 CREATE TABLE IF NOT EXISTS page_views (
     page_id uuid,
-    view_date date,
+    view_date timestamp,
     views counter,
     PRIMARY KEY (page_id, view_date)
 );
 
-UPDATE page_views SET views = views + 1 WHERE page_id = uuid() AND view_date = '2024-01-01';
-UPDATE page_views SET views = views + 5 WHERE page_id = uuid() AND view_date = '2024-01-01';
+UPDATE page_views SET views = views + 1 WHERE page_id = uuid() AND view_date = '2024-01-01 00:00:00';
+UPDATE page_views SET views = views + 5 WHERE page_id = uuid() AND view_date = '2024-01-01 00:00:00';
 
 SELECT * FROM page_views;
 
