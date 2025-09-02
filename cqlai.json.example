@@ -7,6 +7,7 @@
    "requireConfirmation": true,
    "connectTimeout": 10,
    "requestTimeout": 10,
+   "debug": false,
    "ssl": {
       "enabled": false,
       "certPath": "/path/to/client-cert.pem",

@@ -14,6 +14,7 @@ import (
 
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
 	"github.com/axonops/cqlai/internal/session"
 	"github.com/axonops/cqlai/internal/ui"
@@ -58,6 +59,11 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 			Host: "127.0.0.1",
 			Port: 9042,
 		}
+	}
+	
+	// Enable debug logging if configured (from config file or command-line)
+	if cfg.Debug || options.ConnOptions.Debug {
+		logger.SetDebugEnabled(true)
 	}
 
 	// Override with connection options

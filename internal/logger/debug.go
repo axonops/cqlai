@@ -3,11 +3,42 @@ package logger
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 )
 
+var (
+	debugEnabled bool
+	debugMutex   sync.RWMutex
+)
+
+// SetDebugEnabled enables or disables debug logging
+func SetDebugEnabled(enabled bool) {
+	debugMutex.Lock()
+	defer debugMutex.Unlock()
+	debugEnabled = enabled
+	
+	if enabled {
+		// Create the log file immediately when debug is enabled
+		cwd, _ := os.Getwd()
+		logPath := cwd + "/cqlai_debug.log"
+		fmt.Fprintf(os.Stderr, "[INFO] Debug logging enabled. Log file: %s\n", logPath)
+	}
+}
+
+// IsDebugEnabled returns whether debug logging is enabled
+func IsDebugEnabled() bool {
+	debugMutex.RLock()
+	defer debugMutex.RUnlock()
+	return debugEnabled
+}
+
 // DebugToFile logs debug messages to a file
 func DebugToFile(context string, message string) {
+	if !IsDebugEnabled() {
+		return
+	}
+	
 	cwd, _ := os.Getwd()
 	logPath := cwd + "/cqlai_debug.log"
 
@@ -34,6 +65,9 @@ func DebugToFile(context string, message string) {
 
 // DebugfToFile logs formatted debug messages to a file
 func DebugfToFile(context string, format string, args ...interface{}) {
+	if !IsDebugEnabled() {
+		return
+	}
 	message := fmt.Sprintf(format, args...)
 	DebugToFile(context, message)
 }

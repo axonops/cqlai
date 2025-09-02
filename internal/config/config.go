@@ -21,6 +21,7 @@ type Config struct {
 	PageSize            int             `json:"pageSize,omitempty"`
 	ConnectTimeout      int             `json:"connectTimeout,omitempty"`      // Connection timeout in seconds
 	RequestTimeout      int             `json:"requestTimeout,omitempty"`      // Request timeout in seconds
+	Debug               bool            `json:"debug,omitempty"`               // Enable debug logging
 	SSL                 *SSLConfig      `json:"ssl,omitempty"`
 	AI                  *AIConfig       `json:"ai,omitempty"`
 	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`
