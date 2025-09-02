@@ -1,0 +1,189 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release'
+        required: true
+        default: 'v0.1.0'
+
+jobs:
+  build-binaries:
+    name: Build Release Binaries
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        include:
+          # Linux AMD64
+          - goos: linux
+            goarch: amd64
+            binary_name: cqlai-linux-amd64
+            
+          # macOS AMD64 (Intel)
+          - goos: darwin
+            goarch: amd64
+            binary_name: cqlai-darwin-amd64
+            
+          # macOS ARM64 (Apple Silicon)
+          - goos: darwin
+            goarch: arm64
+            binary_name: cqlai-darwin-arm64
+            
+          # Windows AMD64
+          - goos: windows
+            goarch: amd64
+            binary_name: cqlai-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          # Get version from tag or use default
+          VERSION="${GITHUB_REF_NAME}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+            VERSION="${{ github.event.inputs.tag_name || 'v0.1.0' }}"
+          fi
+          
+          # Build with version info
+          go build -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o ${{ matrix.binary_name }} \
+            ./cmd/cqlai
+          
+          # Make binary executable (for non-Windows)
+          if [ "${{ matrix.goos }}" != "windows" ]; then
+            chmod +x ${{ matrix.binary_name }}
+          fi
+
+      - name: Compress binary
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            # For Windows, create a zip file
+            zip ${{ matrix.binary_name }}.zip ${{ matrix.binary_name }} README.md LICENSE
+          else
+            # For Unix systems, create a tar.gz
+            tar -czf ${{ matrix.binary_name }}.tar.gz ${{ matrix.binary_name }} README.md LICENSE
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: |
+            ${{ matrix.binary_name }}.tar.gz
+            ${{ matrix.binary_name }}.zip
+          if-no-files-found: error
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          
+          # Move all compressed files to release-assets
+          find ./artifacts -name "*.tar.gz" -exec mv {} ./release-assets/ \;
+          find ./artifacts -name "*.zip" -exec mv {} ./release-assets/ \;
+          
+          # Create checksums
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          
+          # Display checksums for verification
+          echo "=== SHA256 Checksums ==="
+          cat SHA256SUMS.txt
+          cd ..
+
+      - name: Create Release Notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## CQLAI Release
+          
+          ### Installation
+          
+          #### Linux (x86_64)
+          ```bash
+          wget https://github.com/axonops/cqlai/releases/download/${{ github.ref_name || github.event.inputs.tag_name }}/cqlai-linux-amd64.tar.gz
+          tar -xzf cqlai-linux-amd64.tar.gz
+          chmod +x cqlai-linux-amd64
+          sudo mv cqlai-linux-amd64 /usr/local/bin/cqlai
+          ```
+          
+          #### macOS (Intel)
+          ```bash
+          wget https://github.com/axonops/cqlai/releases/download/${{ github.ref_name || github.event.inputs.tag_name }}/cqlai-darwin-amd64.tar.gz
+          tar -xzf cqlai-darwin-amd64.tar.gz
+          chmod +x cqlai-darwin-amd64
+          sudo mv cqlai-darwin-amd64 /usr/local/bin/cqlai
+          ```
+          
+          #### macOS (Apple Silicon)
+          ```bash
+          wget https://github.com/axonops/cqlai/releases/download/${{ github.ref_name || github.event.inputs.tag_name }}/cqlai-darwin-arm64.tar.gz
+          tar -xzf cqlai-darwin-arm64.tar.gz
+          chmod +x cqlai-darwin-arm64
+          sudo mv cqlai-darwin-arm64 /usr/local/bin/cqlai
+          ```
+          
+          #### Windows
+          Download and extract `cqlai-windows-amd64.exe.zip`
+          
+          ### Verify Installation
+          ```bash
+          cqlai --version
+          ```
+          
+          ### Features
+          - Interactive CQL shell with syntax highlighting
+          - AI-powered query assistance
+          - Batch mode execution
+          - Query tracing support
+          - Multiple output formats (table, JSON, CSV, ASCII)
+          - Cross-platform support
+          
+          ### Checksums
+          Please verify the SHA256 checksums in `SHA256SUMS.txt`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
+          name: CQLAI ${{ github.ref_name || github.event.inputs.tag_name }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
