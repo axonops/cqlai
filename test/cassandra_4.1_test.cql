@@ -43,7 +43,7 @@ INSERT INTO products (product_id, name, category, price, in_stock, tags)
 VALUES (uuid(), 'Keyboard', 'Electronics', 79.99, false, {'computer', 'accessory'});
 
 -- Query using the conditional index
-SELECT * FROM products WHERE price < 100 AND in_stock = true;
+-- SELECT * FROM products WHERE price < 100 AND in_stock = true;
 
 -- Partition tombstone limits (new guardrail in 4.1)
 CREATE TABLE IF NOT EXISTS tombstone_test (

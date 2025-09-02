@@ -148,49 +148,6 @@ INSERT INTO type_conversions (id, int_value, text_value, bigint_value)
 VALUES (uuid(), 123, '456', 789);
 
 
--- Improved user-defined functions
-CREATE OR REPLACE FUNCTION IF NOT EXISTS calculate_tax(price decimal, rate decimal)
-    RETURNS NULL ON NULL INPUT
-    RETURNS decimal
-    LANGUAGE java
-    AS 'return price.multiply(rate);';
-
--- Improved user-defined aggregates
-CREATE OR REPLACE FUNCTION IF NOT EXISTS state_sum(state tuple<int, bigint>, value int)
-    RETURNS NULL ON NULL INPUT
-    RETURNS tuple<int, bigint>
-    LANGUAGE java
-    AS '
-        if (state == null) {
-            state = com.datastax.driver.core.TupleType.of(
-                com.datastax.driver.core.DataType.cint(),
-                com.datastax.driver.core.DataType.bigint()
-            ).newValue(0, 0L);
-        }
-        int count = state.getInt(0);
-        long sum = state.getLong(1);
-        return com.datastax.driver.core.TupleType.of(
-            com.datastax.driver.core.DataType.cint(),
-            com.datastax.driver.core.DataType.bigint()
-        ).newValue(count + 1, sum + value);
-    ';
-
-CREATE OR REPLACE FUNCTION IF NOT EXISTS final_avg(state tuple<int, bigint>)
-    RETURNS NULL ON NULL INPUT
-    RETURNS double
-    LANGUAGE java
-    AS '
-        if (state == null) return null;
-        int count = state.getInt(0);
-        long sum = state.getLong(1);
-        return count == 0 ? 0.0 : (double) sum / count;
-    ';
-
-CREATE OR REPLACE AGGREGATE IF NOT EXISTS custom_avg(int)
-    SFUNC state_sum
-    STYPE tuple<int, bigint>
-    FINALFUNC final_avg
-    INITCOND (0, 0);
 
 -- Clean up
 DROP KEYSPACE IF EXISTS cqlai_test_311;

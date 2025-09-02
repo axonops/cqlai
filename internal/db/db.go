@@ -317,6 +317,23 @@ func (s *Session) IsVersion4OrHigher() bool {
 	return majorVersion >= 4
 }
 
+// IsVersion3OrHigher checks if the Cassandra version is 3.0 or higher
+func (s *Session) IsVersion3OrHigher() bool {
+	version := s.CassandraVersion()
+	// Parse version string like "3.0.4" or "4.0.4"
+	parts := strings.Split(version, ".")
+	if len(parts) < 1 {
+		return false
+	}
+
+	majorVersion, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+
+	return majorVersion >= 3
+}
+
 // GetSchemaCache returns the schema cache
 func (s *Session) GetSchemaCache() *SchemaCache {
 	return s.schemaCache

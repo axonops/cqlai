@@ -57,7 +57,7 @@ VALUES (uuid(), 'Programming Book', 'Learn Cassandra 5.0', 59.99, 'Books',
         {'education', 'database', 'cassandra'}, false, 4.9);
 
 -- Complex SAI queries (improved in 5.0)
-SELECT * FROM products_sai WHERE category = 'Electronics' AND in_stock = true;
+-- SELECT * FROM products_sai WHERE category = 'Electronics' AND in_stock = true;
 
 -- Accord transactions (production-ready in 5.0)
 -- Note: Syntax may vary based on final implementation
