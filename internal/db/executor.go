@@ -42,8 +42,18 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 			keyspace := strings.Trim(strings.Trim(parts[1], ";"), "\"")
 
 			// Verify the keyspace exists
+			// Use appropriate system table based on Cassandra version
 			var exists string
-			iter := s.Query("SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name = ?", keyspace).Iter()
+			var iter *gocql.Iter
+			
+			if s.IsVersion3OrHigher() {
+				// Cassandra 3.0+ uses system_schema.keyspaces
+				iter = s.Query("SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name = ?", keyspace).Iter()
+			} else {
+				// Cassandra 2.x uses system.schema_keyspaces
+				iter = s.Query("SELECT keyspace_name FROM system.schema_keyspaces WHERE keyspace_name = ?", keyspace).Iter()
+			}
+			
 			if !iter.Scan(&exists) {
 				_ = iter.Close()
 				return fmt.Errorf("keyspace '%s' does not exist", keyspace)

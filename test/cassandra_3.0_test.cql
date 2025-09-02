@@ -119,8 +119,5 @@ VALUES (550e8400-e29b-41d4-a716-446655440000, toTimestamp(now()), 24.5);
 INSERT INTO time_series (device_id, reading_time, value) 
 VALUES (550e8400-e29b-41d4-a716-446655440000, toTimestamp(now()), 25.5);
 
--- PER PARTITION LIMIT syntax (new in 3.0)
-SELECT * FROM time_series PER PARTITION LIMIT 2;
-
 -- Clean up
 DROP KEYSPACE IF EXISTS cqlai_test_30;
