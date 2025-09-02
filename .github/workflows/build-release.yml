@@ -76,10 +76,16 @@ jobs:
       - name: Create archive
         run: |
           mkdir -p archive/${PROJECT_NAME}
-          cp dist/${PROJECT_NAME}-${{ matrix.suffix }} archive/${PROJECT_NAME}/
+          # Copy binary with proper name (cqlai or cqlai.exe)
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            cp dist/${PROJECT_NAME}-${{ matrix.suffix }} archive/${PROJECT_NAME}/${PROJECT_NAME}.exe
+          else
+            cp dist/${PROJECT_NAME}-${{ matrix.suffix }} archive/${PROJECT_NAME}/${PROJECT_NAME}
+          fi
           cp -r THIRD-PARTY-LICENSES archive/${PROJECT_NAME}/
           cp README.md archive/${PROJECT_NAME}/
           cp LICENSE archive/${PROJECT_NAME}/
+          cp cqlai.json.example archive/${PROJECT_NAME}/
           
           cd archive
           if [ "${{ matrix.os }}" = "windows" ]; then

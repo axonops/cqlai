@@ -12,8 +12,12 @@ func NewTable() table.Model {
 	)
 
 	s := table.DefaultStyles()
-	s.Header = s.Header.Blink(false).Bold(true).Foreground(lipgloss.Color("212"))
-	s.Selected = s.Selected.Foreground(lipgloss.Color("229")).Background(lipgloss.Color("57")).Bold(false)
+	// Use hex colors instead of ANSI codes for consistency
+	// Color 212 (pink) -> #FF87D7
+	// Color 229 (light yellow) -> #FFFFD7
+	// Color 57 (purple) -> #5F00FF
+	s.Header = s.Header.Blink(false).Bold(true).Foreground(lipgloss.Color("#FF87D7"))
+	s.Selected = s.Selected.Foreground(lipgloss.Color("#FFFFD7")).Background(lipgloss.Color("#5F00FF")).Bold(false)
 	t.SetStyles(s)
 
 	return t
