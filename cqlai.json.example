@@ -5,7 +5,7 @@
    "username": "cassandra",
    "password": "cassandra",
    "requireConfirmation": true,
-   "connectTimeout": 5,
+   "connectTimeout": 10,
    "requestTimeout": 10,
    "ssl": {
       "enabled": false,

@@ -119,7 +119,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	} else if cfg.ConnectTimeout > 0 {
 		cluster.ConnectTimeout = time.Duration(cfg.ConnectTimeout) * time.Second
 	} else {
-		cluster.ConnectTimeout = 5 * time.Second
+		cluster.ConnectTimeout = 10 * time.Second
 	}
 	
 	cluster.DisableInitialHostLookup = true
