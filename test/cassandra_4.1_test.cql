@@ -72,14 +72,12 @@ CREATE TABLE IF NOT EXISTS function_test (
 INSERT INTO function_test (id, text_data, numeric_data, timestamp_data, list_data)
 VALUES (uuid(), 'Hello World', 42, toTimestamp(now()), [1, 2, 3, 4, 5]);
 
--- New/improved functions in 4.1
+-- Basic queries (string functions like upper/lower require UDFs which are disabled by default)
 SELECT id,
-       -- String functions
-       upper(text_data) as upper_text,
-       lower(text_data) as lower_text,
-       -- Math functions  
-       abs(-1 * numeric_data) as abs_value,
-       -- Collection functions
+       text_data,
+       numeric_data,
+       timestamp_data,
+       -- Collection element access
        list_data[0] as first_element
 FROM function_test;
 
