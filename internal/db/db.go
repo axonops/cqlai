@@ -32,13 +32,15 @@ type Session struct {
 
 // SessionOptions represents options for creating a session with command-line overrides
 type SessionOptions struct {
-	Host      string
-	Port      int
-	Keyspace  string
-	Username  string
-	Password  string
-	SSL       *config.SSLConfig
-	BatchMode bool // Skip schema caching for batch mode
+	Host           string
+	Port           int
+	Keyspace       string
+	Username       string
+	Password       string
+	SSL            *config.SSLConfig
+	BatchMode      bool // Skip schema caching for batch mode
+	ConnectTimeout int  // Connection timeout in seconds (0 = use default)
+	RequestTimeout int  // Request timeout in seconds (0 = use default)
 }
 
 // NewSession creates a new Cassandra session.
@@ -102,8 +104,20 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	// Suppress gocql's default logging to prevent terminal corruption
 	cluster.Logger = &customLogger{}
 	cluster.Consistency = gocql.LocalOne
-	cluster.Timeout = 10 * time.Second
-	cluster.ConnectTimeout = 10 * time.Second
+	
+	// Set timeouts based on options or use defaults
+	if options.RequestTimeout > 0 {
+		cluster.Timeout = time.Duration(options.RequestTimeout) * time.Second
+	} else {
+		cluster.Timeout = 10 * time.Second
+	}
+	
+	if options.ConnectTimeout > 0 {
+		cluster.ConnectTimeout = time.Duration(options.ConnectTimeout) * time.Second
+	} else {
+		cluster.ConnectTimeout = 10 * time.Second
+	}
+	
 	cluster.DisableInitialHostLookup = true
 
 	if cfg.Keyspace != "" {
