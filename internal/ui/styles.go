@@ -44,12 +44,13 @@ func DefaultStyles() *Styles {
 
 	// Use hex colors for better consistency across terminals
 	// These will be automatically adapted to the terminal's capabilities
-	st.Accent = lipgloss.Color("#00BFFF") // DeepSkyBlue
-	st.Ok = lipgloss.Color("#00FF00")     // Lime
-	st.Warn = lipgloss.Color("#FFFF00")   // Yellow
-	st.Error = lipgloss.Color("#FF0000")   // Red
-	st.Muted = lipgloss.Color("#808080")   // Gray
-	st.Border = lipgloss.Color("#444444")  // Dark Gray
+	// Using brighter colors for better visibility in terminals with dark backgrounds
+	st.Accent = lipgloss.Color("#5FAFFF") // Bright Sky Blue (brighter than before)
+	st.Ok = lipgloss.Color("#5FFF5F")     // Bright Green (more visible than pure lime)
+	st.Warn = lipgloss.Color("#FFFF5F")   // Bright Yellow
+	st.Error = lipgloss.Color("#FF5F5F")   // Bright Red (softer than pure red)
+	st.Muted = lipgloss.Color("#9E9E9E")   // Light Gray (brighter than 808080)
+	st.Border = lipgloss.Color("#626262")  // Medium Gray (brighter than 444444)
 
 	st.AccentText = lipgloss.NewStyle().Foreground(st.Accent)
 	st.MutedText = lipgloss.NewStyle().Foreground(st.Muted)

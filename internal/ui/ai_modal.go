@@ -94,7 +94,7 @@ func NewAIModal(userRequest string) AIModal {
 	vp := viewport.New(70, 10) // Width will be adjusted, height is for content area
 	vp.Style = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFFFFF")).
-		Background(lipgloss.Color("#1a1a1a"))
+		Background(lipgloss.Color("#2D2D2D"))
 	vp.KeyMap = viewport.DefaultKeyMap() // Enable keyboard navigation
 
 	return AIModal{
@@ -175,8 +175,8 @@ func (m *AIModal) Render(screenWidth, screenHeight int, styles *Styles) string {
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
-		BorderBackground(lipgloss.Color("#000000")).
-		Background(lipgloss.Color("#000000")).
+		BorderBackground(lipgloss.Color("#1A1A1A")).
+		Background(lipgloss.Color("#1A1A1A")).
 		Padding(1, 2).
 		Width(m.Width).
 		MaxWidth(screenWidth - 4)
@@ -212,7 +212,7 @@ func (m *AIModal) Render(screenWidth, screenHeight int, styles *Styles) string {
 		lipgloss.Center,
 		lipgloss.Center,
 		modalBox,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("#000000")),
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 }
 
@@ -227,7 +227,7 @@ func (m *AIModal) renderGenerating(titleStyle lipgloss.Style, styles *Styles) st
 	// Request style
 	requestStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground()).
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Padding(0, 1).
 		Align(lipgloss.Center).
 		Width(m.Width - 6).
@@ -303,7 +303,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 		// Input field for follow-up questions
 		inputStyle := lipgloss.NewStyle().
 			Foreground(styles.AccentText.GetForeground()).
-			Background(lipgloss.Color("#1a1a1a")).
+			Background(lipgloss.Color("#2D2D2D")).
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.Border).
 			Padding(0, 1).
@@ -343,7 +343,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 		switch m.Selected {
 		case 0: // Cancel selected
 			cancelStyle = cancelStyle.
-				Foreground(lipgloss.Color("#000000")).
+				Foreground(lipgloss.Color("#1A1A1A")).
 				Background(styles.MutedText.GetForeground()).
 				Bold(true)
 			executeStyle = executeStyle.
@@ -362,13 +362,13 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 			if m.Plan != nil && !m.Plan.ReadOnly {
 				// Dangerous operation - use warning color
 				executeStyle = executeStyle.
-					Foreground(lipgloss.Color("#000000")).
+					Foreground(lipgloss.Color("#1A1A1A")).
 					Background(styles.Error).
 					Bold(true)
 			} else {
 				// Safe operation
 				executeStyle = executeStyle.
-					Foreground(lipgloss.Color("#000000")).
+					Foreground(lipgloss.Color("#1A1A1A")).
 					Background(styles.Ok).
 					Bold(true)
 			}
@@ -386,7 +386,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 				Border(lipgloss.NormalBorder()).
 				BorderForeground(styles.Border)
 			editStyle = editStyle.
-				Foreground(lipgloss.Color("#000000")).
+				Foreground(lipgloss.Color("#1A1A1A")).
 				Background(styles.Accent).
 				Bold(true)
 		}
@@ -545,7 +545,7 @@ func (m *AIModal) renderInfoFollowUp(titleStyle lipgloss.Style, styles *Styles) 
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Border).
 		Foreground(lipgloss.Color("#FFFFFF")).
-		Background(lipgloss.Color("#0a0a0a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Padding(1).
 		Width(m.Width - 6).
 		MaxHeight(10).
@@ -565,7 +565,7 @@ func (m *AIModal) renderInfoFollowUp(titleStyle lipgloss.Style, styles *Styles) 
 	// Input field style
 	inputStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground()).
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Accent).
 		Padding(0, 1).
@@ -618,7 +618,7 @@ func (m *AIModal) renderFollowUp(titleStyle lipgloss.Style, styles *Styles) stri
 	// Input field style
 	inputStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground()).
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Accent).
 		Padding(0, 1).
@@ -667,7 +667,7 @@ func (m *AIModal) renderError(titleStyle lipgloss.Style, styles *Styles) string 
 	// Request style
 	requestStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Padding(0, 1).
 		Align(lipgloss.Center).
 		Width(m.Width - 6).
@@ -677,7 +677,7 @@ func (m *AIModal) renderError(titleStyle lipgloss.Style, styles *Styles) string 
 	// Button
 	cancelStyle := lipgloss.NewStyle().
 		Padding(0, 2).
-		Foreground(lipgloss.Color("#000000")).
+		Foreground(lipgloss.Color("#1A1A1A")).
 		Background(styles.MutedText.GetForeground()).
 		Bold(true)
 

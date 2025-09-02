@@ -96,7 +96,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	boxContentWidth := boxWidth - 6 // Account for border and arrow
 	
 	// Define consistent background color for the modal
-	bgColor := lipgloss.Color("#1a1a1a")
+	bgColor := lipgloss.Color("#2D2D2D")
 	
 	// Create the modal style WITHOUT width - let content determine size
 	modalStyle := lipgloss.NewStyle().
