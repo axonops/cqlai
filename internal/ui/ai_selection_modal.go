@@ -129,8 +129,8 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
-		BorderBackground(lipgloss.Color("#000000")).
-		Background(lipgloss.Color("#000000")).
+		BorderBackground(lipgloss.Color("#1A1A1A")).
+		Background(lipgloss.Color("#1A1A1A")).
 		Padding(0, 1).
 		Width(m.Width).
 		MaxWidth(screenWidth - 4)
@@ -154,7 +154,7 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 		Width(m.Width - 8)
 
 	selectedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#000000")).
+		Foreground(lipgloss.Color("#1A1A1A")).
 		Background(styles.Accent).
 		Bold(true).
 		Padding(0, 2).
@@ -278,6 +278,6 @@ func (m *AISelectionModal) Render(screenWidth, screenHeight int, styles *Styles)
 		lipgloss.Center,
 		lipgloss.Top,
 		paddedModal,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("#000000")),
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 }

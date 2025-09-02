@@ -61,8 +61,8 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Warn).
-		BorderBackground(lipgloss.Color("#000000")).
-		Background(lipgloss.Color("#000000")).
+		BorderBackground(lipgloss.Color("#1A1A1A")).
+		Background(lipgloss.Color("#1A1A1A")).
 		Padding(1, 2).
 		Width(m.Width).
 		MaxWidth(screenWidth - 4)
@@ -84,7 +84,7 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 	// Command style - show the actual command in a box
 	commandStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground()).
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Padding(0, 1).
 		Align(lipgloss.Center).
 		Width(m.Width - 6).
@@ -97,7 +97,7 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 	
 	if m.Selected == 0 { // Cancel selected
 		cancelStyle = cancelStyle.
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1A1A1A")).
 			Background(styles.Ok).
 			Bold(true)
 		executeStyle = executeStyle.
@@ -110,7 +110,7 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.Border)
 		executeStyle = executeStyle.
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1A1A1A")).
 			Background(styles.Error).
 			Bold(true)
 	}
@@ -162,6 +162,6 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 		lipgloss.Center,
 		lipgloss.Center,
 		modalBox,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("#000000")),
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 }

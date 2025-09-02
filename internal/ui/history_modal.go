@@ -74,7 +74,7 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Width(boxWidth - 2)
 	
 	// Build the content

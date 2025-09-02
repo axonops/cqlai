@@ -54,7 +54,7 @@ func (m TopBarModel) View(width int, styles *Styles) string {
 
 	// Apply background style to the entire bar
 	barStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#1a1a1a")).
+		Background(lipgloss.Color("#2D2D2D")).
 		Padding(0, 1).
 		Width(width)
 
