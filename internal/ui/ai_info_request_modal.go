@@ -98,12 +98,20 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 	}
 
 	// Calculate dynamic viewport height based on screen size
-	// Reserve space for: modal border/padding (4), title (2), "Please provide" (2),
-	// "Your response" (2), input box (3), instructions (2), margins (2)
-	reservedHeight := 17
+	// Be very conservative with height to prevent overflow
+	// Reserve space for: modal border/padding (4), title (3), "Please provide" (2),
+	// "Your response" (2), input box (3), instructions (2), margins (4), top padding (2)
+	reservedHeight := 22
 	
-	// Calculate viewport height (minimum 3, maximum based on screen)
-	viewportHeight := max(3, min(screenHeight-reservedHeight, 15))
+	// Calculate viewport height (minimum 3, maximum 10 lines)
+	availableHeight := screenHeight - reservedHeight
+	if availableHeight < 0 {
+		availableHeight = 3
+	}
+	viewportHeight := min(availableHeight, 10) // Cap at 10 lines max
+	if viewportHeight < 3 {
+		viewportHeight = 3 // Minimum 3 lines
+	}
 	
 	// Update viewport dimensions if they've changed
 	if m.Viewport.Width != modalWidth-6 || m.Viewport.Height != viewportHeight {
@@ -113,13 +121,13 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		m.Viewport.SetContent(m.Message)
 	}
 
-	// Create modal box style
+	// Create modal box style with minimal padding
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
 		BorderBackground(lipgloss.Color("#1A1A1A")).
 		Background(lipgloss.Color("#1A1A1A")).
-		Padding(1, 2).
+		Padding(0, 1). // Reduced vertical padding
 		Width(modalWidth)
 
 	// Title style
@@ -133,25 +141,21 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 	messageStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground()).
 		Width(modalWidth - 4).
-		Align(lipgloss.Left).
-		MarginTop(1)
+		Align(lipgloss.Left)
 
 	// Viewport wrapper style
 	viewportStyle := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Border).
 		Width(modalWidth - 6).
-		Height(viewportHeight + 2). // +2 for border
-		MarginTop(1).
-		MarginBottom(1)
+		Height(viewportHeight + 2) // +2 for border, no margins
 
 	// Input field style
 	inputStyle := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Accent).
 		Padding(0, 1).
-		Width(modalWidth - 8).
-		MarginTop(1)
+		Width(modalWidth - 8)
 
 	// Instructions style
 	instructionStyle := lipgloss.NewStyle().
