@@ -70,12 +70,10 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	boxContentWidth := hm.maxWidth - 6 // Account for border and arrow
 	boxWidth := hm.maxWidth
 	
-	// Create the modal style with solid background
+	// Create the modal style without forced background
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.Accent).
-		Background(lipgloss.Color("#2D2D2D")).
-		Width(boxWidth - 2)
+		BorderForeground(styles.Accent)
 	
 	// Build the content
 	var content []string
@@ -89,7 +87,6 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	titleStyle := lipgloss.NewStyle().
 		Foreground(styles.Accent).
 		Bold(true).
-		Width(boxWidth - 2).
 		Align(lipgloss.Center)
 	content = append(content, titleStyle.Render(titleText))
 	
@@ -98,7 +95,6 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	if hm.scrollOffset > 0 {
 		scrollStyle := lipgloss.NewStyle().
 			Foreground(styles.MutedText.GetForeground()).
-			Width(boxWidth - 2).
 			Align(lipgloss.Center)
 		content = append(content, scrollStyle.Render("▲ (older)"))
 	}
@@ -114,14 +110,12 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 			// Selected item with arrow
 			itemStyle := lipgloss.NewStyle().
 				Foreground(styles.Accent).
-				Bold(true).
-				Width(boxWidth - 2)
+				Bold(true)
 			line = itemStyle.Render("→ " + displayText)
 		} else {
 			// Regular item
 			itemStyle := lipgloss.NewStyle().
-				Foreground(styles.MutedText.GetForeground()).
-				Width(boxWidth - 2)
+				Foreground(styles.MutedText.GetForeground())
 			line = itemStyle.Render("  " + displayText)
 		}
 		content = append(content, line)
@@ -131,22 +125,16 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	if endIndex < len(reversedItems) {
 		scrollStyle := lipgloss.NewStyle().
 			Foreground(styles.MutedText.GetForeground()).
-			Width(boxWidth - 2).
 			Align(lipgloss.Center)
 		content = append(content, scrollStyle.Render("▼ (newer)"))
 	}
 	
-	// Instructions - add separator styled with same width as content
-	separatorStyle := lipgloss.NewStyle().
-		Foreground(styles.MutedText.GetForeground()).
-		Width(boxWidth - 2).
-		Align(lipgloss.Center)
-	content = append(content, separatorStyle.Render(strings.Repeat("─", boxWidth - 2)))
+	// Instructions - add separator
+	content = append(content, strings.Repeat("─", boxWidth - 2))
 	
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Italic(true).
-		Width(boxWidth - 2).
 		Align(lipgloss.Center)
 	content = append(content, instructionStyle.Render("↑↓: Navigate • Enter: Select • Esc: Close"))
 	
