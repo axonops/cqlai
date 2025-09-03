@@ -179,29 +179,19 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 
 	modalBox := modalStyle.Render(content)
 	
-	// Calculate the actual height of the modal box
-	modalHeight := lipgloss.Height(modalBox)
-	
-	// Ensure the modal doesn't go beyond screen boundaries
-	if modalHeight > screenHeight {
-		// This shouldn't happen with our calculations, but as a safety check
-		return lipgloss.Place(
-			screenWidth,
-			screenHeight,
-			lipgloss.Center,
-			lipgloss.Top,
-			modalBox,
-			lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
-		)
-	}
+	// Add top padding to ensure modal doesn't get cut off
+	topPadding := 2
+	paddedModal := lipgloss.NewStyle().
+		MarginTop(topPadding).
+		Render(modalBox)
 
-	// Center the modal on screen
+	// Position the modal with top alignment to prevent cutoff
 	return lipgloss.Place(
 		screenWidth,
 		screenHeight,
 		lipgloss.Center,
-		lipgloss.Center,
-		modalBox,
+		lipgloss.Top,
+		paddedModal,
 		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 }
