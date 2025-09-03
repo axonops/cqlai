@@ -265,6 +265,13 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		}
 		return m, nil
+	
+	case tea.KeyF9:
+		// F9 - Test key for AI info request modal (debug)
+		testMessage := "I need more information to help you with your query.\n\nPlease specify:\n1. Which keyspace you want to work with\n2. What type of operation you need\n3. Any specific tables involved\n4. Performance requirements\n5. Data consistency requirements\n\nThis is a test of the modal overflow issue to see if it goes over the top edge of the terminal."
+		m.aiInfoReplyModal = NewAIInfoRequestModal(testMessage)
+		logger.DebugfToFile("UI", "TEST: Triggered AI info request modal with test message")
+		return m, nil
 
 	case tea.KeySpace:
 		return m.handleSpaceKey(msg)
