@@ -298,9 +298,17 @@ func (m *MainModel) View() string {
 
 	// If AI info request modal is showing, render it as an overlay
 	if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
-		// Get the window dimensions from the viewport
-		screenWidth := viewportWidth
-		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
+		// Use the actual window dimensions
+		screenWidth := m.windowWidth
+		screenHeight := m.windowHeight
+		if screenWidth == 0 {
+			// Fallback if window dimensions not yet set
+			screenWidth = viewportWidth
+		}
+		if screenHeight == 0 {
+			// Fallback if window dimensions not yet set
+			screenHeight = m.historyViewport.Height + 3
+		}
 
 		// Render the info request modal overlay
 		return m.aiInfoReplyModal.Render(screenWidth, screenHeight, m.styles)
@@ -308,9 +316,17 @@ func (m *MainModel) View() string {
 
 	// If AI selection modal is showing, render it as an overlay
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
-		// Get the window dimensions from the viewport
-		screenWidth := viewportWidth
-		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
+		// Use the actual window dimensions
+		screenWidth := m.windowWidth
+		screenHeight := m.windowHeight
+		if screenWidth == 0 {
+			// Fallback if window dimensions not yet set
+			screenWidth = viewportWidth
+		}
+		if screenHeight == 0 {
+			// Fallback if window dimensions not yet set
+			screenHeight = m.historyViewport.Height + 3
+		}
 
 		// Render the selection modal overlay
 		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
@@ -318,9 +334,17 @@ func (m *MainModel) View() string {
 
 	// If AI modal is showing, render it as an overlay
 	if m.showAIModal {
-		// Get the window dimensions from the viewport
-		screenWidth := viewportWidth
-		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
+		// Use the actual window dimensions
+		screenWidth := m.windowWidth
+		screenHeight := m.windowHeight
+		if screenWidth == 0 {
+			// Fallback if window dimensions not yet set
+			screenWidth = viewportWidth
+		}
+		if screenHeight == 0 {
+			// Fallback if window dimensions not yet set
+			screenHeight = m.historyViewport.Height + 3
+		}
 
 		// Render the AI modal overlay with the current view as background
 		return m.aiModal.Render(screenWidth, screenHeight, m.styles)
@@ -328,9 +352,17 @@ func (m *MainModel) View() string {
 
 	// If modal is showing, render it as an overlay
 	if m.modal.Type != ModalNone {
-		// Get the window dimensions from the viewport
-		screenWidth := viewportWidth
-		screenHeight := m.historyViewport.Height + 3 // Include top bar, input, and status bar
+		// Use the actual window dimensions
+		screenWidth := m.windowWidth
+		screenHeight := m.windowHeight
+		if screenWidth == 0 {
+			// Fallback if window dimensions not yet set
+			screenWidth = viewportWidth
+		}
+		if screenHeight == 0 {
+			// Fallback if window dimensions not yet set
+			screenHeight = m.historyViewport.Height + 3
+		}
 
 		// Render the modal overlay with the current view as background
 		return m.modal.Render(screenWidth, screenHeight, m.styles, finalView)
