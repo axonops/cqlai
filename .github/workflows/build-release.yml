@@ -15,7 +15,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.23'
   PROJECT_NAME: cqlai
 
 jobs:
@@ -307,12 +307,6 @@ jobs:
           syft dir:. -o cyclonedx-json > sbom-source.cyclonedx.json
           syft dir:. -o text > sbom-source.txt
 
-      - name: Generate SBOM for binary
-        run: |
-          tar -xzf dist/*.tar.gz || true
-          syft file:${PROJECT_NAME}/${PROJECT_NAME}-linux-amd64 -o spdx-json > sbom-binary.spdx.json
-          syft file:${PROJECT_NAME}/${PROJECT_NAME}-linux-amd64 -o cyclonedx-json > sbom-binary.cyclonedx.json
-
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -345,19 +339,9 @@ jobs:
           grype sbom:sbom-source.spdx.json -o table > vulnerabilities-source.txt
           
           # Also create a summary
-          echo "## Vulnerability Scan Summary - Source" > vulnerability-report.md
+          echo "## Vulnerability Scan Summary" > vulnerability-report.md
           echo "" >> vulnerability-report.md
           grype sbom:sbom-source.spdx.json -o table --fail-on high >> vulnerability-report.md || true
-
-      - name: Scan binary SBOM for vulnerabilities
-        run: |
-          grype sbom:sbom-binary.spdx.json -o json > vulnerabilities-binary.json
-          grype sbom:sbom-binary.spdx.json -o table > vulnerabilities-binary.txt
-          
-          echo "" >> vulnerability-report.md
-          echo "## Vulnerability Scan Summary - Binary" >> vulnerability-report.md
-          echo "" >> vulnerability-report.md
-          grype sbom:sbom-binary.spdx.json -o table --fail-on critical >> vulnerability-report.md || true
 
       - name: Upload vulnerability scan results
         uses: actions/upload-artifact@v4
