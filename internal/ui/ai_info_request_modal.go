@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -13,6 +14,7 @@ type AIInfoRequestModal struct {
 	Active      bool
 	Message     string           // The AI's message/question
 	Input       textinput.Model  // Text input for user response
+	Viewport    viewport.Model  // Viewport for scrollable message
 	Width       int
 	Height      int
 }
@@ -25,17 +27,23 @@ func NewAIInfoRequestModal(message string) *AIInfoRequestModal {
 	input.CharLimit = 500
 	input.Width = 50
 	
+	vp := viewport.New(56, 5) // Initial size, will be adjusted in Render
+	vp.SetContent(message)
+	
 	return &AIInfoRequestModal{
-		Active:  true,
-		Message: message,
-		Input:   input,
-		Width:   60,
-		Height:  15,
+		Active:   true,
+		Message:  message,
+		Input:    input,
+		Viewport: vp,
+		Width:    60,
+		Height:   15,
 	}
 }
 
 // Update handles input for the modal
 func (m *AIInfoRequestModal) Update(msg tea.Msg) (*AIInfoRequestModal, tea.Cmd) {
+	var cmds []tea.Cmd
+	
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch msg.Type {
 		case tea.KeyEscape:
@@ -48,12 +56,26 @@ func (m *AIInfoRequestModal) Update(msg tea.Msg) (*AIInfoRequestModal, tea.Cmd) 
 				m.Active = false
 				return m, nil
 			}
+		case tea.KeyUp, tea.KeyPgUp:
+			// Scroll the viewport up
+			var cmd tea.Cmd
+			m.Viewport, cmd = m.Viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		case tea.KeyDown, tea.KeyPgDown:
+			// Scroll the viewport down
+			var cmd tea.Cmd
+			m.Viewport, cmd = m.Viewport.Update(msg)
+			cmds = append(cmds, cmd)
 		default:
 			// Handle text input
 			var cmd tea.Cmd
 			m.Input, cmd = m.Input.Update(msg)
-			return m, cmd
+			cmds = append(cmds, cmd)
 		}
+	}
+	
+	if len(cmds) > 0 {
+		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }
@@ -69,6 +91,28 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		return ""
 	}
 
+	// Adjust width for smaller screens
+	modalWidth := m.Width
+	if screenWidth < modalWidth+4 {
+		modalWidth = screenWidth - 4
+	}
+
+	// Calculate dynamic viewport height based on screen size
+	// Reserve space for: modal border/padding (4), title (2), "Please provide" (2),
+	// "Your response" (2), input box (3), instructions (2), margins (2)
+	reservedHeight := 17
+	
+	// Calculate viewport height (minimum 3, maximum based on screen)
+	viewportHeight := max(3, min(screenHeight-reservedHeight, 15))
+	
+	// Update viewport dimensions if they've changed
+	if m.Viewport.Width != modalWidth-6 || m.Viewport.Height != viewportHeight {
+		m.Viewport.Width = modalWidth - 6
+		m.Viewport.Height = viewportHeight
+		// Re-set content to ensure it's wrapped correctly
+		m.Viewport.SetContent(m.Message)
+	}
+
 	// Create modal box style
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -76,28 +120,28 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		BorderBackground(lipgloss.Color("#1A1A1A")).
 		Background(lipgloss.Color("#1A1A1A")).
 		Padding(1, 2).
-		Width(m.Width).
-		MaxWidth(screenWidth - 4)
+		Width(modalWidth)
 
 	// Title style
 	titleStyle := lipgloss.NewStyle().
 		Foreground(styles.Accent).
 		Bold(true).
 		Align(lipgloss.Center).
-		Width(m.Width - 4)
+		Width(modalWidth - 4)
 
 	// Message style
 	messageStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground()).
-		Width(m.Width - 4).
+		Width(modalWidth - 4).
 		Align(lipgloss.Left).
 		MarginTop(1)
 
-	// AI icon and message
-	aiMessageStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#2D2D2D")).
-		Padding(1).
-		Width(m.Width - 6).
+	// Viewport wrapper style
+	viewportStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(styles.Border).
+		Width(modalWidth - 6).
+		Height(viewportHeight + 2). // +2 for border
 		MarginTop(1).
 		MarginBottom(1)
 
@@ -106,30 +150,50 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(styles.Accent).
 		Padding(0, 1).
-		Width(m.Width - 8).
+		Width(modalWidth - 8).
 		MarginTop(1)
 
-	// Instructions
+	// Instructions style
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Italic(true).
 		Align(lipgloss.Center).
-		Width(m.Width - 4).
-		MarginTop(1)
+		Width(modalWidth - 4)
+	
+	// Add scroll indicator if content is scrollable
+	scrollHint := ""
+	if m.Viewport.TotalLineCount() > m.Viewport.Height {
+		scrollHint = " • ↑↓: Scroll"
+	}
 
 	// Build the modal content
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
 		titleStyle.Render("🤖 AI Needs More Information"),
-		messageStyle.Render("The AI needs clarification to proceed:"),
-		aiMessageStyle.Render(m.Message),
+		messageStyle.Render("Please provide more details:"),
+		viewportStyle.Render(m.Viewport.View()),
 		messageStyle.Render("Your response:"),
 		inputStyle.Render(m.Input.View()),
-		"",
-		instructionStyle.Render("Enter: Submit  •  Esc: Cancel"),
+		instructionStyle.Render("Enter: Submit • Esc: Cancel" + scrollHint),
 	)
 
 	modalBox := modalStyle.Render(content)
+	
+	// Calculate the actual height of the modal box
+	modalHeight := lipgloss.Height(modalBox)
+	
+	// Ensure the modal doesn't go beyond screen boundaries
+	if modalHeight > screenHeight {
+		// This shouldn't happen with our calculations, but as a safety check
+		return lipgloss.Place(
+			screenWidth,
+			screenHeight,
+			lipgloss.Center,
+			lipgloss.Top,
+			modalBox,
+			lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
+		)
+	}
 
 	// Center the modal on screen
 	return lipgloss.Place(
