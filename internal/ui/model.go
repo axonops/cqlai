@@ -111,6 +111,10 @@ type MainModel struct {
 
 	// Sliding window for large result sets
 	slidingWindow *SlidingWindowTable // Manages memory-limited table data
+	
+	// Window dimensions
+	windowWidth              int                 // Terminal window width
+	windowHeight             int                 // Terminal window height
 
 	// Multi-line mode
 	multiLineMode   bool     // Whether we're in multi-line mode
@@ -274,6 +278,10 @@ func (m *MainModel) Init() tea.Cmd {
 func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		// Store the actual window dimensions
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+		
 		headerHeight := 1 // top bar
 		footerHeight := 1 // status bar
 		inputHeight := 1  // text input
