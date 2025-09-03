@@ -9,46 +9,166 @@ import (
 
 // handleKeyboardInput handles keyboard input events
 func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
-	// Handle AI info request view input first
-	if m.viewMode == "ai_info" && m.aiInfoRequestActive {
-		switch msg.Type {
-		case tea.KeyEscape:
-			// Cancel and return to previous view
-			m.aiInfoRequestActive = false
-			m.viewMode = "history"
-			m.aiInfoRequestInput.SetValue("")
+	// Check for AI CQL modal first (highest priority)
+	if m.aiCQLModal != nil && m.aiCQLModal.Active {
+		switch msg.String() {
+		case "left", "h":
+			m.aiCQLModal.PrevChoice()
 			return m, nil
-		case tea.KeyEnter:
-			// Submit the response
-			response := strings.TrimSpace(m.aiInfoRequestInput.Value())
-			if response != "" {
-				// Add response to history
-				m.fullHistoryContent += "\n> AI Info Response: " + response + "\n"
-				m.historyViewport.SetContent(m.fullHistoryContent)
-				m.historyViewport.GotoBottom()
-				
-				// Clear and close the AI info view
-				m.aiInfoRequestActive = false
+		case "right", "l":
+			m.aiCQLModal.NextChoice()
+			return m, nil
+		case "enter":
+			if m.aiCQLModal.Selected == 0 {
+				// Execute the CQL
+				cql := m.aiCQLModal.CQL
+				m.aiCQLModal.Active = false
+				m.aiCQLModal = nil
+
+				// Exit AI conversation view
+				m.aiConversationActive = false
 				m.viewMode = "history"
-				m.aiInfoRequestInput.SetValue("")
-				
-				// Send response back to AI system
+
+				// Execute the CQL command
+				m.input.SetValue(cql)
+				// Trigger the enter key handler to execute
+				return m.handleEnterKey()
+			} else {
+				// Cancel - close modal and stay in AI conversation
+				m.aiCQLModal.Active = false
+				m.aiCQLModal = nil
+				return m, nil
+			}
+		case "esc", "ctrl+c":
+			// Cancel - close modal and stay in AI conversation
+			m.aiCQLModal.Active = false
+			m.aiCQLModal = nil
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Check for AI selection modal (second priority)
+	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
+		// Handle selection modal keyboard input
+		if m.aiSelectionModal.InputMode {
+			// In custom input mode
+			switch msg.Type {
+			case tea.KeyEscape:
+				// Exit input mode
+				m.aiSelectionModal.InputMode = false
+				m.aiSelectionModal.CustomInput = ""
+				return m, nil
+			case tea.KeyEnter:
+				// Submit custom input
+				if m.aiSelectionModal.CustomInput != "" {
+					return m, func() tea.Msg {
+						return AISelectionResultMsg{
+							Selection:     m.aiSelectionModal.CustomInput,
+							SelectionType: m.aiSelectionModal.SelectionType,
+							Cancelled:     false,
+						}
+					}
+				}
+				return m, nil
+			case tea.KeyBackspace:
+				if len(m.aiSelectionModal.CustomInput) > 0 {
+					m.aiSelectionModal.CustomInput = m.aiSelectionModal.CustomInput[:len(m.aiSelectionModal.CustomInput)-1]
+				}
+				return m, nil
+			default:
+				// Add character to custom input
+				if msg.Type == tea.KeyRunes {
+					m.aiSelectionModal.CustomInput += string(msg.Runes)
+				}
+				return m, nil
+			}
+		} else {
+			// In selection mode
+			switch msg.String() {
+			case "up", "k":
+				m.aiSelectionModal.PrevOption()
+				return m, nil
+			case "down", "j":
+				m.aiSelectionModal.NextOption()
+				return m, nil
+			case "i":
+				// Enter custom input mode
+				m.aiSelectionModal.InputMode = true
+				m.aiSelectionModal.CustomInput = ""
+				return m, nil
+			case "enter":
+				// Select current option
 				return m, func() tea.Msg {
-					return AIInfoResponseMsg{
-						Response:  response,
-						Cancelled: false,
+					return AISelectionResultMsg{
+						Selection:     m.aiSelectionModal.GetSelection(),
+						SelectionType: m.aiSelectionModal.SelectionType,
+						Cancelled:     false,
+					}
+				}
+			case "esc", "ctrl+c":
+				// Cancel selection
+				return m, func() tea.Msg {
+					return AISelectionResultMsg{
+						Cancelled: true,
 					}
 				}
 			}
+		}
+		return m, nil
+	}
+
+	// Handle AI conversation view input
+	if m.viewMode == "ai" && m.aiConversationActive {
+		switch msg.Type {
+		case tea.KeyEscape, tea.KeyCtrlC:
+			// Exit AI mode and return to history
+			m.aiConversationActive = false
+			m.viewMode = "history"
+			m.aiConversationInput.SetValue("")
+			m.aiProcessing = false
+			return m, nil
+		case tea.KeyEnter:
+			// Submit message to AI
+			message := strings.TrimSpace(m.aiConversationInput.Value())
+			if message != "" && !m.aiProcessing {
+				// Add user message to conversation
+				m.aiConversationHistory += "\n" + m.styles.AccentText.Render("You: ") + message + "\n"
+				m.aiConversationViewport.SetContent(m.aiConversationHistory)
+				m.aiConversationViewport.GotoBottom()
+
+				// Clear input and set processing state
+				userMessage := message
+				m.aiConversationInput.SetValue("")
+				m.aiProcessing = true
+
+				// Send message to AI
+				return m, func() tea.Msg {
+					// If this is a follow-up in an existing conversation
+					if m.aiConversationID != "" {
+						return continueAIConversation(m.aiConfig, m.aiConversationID, userMessage)()
+					}
+					// Start new conversation
+					return generateAICQL(m.session, m.aiConfig, userMessage)()
+				}
+			}
+			return m, nil
+		case tea.KeyUp, tea.KeyPgUp:
+			// Scroll conversation up
+			m.aiConversationViewport.ScrollUp(1)
+			return m, nil
+		case tea.KeyDown, tea.KeyPgDown:
+			// Scroll conversation down
+			m.aiConversationViewport.ScrollDown(1)
 			return m, nil
 		default:
 			// Update the text input
 			var cmd tea.Cmd
-			m.aiInfoRequestInput, cmd = m.aiInfoRequestInput.Update(msg)
+			m.aiConversationInput, cmd = m.aiConversationInput.Update(msg)
 			return m, cmd
 		}
 	}
-	
+
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		// If in history search mode, exit it
@@ -131,14 +251,13 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEsc:
-		// If AI info request view is showing, handle it
-		if m.aiInfoRequestActive {
-			// Cancel the info request
-			m.aiInfoRequestActive = false
-			m.viewMode = "history"
-			return m, func() tea.Msg {
-				return AIInfoResponseMsg{Cancelled: true}
-			}
+		// If AI conversation is active and processing, cancel it
+		if m.aiConversationActive && m.aiProcessing {
+			m.aiProcessing = false
+			m.aiConversationHistory += m.styles.MutedText.Render("\n(Cancelled)") + "\n"
+			m.aiConversationViewport.SetContent(m.aiConversationHistory)
+			m.aiConversationViewport.GotoBottom()
+			return m, nil
 		}
 		// If AI selection modal is showing, handle it
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
@@ -155,11 +274,9 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// If AI modal is showing, close it
-		if m.showAIModal {
-			m.showAIModal = false
-			m.aiModal = AIModal{}
-			m.aiConversationID = ""
+		// If in AI conversation view, exit it
+		if m.aiConversationActive && m.viewMode == "ai" {
+			m.viewMode = "history"
 			m.input.Placeholder = "Enter CQL command..."
 			return m, nil
 		}
@@ -230,17 +347,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m.handleTabKey()
 
-	case tea.KeyF1:
-		// F1 to switch between history and table view
-		if m.hasTable {
-			if m.viewMode == "history" {
-				m.viewMode = "table"
-			} else {
-				m.viewMode = "history"
-			}
-		}
-		return m, nil
-
 	case tea.KeyF2:
 		// F2 to toggle showing data types in table headers
 		if m.hasTable && m.viewMode == "table" {
@@ -290,7 +396,18 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		}
 		return m, nil
-		
+
+	case tea.KeyF3:
+		// F3 to switch between history and table view
+		if m.hasTable {
+			if m.viewMode == "history" {
+				m.viewMode = "table"
+			} else {
+				m.viewMode = "history"
+			}
+		}
+		return m, nil
+
 	case tea.KeyF4:
 		// F4 to switch to trace view if trace data is available
 		if m.hasTrace {
@@ -306,7 +423,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		}
 		return m, nil
-	
 
 	case tea.KeySpace:
 		return m.handleSpaceKey(msg)
@@ -318,8 +434,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handlePageDown(msg)
 
 	case tea.KeyUp:
-		logger.DebugfToFile("AI", "KeyUp pressed. showAIModal=%v, aiSelectionModal.Active=%v, historySearchMode=%v",
-			m.showAIModal, m.aiSelectionModal != nil && m.aiSelectionModal.Active, m.historySearchMode)
+		logger.DebugfToFile("AI", "KeyUp pressed. aiSelectionModal.Active=%v, historySearchMode=%v",
+			m.aiSelectionModal != nil && m.aiSelectionModal.Active, m.historySearchMode)
 		// If AI selection modal is showing, navigate options
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
 			m.aiSelectionModal.PrevOption()
@@ -411,38 +527,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			// Handle backspace
 			if msg.Type == tea.KeyBackspace && len(m.aiSelectionModal.CustomInput) > 0 {
 				m.aiSelectionModal.CustomInput = m.aiSelectionModal.CustomInput[:len(m.aiSelectionModal.CustomInput)-1]
-				return m, nil
-			}
-		}
-		// Handle AI modal info input (when INFO operation is showing)
-		if m.showAIModal && m.aiModal.State == AIModalStatePreview &&
-			m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
-			// Handle character input
-			if msg.Type == tea.KeyRunes {
-				runes := string(msg.Runes)
-				if len(m.aiModal.FollowUpInput) < 500 {
-					m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] +
-						runes +
-						m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
-					m.aiModal.CursorPosition += len(runes)
-				}
-				return m, nil
-			}
-			// Handle backspace
-			if msg.Type == tea.KeyBackspace && m.aiModal.CursorPosition > 0 {
-				m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition-1] +
-					m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
-				m.aiModal.CursorPosition--
-				return m, nil
-			}
-		}
-
-		// Handle AI modal keyboard input
-		if m.showAIModal && m.aiModal.State == AIModalStatePreview {
-
-			// Regular modal - handle 'P' key for toggling plan/CQL view
-			if msg.String() == "p" || msg.String() == "P" {
-				m.aiModal.ToggleView()
 				return m, nil
 			}
 		}

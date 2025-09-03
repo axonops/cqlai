@@ -80,10 +80,9 @@ type MainModel struct {
 	completionScrollOffset   int // Track scroll position in completion list
 	confirmExit              bool
 	modal                    Modal
-	aiModal                  AIModal             // AI-powered CQL generation modal
-	showAIModal              bool                // Whether AI modal is active
 	aiConversationID         string              // Current AI conversation ID for stateful interactions
 	aiSelectionModal         *AISelectionModal   // AI selection modal for user choices
+	aiCQLModal               *AICQLModal         // AI CQL execution modal
 	showHistoryModal         bool                // Whether to show command history modal
 	historyModalIndex        int                 // Currently selected item in history modal
 	historyModalScrollOffset int                 // Track scroll position in history modal
@@ -97,10 +96,12 @@ type MainModel struct {
 	showDataTypes            bool                // Whether to show column data types in table headers
 	columnTypes              []string            // Store column data types
 	
-	// AI info request view
-	aiInfoRequestActive      bool                // Whether AI info request view is active
-	aiInfoRequestMessage     string              // The AI's message/question
-	aiInfoRequestInput       textinput.Model     // Input for user response
+	// AI conversation view
+	aiConversationActive     bool                // Whether AI conversation view is active
+	aiConversationHistory    string              // Full conversation history
+	aiConversationViewport   viewport.Model      // Viewport for scrollable conversation
+	aiConversationInput      textinput.Model     // Input for user messages
+	aiProcessing            bool                // Whether AI is currently processing
 	
 	// Tracing support
 	traceViewport            viewport.Model      // Viewport for trace results
@@ -326,75 +327,83 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logger.DebugfToFile("AI", "Conversation ID: %s", msg.ConversationID)
 		}
 
-		// Check if we're in AI info view mode waiting for response
-		if m.viewMode == "ai_info" && m.aiInfoRequestActive {
+		// Check if we're in AI conversation view mode waiting for response
+		if m.viewMode == "ai" && m.aiConversationActive {
 			if msg.Error != nil {
 				// Check if this is an interaction request
 				if interactionReq, ok := msg.Error.(*ai.InteractionRequest); ok {
 					switch interactionReq.Type {
 					case "selection":
-						logger.DebugfToFile("AI", "User selection needed for: %s", interactionReq.SelectionType)
-						// Hide the AI modal temporarily
-						m.showAIModal = false
+						logger.DebugfToFile("AI", "User selection needed for: %s with %d options", interactionReq.SelectionType, len(interactionReq.SelectionOptions))
+						logger.DebugfToFile("AI", "Selection options: %v", interactionReq.SelectionOptions)
 						// Show selection modal
 						m.aiSelectionModal = NewAISelectionModal(interactionReq.SelectionType, interactionReq.SelectionOptions)
+						logger.DebugfToFile("AI", "Selection modal created: Active=%v, Options=%d", m.aiSelectionModal.Active, len(m.aiSelectionModal.Options))
 						return m, nil
 					case "info":
 						logger.DebugfToFile("AI", "More info needed: %s", interactionReq.InfoMessage)
-						// Hide the AI modal temporarily
-						m.showAIModal = false
-						// Show info request modal
-						// Initialize the input if needed
-						if m.aiInfoRequestInput.Value() == "" {
-							input := textinput.New()
-							input.Placeholder = "Type your response..."
-							input.Focus()
-							input.CharLimit = 500
-							input.Width = 80
-							m.aiInfoRequestInput = input
-						}
+						// Append info request to conversation history
+						m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + " " + interactionReq.InfoMessage + "\n\n"
+						m.aiConversationViewport.SetContent(m.aiConversationHistory)
+						m.aiConversationViewport.GotoBottom()
 						
-						// Switch to AI info view
-						m.aiInfoRequestActive = true
-						m.aiInfoRequestMessage = interactionReq.InfoMessage
-						m.viewMode = "ai_info"
-						m.aiInfoRequestInput.Focus()
-						m.showAIModal = false
+						// Ensure we're in AI conversation view
+						if !m.aiConversationActive {
+							m.aiConversationActive = true
+							m.viewMode = "ai"
+						}
+						m.aiConversationInput.Focus()
+						m.aiProcessing = false
 						return m, nil
 					}
 				}
 				// Regular error
 				logger.DebugfToFile("AI", "AI generation failed: %v", msg.Error)
-				// Update the AI info view with error
-				m.aiInfoRequestMessage = fmt.Sprintf("Error: %v\n\nPlease try again or modify your query.", msg.Error)
-				m.aiInfoRequestInput.Focus()
+				// Append error to conversation history
+				errorMsg := fmt.Sprintf("Error: %v\n\nPlease try again or modify your query.", msg.Error)
+				m.aiConversationHistory += "\n" + m.styles.ErrorText.Render(errorMsg) + "\n"
+				m.aiConversationViewport.SetContent(m.aiConversationHistory)
+				m.aiConversationViewport.GotoBottom()
+				m.aiConversationInput.Focus()
+				m.aiProcessing = false
 			} else {
 				logger.DebugfToFile("AI", "AI generation successful")
-				// Success - show the result in history and return to history view
+				// Success - show the result in conversation
 				resultText := ""
-				if msg.CQL != "" {
-					resultText = "Generated CQL:\n" + msg.CQL
-				} else if msg.Plan != nil {
-					resultText = fmt.Sprintf("Operation: %s\nKeyspace: %s\nTable: %s", 
-						msg.Plan.Operation, msg.Plan.Keyspace, msg.Plan.Table)
+				switch {
+				case msg.CQL != "":
+					resultText = msg.CQL
+					// Add to conversation with formatting
+					m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + "\nGenerated CQL:\n```sql\n" + resultText + "\n```\n"
+					m.aiConversationViewport.SetContent(m.aiConversationHistory)
+					m.aiConversationViewport.GotoBottom()
+					
+					// Show the CQL execution modal
+					m.aiCQLModal = NewAICQLModal(resultText)
+					m.aiProcessing = false
+					return m, nil
+				case msg.Plan != nil && msg.Plan.Operation == "INFO":
+					// For INFO operations, display the info content
+					logger.DebugfToFile("AI", "INFO operation completed with content")
+					if msg.Plan.InfoContent != "" {
+						m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + "\n" + msg.Plan.InfoContent + "\n"
+					}
+				case msg.Plan != nil:
+					// Other operations
+					resultText = fmt.Sprintf("Operation: %s", msg.Plan.Operation)
+					if msg.Plan.Keyspace != "" {
+						resultText += fmt.Sprintf("\nKeyspace: %s", msg.Plan.Keyspace)
+					}
+					if msg.Plan.Table != "" {
+						resultText += fmt.Sprintf("\nTable: %s", msg.Plan.Table)
+					}
+					m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + "\n" + resultText + "\n"
 				}
 				
-				// Add to history
-				m.fullHistoryContent += "\n" + m.styles.AccentText.Render("AI Response:") + "\n" + resultText + "\n"
-				m.historyViewport.SetContent(m.fullHistoryContent)
-				m.historyViewport.GotoBottom()
-				
-				// Return to history view
-				m.aiInfoRequestActive = false
-				m.viewMode = "history"
-				m.aiInfoRequestInput.SetValue("")
-			}
-		} else if m.showAIModal && m.aiModal.State == AIModalStateGenerating {
-			// Fallback to modal if it's still being used
-			if msg.Error != nil {
-				m.aiModal.SetError(msg.Error)
-			} else {
-				m.aiModal.SetResult(msg.Plan, msg.CQL)
+				m.aiConversationViewport.SetContent(m.aiConversationHistory)
+				m.aiConversationViewport.GotoBottom()
+				// Stay in AI conversation view
+				m.aiProcessing = false
 			}
 		}
 		return m, nil
@@ -409,23 +418,23 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// User completed selection (or cancelled)
 		if msg.Cancelled {
 			logger.DebugfToFile("AI", "User cancelled selection")
-			// Cancel the AI operation and clear conversation
-			m.showAIModal = false
-			m.aiModal = AIModal{}
+			// Add cancellation to conversation
+			m.aiConversationHistory += m.styles.MutedText.Render("(Selection cancelled)") + "\n"
+			m.aiConversationViewport.SetContent(m.aiConversationHistory)
+			m.aiConversationViewport.GotoBottom()
 			m.aiSelectionModal = nil
+			m.aiProcessing = false
 			m.aiConversationID = ""
-			// Add cancellation message
-			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("AI generation cancelled.")
-			m.historyViewport.SetContent(m.fullHistoryContent)
-			m.historyViewport.GotoBottom()
 		} else {
 			logger.DebugfToFile("AI", "User selected %s: %s", msg.SelectionType, msg.Selection)
-			// Continue AI generation with the selected value
+			// Add selection to conversation history
+			m.aiConversationHistory += m.styles.AccentText.Render("You selected:") + " " + msg.Selection + "\n\n"
+			m.aiConversationViewport.SetContent(m.aiConversationHistory)
+			m.aiConversationViewport.GotoBottom()
+			
+			// Clear selection modal
 			m.aiSelectionModal = nil
-
-			// Re-show the AI modal in generating state
-			m.showAIModal = true
-			m.aiModal.State = AIModalStateGenerating
+			m.aiProcessing = true
 
 			// Build contextual response with type information
 			contextualResponse := fmt.Sprintf("User selected %s: %s", msg.SelectionType, msg.Selection)
@@ -437,59 +446,52 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				// Fallback if no conversation ID (shouldn't happen)
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
-				contextualRequest := fmt.Sprintf("%s\n%s", m.aiModal.UserRequest, contextualResponse)
+				// Get the original request from conversation history
+				contextualRequest := fmt.Sprintf("Previous context:\n%s\n\nUser selection: %s", m.aiConversationHistory, contextualResponse)
 				return m, generateAICQL(m.session, m.aiConfig, contextualRequest)
 			}
 		}
 		return m, nil
 
 	case AIRequestMoreInfoMsg:
-		// AI needs more information from user - use full-screen view
+		// AI needs more information from user - append to conversation
 		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
 		
-		// Initialize the input if needed
-		if m.aiInfoRequestInput.Value() == "" {
-			input := textinput.New()
-			input.Placeholder = "Type your response..."
-			input.Focus()
-			input.CharLimit = 500
-			input.Width = 80
-			m.aiInfoRequestInput = input
-		}
+		// Append request to conversation history
+		m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + " " + msg.Message + "\n\n"
+		m.aiConversationViewport.SetContent(m.aiConversationHistory)
+		m.aiConversationViewport.GotoBottom()
 		
-		// Switch to AI info view
-		m.aiInfoRequestActive = true
-		m.aiInfoRequestMessage = msg.Message
-		m.viewMode = "ai_info"
-		m.aiInfoRequestInput.Focus()
+		// Ensure we're in AI conversation view
+		if !m.aiConversationActive {
+			m.aiConversationActive = true
+			m.viewMode = "ai"
+		}
+		m.aiConversationInput.Focus()
+		m.aiProcessing = false
 		
 		// Close any modals
-		m.showAIModal = false
 		return m, nil
 
 	case AIInfoResponseMsg:
 		// User provided additional information (or cancelled)
 		if msg.Cancelled {
 			logger.DebugfToFile("AI", "User cancelled info request")
-			// Cancel the AI operation and clear conversation
-			m.showAIModal = false
-			m.aiModal = AIModal{}
-			m.aiInfoRequestActive = false
-			m.aiInfoRequestInput.SetValue("")
+			// Add cancellation to conversation
+			m.aiConversationHistory += m.styles.MutedText.Render("(Cancelled)") + "\n"
+			m.aiConversationViewport.SetContent(m.aiConversationHistory)
+			m.aiConversationViewport.GotoBottom()
+			m.aiProcessing = false
 			m.aiConversationID = ""
-			// Add cancellation message
-			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("AI generation cancelled.")
-			m.historyViewport.SetContent(m.fullHistoryContent)
-			m.historyViewport.GotoBottom()
 		} else {
 			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
-			// Continue AI generation with the additional information
-			m.aiInfoRequestActive = false
-			m.aiInfoRequestInput.SetValue("")
+			// Add user response to conversation
+			m.aiConversationHistory += m.styles.AccentText.Render("You:") + " " + msg.Response + "\n\n"
+			m.aiConversationViewport.SetContent(m.aiConversationHistory)
+			m.aiConversationViewport.GotoBottom()
 
-			// Re-show the AI modal in generating state
-			m.showAIModal = true
-			m.aiModal.State = AIModalStateGenerating
+			// Set processing state
+			m.aiProcessing = true
 
 			// Continue the existing conversation with the additional info
 			if m.aiConversationID != "" {
@@ -498,8 +500,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				// Fallback if no conversation ID (shouldn't happen)
 				logger.DebugfToFile("AI", "Warning: No conversation ID, starting new conversation")
-				contextualRequest := fmt.Sprintf("%s\nAdditional info: %s", m.aiModal.UserRequest, msg.Response)
-				m.aiModal.UserRequest = contextualRequest
+				// Use conversation history as context
+				contextualRequest := fmt.Sprintf("Previous context:\n%s\n\nUser response: %s", m.aiConversationHistory, msg.Response)
 				return m, generateAICQL(m.session, m.aiConfig, contextualRequest)
 			}
 		}
