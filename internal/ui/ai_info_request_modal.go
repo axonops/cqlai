@@ -157,25 +157,44 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 	modalHeight := lipgloss.Height(modalBox)
 	logger.DebugfToFile("UI", "AI_INFO_MODAL: Modal box height=%d", modalHeight)
 	
-	// Add top padding to ensure modal doesn't get cut off
-	topPadding := 2
-	paddedModal := lipgloss.NewStyle().
-		MarginTop(topPadding).
-		Render(modalBox)
+	// Check if modal fits in screen
+	if modalHeight > screenHeight-4 {
+		logger.DebugfToFile("UI", "AI_INFO_MODAL: Modal too tall (%d) for screen (%d), will overflow!", modalHeight, screenHeight)
+		// Force smaller height by reducing message lines
+		maxMessageLines = 3
+		messageLines = strings.Split(m.Message, "\n")
+		if len(messageLines) > maxMessageLines {
+			messageLines = messageLines[:maxMessageLines]
+			messageLines = append(messageLines, "...")
+		}
+		truncatedMessage = strings.Join(messageLines, "\n")
+		
+		// Rebuild content with shorter message
+		content = lipgloss.JoinVertical(
+			lipgloss.Center,
+			titleStyle.Render("🤖 AI Needs More Information"),
+			messageStyle.Render("Please provide more details:"),
+			messageBoxStyle.Render(truncatedMessage),
+			messageStyle.Render("Your response:"),
+			inputStyle.Render(m.Input.View()),
+			instructionStyle.Render("Enter: Submit • Esc: Cancel"),
+		)
+		modalBox = modalStyle.Render(content)
+		modalHeight = lipgloss.Height(modalBox)
+		logger.DebugfToFile("UI", "AI_INFO_MODAL: Reduced modal height to %d", modalHeight)
+	}
 	
-	finalHeight := lipgloss.Height(paddedModal)
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final padded modal height=%d (with topPadding=%d)", finalHeight, topPadding)
-
-	// Position the modal with top alignment to prevent cutoff
+	// Use center positioning like other modals
 	result := lipgloss.Place(
 		screenWidth,
 		screenHeight,
 		lipgloss.Center,
-		lipgloss.Top,
-		paddedModal,
+		lipgloss.Center,
+		modalBox,
 		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 	
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final rendered height=%d", lipgloss.Height(result))
+	finalHeight := lipgloss.Height(result)
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final rendered height=%d", finalHeight)
 	return result
 }
