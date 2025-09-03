@@ -13,6 +13,7 @@ import (
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -87,26 +88,36 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		// The new conversation ID will be set when we receive the response
 		m.aiConversationID = ""
 
-		// Switch to AI info request view instead of modal
-		// Initialize the input if needed
-		if m.aiInfoRequestInput.Value() == "" {
+		// Initialize AI conversation view if needed
+		if m.aiConversationInput.Value() == "" {
 			input := textinput.New()
-			input.Placeholder = "Type your AI query or question..."
+			input.Placeholder = ""
+			input.Prompt = ""  // Remove the ">" prompt
 			input.Focus()
 			input.CharLimit = 500
-			input.Width = 80
-			m.aiInfoRequestInput = input
+			input.Width = m.historyViewport.Width - 10
+			m.aiConversationInput = input
+			
+			// Initialize conversation viewport
+			m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
+			m.aiConversationHistory = m.styles.AccentText.Render("🤖 AI Conversation") + "\n" + 
+				m.styles.MutedText.Render("────────────────────") + "\n"
 		}
 		
-		// Set the initial request as the message
-		m.aiInfoRequestActive = true
-		m.aiInfoRequestMessage = "AI Query: " + userRequest + "\n\nProcessing your request..."
-		m.viewMode = "ai_info"
-		m.aiInfoRequestInput.SetValue(userRequest)
-		m.aiInfoRequestInput.Focus()
+		// Add user's initial request to conversation
+		m.aiConversationHistory += "\n" + m.styles.AccentText.Render("You: ") + userRequest + "\n"
+		m.aiConversationViewport.SetContent(m.aiConversationHistory)
+		m.aiConversationViewport.GotoBottom()
+		
+		// Switch to AI conversation view
+		m.aiConversationActive = true
+		m.viewMode = "ai"
+		m.aiProcessing = true
+		m.aiConversationInput.SetValue("")
+		m.aiConversationInput.Focus()
 		m.input.Reset()
 
-		// Start AI generation in background (will be handled in Update)
+		// Start AI generation in background
 		return m, generateAICQL(m.session, m.aiConfig, userRequest)
 	}
 
@@ -162,80 +173,6 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Variable to track if we should execute a command from AI modal
-	executeAICommand := false
-
-	// Check if AI modal is showing
-	if m.showAIModal {
-		switch m.aiModal.State {
-		case AIModalStatePreview:
-			// Check if this is an INFO operation
-			if m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
-				// If there's follow-up input, submit it
-				if m.aiModal.FollowUpInput != "" {
-					followUpQuestion := m.aiModal.FollowUpInput
-					logger.DebugfToFile("AI", "User submitting follow-up question: %s", followUpQuestion)
-					logger.DebugfToFile("AI", "Current conversation ID: %s", m.aiConversationID)
-
-					// Clear the input and set state to generating
-					m.aiModal.FollowUpInput = ""
-					m.aiModal.CursorPosition = 0
-					m.aiModal.State = AIModalStateGenerating
-					m.aiModal.UserRequest = followUpQuestion
-
-					// Continue the conversation
-					return m, continueAIConversation(m.aiConfig, m.aiConversationID, followUpQuestion)
-				}
-				// If no input, do nothing (stay in info view)
-				return m, nil
-			} else {
-				// Regular CQL operation
-				switch m.aiModal.Selected {
-				case 0: // Cancel
-					m.showAIModal = false
-					m.aiModal = AIModal{}
-					m.input.Placeholder = "Enter CQL command..."
-					return m, nil
-				case 1: // Execute
-					// Get the generated CQL
-					command = m.aiModal.CQL
-					logger.DebugfToFile("AI", "User executing AI-generated CQL: %s", command)
-
-					// Store the plan before clearing the modal
-					aiPlan := m.aiModal.Plan
-
-					m.showAIModal = false
-					m.aiModal = AIModal{}
-
-					// Check if it's a dangerous command
-					if aiPlan != nil && !aiPlan.ReadOnly && m.sessionManager != nil && m.sessionManager.RequireConfirmation() {
-						// Show confirmation modal for dangerous AI-generated commands
-						m.modal = NewConfirmationModal(command)
-						return m, nil
-					}
-
-					// Mark that we should execute this command
-					executeAICommand = true
-				case 2: // Edit
-					// Put the CQL in the input for editing
-					m.input.SetValue(m.aiModal.CQL)
-					m.input.SetCursor(len(m.aiModal.CQL))
-					m.showAIModal = false
-					m.aiModal = AIModal{}
-					return m, nil
-				}
-			}
-		case AIModalStateError:
-			// Close error modal
-			m.showAIModal = false
-			m.aiModal = AIModal{}
-			return m, nil
-		}
-		// If we're not executing an AI command, just return
-		if !executeAICommand {
-			return m, nil
-		}
-	}
 
 	// Check if modal is showing FIRST before processing command
 	if m.modal.Type != ModalNone {
@@ -700,7 +637,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	}
 
 	// Process the command from input (unless we're executing an AI command)
-	if !executeAICommand {
+	{
 		inputText := m.input.Value()
 		command = strings.TrimSpace(inputText)
 		
@@ -787,7 +724,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		!strings.HasPrefix(upperCommand, "QUIT")
 
 	// For CQL statements, check for semicolon (skip for AI-generated commands)
-	if isCQLStatement && !executeAICommand {
+	if isCQLStatement {
 		if !strings.HasSuffix(strings.TrimSpace(command), ";") {
 			// Enter multi-line mode
 			if !m.multiLineMode {
@@ -814,7 +751,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	}
 
 	// Check for dangerous commands (skip for AI commands - already checked)
-	if !executeAICommand && m.sessionManager != nil && m.sessionManager.RequireConfirmation() && router.IsDangerousCommand(command) {
+	if m.sessionManager != nil && m.sessionManager.RequireConfirmation() && router.IsDangerousCommand(command) {
 		// Show confirmation modal for dangerous commands
 		m.modal = NewConfirmationModal(command)
 
