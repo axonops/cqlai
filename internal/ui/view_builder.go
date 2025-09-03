@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/config"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -301,14 +302,24 @@ func (m *MainModel) View() string {
 		// Use the actual window dimensions
 		screenWidth := m.windowWidth
 		screenHeight := m.windowHeight
+		
+		logger.DebugfToFile("UI", "VIEW_BUILDER: Before adjustment - windowWidth=%d, windowHeight=%d, viewportWidth=%d, historyViewport.Height=%d",
+			m.windowWidth, m.windowHeight, viewportWidth, m.historyViewport.Height)
+		
 		if screenWidth == 0 {
 			// Fallback if window dimensions not yet set
 			screenWidth = viewportWidth
+			logger.DebugfToFile("UI", "VIEW_BUILDER: Using fallback width: %d", screenWidth)
 		}
 		if screenHeight == 0 {
 			// Fallback if window dimensions not yet set
 			screenHeight = m.historyViewport.Height + 3
+			logger.DebugfToFile("UI", "VIEW_BUILDER: Using fallback height: %d (historyViewport.Height=%d + 3)", 
+				screenHeight, m.historyViewport.Height)
 		}
+
+		logger.DebugfToFile("UI", "VIEW_BUILDER: Final dimensions for AI info modal - width=%d, height=%d",
+			screenWidth, screenHeight)
 
 		// Render the info request modal overlay
 		return m.aiInfoReplyModal.Render(screenWidth, screenHeight, m.styles)

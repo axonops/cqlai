@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
@@ -69,9 +71,13 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		return ""
 	}
 
-	// Debug: Log the screen dimensions
+	// Debug: Log the screen dimensions to understand the issue
+	debugMsg := fmt.Sprintf("AI_INFO_MODAL: screenWidth=%d, screenHeight=%d", screenWidth, screenHeight)
+	logger.DebugfToFile("UI", debugMsg)
+	
 	// If screenHeight is too small, something is wrong with how it's calculated
 	if screenHeight < 20 {
+		logger.DebugfToFile("UI", "AI_INFO_MODAL: screenHeight too small (%d), forcing to 24", screenHeight)
 		// Force a reasonable minimum height
 		screenHeight = 24
 	}
@@ -85,11 +91,13 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 	// Simple approach: just truncate the message to a few lines
 	maxMessageLines := 5
 	messageLines := strings.Split(m.Message, "\n")
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Original message has %d lines", len(messageLines))
 	if len(messageLines) > maxMessageLines {
 		messageLines = messageLines[:maxMessageLines]
 		messageLines = append(messageLines, "...")
 	}
 	truncatedMessage := strings.Join(messageLines, "\n")
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Truncated message to %d lines", len(messageLines))
 
 	// Create modal box style with minimal padding
 	modalStyle := lipgloss.NewStyle().
@@ -146,15 +154,20 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 	)
 
 	modalBox := modalStyle.Render(content)
+	modalHeight := lipgloss.Height(modalBox)
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Modal box height=%d", modalHeight)
 	
 	// Add top padding to ensure modal doesn't get cut off
 	topPadding := 2
 	paddedModal := lipgloss.NewStyle().
 		MarginTop(topPadding).
 		Render(modalBox)
+	
+	finalHeight := lipgloss.Height(paddedModal)
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final padded modal height=%d (with topPadding=%d)", finalHeight, topPadding)
 
 	// Position the modal with top alignment to prevent cutoff
-	return lipgloss.Place(
+	result := lipgloss.Place(
 		screenWidth,
 		screenHeight,
 		lipgloss.Center,
@@ -162,4 +175,7 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		paddedModal,
 		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
+	
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final rendered height=%d", lipgloss.Height(result))
+	return result
 }
