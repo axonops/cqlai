@@ -17,21 +17,7 @@ import (
 
 // handleEnterKey handles Enter key press
 func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
-	// Handle AI info request modal if active
-	if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
-		response := m.aiInfoReplyModal.GetResponse()
-		if response != "" {
-			m.aiInfoReplyModal.Active = false
-			return m, func() tea.Msg {
-				return AIInfoResponseMsg{
-					Response:  response,
-					Cancelled: false,
-				}
-			}
-		}
-		// Don't close if empty response
-		return m, nil
-	}
+	// AI info request is now handled in handleKeyboardInput at the beginning
 
 	// Handle AI selection modal if active
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {

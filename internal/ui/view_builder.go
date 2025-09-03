@@ -8,6 +8,69 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// renderAIInfoRequestView renders the AI info request full-screen view
+func (m *MainModel) renderAIInfoRequestView() string {
+	// Create a simple, clean view for AI info request
+	width := m.historyViewport.Width
+	height := m.historyViewport.Height
+	
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.styles.Accent).
+		Bold(true).
+		Align(lipgloss.Center).
+		Width(width).
+		MarginBottom(2)
+	
+	// Message box style
+	messageStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.Border).
+		Padding(1, 2).
+		Width(width - 4).
+		MaxWidth(80).
+		MarginBottom(2)
+	
+	// Input section style
+	inputLabelStyle := lipgloss.NewStyle().
+		Foreground(m.styles.AccentText.GetForeground()).
+		MarginBottom(1)
+	
+	inputBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(m.styles.Accent).
+		Padding(0, 1).
+		Width(width - 4).
+		MaxWidth(80)
+	
+	// Instructions
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(m.styles.MutedText.GetForeground()).
+		Italic(true).
+		Align(lipgloss.Center).
+		Width(width).
+		MarginTop(2)
+	
+	// Build the content
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		titleStyle.Render("🤖 AI Needs More Information"),
+		messageStyle.Render(m.aiInfoRequestMessage),
+		inputLabelStyle.Render("Your response:"),
+		inputBoxStyle.Render(m.aiInfoRequestInput.View()),
+		instructionStyle.Render("Enter: Submit  •  Esc: Cancel and return"),
+	)
+	
+	// Center the content vertically
+	return lipgloss.Place(
+		width,
+		height,
+		lipgloss.Center,
+		lipgloss.Center,
+		content,
+	)
+}
+
 // View renders the main model.
 func (m *MainModel) View() string {
 	if !m.ready {
@@ -170,6 +233,10 @@ func (m *MainModel) View() string {
 	var viewportWidth int
 
 	switch {
+	case m.viewMode == "ai_info" && m.aiInfoRequestActive:
+		// Render AI info request view
+		viewportWidth = m.historyViewport.Width
+		viewportContent = m.renderAIInfoRequestView()
 	case m.viewMode == "trace" && m.hasTrace:
 		viewportWidth = m.traceViewport.Width
 		viewportContent = m.traceViewport.View()
@@ -296,24 +363,8 @@ func (m *MainModel) View() string {
 	// Apply all layers to the final view
 	finalView = layerManager.Render(finalView)
 
-	// If AI info request modal is showing, render it as an overlay
-	if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
-		// Use the actual window dimensions
-		screenWidth := m.windowWidth
-		screenHeight := m.windowHeight
-		
-		if screenWidth == 0 {
-			// Fallback if window dimensions not yet set
-			screenWidth = viewportWidth
-		}
-		if screenHeight == 0 {
-			// Fallback if window dimensions not yet set
-			screenHeight = m.historyViewport.Height + 3
-		}
-
-		// Render the info request modal overlay
-		return m.aiInfoReplyModal.Render(screenWidth, screenHeight, m.styles)
-	}
+	// Note: AI info request now uses a full-screen view mode instead of modal
+	// It's handled in the viewport switch statement above
 
 	// If AI selection modal is showing, render it as an overlay
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {

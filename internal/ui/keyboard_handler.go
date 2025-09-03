@@ -4,11 +4,52 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleKeyboardInput handles keyboard input events
 func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+	// Handle AI info request view input first
+	if m.viewMode == "ai_info" && m.aiInfoRequestActive {
+		switch msg.Type {
+		case tea.KeyEscape:
+			// Cancel and return to previous view
+			m.aiInfoRequestActive = false
+			m.viewMode = "history"
+			m.aiInfoRequestInput.SetValue("")
+			return m, nil
+		case tea.KeyEnter:
+			// Submit the response
+			response := strings.TrimSpace(m.aiInfoRequestInput.Value())
+			if response != "" {
+				// Add response to history
+				m.fullHistoryContent += "\n> AI Info Response: " + response + "\n"
+				m.historyViewport.SetContent(m.fullHistoryContent)
+				m.historyViewport.GotoBottom()
+				
+				// Clear and close the AI info view
+				m.aiInfoRequestActive = false
+				m.viewMode = "history"
+				m.aiInfoRequestInput.SetValue("")
+				
+				// Send response back to AI system
+				return m, func() tea.Msg {
+					return AIInfoResponseMsg{
+						Response:  response,
+						Cancelled: false,
+					}
+				}
+			}
+			return m, nil
+		default:
+			// Update the text input
+			var cmd tea.Cmd
+			m.aiInfoRequestInput, cmd = m.aiInfoRequestInput.Update(msg)
+			return m, cmd
+		}
+	}
+	
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		// If in history search mode, exit it
@@ -91,10 +132,11 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEsc:
-		// If AI info request modal is showing, handle it
-		if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
+		// If AI info request view is showing, handle it
+		if m.aiInfoRequestActive {
 			// Cancel the info request
-			m.aiInfoReplyModal.Active = false
+			m.aiInfoRequestActive = false
+			m.viewMode = "history"
 			return m, func() tea.Msg {
 				return AIInfoResponseMsg{Cancelled: true}
 			}
@@ -267,16 +309,24 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	
 	case tea.KeyF9:
-		// F9 - Test key for AI info request modal (debug)
-		// First, close any other modals
-		m.showAIModal = false
-		m.modal.Type = ModalNone
-		if m.aiSelectionModal != nil {
-			m.aiSelectionModal.Active = false
+		// F9 - Test key for AI info request view (debug)
+		// Switch to AI info request view
+		testMessage := "I need more information to help you with your query.\n\nPlease specify:\n1. Which keyspace you want to work with\n2. What type of operation you need\n3. Any specific tables involved\n4. Performance requirements\n5. Data consistency requirements"
+		
+		// Initialize the input if not already done
+		if m.aiInfoRequestInput.Value() == "" {
+			input := textinput.New()
+			input.Placeholder = "Type your response..."
+			input.Focus()
+			input.CharLimit = 500
+			input.Width = 80
+			m.aiInfoRequestInput = input
 		}
 		
-		testMessage := "I need more information to help you with your query.\n\nPlease specify:\n1. Which keyspace you want to work with\n2. What type of operation you need\n3. Any specific tables involved\n4. Performance requirements\n5. Data consistency requirements\n\nThis is a test of the modal overflow issue to see if it goes over the top edge of the terminal."
-		m.aiInfoReplyModal = NewAIInfoRequestModal(testMessage)
+		m.aiInfoRequestActive = true
+		m.aiInfoRequestMessage = testMessage
+		m.viewMode = "ai_info"
+		m.aiInfoRequestInput.Focus()
 		return m, nil
 
 	case tea.KeySpace:
@@ -364,12 +414,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handleEnterKey()
 
 	default:
-		// Handle AI info request modal text input
-		if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
-			var cmd tea.Cmd
-			m.aiInfoReplyModal, cmd = m.aiInfoReplyModal.Update(msg)
-			return m, cmd
-		}
+		// AI info request view input is handled at the beginning of handleKeyboardInput
 		// Handle AI selection modal 'i' key for custom input
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
 			if msg.String() == "i" || msg.String() == "I" {

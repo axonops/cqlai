@@ -21,12 +21,7 @@ func (m *MainModel) handleSpaceKey(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If AI info request modal is active, let it handle the space key
-	if m.aiInfoReplyModal != nil && m.aiInfoReplyModal.Active {
-		var cmd tea.Cmd
-		m.aiInfoReplyModal, cmd = m.aiInfoReplyModal.Update(msg)
-		return m, cmd
-	}
+	// AI info request view input is handled in handleKeyboardInput
 
 	// If we have completions showing, accept the current one and add space
 	if m.showCompletions && len(m.completions) > 0 {
