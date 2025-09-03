@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -308,26 +307,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m, nil
 	
-	case tea.KeyF9:
-		// F9 - Test key for AI info request view (debug)
-		// Switch to AI info request view
-		testMessage := "I need more information to help you with your query.\n\nPlease specify:\n1. Which keyspace you want to work with\n2. What type of operation you need\n3. Any specific tables involved\n4. Performance requirements\n5. Data consistency requirements"
-		
-		// Initialize the input if not already done
-		if m.aiInfoRequestInput.Value() == "" {
-			input := textinput.New()
-			input.Placeholder = "Type your response..."
-			input.Focus()
-			input.CharLimit = 500
-			input.Width = 80
-			m.aiInfoRequestInput = input
-		}
-		
-		m.aiInfoRequestActive = true
-		m.aiInfoRequestMessage = testMessage
-		m.viewMode = "ai_info"
-		m.aiInfoRequestInput.Focus()
-		return m, nil
 
 	case tea.KeySpace:
 		return m.handleSpaceKey(msg)
