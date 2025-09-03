@@ -326,7 +326,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logger.DebugfToFile("AI", "Conversation ID: %s", msg.ConversationID)
 		}
 
-		if m.showAIModal && m.aiModal.State == AIModalStateGenerating {
+		// Check if we're in AI info view mode waiting for response
+		if m.viewMode == "ai_info" && m.aiInfoRequestActive {
 			if msg.Error != nil {
 				// Check if this is an interaction request
 				if interactionReq, ok := msg.Error.(*ai.InteractionRequest); ok {
@@ -364,9 +365,35 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Regular error
 				logger.DebugfToFile("AI", "AI generation failed: %v", msg.Error)
+				// Update the AI info view with error
+				m.aiInfoRequestMessage = fmt.Sprintf("Error: %v\n\nPlease try again or modify your query.", msg.Error)
+				m.aiInfoRequestInput.Focus()
+			} else {
+				logger.DebugfToFile("AI", "AI generation successful")
+				// Success - show the result in history and return to history view
+				resultText := ""
+				if msg.CQL != "" {
+					resultText = "Generated CQL:\n" + msg.CQL
+				} else if msg.Plan != nil {
+					resultText = fmt.Sprintf("Operation: %s\nKeyspace: %s\nTable: %s", 
+						msg.Plan.Operation, msg.Plan.Keyspace, msg.Plan.Table)
+				}
+				
+				// Add to history
+				m.fullHistoryContent += "\n" + m.styles.AccentText.Render("AI Response:") + "\n" + resultText + "\n"
+				m.historyViewport.SetContent(m.fullHistoryContent)
+				m.historyViewport.GotoBottom()
+				
+				// Return to history view
+				m.aiInfoRequestActive = false
+				m.viewMode = "history"
+				m.aiInfoRequestInput.SetValue("")
+			}
+		} else if m.showAIModal && m.aiModal.State == AIModalStateGenerating {
+			// Fallback to modal if it's still being used
+			if msg.Error != nil {
 				m.aiModal.SetError(msg.Error)
 			} else {
-				logger.DebugfToFile("AI", "AI generation successful, showing preview")
 				m.aiModal.SetResult(msg.Plan, msg.CQL)
 			}
 		}

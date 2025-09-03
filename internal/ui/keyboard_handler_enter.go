@@ -12,6 +12,7 @@ import (
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -86,9 +87,23 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		// The new conversation ID will be set when we receive the response
 		m.aiConversationID = ""
 
-		// Create and show AI modal
-		m.aiModal = NewAIModal(userRequest)
-		m.showAIModal = true
+		// Switch to AI info request view instead of modal
+		// Initialize the input if needed
+		if m.aiInfoRequestInput.Value() == "" {
+			input := textinput.New()
+			input.Placeholder = "Type your AI query or question..."
+			input.Focus()
+			input.CharLimit = 500
+			input.Width = 80
+			m.aiInfoRequestInput = input
+		}
+		
+		// Set the initial request as the message
+		m.aiInfoRequestActive = true
+		m.aiInfoRequestMessage = "AI Query: " + userRequest + "\n\nProcessing your request..."
+		m.viewMode = "ai_info"
+		m.aiInfoRequestInput.SetValue(userRequest)
+		m.aiInfoRequestInput.Focus()
 		m.input.Reset()
 
 		// Start AI generation in background (will be handled in Update)
