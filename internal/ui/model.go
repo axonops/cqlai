@@ -84,8 +84,6 @@ type MainModel struct {
 	showAIModal              bool                // Whether AI modal is active
 	aiConversationID         string              // Current AI conversation ID for stateful interactions
 	aiSelectionModal         *AISelectionModal   // AI selection modal for user choices
-	aiInfoReplyModal         *AIInfoRequestModal // AI info request modal for additional input
-	infoReplyInput           textinput.Model     // Input for the info reply
 	showHistoryModal         bool                // Whether to show command history modal
 	historyModalIndex        int                 // Currently selected item in history modal
 	historyModalScrollOffset int                 // Track scroll position in history modal
@@ -95,9 +93,14 @@ type MainModel struct {
 	tableHeaders             []string            // Store column headers for sticky display
 	columnWidths             []int               // Store column widths for proper alignment
 	hasTable                 bool                // Whether we're currently displaying a table
-	viewMode                 string              // "history", "table", or "trace"
+	viewMode                 string              // "history", "table", "trace", or "ai_info"
 	showDataTypes            bool                // Whether to show column data types in table headers
 	columnTypes              []string            // Store column data types
+	
+	// AI info request view
+	aiInfoRequestActive      bool                // Whether AI info request view is active
+	aiInfoRequestMessage     string              // The AI's message/question
+	aiInfoRequestInput       textinput.Model     // Input for user response
 	
 	// Tracing support
 	traceViewport            viewport.Model      // Viewport for trace results
@@ -237,7 +240,6 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		topBar:                    NewTopBarModel(),
 		statusBar:                 NewStatusBarModel(),
 		input:                     ti,
-		infoReplyInput:            infoReplyInput,
 		session:                   dbSession,
 		sessionManager:            sessionMgr,
 		aiConfig:                  cfg.AI,
@@ -341,7 +343,22 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// Hide the AI modal temporarily
 						m.showAIModal = false
 						// Show info request modal
-						m.aiInfoReplyModal = NewAIInfoRequestModal(interactionReq.InfoMessage)
+						// Initialize the input if needed
+						if m.aiInfoRequestInput.Value() == "" {
+							input := textinput.New()
+							input.Placeholder = "Type your response..."
+							input.Focus()
+							input.CharLimit = 500
+							input.Width = 80
+							m.aiInfoRequestInput = input
+						}
+						
+						// Switch to AI info view
+						m.aiInfoRequestActive = true
+						m.aiInfoRequestMessage = interactionReq.InfoMessage
+						m.viewMode = "ai_info"
+						m.aiInfoRequestInput.Focus()
+						m.showAIModal = false
 						return m, nil
 					}
 				}
@@ -400,9 +417,27 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AIRequestMoreInfoMsg:
-		// AI needs more information from user
+		// AI needs more information from user - use full-screen view
 		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
-		m.aiInfoReplyModal = NewAIInfoRequestModal(msg.Message)
+		
+		// Initialize the input if needed
+		if m.aiInfoRequestInput.Value() == "" {
+			input := textinput.New()
+			input.Placeholder = "Type your response..."
+			input.Focus()
+			input.CharLimit = 500
+			input.Width = 80
+			m.aiInfoRequestInput = input
+		}
+		
+		// Switch to AI info view
+		m.aiInfoRequestActive = true
+		m.aiInfoRequestMessage = msg.Message
+		m.viewMode = "ai_info"
+		m.aiInfoRequestInput.Focus()
+		
+		// Close any modals
+		m.showAIModal = false
 		return m, nil
 
 	case AIInfoResponseMsg:
@@ -412,7 +447,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Cancel the AI operation and clear conversation
 			m.showAIModal = false
 			m.aiModal = AIModal{}
-			m.aiInfoReplyModal = nil
+			m.aiInfoRequestActive = false
+			m.aiInfoRequestInput.SetValue("")
 			m.aiConversationID = ""
 			// Add cancellation message
 			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("AI generation cancelled.")
@@ -421,7 +457,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
 			// Continue AI generation with the additional information
-			m.aiInfoReplyModal = nil
+			m.aiInfoRequestActive = false
+			m.aiInfoRequestInput.SetValue("")
 
 			// Re-show the AI modal in generating state
 			m.showAIModal = true
