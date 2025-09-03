@@ -322,7 +322,10 @@ func (m *MainModel) View() string {
 			screenWidth, screenHeight)
 
 		// Render the info request modal overlay
-		return m.aiInfoReplyModal.Render(screenWidth, screenHeight, m.styles)
+		modalResult := m.aiInfoReplyModal.Render(screenWidth, screenHeight, m.styles)
+		logger.DebugfToFile("UI", "VIEW_BUILDER: Modal result height=%d, width=%d", 
+			lipgloss.Height(modalResult), lipgloss.Width(modalResult))
+		return modalResult
 	}
 
 	// If AI selection modal is showing, render it as an overlay

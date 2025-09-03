@@ -184,6 +184,15 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		logger.DebugfToFile("UI", "AI_INFO_MODAL: Reduced modal height to %d", modalHeight)
 	}
 	
+	// Add debug info to the modal
+	if screenHeight < 20 {
+		// Add a warning to the modal itself
+		debugWarning := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Render(fmt.Sprintf("[DEBUG: screenHeight=%d]", screenHeight))
+		modalBox = lipgloss.JoinVertical(lipgloss.Center, debugWarning, modalBox)
+	}
+	
 	// Use center positioning like other modals
 	result := lipgloss.Place(
 		screenWidth,
@@ -195,6 +204,6 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 	)
 	
 	finalHeight := lipgloss.Height(result)
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final rendered height=%d", finalHeight)
+	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final rendered height=%d, screenHeight=%d", finalHeight, screenHeight)
 	return result
 }

@@ -282,6 +282,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
 		
+		logger.DebugfToFile("UI", "WindowSizeMsg received: Width=%d, Height=%d", msg.Width, msg.Height)
+		
 		headerHeight := 1 // top bar
 		footerHeight := 1 // status bar
 		inputHeight := 1  // text input
