@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/axonops/cqlai/internal/logger"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
@@ -71,44 +69,41 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		return ""
 	}
 
-	// Debug: Log the screen dimensions to understand the issue
-	debugMsg := fmt.Sprintf("AI_INFO_MODAL: screenWidth=%d, screenHeight=%d", screenWidth, screenHeight)
-	logger.DebugfToFile("UI", debugMsg)
-	
-	// If screenHeight is too small, something is wrong with how it's calculated
-	if screenHeight < 20 {
-		logger.DebugfToFile("UI", "AI_INFO_MODAL: screenHeight too small (%d), forcing to 24", screenHeight)
-		// Force a reasonable minimum height
-		screenHeight = 24
-	}
-
-	// Adjust width for smaller screens
-	modalWidth := m.Width
+	// Keep modal compact - max width of 50
+	modalWidth := 50
 	if screenWidth < modalWidth+4 {
 		modalWidth = screenWidth - 4
 	}
 
-	// Simple approach: just truncate the message to a few lines
-	maxMessageLines := 5
+	// Very simple approach: show only first non-empty line of message
 	messageLines := strings.Split(m.Message, "\n")
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Original message has %d lines", len(messageLines))
-	if len(messageLines) > maxMessageLines {
-		messageLines = messageLines[:maxMessageLines]
-		messageLines = append(messageLines, "...")
+	displayMessage := ""
+	if len(messageLines) > 0 {
+		// Take first non-empty line as main message
+		for _, line := range messageLines {
+			if strings.TrimSpace(line) != "" {
+				displayMessage = line
+				if len(displayMessage) > 45 {
+					displayMessage = displayMessage[:42] + "..."
+				}
+				break
+			}
+		}
 	}
-	truncatedMessage := strings.Join(messageLines, "\n")
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Truncated message to %d lines", len(messageLines))
+	if displayMessage == "" {
+		displayMessage = "Please provide more information..."
+	}
 
-	// Create modal box style with minimal padding
+	// Create modal box style - compact
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
 		BorderBackground(lipgloss.Color("#1A1A1A")).
 		Background(lipgloss.Color("#1A1A1A")).
-		Padding(0, 1). // Reduced vertical padding
+		Padding(1, 2).
 		Width(modalWidth)
 
-	// Title style
+	// Title style - compact
 	titleStyle := lipgloss.NewStyle().
 		Foreground(styles.Accent).
 		Bold(true).
@@ -117,16 +112,9 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 
 	// Message style
 	messageStyle := lipgloss.NewStyle().
-		Foreground(styles.AccentText.GetForeground()).
+		Foreground(styles.MutedText.GetForeground()).
 		Width(modalWidth - 4).
-		Align(lipgloss.Left)
-
-	// Message box style (instead of viewport)
-	messageBoxStyle := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(styles.Border).
-		Padding(0, 1).
-		Width(modalWidth - 6)
+		Align(lipgloss.Center)
 
 	// Input field style
 	inputStyle := lipgloss.NewStyle().
@@ -135,66 +123,29 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		Padding(0, 1).
 		Width(modalWidth - 8)
 
-	// Instructions style
+	// Instructions style - compact
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Italic(true).
 		Align(lipgloss.Center).
 		Width(modalWidth - 4)
 
-	// Build the modal content
+	// Build the modal content - very simple
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
-		titleStyle.Render("🤖 AI Needs More Information"),
-		messageStyle.Render("Please provide more details:"),
-		messageBoxStyle.Render(truncatedMessage),
-		messageStyle.Render("Your response:"),
+		titleStyle.Render("Need More Info"),
+		"",
+		messageStyle.Render(displayMessage),
+		"",
 		inputStyle.Render(m.Input.View()),
+		"",
 		instructionStyle.Render("Enter: Submit • Esc: Cancel"),
 	)
 
 	modalBox := modalStyle.Render(content)
-	modalHeight := lipgloss.Height(modalBox)
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Modal box height=%d", modalHeight)
-	
-	// Check if modal fits in screen
-	if modalHeight > screenHeight-4 {
-		logger.DebugfToFile("UI", "AI_INFO_MODAL: Modal too tall (%d) for screen (%d), will overflow!", modalHeight, screenHeight)
-		// Force smaller height by reducing message lines
-		maxMessageLines = 3
-		messageLines = strings.Split(m.Message, "\n")
-		if len(messageLines) > maxMessageLines {
-			messageLines = messageLines[:maxMessageLines]
-			messageLines = append(messageLines, "...")
-		}
-		truncatedMessage = strings.Join(messageLines, "\n")
-		
-		// Rebuild content with shorter message
-		content = lipgloss.JoinVertical(
-			lipgloss.Center,
-			titleStyle.Render("🤖 AI Needs More Information"),
-			messageStyle.Render("Please provide more details:"),
-			messageBoxStyle.Render(truncatedMessage),
-			messageStyle.Render("Your response:"),
-			inputStyle.Render(m.Input.View()),
-			instructionStyle.Render("Enter: Submit • Esc: Cancel"),
-		)
-		modalBox = modalStyle.Render(content)
-		modalHeight = lipgloss.Height(modalBox)
-		logger.DebugfToFile("UI", "AI_INFO_MODAL: Reduced modal height to %d", modalHeight)
-	}
-	
-	// Add debug info to the modal
-	if screenHeight < 20 {
-		// Add a warning to the modal itself
-		debugWarning := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF0000")).
-			Render(fmt.Sprintf("[DEBUG: screenHeight=%d]", screenHeight))
-		modalBox = lipgloss.JoinVertical(lipgloss.Center, debugWarning, modalBox)
-	}
 	
 	// Use center positioning like other modals
-	result := lipgloss.Place(
+	return lipgloss.Place(
 		screenWidth,
 		screenHeight,
 		lipgloss.Center,
@@ -202,8 +153,4 @@ func (m *AIInfoRequestModal) Render(screenWidth, screenHeight int, styles *Style
 		modalBox,
 		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
-	
-	finalHeight := lipgloss.Height(result)
-	logger.DebugfToFile("UI", "AI_INFO_MODAL: Final rendered height=%d, screenHeight=%d", finalHeight, screenHeight)
-	return result
 }
