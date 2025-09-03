@@ -87,6 +87,8 @@ For CQL Generation:
 - Use the provided tools to gather schema information before generating queries
 - fuzzy_search can help find tables/keyspaces when user requests of keyspace or table names are ambiguous
 - always perform fuzzy_search before requesting list_keyspaces or list_tables
+- If the user request involves more detailed information about the table, like columns, use get_schema tool to fetch the schema
+- Once you get the schema, present the user with the list of items you fetched from get_schema appropriate for the request using need_more_info tool
 - "fetch data from keyspace X" means: SELECT from a table IN that keyspace
 - When the request is ambiguous and fuzzy_search returns multiple matches, use user_selection to clarify
 - Always prefer querying actual data tables over system tables

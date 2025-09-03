@@ -8,20 +8,7 @@ import (
 
 // handleSpaceKey handles Space key press
 func (m *MainModel) handleSpaceKey(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
-	// If AI modal is showing with INFO operation, handle space key for follow-up input
-	if m.showAIModal && m.aiModal.State == AIModalStatePreview &&
-		m.aiModal.Plan != nil && m.aiModal.Plan.Operation == "INFO" {
-		// Handle space key in follow-up input
-		if len(m.aiModal.FollowUpInput) < 256 {
-			m.aiModal.FollowUpInput = m.aiModal.FollowUpInput[:m.aiModal.CursorPosition] +
-				" " +
-				m.aiModal.FollowUpInput[m.aiModal.CursorPosition:]
-			m.aiModal.CursorPosition++
-		}
-		return m, nil
-	}
-
-	// AI info request view input is handled in handleKeyboardInput
+	// AI conversation view input is handled in handleKeyboardInput
 
 	// If we have completions showing, accept the current one and add space
 	if m.showCompletions && len(m.completions) > 0 {

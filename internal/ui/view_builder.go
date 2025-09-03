@@ -8,67 +8,68 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// renderAIInfoRequestView renders the AI info request full-screen view
-func (m *MainModel) renderAIInfoRequestView() string {
-	// Create a simple, clean view for AI info request
-	width := m.historyViewport.Width
-	height := m.historyViewport.Height
+// renderAIConversationView renders the unified AI conversation view
+func (m *MainModel) renderAIConversationView() string {
+	// The conversation viewport shows the full history
+	conversationView := m.aiConversationViewport.View()
 	
-	// Title
-	titleStyle := lipgloss.NewStyle().
-		Foreground(m.styles.Accent).
-		Bold(true).
-		Align(lipgloss.Center).
-		Width(width).
-		MarginBottom(2)
+	// Input line at the bottom
+	inputLine := ""
+	if m.aiProcessing {
+		inputLine = m.styles.MutedText.Render("Processing... ")
+	} else {
+		inputLine = m.aiConversationInput.View()
+	}
 	
-	// Message box style
-	messageStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.styles.Border).
-		Padding(1, 2).
-		Width(width - 4).
-		MaxWidth(80).
-		MarginBottom(2)
+	// Status line
+	statusLine := ""
+	if m.aiProcessing {
+		statusLine = m.styles.MutedText.Render("AI is processing your request...")
+	} else {
+		statusLine = m.styles.MutedText.Render("Enter: Send • Esc: Exit AI mode • ↑↓: Scroll history")
+	}
 	
-	// Input section style
-	inputLabelStyle := lipgloss.NewStyle().
-		Foreground(m.styles.AccentText.GetForeground()).
-		MarginBottom(1)
-	
-	inputBoxStyle := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(m.styles.Accent).
-		Padding(0, 1).
-		Width(width - 4).
-		MaxWidth(80)
-	
-	// Instructions
-	instructionStyle := lipgloss.NewStyle().
-		Foreground(m.styles.MutedText.GetForeground()).
-		Italic(true).
-		Align(lipgloss.Center).
-		Width(width).
-		MarginTop(2)
-	
-	// Build the content
-	content := lipgloss.JoinVertical(
-		lipgloss.Center,
-		titleStyle.Render("🤖 AI Needs More Information"),
-		messageStyle.Render(m.aiInfoRequestMessage),
-		inputLabelStyle.Render("Your response:"),
-		inputBoxStyle.Render(m.aiInfoRequestInput.View()),
-		instructionStyle.Render("Enter: Submit  •  Esc: Cancel and return"),
+	// Combine the base view
+	baseView := lipgloss.JoinVertical(
+		lipgloss.Left,
+		conversationView,
+		inputLine,
+		statusLine,
 	)
 	
-	// Center the content vertically
-	return lipgloss.Place(
-		width,
-		height,
-		lipgloss.Center,
-		lipgloss.Center,
-		content,
-	)
+	// If AI CQL modal is showing, render it as an overlay
+	if m.aiCQLModal != nil && m.aiCQLModal.Active {
+		// Use the actual window dimensions
+		screenWidth := m.windowWidth
+		screenHeight := m.windowHeight
+		if screenWidth == 0 {
+			screenWidth = m.aiConversationViewport.Width
+		}
+		if screenHeight == 0 {
+			screenHeight = m.aiConversationViewport.Height + 3
+		}
+		
+		// Render the CQL modal overlay
+		return m.aiCQLModal.Render(screenWidth, screenHeight, m.styles)
+	}
+	
+	// If AI selection modal is showing, render it as an overlay
+	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
+		// Use the actual window dimensions
+		screenWidth := m.windowWidth
+		screenHeight := m.windowHeight
+		if screenWidth == 0 {
+			screenWidth = m.aiConversationViewport.Width
+		}
+		if screenHeight == 0 {
+			screenHeight = m.aiConversationViewport.Height + 3
+		}
+		
+		// Render the selection modal overlay
+		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
+	}
+	
+	return baseView
 }
 
 // View renders the main model.
@@ -233,10 +234,9 @@ func (m *MainModel) View() string {
 	var viewportWidth int
 
 	switch {
-	case m.viewMode == "ai_info" && m.aiInfoRequestActive:
-		// Render AI info request view
-		viewportWidth = m.historyViewport.Width
-		viewportContent = m.renderAIInfoRequestView()
+	case m.viewMode == "ai" && m.aiConversationActive:
+		// Render AI conversation view and return early (it includes its own input and status)
+		return m.renderAIConversationView()
 	case m.viewMode == "trace" && m.hasTrace:
 		viewportWidth = m.traceViewport.Width
 		viewportContent = m.traceViewport.View()
@@ -384,23 +384,6 @@ func (m *MainModel) View() string {
 		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
 	}
 
-	// If AI modal is showing, render it as an overlay
-	if m.showAIModal {
-		// Use the actual window dimensions
-		screenWidth := m.windowWidth
-		screenHeight := m.windowHeight
-		if screenWidth == 0 {
-			// Fallback if window dimensions not yet set
-			screenWidth = viewportWidth
-		}
-		if screenHeight == 0 {
-			// Fallback if window dimensions not yet set
-			screenHeight = m.historyViewport.Height + 3
-		}
-
-		// Render the AI modal overlay with the current view as background
-		return m.aiModal.Render(screenWidth, screenHeight, m.styles)
-	}
 
 	// If modal is showing, render it as an overlay
 	if m.modal.Type != ModalNone {

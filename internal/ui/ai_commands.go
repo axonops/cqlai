@@ -59,8 +59,8 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 		
 		logger.DebugfToFile("AI", "Started conversation with ID: %s", conv.ID)
 
-		// Continue the conversation with empty input to get initial response
-		plan, interactionReq, err := conv.Continue(ctx, "")
+		// Start the conversation with the user's request
+		plan, interactionReq, err := conv.Continue(ctx, userRequest)
 
 		// Check if interaction is needed
 		if interactionReq != nil {

@@ -140,8 +140,9 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
   - `Tab`: Autocomplete commands and table/keyspace names.
   - `Ctrl+C`: Clear input or exit (press twice to exit).
   - `Ctrl+R`: Search command history.
-  - `F1`: Switch between history and table view.
   - `F2`: Toggle column data types in table view.
+  - `F3`: Switch between history and table view.
+
   - `Alt+←/→`: Scroll table horizontally.
   - `Alt+↑/↓`: Scroll viewport vertically.
 
