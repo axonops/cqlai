@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ConnectionOptions holds command-line connection options
@@ -29,6 +30,13 @@ type ConnectionOptions struct {
 	ConnectTimeout      int  // Connection timeout in seconds
 	RequestTimeout      int  // Request timeout in seconds
 	Debug               bool // Enable debug logging
+}
+
+// AIMessage represents a single message in the AI conversation
+type AIMessage struct {
+	Role    string // "user", "assistant", or "system"
+	Content string // The raw message content (unwrapped)
+	Type    string // Optional type like "cancelled", "selection", etc.
 }
 
 // AISelectionResultMsg is sent when user completes a selection
@@ -65,6 +73,7 @@ type MainModel struct {
 	lastCommand              string
 	commandHistory           []string
 	historyIndex             int
+	currentInput             string // Temporary storage for current input when navigating history
 	fullHistoryContent       string // Full history content (not limited by viewport)
 	session                  *db.Session
 	sessionManager           *session.Manager // Application state manager
@@ -98,10 +107,13 @@ type MainModel struct {
 	
 	// AI conversation view
 	aiConversationActive     bool                // Whether AI conversation view is active
-	aiConversationHistory    string              // Full conversation history
+	aiConversationHistory    string              // Full conversation history (formatted)
+	aiConversationMessages   []AIMessage         // Raw conversation messages for dynamic wrapping
 	aiConversationViewport   viewport.Model      // Viewport for scrollable conversation
 	aiConversationInput      textinput.Model     // Input for user messages
 	aiProcessing            bool                // Whether AI is currently processing
+	aiCommandHistory        []string            // Separate history for AI commands
+	aiHistoryIndex          int                 // Current position in AI history
 	
 	// Tracing support
 	traceViewport            viewport.Model      // Viewport for trace results
@@ -126,11 +138,73 @@ type MainModel struct {
 
 	// History search
 	historyManager            *HistoryManager
+	aiHistoryManager          *HistoryManager // Separate history for AI conversations
 	historySearchMode         bool     // Whether we're in Ctrl+R history search mode
 	historySearchQuery        string   // Current search query
 	historySearchResults      []string // Filtered history results
 	historySearchIndex        int      // Currently selected item in search results
 	historySearchScrollOffset int      // Scroll offset for history search modal
+}
+
+// wrapAIText wraps text to fit the AI conversation viewport width
+func (m *MainModel) wrapAIText(text string) string {
+	viewportWidth := m.aiConversationViewport.Width
+	if viewportWidth == 0 {
+		// Use history viewport width as fallback
+		viewportWidth = m.historyViewport.Width
+		if viewportWidth == 0 {
+			viewportWidth = 80 // Default width
+		}
+	}
+	// Leave some margin for better readability
+	wrapWidth := viewportWidth - 5
+	if wrapWidth < 20 {
+		wrapWidth = 20 // Minimum wrap width
+	}
+	
+	wrapStyle := lipgloss.NewStyle().Width(wrapWidth)
+	return wrapStyle.Render(text)
+}
+
+// rebuildAIConversation rebuilds the formatted conversation from raw messages
+func (m *MainModel) rebuildAIConversation() {
+	var conversation string
+	
+	// Add header
+	conversation = m.styles.AccentText.Render("AI Conversation") + "\n" + 
+		m.styles.MutedText.Render("────────────────────") + "\n"
+	
+	// Format each message with current viewport width
+	for _, msg := range m.aiConversationMessages {
+		switch msg.Role {
+		case "user":
+			wrappedContent := m.wrapAIText(msg.Content)
+			if msg.Type == "selection" {
+				conversation += "\n" + m.styles.AccentText.Render("You selected: ") + wrappedContent + "\n\n"
+			} else {
+				conversation += "\n" + m.styles.AccentText.Render("You: ") + wrappedContent + "\n\n"
+			}
+		case "assistant":
+			wrappedContent := m.wrapAIText(msg.Content)
+			// Check if this is an error message
+			if len(msg.Content) > 6 && msg.Content[:6] == "Error:" {
+				conversation += "\n" + m.styles.ErrorText.Render(wrappedContent) + "\n"
+			} else {
+				conversation += "\n" + m.styles.AccentText.Render("Assistant:") + "\n" + wrappedContent + "\n\n"
+			}
+		case "system":
+			// System messages like "(Cancelled)"
+			if msg.Type == "cancelled" {
+				conversation += m.styles.MutedText.Render("(Cancelled)") + "\n"
+			} else if msg.Type == "selection_cancelled" {
+				conversation += m.styles.MutedText.Render("(Selection cancelled)") + "\n"
+			}
+		}
+	}
+	
+	m.aiConversationHistory = conversation
+	m.aiConversationViewport.SetContent(m.aiConversationHistory)
+	m.aiConversationViewport.GotoBottom()
 }
 
 // NewMainModel creates a new MainModel.
@@ -234,8 +308,19 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		historyManager = &HistoryManager{history: []string{}}
 	}
 
+	// Initialize AI history manager (separate from CQL history)
+	aiHistoryManager, err := NewAIHistoryManager()
+	if err != nil {
+		// Log warning but don't fail - AI history will work in-memory only
+		fmt.Fprintf(os.Stderr, "Warning: could not initialize AI history manager: %v\n", err)
+		aiHistoryManager = &HistoryManager{history: []string{}}
+	}
+
 	// Load command history from the history manager
 	commandHistory := historyManager.GetHistory()
+	
+	// Load AI command history from the AI history manager
+	aiCommandHistory := aiHistoryManager.GetHistory()
 
 	return &MainModel{
 		topBar:                    NewTopBarModel(),
@@ -264,6 +349,9 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		traceData:                 nil,
 		traceHeaders:              nil,
 		historyManager:            historyManager,
+		aiHistoryManager:          aiHistoryManager,
+		aiCommandHistory:          aiCommandHistory,
+		aiHistoryIndex:            -1,
 		historySearchMode:         false,
 		historySearchQuery:        "",
 		historySearchResults:      []string{},
@@ -308,9 +396,22 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tableViewport.Height = newHeight
 			m.traceViewport.Width = newWidth
 			m.traceViewport.Height = newHeight
+			// Also resize AI conversation viewport if it exists
+			if m.aiConversationActive {
+				m.aiConversationViewport.Width = newWidth
+				m.aiConversationViewport.Height = newHeight
+				// Rebuild the conversation with new width for dynamic wrapping
+				if len(m.aiConversationMessages) > 0 {
+					m.rebuildAIConversation()
+				}
+			}
 		}
 
 		m.input.Width = newWidth
+		// Also update AI conversation input width if initialized
+		if m.aiConversationInput.Value() != "" || m.aiConversationActive {
+			m.aiConversationInput.Width = newWidth - 10
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -342,10 +443,13 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case "info":
 						logger.DebugfToFile("AI", "More info needed: %s", interactionReq.InfoMessage)
-						// Append info request to conversation history
-						m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + " " + interactionReq.InfoMessage + "\n\n"
-						m.aiConversationViewport.SetContent(m.aiConversationHistory)
-						m.aiConversationViewport.GotoBottom()
+						// Add assistant message to raw messages
+						m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+							Role:    "assistant",
+							Content: interactionReq.InfoMessage,
+						})
+						// Rebuild the conversation with proper wrapping
+						m.rebuildAIConversation()
 						
 						// Ensure we're in AI conversation view
 						if !m.aiConversationActive {
@@ -359,11 +463,13 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Regular error
 				logger.DebugfToFile("AI", "AI generation failed: %v", msg.Error)
-				// Append error to conversation history
+				// Append error to conversation as assistant message
 				errorMsg := fmt.Sprintf("Error: %v\n\nPlease try again or modify your query.", msg.Error)
-				m.aiConversationHistory += "\n" + m.styles.ErrorText.Render(errorMsg) + "\n"
-				m.aiConversationViewport.SetContent(m.aiConversationHistory)
-				m.aiConversationViewport.GotoBottom()
+				m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+					Role:    "assistant",
+					Content: errorMsg,
+				})
+				m.rebuildAIConversation()
 				m.aiConversationInput.Focus()
 				m.aiProcessing = false
 			} else {
@@ -373,10 +479,13 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch {
 				case msg.CQL != "":
 					resultText = msg.CQL
-					// Add to conversation with formatting
-					m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + "\nGenerated CQL:\n```sql\n" + resultText + "\n```\n"
-					m.aiConversationViewport.SetContent(m.aiConversationHistory)
-					m.aiConversationViewport.GotoBottom()
+					// Add assistant message to raw messages
+					m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+						Role:    "assistant",
+						Content: "Generated CQL:\n```sql\n" + resultText + "\n```",
+					})
+					// Rebuild the conversation with proper wrapping
+					m.rebuildAIConversation()
 					
 					// Show the CQL execution modal
 					m.aiCQLModal = NewAICQLModal(resultText)
@@ -386,7 +495,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// For INFO operations, display the info content
 					logger.DebugfToFile("AI", "INFO operation completed with content")
 					if msg.Plan.InfoContent != "" {
-						m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + "\n" + msg.Plan.InfoContent + "\n"
+						// Add assistant message to raw messages
+						m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+							Role:    "assistant",
+							Content: msg.Plan.InfoContent,
+						})
 					}
 				case msg.Plan != nil:
 					// Other operations
@@ -397,11 +510,15 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if msg.Plan.Table != "" {
 						resultText += fmt.Sprintf("\nTable: %s", msg.Plan.Table)
 					}
-					m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + "\n" + resultText + "\n"
+					// Add assistant message to raw messages
+					m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+						Role:    "assistant",
+						Content: resultText,
+					})
 				}
 				
-				m.aiConversationViewport.SetContent(m.aiConversationHistory)
-				m.aiConversationViewport.GotoBottom()
+				// Rebuild the conversation after adding messages
+				m.rebuildAIConversation()
 				// Stay in AI conversation view
 				m.aiProcessing = false
 			}
@@ -418,19 +535,24 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// User completed selection (or cancelled)
 		if msg.Cancelled {
 			logger.DebugfToFile("AI", "User cancelled selection")
-			// Add cancellation to conversation
-			m.aiConversationHistory += m.styles.MutedText.Render("(Selection cancelled)") + "\n"
-			m.aiConversationViewport.SetContent(m.aiConversationHistory)
-			m.aiConversationViewport.GotoBottom()
+			// Add cancellation as system message
+			m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+				Role: "system",
+				Type: "selection_cancelled",
+			})
+			m.rebuildAIConversation()
 			m.aiSelectionModal = nil
 			m.aiProcessing = false
 			m.aiConversationID = ""
 		} else {
 			logger.DebugfToFile("AI", "User selected %s: %s", msg.SelectionType, msg.Selection)
-			// Add selection to conversation history
-			m.aiConversationHistory += m.styles.AccentText.Render("You selected:") + " " + msg.Selection + "\n\n"
-			m.aiConversationViewport.SetContent(m.aiConversationHistory)
-			m.aiConversationViewport.GotoBottom()
+			// Add user selection as message
+			m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+				Role:    "user",
+				Content: msg.Selection,
+				Type:    "selection",
+			})
+			m.rebuildAIConversation()
 			
 			// Clear selection modal
 			m.aiSelectionModal = nil
@@ -457,10 +579,13 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// AI needs more information from user - append to conversation
 		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
 		
-		// Append request to conversation history
-		m.aiConversationHistory += "\n" + m.styles.AccentText.Render("🤖 Assistant:") + " " + msg.Message + "\n\n"
-		m.aiConversationViewport.SetContent(m.aiConversationHistory)
-		m.aiConversationViewport.GotoBottom()
+		// Add assistant message to raw messages
+		m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+			Role:    "assistant",
+			Content: msg.Message,
+		})
+		// Rebuild the conversation with proper wrapping
+		m.rebuildAIConversation()
 		
 		// Ensure we're in AI conversation view
 		if !m.aiConversationActive {
@@ -477,18 +602,22 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// User provided additional information (or cancelled)
 		if msg.Cancelled {
 			logger.DebugfToFile("AI", "User cancelled info request")
-			// Add cancellation to conversation
-			m.aiConversationHistory += m.styles.MutedText.Render("(Cancelled)") + "\n"
-			m.aiConversationViewport.SetContent(m.aiConversationHistory)
-			m.aiConversationViewport.GotoBottom()
+			// Add cancellation as system message
+			m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+				Role: "system",
+				Type: "cancelled",
+			})
+			m.rebuildAIConversation()
 			m.aiProcessing = false
 			m.aiConversationID = ""
 		} else {
 			logger.DebugfToFile("AI", "User provided info: %s", msg.Response)
-			// Add user response to conversation
-			m.aiConversationHistory += m.styles.AccentText.Render("You:") + " " + msg.Response + "\n\n"
-			m.aiConversationViewport.SetContent(m.aiConversationHistory)
-			m.aiConversationViewport.GotoBottom()
+			// Add user response as message
+			m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+				Role:    "user",
+				Content: msg.Response,
+			})
+			m.rebuildAIConversation()
 
 			// Set processing state
 			m.aiProcessing = true

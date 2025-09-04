@@ -62,15 +62,8 @@ func (m *MainModel) View() string {
 	var scrollInfo string
 	switch m.viewMode {
 	case "ai":
-		modeIndicator := m.styles.AccentText.Render("[AI VIEW]")
-		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI]")
-		if m.hasTable {
-			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
-		}
-		if m.hasTrace {
-			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
-		}
+		// No need to show navigation keys in AI view since they're less relevant
+		scrollInfo = ""
 	case "trace":
 		modeIndicator := m.styles.AccentText.Render("[TRACE VIEW]")
 		scrollInfo = " " + modeIndicator

@@ -120,7 +120,7 @@ func (m *AICQLModal) Render(screenWidth, screenHeight int, styles *Styles) strin
 	// Build the modal content
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
-		titleStyle.Render("🤖 AI Generated CQL"),
+		titleStyle.Render("AI Generated CQL"),
 		"",
 		cqlStyle.Render(m.CQL),
 		"",

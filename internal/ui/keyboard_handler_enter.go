@@ -100,14 +100,17 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			
 			// Initialize conversation viewport
 			m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
-			m.aiConversationHistory = m.styles.AccentText.Render("🤖 AI Conversation") + "\n" + 
-				m.styles.MutedText.Render("────────────────────") + "\n"
+			// Clear messages for new conversation
+			m.aiConversationMessages = []AIMessage{}
 		}
 		
-		// Add user's initial request to conversation
-		m.aiConversationHistory += "\n" + m.styles.AccentText.Render("You: ") + userRequest + "\n"
-		m.aiConversationViewport.SetContent(m.aiConversationHistory)
-		m.aiConversationViewport.GotoBottom()
+		// Add user's initial request to raw messages
+		m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+			Role:    "user",
+			Content: userRequest,
+		})
+		// Rebuild the conversation with proper wrapping
+		m.rebuildAIConversation()
 		
 		// Switch to AI conversation view
 		m.aiConversationActive = true

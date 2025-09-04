@@ -243,7 +243,7 @@ func (m *AIModal) renderGenerating(titleStyle lipgloss.Style, styles *Styles) st
 
 	return lipgloss.JoinVertical(
 		lipgloss.Center,
-		titleStyle.Render("🤖 AI CQL Assistant"),
+		titleStyle.Render("AI CQL Assistant"),
 		messageStyle.Render("Generating an answer from your request..."),
 		requestStyle.Render(m.UserRequest),
 		loadingStyle.Render("⣾⣽⣻⢿⡿⣟⣯⣷ Processing..."),
@@ -501,7 +501,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 	// We'll show scroll position in the instructions instead of a visual scrollbar
 
 	parts := []string{
-		titleStyle.Render("🤖 AI Assistant"),
+		titleStyle.Render("AI Assistant"),
 		messageStyle.Render(contentTitle + confidenceStr),
 		contentStyle.Render(viewportContent),
 	}
@@ -596,7 +596,7 @@ func (m *AIModal) renderInfoFollowUp(titleStyle lipgloss.Style, styles *Styles) 
 
 	return lipgloss.JoinVertical(
 		lipgloss.Center,
-		titleStyle.Render("🤖 AI Assistant - Reply"),
+		titleStyle.Render("AI Assistant - Reply"),
 		messageStyle.Render("Previous response:"),
 		previousMsgStyle.Render(previousContent),
 		"",
@@ -647,7 +647,7 @@ func (m *AIModal) renderFollowUp(titleStyle lipgloss.Style, styles *Styles) stri
 
 	return lipgloss.JoinVertical(
 		lipgloss.Center,
-		titleStyle.Render("🤖 AI Assistant"),
+		titleStyle.Render("AI Assistant"),
 		messageStyle.Render("Processing your follow-up question..."),
 		inputStyle.Render(inputContent),
 		loadingStyle.Render("⣾⣽⣻⢿⡿⣟⣯⣷ Processing..."),
@@ -690,7 +690,7 @@ func (m *AIModal) renderError(titleStyle lipgloss.Style, styles *Styles) string 
 
 	return lipgloss.JoinVertical(
 		lipgloss.Center,
-		titleStyle.Render("🤖 AI CQL Helper - Error"),
+		titleStyle.Render("AI CQL Helper - Error"),
 		errorStyle.Render("I failed:"),
 		requestStyle.Render(m.Error),
 		"",
