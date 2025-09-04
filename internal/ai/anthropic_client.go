@@ -505,6 +505,8 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 			}
 
 			combinedResult := strings.Join(resultMessages, "\n")
+			// Add instruction to use tools for the response
+			combinedResult += "\n\nBased on this information, please provide a response using the appropriate tool (info for informational responses, submit_query_plan for CQL queries)."
 			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: combinedResult})
 
 			// Continue the conversation
