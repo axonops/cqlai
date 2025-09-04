@@ -145,7 +145,7 @@ func (m *MainModel) View() string {
 	case "table":
 		modeIndicator := m.styles.AccentText.Render("[TABLE VIEW]")
 		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI]")
+		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI | F6: Toggle Types]")
 		if m.hasTrace {
 			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
 		}
@@ -493,6 +493,8 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString(m.styles.MutedText.Render("  • F4 - Switch to trace view"))
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to AI assistant mode"))
+	welcome.WriteString("\n")
+	welcome.WriteString(m.styles.MutedText.Render("  • F6 - Toggle column data types (in table view)"))
 	welcome.WriteString("\n\n")
 
 	return welcome.String()
