@@ -12,7 +12,7 @@ import (
 func (m *MainModel) renderAIConversationView() string {
 	// The conversation viewport shows the full history
 	conversationView := m.aiConversationViewport.View()
-	
+
 	// Input line at the bottom
 	inputLine := ""
 	if m.aiProcessing {
@@ -20,7 +20,7 @@ func (m *MainModel) renderAIConversationView() string {
 	} else {
 		inputLine = m.aiConversationInput.View()
 	}
-	
+
 	// Status line
 	statusLine := ""
 	if m.aiProcessing {
@@ -28,7 +28,7 @@ func (m *MainModel) renderAIConversationView() string {
 	} else {
 		statusLine = m.styles.MutedText.Render("Enter: Send • Esc: Exit AI mode • ↑↓: Scroll history")
 	}
-	
+
 	// Combine the base view
 	baseView := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -36,7 +36,7 @@ func (m *MainModel) renderAIConversationView() string {
 		inputLine,
 		statusLine,
 	)
-	
+
 	// If AI CQL modal is showing, render it as an overlay
 	if m.aiCQLModal != nil && m.aiCQLModal.Active {
 		// Use the actual window dimensions
@@ -48,11 +48,11 @@ func (m *MainModel) renderAIConversationView() string {
 		if screenHeight == 0 {
 			screenHeight = m.aiConversationViewport.Height + 3
 		}
-		
+
 		// Render the CQL modal overlay
 		return m.aiCQLModal.Render(screenWidth, screenHeight, m.styles)
 	}
-	
+
 	// If AI selection modal is showing, render it as an overlay
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
 		// Use the actual window dimensions
@@ -64,11 +64,11 @@ func (m *MainModel) renderAIConversationView() string {
 		if screenHeight == 0 {
 			screenHeight = m.aiConversationViewport.Height + 3
 		}
-		
+
 		// Render the selection modal overlay
 		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
 	}
-	
+
 	return baseView
 }
 
@@ -111,42 +111,53 @@ func (m *MainModel) View() string {
 
 	// Get the active viewport for scroll info
 	activeViewport := m.historyViewport
-	switch {
-	case m.viewMode == "table" && m.hasTable:
-		activeViewport = m.tableViewport
-	case m.viewMode == "trace" && m.hasTrace:
-		activeViewport = m.traceViewport
+	switch m.viewMode {
+	case "table":
+		if m.hasTable {
+			activeViewport = m.tableViewport
+		}
+	case "trace":
+		if m.hasTrace {
+			activeViewport = m.traceViewport
+		}
 	}
 
-	// Add mode indicator and scroll info
+	// Add mode indicator and available view keys
 	var scrollInfo string
-	switch {
-	case m.viewMode == "trace" && m.hasTrace:
+	switch m.viewMode {
+	case "ai":
+		modeIndicator := m.styles.AccentText.Render("[AI VIEW]")
+		scrollInfo = " " + modeIndicator
+		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI]")
+		if m.hasTable {
+			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
+		}
+		if m.hasTrace {
+			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
+		}
+	case "trace":
 		modeIndicator := m.styles.AccentText.Render("[TRACE VIEW]")
 		scrollInfo = " " + modeIndicator
+		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI]")
 		if m.hasTable {
-			scrollInfo += " " + m.styles.MutedText.Render("[F4: Back]")
+			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
 		}
-	case m.hasTable:
-		// Show view mode indicator when table is available
-		if m.viewMode == "table" {
-			modeIndicator := m.styles.AccentText.Render("[TABLE VIEW]")
-			scrollInfo = " " + modeIndicator
-			// Add F2 hint for data types toggle
-			if m.showDataTypes {
-				scrollInfo += " " + m.styles.MutedText.Render("[F2: Hide Types]")
-			} else {
-				scrollInfo += " " + m.styles.MutedText.Render("[F2: Show Types]")
-			}
-			if m.hasTrace {
-				scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
-			}
-		} else {
-			modeIndicator := m.styles.MutedText.Render("[HISTORY VIEW]")
-			scrollInfo = " " + modeIndicator
-			if m.hasTrace {
-				scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
-			}
+	case "table":
+		modeIndicator := m.styles.AccentText.Render("[TABLE VIEW]")
+		scrollInfo = " " + modeIndicator
+		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI]")
+		if m.hasTrace {
+			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
+		}
+	default: // history view
+		modeIndicator := m.styles.MutedText.Render("[HISTORY VIEW]")
+		scrollInfo = " " + modeIndicator
+		scrollInfo += " " + m.styles.MutedText.Render("[F5: AI]")
+		if m.hasTable {
+			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
+		}
+		if m.hasTrace {
+			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
 		}
 	}
 
@@ -218,16 +229,7 @@ func (m *MainModel) View() string {
 		inputSection = bufferedLines + "\n" + inputSection
 	}
 
-	// Add hints about function keys when table is available
-	if m.hasTable && m.input.Value() == "" {
-		hints := []string{}
-		hints = append(hints, "F3: switch views")
-		// Don't show F2 hint here since it's in the status bar for table view
-		if len(hints) > 0 {
-			hint := m.styles.MutedText.Render("  (" + strings.Join(hints, " | ") + ")")
-			inputSection += hint
-		}
-	}
+	// Function key hints are now shown in the status bar
 
 	// Use the appropriate viewport based on mode
 	var viewportContent string
@@ -237,12 +239,30 @@ func (m *MainModel) View() string {
 	case m.viewMode == "ai" && m.aiConversationActive:
 		// Render AI conversation view and return early (it includes its own input and status)
 		return m.renderAIConversationView()
-	case m.viewMode == "trace" && m.hasTrace:
-		viewportWidth = m.traceViewport.Width
-		viewportContent = m.traceViewport.View()
-	case m.viewMode == "table" && m.hasTable:
-		viewportWidth = m.tableViewport.Width
-		viewportContent = m.tableViewport.View()
+	case m.viewMode == "trace":
+		viewportWidth = m.historyViewport.Width
+		if m.hasTrace {
+			viewportWidth = m.traceViewport.Width
+			viewportContent = m.traceViewport.View()
+		} else {
+			// Create a temporary viewport for empty trace message
+			emptyMsg := m.styles.MutedText.Render("\n  No trace data available. Enable tracing with 'TRACING ON' to capture query traces.\n")
+			tempViewport := m.historyViewport
+			tempViewport.SetContent(emptyMsg)
+			viewportContent = tempViewport.View()
+		}
+	case m.viewMode == "table":
+		viewportWidth = m.historyViewport.Width
+		if m.hasTable {
+			viewportWidth = m.tableViewport.Width
+			viewportContent = m.tableViewport.View()
+		} else {
+			// Create a temporary viewport for empty table message
+			emptyMsg := m.styles.MutedText.Render("\n  No table data available. Execute a SELECT query to view results in table format.\n")
+			tempViewport := m.historyViewport
+			tempViewport.SetContent(emptyMsg)
+			viewportContent = tempViewport.View()
+		}
 	default:
 		viewportContent = m.historyViewport.View()
 		viewportWidth = m.historyViewport.Width
@@ -252,7 +272,7 @@ func (m *MainModel) View() string {
 	var finalView string
 
 	// Always show the top bar
-	topBar := m.topBar.View(viewportWidth, m.styles)
+	topBar := m.topBar.View(viewportWidth, m.styles, m.viewMode)
 
 	// Build the viewport section with sticky header for tables
 	var viewportSection string
@@ -384,7 +404,6 @@ func (m *MainModel) View() string {
 		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
 	}
 
-
 	// If modal is showing, render it as an overlay
 	if m.modal.Type != ModalNone {
 		// Use the actual window dimensions
@@ -467,11 +486,13 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.MutedText.Render("  • Alt+← / Alt+→ - Horizontal scroll for wide tables"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F2 - Toggle column data types display"))
+	welcome.WriteString(m.styles.MutedText.Render("  • F2 - Switch to history/query view"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F3 - Switch between history/table view"))
+	welcome.WriteString(m.styles.MutedText.Render("  • F3 - Switch to table view"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F4 - View trace data (when tracing is enabled)"))
+	welcome.WriteString(m.styles.MutedText.Render("  • F4 - Switch to trace view"))
+	welcome.WriteString("\n")
+	welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to AI assistant mode"))
 	welcome.WriteString("\n\n")
 
 	return welcome.String()
