@@ -327,11 +327,19 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 	// On first call, start with the original request
 	if len(conv.Messages) == 0 {
 		userPrompt := UserPrompt(conv.OriginalRequest, conv.SchemaContext)
+		if strings.TrimSpace(userPrompt) == "" {
+			return nil, nil, fmt.Errorf("original request cannot be empty")
+		}
 		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)))
 		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userPrompt})
 	} else {
 		// Build message history
 		for _, msg := range conv.Messages {
+			// Skip messages with empty content to avoid "text content blocks must be non-empty" error
+			if strings.TrimSpace(msg.Content) == "" {
+				logger.DebugfToFile("AIConversation", "[%s] Skipping empty message with role: %s", conv.ID, msg.Role)
+				continue
+			}
 			switch msg.Role {
 			case "user":
 				messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
@@ -351,6 +359,11 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(followUpMessage)))
 			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userInput}) // Store original for history
 		}
+	}
+
+	// Validate that we have at least one message to send
+	if len(messages) == 0 {
+		return nil, nil, fmt.Errorf("no valid messages to send to API")
 	}
 
 	// Get tool definitions for continued conversation

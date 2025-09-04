@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/axonops/cqlai/internal/ai"
@@ -98,6 +100,15 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 func continueAIConversation(aiConfig *config.AIConfig, conversationID string, userInput string) tea.Cmd {
 	return func() tea.Msg {
 		logger.DebugfToFile("AI", "Continuing conversation %s with input: %s", conversationID, userInput)
+
+		// Validate that user input is not empty
+		if strings.TrimSpace(userInput) == "" {
+			logger.DebugfToFile("AI", "Empty user input detected, returning error")
+			return AICQLResultMsg{
+				Error:          fmt.Errorf("user input cannot be empty"),
+				ConversationID: conversationID,
+			}
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
