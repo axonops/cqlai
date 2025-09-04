@@ -91,7 +91,8 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then
             zip -r ../${PROJECT_NAME}-${{ matrix.suffix }}.zip ${PROJECT_NAME}
           else
-            tar czf ../${PROJECT_NAME}-${{ matrix.suffix }}.tar.gz ${PROJECT_NAME}
+            # Use --owner and --group to ensure files have root:root ownership
+            tar --owner=0 --group=0 -czf ../${PROJECT_NAME}-${{ matrix.suffix }}.tar.gz ${PROJECT_NAME}
           fi
 
       - name: Upload build artifacts

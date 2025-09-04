@@ -79,8 +79,8 @@ jobs:
             # For Windows, create a zip file
             zip ${{ matrix.binary_name }}.zip ${{ matrix.binary_name }} README.md LICENSE
           else
-            # For Unix systems, create a tar.gz
-            tar -czf ${{ matrix.binary_name }}.tar.gz ${{ matrix.binary_name }} README.md LICENSE
+            # For Unix systems, create a tar.gz with root:root ownership
+            tar --owner=0 --group=0 -czf ${{ matrix.binary_name }}.tar.gz ${{ matrix.binary_name }} README.md LICENSE
           fi
 
       - name: Upload artifact
