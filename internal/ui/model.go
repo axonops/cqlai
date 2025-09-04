@@ -387,7 +387,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.traceViewport = viewport.New(newWidth, newHeight)
 			welcomeMsg := m.getWelcomeMessage()
 			m.fullHistoryContent = welcomeMsg
-			m.historyViewport.SetContent(welcomeMsg)
+			// Wrap content for initial display
+			wrapped := m.wrapHistoryContent(newWidth)
+			m.historyViewport.SetContent(wrapped)
 			m.ready = true
 		} else {
 			// Resize viewports
@@ -397,6 +399,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tableViewport.Height = newHeight
 			m.traceViewport.Width = newWidth
 			m.traceViewport.Height = newHeight
+			
+			// Re-wrap history content for new width
+			m.updateHistoryWrapping()
+			
 			// Also resize AI conversation viewport if it exists
 			if m.aiConversationActive {
 				m.aiConversationViewport.Width = newWidth

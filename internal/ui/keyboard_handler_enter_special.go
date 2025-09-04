@@ -16,7 +16,7 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 
 	if upperCommand == "CLEAR" || upperCommand == "CLS" {
 		m.fullHistoryContent = ""
-		m.historyViewport.SetContent("")
+		m.updateHistoryWrapping()
 		m.input.Reset()
 		m.lastCommand = ""
 		m.rowCount = 0

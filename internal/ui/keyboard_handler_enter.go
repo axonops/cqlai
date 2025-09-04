@@ -137,7 +137,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 		// Add command to history
 		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 
 		m.input.Reset()
@@ -169,7 +169,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	// Add command to history viewport
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-	m.historyViewport.SetContent(m.fullHistoryContent)
+	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 	
 	// Capture trace data if tracing is enabled and this was a query that returns results

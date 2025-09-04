@@ -56,7 +56,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 				logger.DebugfToFile("HandleEnterKey", "Iterator error: %v", err)
 				// Show error to user
 				m.fullHistoryContent += "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
-				m.historyViewport.SetContent(m.fullHistoryContent)
+				m.updateHistoryWrapping()
 				m.historyViewport.GotoBottom()
 				m.viewMode = "history"
 				m.hasTable = false
@@ -104,7 +104,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 		// No data returned
 		_ = v.Iterator.Close()
 		m.fullHistoryContent += "\n" + "No results"
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		m.viewMode = "history"
 		m.hasTable = false
@@ -176,21 +176,26 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 
 // displayASCIIFormat displays results in ASCII table format
 func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (*MainModel, tea.Cmd) {
-	// ASCII format - use table viewport for pagination support
-	m.tableHeaders = headers
-	m.columnTypes = columnTypes
-	m.hasTable = true
-	m.viewMode = "table"
+	// ASCII format - display in CQL view as text
+	m.hasTable = false  // No table, just text
+	m.viewMode = "history"  // Use history view for text output
 
 	// Format initial data as ASCII table
 	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	m.lastTableData = allData // Store for pagination
-	m.horizontalOffset = 0    // Reset horizontal scroll
-
+	
 	// Format as ASCII table
 	asciiStr := FormatASCIITable(allData)
-	m.tableViewport.SetContent(asciiStr)
-	m.tableViewport.GotoTop()
+	
+	// Add ASCII output to history content
+	if asciiStr != "" {
+		m.fullHistoryContent += "\n" + asciiStr
+	} else {
+		m.fullHistoryContent += "\nNo results"
+	}
+	
+	// Update with wrapped content
+	m.updateHistoryWrapping()
+	m.historyViewport.GotoBottom()
 	
 	m.input.Reset()
 	return m, nil
@@ -199,16 +204,10 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 // displayJSONFormat displays results in JSON format
 func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, columnNames []string) (*MainModel, tea.Cmd) {
 	logger.DebugToFile("HandleEnterKey", "Formatting output as JSON")
-	// JSON format - use table viewport for pagination support
-	m.tableHeaders = headers
-	m.columnTypes = columnTypes
-	m.hasTable = true
-	m.viewMode = "table"
-
-	// Format initial data as JSON
-	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	m.lastTableData = allData // Store for pagination
-	m.horizontalOffset = 0    // Reset horizontal scroll
+	
+	// JSON format - display in CQL view as text
+	m.hasTable = false  // No table, just text
+	m.viewMode = "history"  // Use history view for text output
 
 	// Convert table data to JSON format
 	jsonStr := ""
@@ -237,9 +236,19 @@ func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, co
 			}
 		}
 	}
+	
 	logger.DebugfToFile("HandleEnterKey", "Generated JSON with %d characters", len(jsonStr))
-	m.tableViewport.SetContent(jsonStr)
-	m.tableViewport.GotoTop()
+	
+	// Add JSON output to history content
+	if jsonStr != "" {
+		m.fullHistoryContent += "\n" + jsonStr
+	} else {
+		m.fullHistoryContent += "\nNo results"
+	}
+	
+	// Update with wrapped content
+	m.updateHistoryWrapping()
+	m.historyViewport.GotoBottom()
 	
 	m.input.Reset()
 	return m, nil
@@ -289,19 +298,23 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 		// Check output format
 		switch outputFormat {
 		case config.OutputFormatASCII:
-			// ASCII format - use table viewport for scrolling support
-			// Store table data and headers
-			m.lastTableData = v.Data
-			m.tableHeaders = v.Data[0]    // Store the header row
-			m.columnTypes = v.ColumnTypes // Store column types
-			m.horizontalOffset = 0
-			m.hasTable = true
-			m.viewMode = "table"
+			// ASCII format - display in CQL view as text
+			m.hasTable = false  // No table, just text
+			m.viewMode = "history"  // Use history view for text output
 
 			// Format as ASCII table
 			asciiOutput := FormatASCIITable(v.Data)
-			m.tableViewport.SetContent(asciiOutput)
-			m.tableViewport.GotoTop() // Start at top of table
+			
+			// Add ASCII output to history content
+			if asciiOutput != "" {
+				m.fullHistoryContent += "\n" + asciiOutput
+			} else {
+				m.fullHistoryContent += "\nNo results"
+			}
+			
+			// Update with wrapped content
+			m.updateHistoryWrapping()
+			m.historyViewport.GotoBottom()
 		case config.OutputFormatExpand:
 			// EXPAND format - use table viewport for scrolling support
 			// Store table data and headers
@@ -317,14 +330,9 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			m.tableViewport.SetContent(expandOutput)
 			m.tableViewport.GotoTop() // Start at top of table
 		case config.OutputFormatJSON:
-			// JSON format - use table viewport for scrolling support
-			// Store table data and headers
-			m.lastTableData = v.Data
-			m.tableHeaders = v.Data[0]    // Store the header row
-			m.columnTypes = v.ColumnTypes // Store column types
-			m.horizontalOffset = 0
-			m.hasTable = true
-			m.viewMode = "table"
+			// JSON format - display in CQL view as text
+			m.hasTable = false  // No table, just text
+			m.viewMode = "history"  // Use history view for text output
 
 			// Check if this is already JSON from SELECT JSON
 			jsonOutput := ""
@@ -354,9 +362,17 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 					}
 				}
 			}
-			// Display JSON output in table viewport
-			m.tableViewport.SetContent(jsonOutput)
-			m.tableViewport.GotoTop() // Start at top of table
+			
+			// Add JSON output to history content
+			if jsonOutput != "" {
+				m.fullHistoryContent += "\n" + jsonOutput
+			} else {
+				m.fullHistoryContent += "\nNo results"
+			}
+			
+			// Update with wrapped content
+			m.updateHistoryWrapping()
+			m.historyViewport.GotoBottom()
 		default:
 			// Use table viewport for TABLE format
 			// Store table data and headers
@@ -449,7 +465,7 @@ func (m *MainModel) processStringResult(command string, v string) (*MainModel, t
 	wrappedResult := wrapLongLines(v, m.historyViewport.Width)
 	
 	m.fullHistoryContent += "\n" + wrappedResult
-	m.historyViewport.SetContent(m.fullHistoryContent)
+	m.updateHistoryWrapping()
 	
 	// Write to capture file if capturing
 	metaHandler := router.GetMetaHandler()
@@ -476,7 +492,7 @@ func (m *MainModel) processErrorResult(v error) (*MainModel, tea.Cmd) {
 	m.viewMode = "history"
 	errorMsg := m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", v))
 	m.fullHistoryContent += "\n" + errorMsg
-	m.historyViewport.SetContent(m.fullHistoryContent)
+	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 	
 	m.input.Reset()
