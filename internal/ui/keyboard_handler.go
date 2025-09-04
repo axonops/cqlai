@@ -400,6 +400,10 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			m.viewMode = "ai"
 			m.aiConversationActive = true
 			
+			// Clear any existing conversation ID when entering AI view via F5
+			// This ensures we start fresh
+			m.aiConversationID = ""
+			
 			// Initialize AI conversation input if not initialized
 			// Check if Width is 0 as a proxy for uninitialized state
 			if m.aiConversationInput.Width == 0 {
