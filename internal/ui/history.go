@@ -11,6 +11,7 @@ import (
 const (
 	maxHistorySize = 1000
 	historyFile    = "history"
+	aiHistoryFile  = "ai_history"
 )
 
 // HistoryManager manages command history persistence
@@ -136,4 +137,34 @@ func (hm *HistoryManager) SearchHistory(query string) []string {
 	}
 	
 	return matches
+}
+
+// NewAIHistoryManager creates a new history manager specifically for AI conversations
+func NewAIHistoryManager() (*HistoryManager, error) {
+	// Get home directory
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %v", err)
+	}
+
+	// Create ~/.cqlai directory if it doesn't exist
+	cqlaiDir := filepath.Join(home, ".cqlai")
+	if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
+	}
+
+	historyPath := filepath.Join(cqlaiDir, aiHistoryFile)
+	
+	hm := &HistoryManager{
+		historyPath: historyPath,
+		history:     []string{},
+	}
+
+	// Load existing history
+	if err := hm.loadHistory(); err != nil {
+		// Log error but don't fail - history will start fresh
+		fmt.Fprintf(os.Stderr, "Warning: could not load AI history: %v\n", err)
+	}
+
+	return hm, nil
 }

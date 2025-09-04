@@ -122,6 +122,102 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// Handle AI conversation view input
 	if m.viewMode == "ai" && m.aiConversationActive {
+		// Handle history search mode in AI view
+		if m.historySearchMode {
+			switch msg.Type {
+			case tea.KeyCtrlR, tea.KeyCtrlC, tea.KeyEscape:
+				// Exit history search mode
+				m.historySearchMode = false
+				m.historySearchQuery = ""
+				m.historySearchResults = []string{}
+				m.historySearchIndex = 0
+				m.historySearchScrollOffset = 0
+				return m, nil
+			case tea.KeyEnter:
+				// Select the current history entry
+				if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
+					// Set the AI input value to the selected history entry
+					m.aiConversationInput.SetValue(m.historySearchResults[m.historySearchIndex])
+					// Exit history search mode
+					m.historySearchMode = false
+					m.historySearchQuery = ""
+					m.historySearchResults = []string{}
+					m.historySearchIndex = 0
+					m.historySearchScrollOffset = 0
+				}
+				return m, nil
+			case tea.KeyUp:
+				// Navigate search results
+				if m.historySearchIndex > 0 {
+					m.historySearchIndex--
+					// Adjust scroll offset if needed
+					if m.historySearchIndex < m.historySearchScrollOffset {
+						m.historySearchScrollOffset = m.historySearchIndex
+					}
+				}
+				return m, nil
+			case tea.KeyDown:
+				// Navigate search results
+				if m.historySearchIndex < len(m.historySearchResults)-1 {
+					m.historySearchIndex++
+					// Adjust scroll offset if needed
+					if m.historySearchIndex >= m.historySearchScrollOffset+10 {
+						m.historySearchScrollOffset = m.historySearchIndex - 9
+					}
+				}
+				return m, nil
+			default:
+				// Handle typing for search query
+				switch msg.String() {
+				case "backspace", "delete":
+					if len(m.historySearchQuery) > 0 {
+						m.historySearchQuery = m.historySearchQuery[:len(m.historySearchQuery)-1]
+					}
+				default:
+					// Add character to search query if it's a printable character
+					if len(msg.Runes) > 0 && len(m.historySearchQuery) < 100 {
+						m.historySearchQuery += string(msg.Runes)
+					}
+				}
+
+				// Update search results from AI history
+				if m.aiHistoryManager != nil {
+					results := m.aiHistoryManager.SearchHistory(m.historySearchQuery)
+					m.historySearchResults = results
+					if len(results) > 0 {
+						m.historySearchIndex = 0
+						m.historySearchScrollOffset = 0
+					}
+				}
+				return m, nil
+			}
+		}
+
+		// Check for Ctrl+R to toggle history search mode
+		if msg.Type == tea.KeyCtrlR {
+			if m.historySearchMode {
+				// Exit history search mode
+				m.historySearchMode = false
+				m.historySearchQuery = ""
+				m.historySearchResults = []string{}
+				m.historySearchIndex = 0
+				m.historySearchScrollOffset = 0
+			} else {
+				// Enter history search mode
+				m.historySearchMode = true
+				m.historySearchQuery = ""
+				// Initialize with all AI history items (empty search shows all)
+				if m.aiHistoryManager != nil {
+					m.historySearchResults = m.aiHistoryManager.SearchHistory("")
+				} else {
+					m.historySearchResults = m.commandHistory
+				}
+				m.historySearchIndex = 0
+				m.historySearchScrollOffset = 0
+			}
+			return m, nil
+		}
+
 		switch msg.Type {
 		case tea.KeyEscape, tea.KeyCtrlC:
 			// Exit AI mode and return to history
@@ -134,10 +230,25 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			// Submit message to AI
 			message := strings.TrimSpace(m.aiConversationInput.Value())
 			if message != "" && !m.aiProcessing {
-				// Add user message to conversation
-				m.aiConversationHistory += "\n" + m.styles.AccentText.Render("You: ") + message + "\n"
-				m.aiConversationViewport.SetContent(m.aiConversationHistory)
-				m.aiConversationViewport.GotoBottom()
+				// Add to AI command history (separate from CQL history)
+				m.aiCommandHistory = append(m.aiCommandHistory, message)
+				m.aiHistoryIndex = -1
+
+				// Save to AI history manager for Ctrl+R search in AI view
+				if m.aiHistoryManager != nil {
+					if err := m.aiHistoryManager.SaveCommand(message); err != nil {
+						// Log error but don't fail
+						logger.DebugfToFile("AI", "Could not save command to AI history: %v", err)
+					}
+				}
+
+				// Add user message to raw messages
+				m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+					Role:    "user",
+					Content: message,
+				})
+				// Rebuild the conversation with proper wrapping
+				m.rebuildAIConversation()
 
 				// Clear input and set processing state
 				userMessage := message
@@ -155,13 +266,39 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case tea.KeyUp, tea.KeyPgUp:
-			// Scroll conversation up
-			m.aiConversationViewport.ScrollUp(1)
+		case tea.KeyUp:
+			// Navigate AI command history (not CQL history)
+			if len(m.aiCommandHistory) > 0 {
+				if m.aiHistoryIndex == -1 {
+					// Save current input before navigating history
+					m.currentInput = m.aiConversationInput.Value()
+					m.aiHistoryIndex = len(m.aiCommandHistory) - 1
+				} else if m.aiHistoryIndex > 0 {
+					m.aiHistoryIndex--
+				}
+				m.aiConversationInput.SetValue(m.aiCommandHistory[m.aiHistoryIndex])
+			}
 			return m, nil
-		case tea.KeyDown, tea.KeyPgDown:
+		case tea.KeyDown:
+			// Navigate AI command history (not CQL history)
+			if m.aiHistoryIndex != -1 {
+				if m.aiHistoryIndex < len(m.aiCommandHistory)-1 {
+					m.aiHistoryIndex++
+					m.aiConversationInput.SetValue(m.aiCommandHistory[m.aiHistoryIndex])
+				} else {
+					// Return to current input
+					m.aiHistoryIndex = -1
+					m.aiConversationInput.SetValue(m.currentInput)
+				}
+			}
+			return m, nil
+		case tea.KeyPgUp:
+			// Scroll conversation up
+			m.aiConversationViewport.ScrollUp(3)
+			return m, nil
+		case tea.KeyPgDown:
 			// Scroll conversation down
-			m.aiConversationViewport.ScrollDown(1)
+			m.aiConversationViewport.ScrollDown(3)
 			return m, nil
 		case tea.KeyF2, tea.KeyF3, tea.KeyF4, tea.KeyF5:
 			// Let function keys pass through to be handled by the main key handler
@@ -399,11 +536,11 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if m.viewMode != "ai" {
 			m.viewMode = "ai"
 			m.aiConversationActive = true
-			
+
 			// Clear any existing conversation ID when entering AI view via F5
 			// This ensures we start fresh
 			m.aiConversationID = ""
-			
+
 			// Initialize AI conversation input if not initialized
 			// Check if Width is 0 as a proxy for uninitialized state
 			if m.aiConversationInput.Width == 0 {
@@ -414,7 +551,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				input.Width = m.historyViewport.Width - 10
 				input.Focus()
 				m.aiConversationInput = input
-				
+
 				// Initialize conversation viewport if needed
 				if m.aiConversationViewport.Width == 0 {
 					m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
@@ -424,14 +561,14 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				m.aiConversationInput.SetValue("")
 				m.aiConversationInput.Focus()
 			}
-			
-			// Initialize AI conversation history if empty
-			if m.aiConversationHistory == "" {
-				m.aiConversationHistory = m.styles.AccentText.Render("🤖 AI Assistant") + "\n" + 
-					m.styles.MutedText.Render("────────────────────") + "\n\n" +
-					m.styles.MutedText.Render("Type your message below and press Enter to chat with the AI assistant.") + "\n" +
-					m.styles.MutedText.Render("You can ask questions about your database, request CQL queries, or get help with Cassandra.") + "\n"
-				m.aiConversationViewport.SetContent(m.aiConversationHistory)
+
+			// Initialize AI conversation messages if empty
+			if len(m.aiConversationMessages) == 0 {
+				// Start with empty messages, header is added by rebuildAIConversation
+				m.rebuildAIConversation()
+			} else {
+				// Rebuild to ensure proper wrapping with current viewport width
+				m.rebuildAIConversation()
 			}
 		}
 		return m, nil
@@ -657,79 +794,4 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 		return m, cmd
 	}
-}
-
-// wrapLongLines wraps lines that exceed the specified width
-func wrapLongLines(text string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return text
-	}
-
-	lines := strings.Split(text, "\n")
-	var wrappedLines []string
-
-	for _, line := range lines {
-		// Don't wrap lines that are part of CREATE TABLE definition
-		if strings.Contains(line, "CREATE TABLE") || len(line) <= maxWidth {
-			wrappedLines = append(wrappedLines, line)
-			continue
-		}
-
-		// Check if this is a CQL property line (starts with AND or has = sign)
-		if strings.TrimSpace(line) != "" && (strings.Contains(line, " = ") || strings.HasPrefix(strings.TrimSpace(line), "AND ")) {
-			// For CQL WITH clause properties, wrap intelligently
-			currentLine := line
-			indentLevel := len(line) - len(strings.TrimLeft(line, " "))
-			indent := strings.Repeat(" ", indentLevel+4) // Extra indent for continuation
-
-			for len(currentLine) > maxWidth {
-				// Find a good break point
-				breakPoint := -1
-
-				// First try to break after a comma within a reasonable distance
-				for i := maxWidth - 1; i > maxWidth-20 && i >= 0; i-- {
-					if i < len(currentLine) && currentLine[i] == ',' {
-						breakPoint = i + 1
-						break
-					}
-				}
-
-				// If no comma found, try to break at a space
-				if breakPoint == -1 {
-					for i := maxWidth - 1; i > maxWidth/2 && i >= 0; i-- {
-						if i < len(currentLine) && currentLine[i] == ' ' {
-							breakPoint = i + 1
-							break
-						}
-					}
-				}
-
-				// If still no good break point, just break at maxWidth
-				if breakPoint == -1 || breakPoint >= len(currentLine) {
-					breakPoint = maxWidth
-				}
-
-				// Add the wrapped part
-				wrappedLines = append(wrappedLines, currentLine[:breakPoint])
-
-				// Continue with the rest, adding indentation
-				if breakPoint < len(currentLine) {
-					currentLine = indent + strings.TrimSpace(currentLine[breakPoint:])
-				} else {
-					currentLine = ""
-					break
-				}
-			}
-
-			// Add any remaining part
-			if len(currentLine) > 0 {
-				wrappedLines = append(wrappedLines, currentLine)
-			}
-		} else {
-			// For other lines, just add them as-is
-			wrappedLines = append(wrappedLines, line)
-		}
-	}
-
-	return strings.Join(wrappedLines, "\n")
 }
