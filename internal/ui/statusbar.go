@@ -64,10 +64,6 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
 
-	traceDataStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#87AFFF")).
-		Bold(true)
-
 	// Format values
 	keyspaceDisplay := m.Keyspace
 	if keyspaceDisplay == "" {
@@ -110,11 +106,6 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 			labelStyle.Render("v") + versionStyle.Render(m.Version)
 	}
 
-	// Add trace data indicator if available and not in trace view
-	if m.HasTraceData && currentView != "trace" {
-		statusText += separatorStyle.Render(" │ ") +
-			traceDataStyle.Render("[F4: View Trace]")
-	}
 
 	// Apply style to the entire bar without forced background
 	barStyle := lipgloss.NewStyle().

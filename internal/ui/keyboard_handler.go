@@ -432,6 +432,56 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeyF6:
+		// F6 to toggle showing data types in table headers
+		if m.hasTable && m.viewMode == "table" {
+			m.showDataTypes = !m.showDataTypes
+			// Refresh the table view with new headers
+			if len(m.lastTableData) > 0 {
+				// Update ALL headers in the stored data (not just visible ones)
+				if len(m.columnTypes) > 0 {
+					// Process all columns in the header row
+					for i := 0; i < len(m.lastTableData[0]) && i < len(m.columnTypes); i++ {
+						// Parse the original header to extract base name and key indicators
+						original := m.tableHeaders[i]
+
+						// Remove any existing type info [...]
+						if idx := strings.Index(original, " ["); idx != -1 {
+							if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
+								original = original[:idx] + original[idx+endIdx+1:]
+							}
+						}
+
+						// Extract base name and key indicator
+						baseName := original
+						keyIndicator := ""
+						if strings.HasSuffix(original, " (PK)") {
+							baseName = strings.TrimSuffix(original, " (PK)")
+							keyIndicator = " (PK)"
+						} else if strings.HasSuffix(original, " (C)") {
+							baseName = strings.TrimSuffix(original, " (C)")
+							keyIndicator = " (C)"
+						}
+
+						// Build the new header
+						newHeader := baseName
+						if m.showDataTypes && m.columnTypes[i] != "" {
+							newHeader += " [" + m.columnTypes[i] + "]"
+						}
+						newHeader += keyIndicator
+
+						// Update the actual stored data
+						m.lastTableData[0][i] = newHeader
+					}
+				}
+
+				// Refresh the table display with the updated data
+				tableStr := m.formatTableForViewport(m.lastTableData)
+				m.tableViewport.SetContent(tableStr)
+			}
+		}
+		return m, nil
+
 	case tea.KeySpace:
 		return m.handleSpaceKey(msg)
 
