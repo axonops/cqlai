@@ -79,7 +79,7 @@ func (m *MainModel) View() string {
 			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
 		}
 	default: // history view
-		modeIndicator := m.styles.MutedText.Render("[HISTORY VIEW]")
+		modeIndicator := m.styles.MutedText.Render("[CQL VIEW]")
 		scrollInfo = " " + modeIndicator
 		scrollInfo += " " + m.styles.MutedText.Render("[F5: AI]")
 		if m.hasTable {
@@ -161,7 +161,7 @@ func (m *MainModel) View() string {
 	} else {
 		// Use regular input
 		inputSection = m.input.View()
-		
+
 		// If in multi-line mode, show the buffered lines above the input
 		if m.multiLineMode && len(m.multiLineBuffer) > 0 {
 			bufferedLines := m.styles.MutedText.Render("... " + strings.Join(m.multiLineBuffer, "\n... "))

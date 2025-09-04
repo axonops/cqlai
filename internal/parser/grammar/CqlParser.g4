@@ -98,6 +98,7 @@ describeCommand
         | kwKeyspace keyspace
         | kwTable (keyspace DOT)? table
         | kwTables
+        | kwSchema
         | kwType (keyspace DOT)? type_
         | kwTypes
         | kwFunction (keyspace DOT)? function_
@@ -1265,6 +1266,10 @@ kwRole
 
 kwRoles
     : K_ROLES
+    ;
+
+kwSchema
+    : K_SCHEMA
     ;
 
 kwSelect

@@ -763,6 +763,9 @@ type CqlParserVisitor interface {
 	// Visit a parse tree produced by CqlParser#kwRoles.
 	VisitKwRoles(ctx *KwRolesContext) interface{}
 
+	// Visit a parse tree produced by CqlParser#kwSchema.
+	VisitKwSchema(ctx *KwSchemaContext) interface{}
+
 	// Visit a parse tree produced by CqlParser#kwSelect.
 	VisitKwSelect(ctx *KwSelectContext) interface{}
 

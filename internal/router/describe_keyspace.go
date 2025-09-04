@@ -18,8 +18,9 @@ func (v *CqlCommandVisitorImpl) describeKeyspace(keyspaceName string) interface{
 	}
 
 	if serverResult != nil {
-		// Server-side DESCRIBE result, return as-is
-		return serverResult
+		// Server-side DESCRIBE result in Cassandra 4.0+ returns table data
+		// Extract the create_statement column for proper CQL view display
+		return v.extractCreateStatements(serverResult, "DESCRIBE KEYSPACE")
 	}
 
 	// Manual query result - format it

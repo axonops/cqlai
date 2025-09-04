@@ -562,14 +562,9 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				m.aiConversationInput.Focus()
 			}
 
-			// Initialize AI conversation messages if empty
-			if len(m.aiConversationMessages) == 0 {
-				// Start with empty messages, header is added by rebuildAIConversation
-				m.rebuildAIConversation()
-			} else {
-				// Rebuild to ensure proper wrapping with current viewport width
-				m.rebuildAIConversation()
-			}
+			// Always rebuild conversation to ensure proper wrapping with current viewport width
+			// (header is added automatically by rebuildAIConversation if messages are empty)
+			m.rebuildAIConversation()
 		}
 		return m, nil
 

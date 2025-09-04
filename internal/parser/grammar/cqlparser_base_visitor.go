@@ -1015,6 +1015,10 @@ func (v *BaseCqlParserVisitor) VisitKwRoles(ctx *KwRolesContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseCqlParserVisitor) VisitKwSchema(ctx *KwSchemaContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseCqlParserVisitor) VisitKwSelect(ctx *KwSelectContext) interface{} {
 	return v.VisitChildren(ctx)
 }

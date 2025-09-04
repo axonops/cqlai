@@ -194,9 +194,10 @@ func (m *MainModel) rebuildAIConversation() {
 			}
 		case "system":
 			// System messages like "(Cancelled)"
-			if msg.Type == "cancelled" {
+			switch msg.Type {
+			case "cancelled":
 				conversation += m.styles.MutedText.Render("(Cancelled)") + "\n"
-			} else if msg.Type == "selection_cancelled" {
+			case "selection_cancelled":
 				conversation += m.styles.MutedText.Render("(Selection cancelled)") + "\n"
 			}
 		}

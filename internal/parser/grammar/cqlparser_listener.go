@@ -763,6 +763,9 @@ type CqlParserListener interface {
 	// EnterKwRoles is called when entering the kwRoles production.
 	EnterKwRoles(c *KwRolesContext)
 
+	// EnterKwSchema is called when entering the kwSchema production.
+	EnterKwSchema(c *KwSchemaContext)
+
 	// EnterKwSelect is called when entering the kwSelect production.
 	EnterKwSelect(c *KwSelectContext)
 
@@ -1626,6 +1629,9 @@ type CqlParserListener interface {
 
 	// ExitKwRoles is called when exiting the kwRoles production.
 	ExitKwRoles(c *KwRolesContext)
+
+	// ExitKwSchema is called when exiting the kwSchema production.
+	ExitKwSchema(c *KwSchemaContext)
 
 	// ExitKwSelect is called when exiting the kwSelect production.
 	ExitKwSelect(c *KwSelectContext)

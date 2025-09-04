@@ -1536,6 +1536,12 @@ func (s *BaseCqlParserListener) EnterKwRoles(ctx *KwRolesContext) {}
 // ExitKwRoles is called when production kwRoles is exited.
 func (s *BaseCqlParserListener) ExitKwRoles(ctx *KwRolesContext) {}
 
+// EnterKwSchema is called when production kwSchema is entered.
+func (s *BaseCqlParserListener) EnterKwSchema(ctx *KwSchemaContext) {}
+
+// ExitKwSchema is called when production kwSchema is exited.
+func (s *BaseCqlParserListener) ExitKwSchema(ctx *KwSchemaContext) {}
+
 // EnterKwSelect is called when production kwSelect is entered.
 func (s *BaseCqlParserListener) EnterKwSelect(ctx *KwSelectContext) {}
 
