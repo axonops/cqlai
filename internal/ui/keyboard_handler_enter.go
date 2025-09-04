@@ -92,7 +92,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		if m.aiConversationInput.Value() == "" {
 			input := textinput.New()
 			input.Placeholder = ""
-			input.Prompt = ""  // Remove the ">" prompt
+			input.Prompt = "> "
 			input.Focus()
 			input.CharLimit = 500
 			input.Width = m.historyViewport.Width - 10

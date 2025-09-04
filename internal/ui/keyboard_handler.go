@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -161,6 +163,9 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			// Scroll conversation down
 			m.aiConversationViewport.ScrollDown(1)
 			return m, nil
+		case tea.KeyF2, tea.KeyF3, tea.KeyF4, tea.KeyF5:
+			// Let function keys pass through to be handled by the main key handler
+			// Fall through to main handler
 		default:
 			// Update the text input
 			var cmd tea.Cmd
@@ -274,12 +279,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// If in AI conversation view, exit it
-		if m.aiConversationActive && m.viewMode == "ai" {
-			m.viewMode = "history"
-			m.input.Placeholder = "Enter CQL command..."
-			return m, nil
-		}
 		// If in multi-line mode, exit it
 		if m.multiLineMode {
 			m.multiLineMode = false
@@ -348,78 +347,87 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handleTabKey()
 
 	case tea.KeyF2:
-		// F2 to toggle showing data types in table headers
-		if m.hasTable && m.viewMode == "table" {
-			m.showDataTypes = !m.showDataTypes
-			// Refresh the table view with new headers
-			if len(m.lastTableData) > 0 {
-				// Update ALL headers in the stored data (not just visible ones)
-				if len(m.columnTypes) > 0 {
-					// Process all columns in the header row
-					for i := 0; i < len(m.lastTableData[0]) && i < len(m.columnTypes); i++ {
-						// Parse the original header to extract base name and key indicators
-						original := m.tableHeaders[i]
-
-						// Remove any existing type info [...]
-						if idx := strings.Index(original, " ["); idx != -1 {
-							if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
-								original = original[:idx] + original[idx+endIdx+1:]
-							}
-						}
-
-						// Extract base name and key indicator
-						baseName := original
-						keyIndicator := ""
-						if strings.HasSuffix(original, " (PK)") {
-							baseName = strings.TrimSuffix(original, " (PK)")
-							keyIndicator = " (PK)"
-						} else if strings.HasSuffix(original, " (C)") {
-							baseName = strings.TrimSuffix(original, " (C)")
-							keyIndicator = " (C)"
-						}
-
-						// Build the new header
-						newHeader := baseName
-						if m.showDataTypes && m.columnTypes[i] != "" {
-							newHeader += " [" + m.columnTypes[i] + "]"
-						}
-						newHeader += keyIndicator
-
-						// Update the actual stored data
-						m.lastTableData[0][i] = newHeader
-					}
-				}
-
-				// Refresh the table display with the updated data
-				tableStr := m.formatTableForViewport(m.lastTableData)
-				m.tableViewport.SetContent(tableStr)
+		// F2 to switch to query/history view
+		if m.viewMode != "history" {
+			m.viewMode = "history"
+			// If in AI conversation mode, also deactivate it
+			if m.aiConversationActive {
+				m.aiConversationActive = false
+				m.aiConversationInput.SetValue("")
+				m.aiProcessing = false
+				m.input.Placeholder = "Enter CQL command..."
+				m.input.SetValue("")
+				m.input.Focus()
 			}
 		}
 		return m, nil
 
 	case tea.KeyF3:
-		// F3 to switch between history and table view
-		if m.hasTable {
-			if m.viewMode == "history" {
-				m.viewMode = "table"
-			} else {
-				m.viewMode = "history"
+		// F3 to switch to table view
+		if m.viewMode != "table" {
+			m.viewMode = "table"
+			// If in AI conversation mode, also deactivate it
+			if m.aiConversationActive {
+				m.aiConversationActive = false
+				m.aiConversationInput.SetValue("")
+				m.aiProcessing = false
+				m.input.Placeholder = "Enter CQL command..."
+				m.input.SetValue("")
+				m.input.Focus()
 			}
 		}
 		return m, nil
 
 	case tea.KeyF4:
-		// F4 to switch to trace view if trace data is available
-		if m.hasTrace {
-			if m.viewMode != "trace" {
-				m.viewMode = "trace"
-			} else {
-				// Toggle back to history or table view
-				if m.hasTable {
-					m.viewMode = "table"
-				} else {
-					m.viewMode = "history"
+		// F4 to switch to trace view
+		if m.viewMode != "trace" {
+			m.viewMode = "trace"
+			// If in AI conversation mode, also deactivate it
+			if m.aiConversationActive {
+				m.aiConversationActive = false
+				m.aiConversationInput.SetValue("")
+				m.aiProcessing = false
+				m.input.Placeholder = "Enter CQL command..."
+				m.input.SetValue("")
+				m.input.Focus()
+			}
+		}
+		return m, nil
+
+	case tea.KeyF5:
+		// F5 to switch to AI view
+		if m.viewMode != "ai" {
+			m.viewMode = "ai"
+			m.aiConversationActive = true
+			
+			// Initialize AI conversation input if not initialized
+			// Check if Width is 0 as a proxy for uninitialized state
+			if m.aiConversationInput.Width == 0 {
+				input := textinput.New()
+				input.Placeholder = ""
+				input.Prompt = "> "
+				input.CharLimit = 500
+				input.Width = m.historyViewport.Width - 10
+				input.Focus()
+				m.aiConversationInput = input
+				
+				// Initialize conversation viewport if needed
+				if m.aiConversationViewport.Width == 0 {
+					m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
 				}
+			} else {
+				// If already initialized, just clear and focus
+				m.aiConversationInput.SetValue("")
+				m.aiConversationInput.Focus()
+			}
+			
+			// Initialize AI conversation history if empty
+			if m.aiConversationHistory == "" {
+				m.aiConversationHistory = m.styles.AccentText.Render("🤖 AI Assistant") + "\n" + 
+					m.styles.MutedText.Render("────────────────────") + "\n\n" +
+					m.styles.MutedText.Render("Type your message below and press Enter to chat with the AI assistant.") + "\n" +
+					m.styles.MutedText.Render("You can ask questions about your database, request CQL queries, or get help with Cassandra.") + "\n"
+				m.aiConversationViewport.SetContent(m.aiConversationHistory)
 			}
 		}
 		return m, nil
