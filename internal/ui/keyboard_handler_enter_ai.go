@@ -30,7 +30,7 @@ func (m *MainModel) handleAICommand(command string) (*MainModel, tea.Cmd) {
 
 	// Add command to history
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-	m.historyViewport.SetContent(m.fullHistoryContent)
+	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 
 	// Extract the natural language request
@@ -38,7 +38,7 @@ func (m *MainModel) handleAICommand(command string) (*MainModel, tea.Cmd) {
 	if userRequest == "" {
 		// Show error for empty request
 		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: Please provide a request after .ai")
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		m.input.Reset()
 		return m, nil

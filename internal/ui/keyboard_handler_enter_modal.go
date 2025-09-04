@@ -39,7 +39,7 @@ func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
 
 		// Add command to full history and viewport
 		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 
 		// Handle different result types
@@ -55,7 +55,7 @@ func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
 
 		// Add cancellation message to history
 		m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Command cancelled.")
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		return m, nil
 	}

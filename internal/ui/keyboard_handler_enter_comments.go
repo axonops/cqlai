@@ -14,7 +14,7 @@ func (m *MainModel) handleCommentLine(command string) (*MainModel, tea.Cmd) {
 	m.input.Reset()
 	// Add to history to show it was entered
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-	m.historyViewport.SetContent(m.fullHistoryContent)
+	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 	// Process the comment (router will strip it)
 	_ = router.ProcessCommand(command, m.session)
@@ -28,7 +28,7 @@ func (m *MainModel) handleBlockComment(command string) (*MainModel, tea.Cmd) {
 		// Single-line block comment - complete
 		m.input.Reset()
 		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		_ = router.ProcessCommand(command, m.session)
 		return m, nil
@@ -58,7 +58,7 @@ func (m *MainModel) handleMultiLineBlockComment(command string) (*MainModel, tea
 		for _, line := range strings.Split(fullComment, "\n") {
 			m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+line)
 		}
-		m.historyViewport.SetContent(m.fullHistoryContent)
+		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		
 		// Process (will be stripped as comment)
