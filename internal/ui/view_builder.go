@@ -221,12 +221,23 @@ func (m *MainModel) View() string {
 	}
 
 	// Build the input section
-	inputSection := m.input.View()
-
-	// If in multi-line mode, show the buffered lines above the input
-	if m.multiLineMode && len(m.multiLineBuffer) > 0 {
-		bufferedLines := m.styles.MutedText.Render("... " + strings.Join(m.multiLineBuffer, "\n... "))
-		inputSection = bufferedLines + "\n" + inputSection
+	var inputSection string
+	if m.viewMode == "ai" && m.aiConversationActive {
+		// Use AI conversation input
+		if m.aiProcessing {
+			inputSection = m.styles.MutedText.Render("Processing... ")
+		} else {
+			inputSection = m.aiConversationInput.View()
+		}
+	} else {
+		// Use regular input
+		inputSection = m.input.View()
+		
+		// If in multi-line mode, show the buffered lines above the input
+		if m.multiLineMode && len(m.multiLineBuffer) > 0 {
+			bufferedLines := m.styles.MutedText.Render("... " + strings.Join(m.multiLineBuffer, "\n... "))
+			inputSection = bufferedLines + "\n" + inputSection
+		}
 	}
 
 	// Function key hints are now shown in the status bar
@@ -237,8 +248,9 @@ func (m *MainModel) View() string {
 
 	switch {
 	case m.viewMode == "ai" && m.aiConversationActive:
-		// Render AI conversation view and return early (it includes its own input and status)
-		return m.renderAIConversationView()
+		// For AI view, just get the viewport content
+		viewportWidth = m.aiConversationViewport.Width
+		viewportContent = m.aiConversationViewport.View()
 	case m.viewMode == "trace":
 		viewportWidth = m.historyViewport.Width
 		if m.hasTrace {
@@ -273,6 +285,10 @@ func (m *MainModel) View() string {
 
 	// Always show the top bar
 	topBar := m.topBar.View(viewportWidth, m.styles, m.viewMode)
+	if topBar == "" {
+		// Ensure top bar is never empty
+		topBar = " " // At least one space to maintain layout
+	}
 
 	// Build the viewport section with sticky header for tables
 	var viewportSection string
@@ -380,29 +396,22 @@ func (m *MainModel) View() string {
 		layerManager.AddLayer(layer)
 	}
 
+	// If AI CQL modal is showing, add as a layer
+	if m.aiCQLModal != nil && m.aiCQLModal.Active {
+		content := m.aiCQLModal.Render(screenWidth, screenHeight, m.styles)
+		// The modal renders as a full overlay, so we return it directly
+		return content
+	}
+
+	// If AI selection modal is showing, add as a layer
+	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
+		content := m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
+		// The modal renders as a full overlay, so we return it directly
+		return content
+	}
+
 	// Apply all layers to the final view
 	finalView = layerManager.Render(finalView)
-
-	// Note: AI info request now uses a full-screen view mode instead of modal
-	// It's handled in the viewport switch statement above
-
-	// If AI selection modal is showing, render it as an overlay
-	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
-		// Use the actual window dimensions
-		screenWidth := m.windowWidth
-		screenHeight := m.windowHeight
-		if screenWidth == 0 {
-			// Fallback if window dimensions not yet set
-			screenWidth = viewportWidth
-		}
-		if screenHeight == 0 {
-			// Fallback if window dimensions not yet set
-			screenHeight = m.historyViewport.Height + 3
-		}
-
-		// Render the selection modal overlay
-		return m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
-	}
 
 	// If modal is showing, render it as an overlay
 	if m.modal.Type != ModalNone {
