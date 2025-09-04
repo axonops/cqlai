@@ -27,8 +27,28 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 	// Store column widths for sticky header alignment
 	m.columnWidths = colWidths
 
-	// Build the full table
-	fullLines := m.buildFullTable(data, colWidths)
+	// Check if any cell has multi-line content
+	hasMultiLine := false
+	for _, row := range data {
+		for _, cell := range row {
+			if strings.Contains(cell, "\n") || len([]rune(stripAnsi(cell))) > 80 {
+				hasMultiLine = true
+				break
+			}
+		}
+		if hasMultiLine {
+			break
+		}
+	}
+
+	var fullLines []string
+	if hasMultiLine {
+		// Use multi-line capable table builder
+		fullLines = m.buildFullTableMultiline(data, colWidths)
+	} else {
+		// Use regular table builder for better performance on simple tables
+		fullLines = m.buildFullTable(data, colWidths)
+	}
 
 	// Calculate total table width
 	if len(fullLines) > 0 {

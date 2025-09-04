@@ -35,6 +35,11 @@ func (v *CqlCommandVisitorImpl) VisitDescribeCommand(ctx *grammar.DescribeComman
 		return v.describeAggregates()
 	}
 
+	// DESCRIBE SCHEMA
+	if ctx.KwSchema() != nil {
+		return v.describeSchema()
+	}
+
 	// DESCRIBE TABLE [keyspace.]table
 	if ctx.KwTable() != nil && ctx.Table() != nil {
 		tableName := ctx.Table().GetText()
@@ -93,5 +98,5 @@ func (v *CqlCommandVisitorImpl) VisitDescribeCommand(ctx *grammar.DescribeComman
 		return v.describeAggregate(aggregateName)
 	}
 
-	return "DESCRIBE command not yet implemented for this object. Supported: KEYSPACES, TABLES, CLUSTER, TABLE <name>, KEYSPACE <name>, TYPES, FUNCTIONS, INDEX <name>, VIEW <name>, TYPE <name>, FUNCTION <name>, AGGREGATES, AGGREGATE <name>"
+	return "DESCRIBE command not yet implemented for this object. Supported: KEYSPACES, TABLES, CLUSTER, SCHEMA, TABLE <name>, KEYSPACE <name>, TYPES, FUNCTIONS, INDEX <name>, VIEW <name>, TYPE <name>, FUNCTION <name>, AGGREGATES, AGGREGATE <name>"
 }

@@ -3,15 +3,15 @@ package ui
 import (
 	"fmt"
 	"time"
-	
+
 	"github.com/charmbracelet/lipgloss"
 )
 
 // TopBarModel is the Bubble Tea model for the top status bar.
 type TopBarModel struct {
-	LastCommand string
-	QueryTime   time.Duration
-	RowCount    int
+	LastCommand  string
+	QueryTime    time.Duration
+	RowCount     int
 	HasQueryData bool
 }
 
@@ -25,20 +25,20 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	// Define component styles
 	labelStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#888888"))
-	
+
 	commandStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#00D7FF")).
 		Bold(true)
-	
+
 	queryTimeStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#87FF00"))
-	
+
 	rowCountStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFD700"))
-	
+
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
-	
+
 	modeStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF87FF")).
 		Bold(true)
@@ -53,7 +53,7 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	case "trace":
 		modeText = "TRACE"
 	default:
-		modeText = "HISTORY"
+		modeText = "CQL"
 	}
 	content := labelStyle.Render("Mode: ") + modeStyle.Render(modeText)
 
@@ -61,7 +61,7 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	if m.LastCommand != "" {
 		content += separatorStyle.Render(" │ ") +
 			labelStyle.Render("Last: ") + commandStyle.Render(m.LastCommand)
-		
+
 		if m.HasQueryData {
 			content += separatorStyle.Render(" │ ") +
 				labelStyle.Render("Query: ") + queryTimeStyle.Render(fmt.Sprintf("%v", m.QueryTime.Round(time.Millisecond))) +
