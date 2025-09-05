@@ -95,14 +95,10 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	
 	boxContentWidth := boxWidth - 6 // Account for border and arrow
 	
-	// Define consistent background color for the modal
-	bgColor := lipgloss.Color("#2D2D2D")
-	
-	// Create the modal style WITHOUT width - let content determine size
+	// Create the modal style WITHOUT width or background - let content determine size
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.Accent).
-		Background(bgColor)
+		BorderForeground(styles.Accent)
 	
 	// Build the content
 	var content []string
@@ -116,14 +112,12 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	}
 	titleStyle := lipgloss.NewStyle().
 		Foreground(styles.Accent).
-		Bold(true).
-		Background(bgColor)
+		Bold(true)
 	content = append(content, titleStyle.Render(titleText))
 	
 	// Search query
 	queryStyle := lipgloss.NewStyle().
-		Foreground(styles.AccentText.GetForeground()).
-		Background(bgColor)
+		Foreground(styles.AccentText.GetForeground())
 	queryDisplay := hsm.query
 	if queryDisplay == "" {
 		queryDisplay = "(type to search)"
@@ -139,7 +133,6 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	if len(hsm.results) == 0 {
 		noResultsStyle := lipgloss.NewStyle().
 			Foreground(styles.MutedText.GetForeground()).
-			Background(bgColor).
 			Italic(true)
 		noResultsText := "No matching commands"
 		padding := (boxWidth - len(noResultsText)) / 2
@@ -158,8 +151,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 		// Show scroll up indicator if not at top
 		if hsm.scrollOffset > 0 {
 			scrollStyle := lipgloss.NewStyle().
-				Foreground(styles.MutedText.GetForeground()).
-				Background(bgColor)
+				Foreground(styles.MutedText.GetForeground())
 			scrollText := "▲ (more)"
 			padding := (boxWidth - len(scrollText)) / 2
 			if padding > 0 {
@@ -172,7 +164,6 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 		if len(hsm.results) > hsm.maxShow {
 			countStyle := lipgloss.NewStyle().
 				Foreground(styles.MutedText.GetForeground()).
-				Background(bgColor).
 				Italic(true)
 			countText := fmt.Sprintf("Showing %d-%d of %d matches", 
 				hsm.scrollOffset+1, endIndex, len(hsm.results))
@@ -194,7 +185,6 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 				// Selected item with arrow
 				itemStyle := lipgloss.NewStyle().
 					Foreground(styles.Accent).
-					Background(bgColor).
 					Bold(true)
 				itemText := " → " + displayText
 				// Pad to width
@@ -205,8 +195,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 			} else {
 				// Regular item
 				itemStyle := lipgloss.NewStyle().
-					Foreground(styles.MutedText.GetForeground()).
-					Background(bgColor)
+					Foreground(styles.MutedText.GetForeground())
 				itemText := "   " + displayText  // 3 spaces to align with arrow
 				// Pad to width
 				if len(itemText) < boxWidth {
@@ -220,8 +209,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 		// Show scroll down indicator if not at bottom
 		if endIndex < len(hsm.results) {
 			scrollDownStyle := lipgloss.NewStyle().
-				Foreground(styles.MutedText.GetForeground()).
-				Background(bgColor)
+				Foreground(styles.MutedText.GetForeground())
 			scrollDownText := "▼ (more)"
 			downPadding := (boxWidth - len(scrollDownText)) / 2
 			if downPadding > 0 {
@@ -234,7 +222,6 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
-		Background(bgColor).
 		Italic(true)
 	instructionText := "↑↓: Navigate • Enter: Select • Esc: Cancel"
 	instrPadding := (boxWidth - len(instructionText)) / 2

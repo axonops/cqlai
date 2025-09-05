@@ -370,7 +370,7 @@ func (m *MainModel) getWelcomeMessage() string {
 	// Welcome banner
 	welcome.WriteString(m.styles.AccentText.Bold(true).Render("╔═══════════════════════════════════════════════════════╗"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.AccentText.Bold(true).Render("║            Welcome to CQLAI by AxonOps                ║"))
+	welcome.WriteString(m.styles.AccentText.Bold(true).Render("║                  Welcome to CQLAI                     ║"))
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.AccentText.Bold(true).Render("╚═══════════════════════════════════════════════════════╝"))
 	welcome.WriteString("\n\n")

@@ -8,6 +8,7 @@ import (
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -38,6 +39,16 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	}
 
 	command := strings.TrimSpace(m.input.Value())
+	
+	// In multi-line mode, check if this is a repeat Enter press (user pressed Enter without changing input)
+	if m.multiLineMode && len(m.multiLineBuffer) > 0 {
+		lastEntry := m.multiLineBuffer[len(m.multiLineBuffer)-1]
+		if command == lastEntry && command != "" {
+			// User pressed Enter again without changing the input - treat as empty line
+			// User pressed Enter again without changing the input - treat as empty line
+			command = ""
+		}
+	}
 
 	// Note: We removed the follow-up mode check here since we're now handling
 	// follow-up questions within the modal itself
@@ -59,9 +70,6 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	// Process the command from input (unless we're executing an AI command)
 	{
-		inputText := m.input.Value()
-		command = strings.TrimSpace(inputText)
-		
 		// Check if this is just a comment line
 		if strings.HasPrefix(command, "--") || strings.HasPrefix(command, "//") {
 			return m.handleCommentLine(command)
@@ -87,7 +95,9 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	// Check if this is a CQL statement (not a meta command)
 	upperCommand := strings.ToUpper(strings.TrimSpace(command))
-	isCQLStatement := !strings.HasPrefix(upperCommand, "DESCRIBE") &&
+	// Empty commands in multi-line mode should be treated as CQL to continue multi-line input
+	isCQLStatement := (command == "" && m.multiLineMode) ||
+		(!strings.HasPrefix(upperCommand, "DESCRIBE") &&
 		!strings.HasPrefix(upperCommand, "DESC ") &&
 		!strings.HasPrefix(upperCommand, "CONSISTENCY") &&
 		!strings.HasPrefix(upperCommand, "OUTPUT") &&
@@ -101,7 +111,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		!strings.HasPrefix(upperCommand, "CLEAR") &&
 		!strings.HasPrefix(upperCommand, "CLS") &&
 		!strings.HasPrefix(upperCommand, "EXIT") &&
-		!strings.HasPrefix(upperCommand, "QUIT")
+		!strings.HasPrefix(upperCommand, "QUIT"))
 
 	// For CQL statements, check for semicolon (skip for AI-generated commands)
 	if isCQLStatement {
@@ -112,13 +122,20 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				m.multiLineBuffer = []string{command}
 				m.input.Placeholder = "... (multi-line mode, end with ;)"
 			} else {
-				// Add to buffer
+				// Add to buffer (including empty lines for proper formatting)
 				m.multiLineBuffer = append(m.multiLineBuffer, command)
 			}
-			m.input.Reset()
-
-			// Update the prompt to show we're in multi-line mode
-			m.input.SetValue("")
+			// Create a new empty textinput to ensure it's properly reset
+			newInput := textinput.New()
+			newInput.Placeholder = m.input.Placeholder
+			newInput.CharLimit = m.input.CharLimit
+			newInput.Width = m.input.Width
+			newInput.Prompt = m.input.Prompt
+			newInput.PromptStyle = m.input.PromptStyle
+			newInput.PlaceholderStyle = m.input.PlaceholderStyle
+			newInput.Focus()
+			m.input = newInput
+			
 			return m, nil
 		} else if m.multiLineMode {
 			// We have a semicolon and we're in multi-line mode

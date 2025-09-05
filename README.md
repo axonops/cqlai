@@ -4,10 +4,17 @@
 
 **CQLAI** is a fast, portable, and AI-enhanced interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, natural language query generation, client-side command parsing, and enhanced productivity features.
 
-The original cqlsh command is written in Python, which requires a Python installation on the system. The idea behind CQLAI is that it is a single executable binary with no external dependencies, which makes it easier to deploy in all environments.
+The original cqlsh command is written in Python which requires Python to be installed on the system. cqlai is compiled to a single execuable binary, requiring no external dependencies. This project provides binaries for the following platforms:
+
+- Linux x86-64
+- macOS x86-64
+- Windows x86-64
+- Linux aarch64
+- macOS arm64
 
 
-It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the terminal UI, and uses [ANTLR](https://www.antlr.org/) for robust meta-command parsing.
+It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the beautiful terminal UI, and uses [ANTLR](https://www.antlr.org/) for robust meta-command parsing. A big shout out to the cassandra gocql driver team for implementing the latest Cassandra functionalities [gocql](https://github.com/apache/cassandra-gocql-driver)
+
 
 ---
 

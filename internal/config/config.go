@@ -19,6 +19,7 @@ type Config struct {
 	Password            string          `json:"password"`
 	RequireConfirmation bool            `json:"requireConfirmation,omitempty"`
 	PageSize            int             `json:"pageSize,omitempty"`
+	MaxMemoryMB         int             `json:"maxMemoryMB,omitempty"`         // Max memory for results in MB (default: 10)
 	ConnectTimeout      int             `json:"connectTimeout,omitempty"`      // Connection timeout in seconds
 	RequestTimeout      int             `json:"requestTimeout,omitempty"`      // Request timeout in seconds
 	Debug               bool            `json:"debug,omitempty"`               // Enable debug logging
@@ -74,8 +75,9 @@ const (
 // LoadConfig loads configuration from file and environment variables
 func LoadConfig() (*Config, error) {
 	config := &Config{
-		Host: "localhost",
-		Port: 9042,
+		Host:        "localhost",
+		Port:        9042,
+		MaxMemoryMB: 10, // Default to 10MB if not specified
 	}
 
 	// First, try to load CQLSHRC file
@@ -168,6 +170,13 @@ func OverrideWithEnvVars(config *Config) {
 	if pageSize := os.Getenv("CQLAI_PAGE_SIZE"); pageSize != "" {
 		if p, err := strconv.Atoi(pageSize); err == nil && p > 0 {
 			config.PageSize = p
+		}
+	}
+
+	// Max memory limit setting
+	if maxMemory := os.Getenv("CQLAI_MAX_MEMORY_MB"); maxMemory != "" {
+		if m, err := strconv.Atoi(maxMemory); err == nil && m > 0 {
+			config.MaxMemoryMB = m
 		}
 	}
 

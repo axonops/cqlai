@@ -38,8 +38,12 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	logger.DebugfToFile("HandleEnterKey", "Headers: %v", v.Headers)
 	logger.DebugfToFile("HandleEnterKey", "ColumnNames: %v", v.ColumnNames)
 
-	// Initialize sliding window (10MB memory limit, 10000 rows max)
-	m.slidingWindow = NewSlidingWindowTable(10000, 10)
+	// Initialize sliding window with configured memory limit
+	maxMemoryMB := 10 // default
+	if m.config != nil && m.config.MaxMemoryMB > 0 {
+		maxMemoryMB = m.config.MaxMemoryMB
+	}
+	m.slidingWindow = NewSlidingWindowTable(10000, maxMemoryMB)
 	m.slidingWindow.Headers = v.Headers
 	m.slidingWindow.ColumnNames = v.ColumnNames
 	m.slidingWindow.ColumnTypes = v.ColumnTypes
