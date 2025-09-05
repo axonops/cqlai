@@ -267,6 +267,12 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 			return m, nil
 		case tea.KeyUp:
+			// Check for Alt modifier first for scrolling
+			if msg.Alt {
+				// Scroll conversation up by one line
+				m.aiConversationViewport.YOffset = max(0, m.aiConversationViewport.YOffset-1)
+				return m, nil
+			}
 			// Navigate AI command history (not CQL history)
 			if len(m.aiCommandHistory) > 0 {
 				if m.aiHistoryIndex == -1 {
@@ -280,6 +286,13 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 			return m, nil
 		case tea.KeyDown:
+			// Check for Alt modifier first for scrolling
+			if msg.Alt {
+				// Scroll conversation down by one line
+				maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height)
+				m.aiConversationViewport.YOffset = min(maxOffset, m.aiConversationViewport.YOffset+1)
+				return m, nil
+			}
 			// Navigate AI command history (not CQL history)
 			if m.aiHistoryIndex != -1 {
 				if m.aiHistoryIndex < len(m.aiCommandHistory)-1 {
@@ -293,11 +306,11 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 			return m, nil
 		case tea.KeyPgUp:
-			// Scroll conversation up
+			// Scroll conversation up by multiple lines
 			m.aiConversationViewport.ScrollUp(3)
 			return m, nil
 		case tea.KeyPgDown:
-			// Scroll conversation down
+			// Scroll conversation down by multiple lines
 			m.aiConversationViewport.ScrollDown(3)
 			return m, nil
 		case tea.KeyF2, tea.KeyF3, tea.KeyF4, tea.KeyF5:

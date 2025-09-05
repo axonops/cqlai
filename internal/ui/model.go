@@ -77,6 +77,7 @@ type MainModel struct {
 	fullHistoryContent       string // Full history content (not limited by viewport)
 	session                  *db.Session
 	sessionManager           *session.Manager // Application state manager
+	config                   *config.Config   // Full configuration
 	aiConfig                 *config.AIConfig // AI configuration
 	styles                   *Styles
 	ready                    bool
@@ -329,6 +330,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		input:                     ti,
 		session:                   dbSession,
 		sessionManager:            sessionMgr,
+		config:                    cfg,
 		aiConfig:                  cfg.AI,
 		styles:                    styles,
 		commandHistory:            commandHistory,

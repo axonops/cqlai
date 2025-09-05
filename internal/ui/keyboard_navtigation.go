@@ -18,30 +18,77 @@ func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-
-	// Scroll the appropriate viewport
-	var cmd tea.Cmd
+	// Scroll by 80% of viewport height to maintain context
+	scrollAmount := 0
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		m.traceViewport, cmd = m.traceViewport.Update(msg)
+		scrollAmount = int(float64(m.traceViewport.Height) * 0.8)
+		if scrollAmount < 1 {
+			scrollAmount = 1
+		}
+		newOffset := m.traceViewport.YOffset - scrollAmount
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		m.traceViewport.YOffset = newOffset
 	case m.viewMode == "table" && m.hasTable:
-		m.tableViewport, cmd = m.tableViewport.Update(msg)
+		scrollAmount = int(float64(m.tableViewport.Height) * 0.8)
+		if scrollAmount < 1 {
+			scrollAmount = 1
+		}
+		newOffset := m.tableViewport.YOffset - scrollAmount
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		m.tableViewport.YOffset = newOffset
 	default:
-		m.historyViewport, cmd = m.historyViewport.Update(msg)
+		scrollAmount = int(float64(m.historyViewport.Height) * 0.8)
+		if scrollAmount < 1 {
+			scrollAmount = 1
+		}
+		newOffset := m.historyViewport.YOffset - scrollAmount
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		m.historyViewport.YOffset = newOffset
 	}
-	return m, cmd
+	return m, nil
 }
 
 // handlePageDown handles PageDown key press
 func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
-	// Scroll the appropriate viewport
-	var cmd tea.Cmd
+	// Scroll by 80% of viewport height to maintain context
+	scrollAmount := 0
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		m.traceViewport, cmd = m.traceViewport.Update(msg)
+		scrollAmount = int(float64(m.traceViewport.Height) * 0.8)
+		if scrollAmount < 1 {
+			scrollAmount = 1
+		}
+		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		newOffset := m.traceViewport.YOffset + scrollAmount
+		if newOffset > maxOffset {
+			newOffset = maxOffset
+		}
+		m.traceViewport.YOffset = newOffset
 	case m.viewMode == "table" && m.hasTable:
-		m.tableViewport, cmd = m.tableViewport.Update(msg)
+		scrollAmount = int(float64(m.tableViewport.Height) * 0.8)
+		if scrollAmount < 1 {
+			scrollAmount = 1
+		}
+		maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		newOffset := m.tableViewport.YOffset + scrollAmount
+		if newOffset > maxOffset {
+			newOffset = maxOffset
+		}
+		m.tableViewport.YOffset = newOffset
 
 		// Check if we need to load more data
 		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
@@ -117,9 +164,21 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		}
 	default:
-		m.historyViewport, cmd = m.historyViewport.Update(msg)
+		scrollAmount = int(float64(m.historyViewport.Height) * 0.8)
+		if scrollAmount < 1 {
+			scrollAmount = 1
+		}
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		newOffset := m.historyViewport.YOffset + scrollAmount
+		if newOffset > maxOffset {
+			newOffset = maxOffset
+		}
+		m.historyViewport.YOffset = newOffset
 	}
-	return m, cmd
+	return m, nil
 }
 
 // handleUpArrow handles Up arrow key press

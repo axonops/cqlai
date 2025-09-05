@@ -44,6 +44,7 @@ func (m *MainModel) handleBlockComment(command string) (*MainModel, tea.Cmd) {
 }
 
 // handleMultiLineBlockComment handles ending a multi-line block comment
+// Returns nil, nil if not handling a block comment
 func (m *MainModel) handleMultiLineBlockComment(command string) (*MainModel, tea.Cmd) {
 	if strings.HasPrefix(m.multiLineBuffer[0], "/*") && strings.Contains(command, "*/") {
 		// End of multi-line block comment
@@ -65,5 +66,6 @@ func (m *MainModel) handleMultiLineBlockComment(command string) (*MainModel, tea
 		_ = router.ProcessCommand(fullComment, m.session)
 		return m, nil
 	}
-	return m, nil
+	// Not a block comment - return nil to indicate no handling
+	return nil, nil
 }
