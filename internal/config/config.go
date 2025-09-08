@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // Config holds the application configuration
@@ -74,21 +76,33 @@ const (
 
 // LoadConfig loads configuration from file and environment variables
 func LoadConfig() (*Config, error) {
+	logger.DebugfToFile("Config", "Starting LoadConfig")
+	
 	config := &Config{
 		Host:        "localhost",
 		Port:        9042,
 		MaxMemoryMB: 10, // Default to 10MB if not specified
 	}
+	
+	logger.DebugfToFile("Config", "Default config initialized: host=%s, port=%d", config.Host, config.Port)
 
 	// First, try to load CQLSHRC file
 	cqlshrcPaths := []string{
 		filepath.Join(os.Getenv("HOME"), ".cassandra", "cqlshrc"),
 		filepath.Join(os.Getenv("HOME"), ".cqlshrc"),
 	}
+	
+	logger.DebugfToFile("Config", "Looking for cqlshrc files in: %v", cqlshrcPaths)
 
 	for _, path := range cqlshrcPaths {
+		logger.DebugfToFile("Config", "Attempting to load cqlshrc from: %s", path)
 		if err := loadCQLSHRC(path, config); err == nil {
+			logger.DebugfToFile("Config", "Successfully loaded cqlshrc from: %s", path)
+			logger.DebugfToFile("Config", "Config after cqlshrc: host=%s, port=%d, username=%s, keyspace=%s", 
+				config.Host, config.Port, config.Username, config.Keyspace)
 			break
+		} else {
+			logger.DebugfToFile("Config", "Failed to load cqlshrc from %s: %v", path, err)
 		}
 	}
 
@@ -99,27 +113,40 @@ func LoadConfig() (*Config, error) {
 		filepath.Join(os.Getenv("HOME"), ".config", "cqlai", "config.json"),
 		"/etc/cqlai/config.json",
 	}
+	
+	logger.DebugfToFile("Config", "Looking for JSON config files in: %v", configPaths)
 
 	var configData []byte
 	var err error
 	var foundPath string
 
 	for _, path := range configPaths {
+		logger.DebugfToFile("Config", "Checking JSON config at: %s", path)
 		configData, err = os.ReadFile(path) // #nosec G304 - Config file path is validated
 		if err == nil {
 			foundPath = path
+			logger.DebugfToFile("Config", "Found JSON config at: %s", path)
 			break
+		} else {
+			logger.DebugfToFile("Config", "No JSON config at %s: %v", path, err)
 		}
 	}
 
 	if foundPath != "" {
 		if err := json.Unmarshal(configData, config); err != nil {
+			logger.DebugfToFile("Config", "Failed to parse JSON config %s: %v", foundPath, err)
 			return nil, fmt.Errorf("error parsing config file %s: %w", foundPath, err)
 		}
+		logger.DebugfToFile("Config", "Config after JSON: host=%s, port=%d, username=%s, keyspace=%s", 
+			config.Host, config.Port, config.Username, config.Keyspace)
 	}
 
 	// Override with environment variables
+	logger.DebugfToFile("Config", "Applying environment variable overrides")
 	OverrideWithEnvVars(config)
+	
+	logger.DebugfToFile("Config", "Final config: host=%s, port=%d, username=%s, keyspace=%s, hasPassword=%v", 
+		config.Host, config.Port, config.Username, config.Keyspace, config.Password != "")
 
 	return config, nil
 }
@@ -314,18 +341,30 @@ func ParseOutputFormat(format string) (OutputFormat, error) {
 
 // loadCQLSHRC loads configuration from a CQLSHRC file
 func loadCQLSHRC(path string, config *Config) error {
+	logger.DebugfToFile("CQLSHRC", "Attempting to open file: %s", path)
+	
 	file, err := os.Open(path) // #nosec G304 - Config file path is validated
 	if err != nil {
+		logger.DebugfToFile("CQLSHRC", "Failed to open file %s: %v", path, err)
 		return err
 	}
 	defer file.Close()
+	
+	logger.DebugfToFile("CQLSHRC", "Successfully opened file: %s", path)
 
 	scanner := bufio.NewScanner(file)
 	currentSection := ""
 	var credentialsPath string
+	lineNum := 0
 
 	for scanner.Scan() {
+		lineNum++
 		line := strings.TrimSpace(scanner.Text())
+		
+		// Log non-empty, non-comment lines
+		if line != "" && !strings.HasPrefix(line, ";") && !strings.HasPrefix(line, "#") {
+			logger.DebugfToFile("CQLSHRC", "Line %d: %s", lineNum, line)
+		}
 
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
@@ -335,12 +374,14 @@ func loadCQLSHRC(path string, config *Config) error {
 		// Check for section headers
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			currentSection = strings.ToLower(strings.Trim(line, "[]"))
+			logger.DebugfToFile("CQLSHRC", "Entering section: %s", currentSection)
 			continue
 		}
 
 		// Parse key-value pairs
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
+			logger.DebugfToFile("CQLSHRC", "Skipping invalid line %d (no '=' found): %s", lineNum, line)
 			continue
 		}
 
@@ -352,6 +393,8 @@ func loadCQLSHRC(path string, config *Config) error {
 			(value[0] == '\'' && value[len(value)-1] == '\'')) {
 			value = value[1 : len(value)-1]
 		}
+		
+		logger.DebugfToFile("CQLSHRC", "Section [%s], key=%s, value=%s", currentSection, key, value)
 
 		// Map CQLSHRC values to config
 		switch currentSection {
@@ -359,9 +402,13 @@ func loadCQLSHRC(path string, config *Config) error {
 			switch key {
 			case "hostname":
 				config.Host = value
+				logger.DebugfToFile("CQLSHRC", "Set host to: %s", value)
 			case "port":
 				if port, err := strconv.Atoi(value); err == nil {
 					config.Port = port
+					logger.DebugfToFile("CQLSHRC", "Set port to: %d", port)
+				} else {
+					logger.DebugfToFile("CQLSHRC", "Failed to parse port value: %s", value)
 				}
 			case "ssl":
 				if value == "true" || value == "1" {
@@ -369,14 +416,23 @@ func loadCQLSHRC(path string, config *Config) error {
 						config.SSL = &SSLConfig{}
 					}
 					config.SSL.Enabled = true
+					logger.DebugfToFile("CQLSHRC", "SSL enabled")
 				}
 			}
 		case "authentication":
 			switch key {
 			case "credentials":
 				credentialsPath = value
+				logger.DebugfToFile("CQLSHRC", "Found credentials file path: %s", value)
 			case "keyspace":
 				config.Keyspace = value
+				logger.DebugfToFile("CQLSHRC", "Set keyspace to: %s", value)
+			case "username":
+				config.Username = value
+				logger.DebugfToFile("CQLSHRC", "Set username to: %s", value)
+			case "password":
+				config.Password = value
+				logger.DebugfToFile("CQLSHRC", "Set password (hidden)")
 			}
 		case "auth_provider":
 			if config.AuthProvider == nil {
@@ -385,12 +441,16 @@ func loadCQLSHRC(path string, config *Config) error {
 			switch key {
 			case "module":
 				config.AuthProvider.Module = value
+				logger.DebugfToFile("CQLSHRC", "Set auth module to: %s", value)
 			case "classname":
 				config.AuthProvider.ClassName = value
+				logger.DebugfToFile("CQLSHRC", "Set auth classname to: %s", value)
 			case "username":
 				config.Username = value
-				// Note: password is typically not stored in cqlshrc for security reasons
-				// It's usually in a separate credentials file or provided via prompt
+				logger.DebugfToFile("CQLSHRC", "Set username to: %s", value)
+			case "password":
+				config.Password = value
+				logger.DebugfToFile("CQLSHRC", "Set password (hidden)")
 			}
 		case "ssl":
 			if config.SSL == nil {
@@ -403,19 +463,23 @@ func loadCQLSHRC(path string, config *Config) error {
 					value = filepath.Join(os.Getenv("HOME"), value[1:])
 				}
 				config.SSL.CAPath = value
+				logger.DebugfToFile("CQLSHRC", "Set CA path to: %s", value)
 			case "userkey":
 				if strings.HasPrefix(value, "~") {
 					value = filepath.Join(os.Getenv("HOME"), value[1:])
 				}
 				config.SSL.KeyPath = value
+				logger.DebugfToFile("CQLSHRC", "Set key path to: %s", value)
 			case "usercert":
 				if strings.HasPrefix(value, "~") {
 					value = filepath.Join(os.Getenv("HOME"), value[1:])
 				}
 				config.SSL.CertPath = value
+				logger.DebugfToFile("CQLSHRC", "Set cert path to: %s", value)
 			case "validate":
 				if value == "false" || value == "0" {
 					config.SSL.InsecureSkipVerify = true
+					logger.DebugfToFile("CQLSHRC", "Set InsecureSkipVerify to true")
 				}
 			}
 		}
@@ -423,10 +487,23 @@ func loadCQLSHRC(path string, config *Config) error {
 
 	// If a credentials file was specified, try to load it
 	if credentialsPath != "" {
-		_ = loadCredentialsFile(credentialsPath, config)
+		logger.DebugfToFile("CQLSHRC", "Loading credentials file: %s", credentialsPath)
+		if err := loadCredentialsFile(credentialsPath, config); err != nil {
+			logger.DebugfToFile("CQLSHRC", "Failed to load credentials file: %v", err)
+		} else {
+			logger.DebugfToFile("CQLSHRC", "Successfully loaded credentials file")
+		}
 	}
+	
+	if err := scanner.Err(); err != nil {
+		logger.DebugfToFile("CQLSHRC", "Scanner error: %v", err)
+		return err
+	}
+	
+	logger.DebugfToFile("CQLSHRC", "Finished loading cqlshrc: host=%s, port=%d, username=%s, hasPassword=%v", 
+		config.Host, config.Port, config.Username, config.Password != "")
 
-	return scanner.Err()
+	return nil
 }
 
 // loadCredentialsFile loads username/password from a credentials file
@@ -435,33 +512,44 @@ func loadCQLSHRC(path string, config *Config) error {
 // username = user
 // password = pass
 func loadCredentialsFile(path string, config *Config) error {
+	logger.DebugfToFile("Credentials", "Loading credentials file: %s", path)
+	
 	// Expand ~ to home directory
 	if strings.HasPrefix(path, "~") {
 		path = filepath.Join(os.Getenv("HOME"), path[1:])
+		logger.DebugfToFile("Credentials", "Expanded path to: %s", path)
 	}
 
 	file, err := os.Open(path) // #nosec G304 - Config file path is validated
 	if err != nil {
+		logger.DebugfToFile("Credentials", "Failed to open credentials file %s: %v", path, err)
 		return err
 	}
 	defer file.Close()
+	
+	logger.DebugfToFile("Credentials", "Successfully opened credentials file")
 
 	scanner := bufio.NewScanner(file)
 	inAuthSection := false
+	lineNum := 0
 
 	for scanner.Scan() {
+		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
 			continue
 		}
+		
+		logger.DebugfToFile("Credentials", "Line %d: %s", lineNum, line)
 
 		// Check for section headers
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section := strings.ToLower(strings.Trim(line, "[]"))
 			// Look for PlainTextAuthProvider or similar auth sections
 			inAuthSection = strings.Contains(section, "auth")
+			logger.DebugfToFile("Credentials", "Section [%s], inAuthSection=%v", section, inAuthSection)
 			continue
 		}
 
@@ -472,6 +560,7 @@ func loadCredentialsFile(path string, config *Config) error {
 		// Parse key-value pairs
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
+			logger.DebugfToFile("Credentials", "Skipping invalid line %d (no '=' found): %s", lineNum, line)
 			continue
 		}
 
@@ -487,10 +576,22 @@ func loadCredentialsFile(path string, config *Config) error {
 		switch key {
 		case "username":
 			config.Username = value
+			logger.DebugfToFile("Credentials", "Set username to: %s", value)
 		case "password":
 			config.Password = value
+			logger.DebugfToFile("Credentials", "Set password (hidden)")
+		default:
+			logger.DebugfToFile("Credentials", "Ignoring unknown key: %s", key)
 		}
 	}
+	
+	if err := scanner.Err(); err != nil {
+		logger.DebugfToFile("Credentials", "Scanner error: %v", err)
+		return err
+	}
+	
+	logger.DebugfToFile("Credentials", "Finished loading credentials: username=%s, hasPassword=%v", 
+		config.Username, config.Password != "")
 
-	return scanner.Err()
+	return nil
 }

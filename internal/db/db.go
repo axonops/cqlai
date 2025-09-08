@@ -3,12 +3,10 @@ package db
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +62,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	// Load configuration
 	cfg, err := loadConfig()
 	if err != nil {
+		logger.DebugfToFile("Session", "loadConfig() failed: %v", err)
 		// Use defaults if config file not found
 		cfg = &config.Config{
 			Host:                "127.0.0.1",
@@ -76,28 +75,43 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 				Provider: "mock",
 			},
 		}
+		logger.DebugfToFile("Session", "Using default config: host=%s, port=%d, username=%s", 
+			cfg.Host, cfg.Port, cfg.Username)
+	} else {
+		logger.DebugfToFile("Session", "Loaded config: host=%s, port=%d, username=%s, keyspace=%s, hasPassword=%v", 
+			cfg.Host, cfg.Port, cfg.Username, cfg.Keyspace, cfg.Password != "")
 	}
 
 	// Override config with command-line options if provided
 	if options.Host != "" {
 		cfg.Host = options.Host
+		logger.DebugfToFile("Session", "Overriding host with command-line option: %s", options.Host)
 	}
 	if options.Port != 0 {
 		cfg.Port = options.Port
+		logger.DebugfToFile("Session", "Overriding port with command-line option: %d", options.Port)
 	}
 	if options.Keyspace != "" {
 		cfg.Keyspace = options.Keyspace
+		logger.DebugfToFile("Session", "Overriding keyspace with command-line option: %s", options.Keyspace)
 	}
 	if options.Username != "" {
 		cfg.Username = options.Username
+		logger.DebugfToFile("Session", "Overriding username with command-line option: %s", options.Username)
 	}
 	if options.Password != "" {
 		cfg.Password = options.Password
+		logger.DebugfToFile("Session", "Overriding password with command-line option")
 	}
 	// Override SSL config if provided
 	if options.SSL != nil {
 		cfg.SSL = options.SSL
+		logger.DebugfToFile("Session", "Overriding SSL config with command-line option")
 	}
+	
+	// Log final configuration being used
+	logger.DebugfToFile("Session", "Final config for connection: host=%s:%d, username=%s, keyspace=%s, hasPassword=%v", 
+		cfg.Host, cfg.Port, cfg.Username, cfg.Keyspace, cfg.Password != "")
 
 	// Create cluster configuration
 	cluster := gocql.NewCluster(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port))
@@ -202,23 +216,11 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	return s, nil
 }
 
-// loadConfig loads the configuration from cqlai.json
+// loadConfig loads the configuration from cqlshrc and cqlai.json files
 func loadConfig() (*config.Config, error) {
-	// Look for config file in current directory
-	configPath := "cqlai.json"
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Try home directory
-		home, _ := os.UserHomeDir()
-		configPath = filepath.Join(home, ".cqlai.json")
-	}
-
-	data, err := os.ReadFile(configPath)
+	// Use the proper config.LoadConfig() which handles cqlshrc files
+	conf, err := config.LoadConfig()
 	if err != nil {
-		return nil, err
-	}
-
-	var conf config.Config
-	if err := json.Unmarshal(data, &conf); err != nil {
 		return nil, err
 	}
 
@@ -229,15 +231,9 @@ func loadConfig() (*config.Config, error) {
 		}
 	}
 
-	overrideWithEnvVars(&conf)
-	return &conf, nil
+	return conf, nil
 }
 
-// overrideWithEnvVars overrides the configuration with values from environment variables.
-// Now just delegates to the config package
-func overrideWithEnvVars(conf *config.Config) {
-	config.OverrideWithEnvVars(conf)
-}
 
 // Consistency returns the current consistency level
 func (s *Session) Consistency() string {
