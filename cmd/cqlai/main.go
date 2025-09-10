@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -9,64 +8,95 @@ import (
 	"github.com/axonops/cqlai/internal/batch"
 	"github.com/axonops/cqlai/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/pflag"
 )
 
 func main() {
-	// Parse command-line flags
-	host := flag.String("host", "", "Cassandra host (overrides config)")
-	port := flag.Int("port", 0, "Cassandra port (overrides config)")
-	keyspace := flag.String("keyspace", "", "Default keyspace (overrides config)")
-	username := flag.String("username", "", "Username for authentication (overrides config)")
-	password := flag.String("password", "", "Password for authentication (overrides config)")
-	noConfirm := flag.Bool("no-confirm", false, "Disable confirmation prompts for dangerous commands")
-	connectTimeout := flag.Int("connect-timeout", 10, "Connection timeout in seconds (default: 10, same as cqlsh)")
-	requestTimeout := flag.Int("request-timeout", 10, "Request timeout in seconds (default: 10, same as cqlsh)")
-	debug := flag.Bool("debug", false, "Enable debug logging")
+	// Parse command-line flags using pflag for POSIX/GNU-style flags
+	var (
+		host           string
+		port           int
+		keyspace       string
+		username       string
+		password       string
+		noConfirm      bool
+		connectTimeout int
+		requestTimeout int
+		debug          bool
+		execute        string
+		executeFile    string
+		format         string
+		noHeader       bool
+		fieldSep       string
+		pageSize       int
+		version        bool
+		help           bool
+	)
+
+	// Connection flags
+	pflag.StringVar(&host, "host", "", "Cassandra host (overrides config)")
+	pflag.IntVar(&port, "port", 0, "Cassandra port (overrides config)")
+	pflag.StringVarP(&keyspace, "keyspace", "k", "", "Default keyspace (overrides config)")
+	pflag.StringVarP(&username, "username", "u", "", "Username for authentication (overrides config)")
+	pflag.StringVarP(&password, "password", "p", "", "Password for authentication (overrides config)")
+	pflag.BoolVar(&noConfirm, "no-confirm", false, "Disable confirmation prompts for dangerous commands")
+	pflag.IntVar(&connectTimeout, "connect-timeout", 10, "Connection timeout in seconds")
+	pflag.IntVar(&requestTimeout, "request-timeout", 10, "Request timeout in seconds")
+	pflag.BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	// Batch mode flags (compatible with cqlsh)
-	execute := flag.String("e", "", "Execute CQL statement and exit")
-	executeFile := flag.String("f", "", "Execute CQL from file and exit")
-	format := flag.String("format", "ascii", "Output format: ascii, json, csv, table (default: ascii)")
-	noHeader := flag.Bool("no-header", false, "Don't output column headers (CSV format)")
-	fieldSep := flag.String("field-separator", ",", "Field separator for CSV output")
-	pageSize := flag.Int("page-size", 100, "Pagination size for batch mode (default: 100)")
+	pflag.StringVarP(&execute, "execute", "e", "", "Execute CQL statement and exit")
+	pflag.StringVarP(&executeFile, "file", "f", "", "Execute CQL from file and exit")
+	pflag.StringVar(&format, "format", "ascii", "Output format: ascii, json, csv, table")
+	pflag.BoolVar(&noHeader, "no-header", false, "Don't output column headers (CSV format)")
+	pflag.StringVar(&fieldSep, "field-separator", ",", "Field separator for CSV output")
+	pflag.IntVar(&pageSize, "page-size", 100, "Pagination size for batch mode")
 
-	// Version flag
-	version := flag.Bool("version", false, "Print version and exit")
+	// Version and help flags
+	pflag.BoolVarP(&version, "version", "v", false, "Print version and exit")
+	pflag.BoolVarP(&help, "help", "h", false, "Show help message")
 
-	flag.Parse()
+	pflag.Parse()
+
+	// Handle help flag
+	if help {
+		fmt.Println("cqlai - A modern Cassandra CQL shell with AI assistance")
+		fmt.Println()
+		pflag.PrintDefaults()
+		os.Exit(0)
+	}
 
 	// Handle version flag
-	if *version {
-		fmt.Println("cqlai version 0.0.1")
+	if version {
+		fmt.Println("cqlai version 0.0.2")
 		os.Exit(0)
 	}
 
 	// Create connection options
 	connOptions := ui.ConnectionOptions{
-		Host:                *host,
-		Port:                *port,
-		Keyspace:            *keyspace,
-		Username:            *username,
-		Password:            *password,
-		RequireConfirmation: !*noConfirm,
-		ConnectTimeout:      *connectTimeout,
-		RequestTimeout:      *requestTimeout,
-		Debug:               *debug,
+		Host:                host,
+		Port:                port,
+		Keyspace:            keyspace,
+		Username:            username,
+		Password:            password,
+		RequireConfirmation: !noConfirm,
+		ConnectTimeout:      connectTimeout,
+		RequestTimeout:      requestTimeout,
+		Debug:               debug,
 	}
 
 	// Check if we're in batch mode
-	isBatchMode := *execute != "" || *executeFile != "" || !isTerminal()
+	isBatchMode := execute != "" || executeFile != "" || !isTerminal()
 
 	if isBatchMode {
 		// Batch mode execution
 		batchOptions := &batch.Options{
-			Execute:     *execute,
-			File:        *executeFile,
-			Format:      batch.OutputFormat(strings.ToLower(*format)),
-			NoHeader:    *noHeader,
-			FieldSep:    *fieldSep,
-			PageSize:    *pageSize,
+			Execute:     execute,
+			File:        executeFile,
+			Format:      batch.OutputFormat(strings.ToLower(format)),
+			NoHeader:    noHeader,
+			FieldSep:    fieldSep,
+			PageSize:    pageSize,
 			ConnOptions: connOptions,
 		}
 
@@ -76,12 +106,12 @@ func main() {
 			os.Exit(1)
 		}
 		// Execute based on input source
-		if *execute != "" { //nolint:gocritic // more readable as if
+		if execute != "" { //nolint:gocritic // more readable as if
 			// Execute command from -e flag
-			err = executor.Execute(*execute)
-		} else if *executeFile != "" {
+			err = executor.Execute(execute)
+		} else if executeFile != "" {
 			// Execute from file
-			err = executor.ExecuteFile(*executeFile)
+			err = executor.ExecuteFile(executeFile)
 		} else {
 			// Execute from stdin
 			err = executor.ExecuteStdin()
