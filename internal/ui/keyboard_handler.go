@@ -21,7 +21,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			m.aiCQLModal.NextChoice()
 			return m, nil
 		case "enter":
-			if m.aiCQLModal.Selected == 0 {
+			switch m.aiCQLModal.Selected {
+			case 0:
 				// Execute the CQL
 				cql := m.aiCQLModal.CQL
 				m.aiCQLModal.Active = false
@@ -35,7 +36,21 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				m.input.SetValue(cql)
 				// Trigger the enter key handler to execute
 				return m.handleEnterKey()
-			} else {
+			case 1:
+				// Edit - put the CQL in the input field and close modal
+				cql := m.aiCQLModal.CQL
+				m.aiCQLModal.Active = false
+				m.aiCQLModal = nil
+
+				// Exit AI conversation view and go to query view
+				m.aiConversationActive = false
+				m.viewMode = "history"
+
+				// Put the CQL in the input field for editing
+				m.input.SetValue(cql)
+				m.input.CursorEnd()
+				return m, nil
+			case 2:
 				// Cancel - close modal and stay in AI conversation
 				m.aiCQLModal.Active = false
 				m.aiCQLModal = nil
