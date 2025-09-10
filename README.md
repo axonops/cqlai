@@ -47,17 +47,44 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 
 You can install `cqlai` in several ways:
 
-#### From Pre-compiled Binaries
+### Pre-compiled Binaries
 
 Download the appropriate binary for your OS and architecture from the [**Releases**](https://github.com/axonops/cqlai/releases) page.
 
-#### Using `go install`
+**macOS Users:**
+```bash
+# Download the binary (Intel Mac)
+curl -L https://github.com/axonops/cqlai/releases/latest/download/cqlai-darwin-amd64 -o cqlai
+
+# Or for Apple Silicon (M1/M2/M3)
+curl -L https://github.com/axonops/cqlai/releases/latest/download/cqlai-darwin-arm64 -o cqlai
+
+# Make it executable
+chmod +x cqlai
+
+# Move to PATH (optional)
+sudo mv cqlai /usr/local/bin/
+```
+
+**Linux Users:**
+```bash
+# Download the binary (x86_64)
+curl -L https://github.com/axonops/cqlai/releases/latest/download/cqlai-linux-amd64 -o cqlai
+
+# Make it executable
+chmod +x cqlai
+
+# Move to PATH (optional)
+sudo mv cqlai /usr/local/bin/
+```
+
+### Using Go
 
 ```bash
 go install github.com/axonops/cqlai/cmd/cqlai@latest
 ```
 
-#### From Source
+### From Source
 
 ```bash
 git clone https://github.com/axonops/cqlai.git
@@ -65,7 +92,7 @@ cd cqlai
 go build -o cqlai cmd/cqlai/main.go
 ```
 
-#### Using Docker
+### Using Docker
 
 ```bash
 # Build the image
@@ -81,7 +108,10 @@ docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 
 Connect to a Cassandra host:
 ```bash
-cqlai --host 127.0.0.1 --port 9042 --user cassandra --password cassandra
+cqlai --host 127.0.0.1 --port 9042 --username cassandra --password cassandra
+
+# Using short options
+cqlai -u cassandra -p cassandra --host 127.0.0.1
 ```
 
 Or use a configuration file:
@@ -92,7 +122,42 @@ cp cqlai.json.example cqlai.json
 cqlai
 ```
 
-### Batch Mode
+### Command-Line Options
+
+```bash
+cqlai [options]
+```
+
+#### Connection Options
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--host <host>` | | Cassandra host (overrides config) |
+| `--port <port>` | | Cassandra port (overrides config) |
+| `--keyspace <keyspace>` | `-k` | Default keyspace (overrides config) |
+| `--username <username>` | `-u` | Username for authentication |
+| `--password <password>` | `-p` | Password for authentication |
+| `--no-confirm` | | Disable confirmation prompts |
+| `--connect-timeout <seconds>` | | Connection timeout (default: 10) |
+| `--request-timeout <seconds>` | | Request timeout (default: 10) |
+| `--debug` | | Enable debug logging |
+
+#### Batch Mode Options
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--execute <statement>` | `-e` | Execute CQL statement and exit |
+| `--file <file>` | `-f` | Execute CQL from file and exit |
+| `--format <format>` | | Output format: ascii, json, csv, table |
+| `--no-header` | | Don't output column headers (CSV) |
+| `--field-separator <sep>` | | Field separator for CSV (default: ,) |
+| `--page-size <n>` | | Rows per batch (default: 100) |
+
+#### General Options
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--help` | `-h` | Show help message |
+| `--version` | `-v` | Print version and exit |
+
+### Batch Mode Examples
 
 Execute CQL statements non-interactively (compatible with cqlsh):
 
@@ -114,14 +179,6 @@ cqlai -e "SELECT * FROM users;" --format csv --no-header
 cqlai -e "SELECT * FROM large_table;" --page-size 50
 ```
 
-**Batch Mode Options:**
-- `-e <statement>` - Execute CQL statement and exit
-- `-f <file>` - Execute CQL from file and exit
-- `--format <format>` - Output format: ascii (default), json, csv, table
-- `--no-header` - Don't output column headers (CSV format)
-- `--field-separator <sep>` - Field separator for CSV output (default: ,)
-- `--page-size <n>` - Number of rows per batch (default: 100)
-
 ### Basic Commands
 
 - **Execute CQL:** Type any CQL statement and press Enter.
@@ -142,16 +199,41 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
   .ai create a table for storing product inventory
   .ai delete orders older than 1 year
   ```
-- **Keyboard Shortcuts:**
-  - `↑`/`↓`: Navigate command history.
-  - `Tab`: Autocomplete commands and table/keyspace names.
-  - `Ctrl+C`: Clear input or exit (press twice to exit).
-  - `Ctrl+R`: Search command history.
-  - `F2`: Toggle column data types in table view.
-  - `F3`: Switch between history and table view.
 
-  - `Alt+←/→`: Scroll table horizontally.
-  - `Alt+↑/↓`: Scroll viewport vertically.
+### Keyboard Shortcuts
+
+#### Navigation & Control
+| Shortcut | Action | macOS Alternative |
+|----------|--------|-------------------|
+| `↑`/`↓` | Navigate command history | Same |
+| `Tab` | Autocomplete commands and table/keyspace names | Same |
+| `Ctrl+C` | Clear input or cancel operation (press twice to exit) | `⌘+C` or `Ctrl+C` |
+| `Ctrl+D` | Exit application | `⌘+D` or `Ctrl+D` |
+| `Ctrl+R` | Search command history | `⌘+R` or `Ctrl+R` |
+| `Esc` | Close modals/cancel operations | Same |
+| `Enter` | Execute command | Same |
+
+#### View Switching
+| Shortcut | Action |
+|----------|--------|
+| `F2` | Switch to query/history view |
+| `F3` | Switch to table view |
+| `F4` | Switch to trace view (when tracing enabled) |
+| `F5` | Switch to AI conversation view |
+| `F6` | Toggle column data types in table headers |
+
+#### Scrolling
+| Shortcut | Action | macOS Alternative |
+|----------|--------|-------------------|
+| `PgUp`/`PgDn` | Scroll viewport by page | `Fn+↑`/`Fn+↓` |
+| `Alt+↑`/`Alt+↓` | Scroll viewport line by line | `Option+↑`/`Option+↓` |
+| `Alt+←`/`Alt+→` | Scroll table horizontally (wide tables) | `Option+←`/`Option+→` |
+| `↑`/`↓` | Navigate table rows (when in table view) | Same |
+
+**Note for macOS Users:** 
+- Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative
+- `Alt` key is labeled as `Option` on Mac keyboards
+- Function keys (F1-F6) may require holding `Fn` key depending on your Mac settings
 
 ## Configuration
 
