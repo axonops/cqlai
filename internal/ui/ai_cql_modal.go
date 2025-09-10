@@ -8,7 +8,7 @@ import (
 type AICQLModal struct {
 	Active   bool
 	CQL      string // The generated CQL query
-	Selected int    // 0: Execute, 1: Cancel
+	Selected int    // 0: Execute, 1: Edit, 2: Cancel
 }
 
 // NewAICQLModal creates a new CQL execution modal
@@ -22,7 +22,7 @@ func NewAICQLModal(cql string) *AICQLModal {
 
 // NextChoice moves to the next button
 func (m *AICQLModal) NextChoice() {
-	if m.Selected < 1 {
+	if m.Selected < 2 {
 		m.Selected++
 	}
 }
@@ -89,13 +89,22 @@ func (m *AICQLModal) Render(screenWidth, screenHeight int, styles *Styles) strin
 
 	// Create buttons
 	executeBtn := "Execute"
+	editBtn := "Edit"
 	cancelBtn := "Cancel"
 
-	if m.Selected == 0 {
+	// Apply styles based on selection
+	switch m.Selected {
+	case 0:
 		executeBtn = activeButtonStyle.Render(executeBtn)
+		editBtn = inactiveButtonStyle.Render(editBtn)
 		cancelBtn = inactiveButtonStyle.Render(cancelBtn)
-	} else {
+	case 1:
 		executeBtn = inactiveButtonStyle.Render(executeBtn)
+		editBtn = activeButtonStyle.Render(editBtn)
+		cancelBtn = inactiveButtonStyle.Render(cancelBtn)
+	case 2:
+		executeBtn = inactiveButtonStyle.Render(executeBtn)
+		editBtn = inactiveButtonStyle.Render(editBtn)
 		cancelBtn = activeButtonStyle.Render(cancelBtn)
 	}
 
@@ -103,6 +112,8 @@ func (m *AICQLModal) Render(screenWidth, screenHeight int, styles *Styles) strin
 	buttonRow := lipgloss.JoinHorizontal(
 		lipgloss.Center,
 		executeBtn,
+		"  ",
+		editBtn,
 		"  ",
 		cancelBtn,
 	)
