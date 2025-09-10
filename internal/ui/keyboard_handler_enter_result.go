@@ -51,6 +51,9 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	// Load initial batch of rows
 	initialRows := 0
 	maxInitialRows := 100 // Show first 100 rows immediately
+	
+	// Create type handler once for all rows
+	typeHandler := db.NewCQLTypeHandler()
 
 	for initialRows < maxInitialRows {
 		rowMap := make(map[string]interface{})
@@ -76,23 +79,20 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 		row := make([]string, len(v.ColumnNames))
 		for i, colName := range v.ColumnNames {
 			if val, ok := rowMap[colName]; ok {
-				if val == nil {
-					row[i] = "null"
-				} else {
-					// Handle different types appropriately
-					switch typed := val.(type) {
-					case gocql.UUID:
-						row[i] = typed.String()
-					case []byte:
-						row[i] = fmt.Sprintf("0x%x", typed)
-					case time.Time:
-						row[i] = typed.Format(time.RFC3339)
-					default:
-						row[i] = fmt.Sprintf("%v", val)
+				// Get type info from the iterator columns if available
+				var typeInfo gocql.TypeInfo
+				if v.Iterator != nil && v.Iterator.Columns() != nil {
+					cols := v.Iterator.Columns()
+					for _, col := range cols {
+						if col.Name == colName {
+							typeInfo = col.TypeInfo
+							break
+						}
 					}
 				}
+				row[i] = typeHandler.FormatValue(val, typeInfo)
 			} else {
-				row[i] = "null"
+				row[i] = typeHandler.NullString
 			}
 		}
 
