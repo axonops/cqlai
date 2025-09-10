@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,7 +113,9 @@ func (h *CQLTypeHandler) formatWithTypeInfo(val interface{}, typeInfo gocql.Type
 	case gocql.TypeTuple:
 		return h.formatTuple(val)
 	case gocql.TypeCustom:
-		return h.formatCustom(val)
+		// For custom types (including vectors), always use formatVector
+		// which will handle both vectors and other custom types appropriately
+		return h.formatVector(val)
 
 	default:
 		return h.formatByType(val)
@@ -493,15 +496,66 @@ func (h *CQLTypeHandler) formatTuple(val interface{}) string {
 	return fmt.Sprintf("%v", val)
 }
 
-func (h *CQLTypeHandler) formatCustom(val interface{}) string {
-	// Custom types (like vectors) - use generic formatting
+// formatVector formats a vector value with proper comma separation
+// This handles both vector types and other custom types from Cassandra
+func (h *CQLTypeHandler) formatVector(val interface{}) string {
+	
+	// Vectors can come through as various slice types
 	switch v := val.(type) {
 	case []float32:
 		return h.formatFloat32List(v)
 	case []float64:
 		return h.formatFloat64List(v)
+	case []interface{}:
+		// Sometimes vectors come as generic interface slices
+		return h.formatGenericList(v)
+	case string:
+		// Sometimes the value is already a string
+		if len(v) > 2 && v[0] == '[' && v[len(v)-1] == ']' {
+			inner := v[1 : len(v)-1]
+			if inner != "" && !strings.Contains(inner, ",") {
+				parts := strings.Fields(inner)
+				if len(parts) > 0 {
+					allNumbers := true
+					for _, part := range parts {
+						if _, err := strconv.ParseFloat(part, 64); err != nil {
+							allNumbers = false
+							break
+						}
+					}
+					if allNumbers {
+						return "[" + strings.Join(parts, ", ") + "]"
+					}
+				}
+			}
+		}
+		return v
 	default:
-		return fmt.Sprintf("%v", val)
+		// For any other type, try to parse the string representation
+		str := fmt.Sprintf("%v", val)
+		// Check if it looks like a vector/array formatted without commas
+		if len(str) > 2 && str[0] == '[' && str[len(str)-1] == ']' {
+			// Extract content between brackets
+			inner := str[1 : len(str)-1]
+			if inner != "" && !strings.Contains(inner, ",") {
+				// Split by spaces and rejoin with commas
+				parts := strings.Fields(inner)
+				if len(parts) > 0 {
+					// Verify all parts are numbers (characteristic of vectors)
+					allNumbers := true
+					for _, part := range parts {
+						if _, err := strconv.ParseFloat(part, 64); err != nil {
+							allNumbers = false
+							break
+						}
+					}
+					if allNumbers {
+						return "[" + strings.Join(parts, ", ") + "]"
+					}
+				}
+			}
+		}
+		return str
 	}
 }
 
