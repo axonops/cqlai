@@ -147,6 +147,29 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 		return metaHandler.HandleMetaCommand(command)
 	}
 
+	// Special handling for DESCRIBE shortcuts that cqlsh supports
+	if strings.HasPrefix(upperCommand, "DESCRIBE ") || strings.HasPrefix(upperCommand, "DESC ") {
+		// Extract the part after DESCRIBE/DESC
+		parts := strings.Fields(command)
+		if len(parts) == 2 {
+			identifier := parts[1]
+			if strings.Contains(identifier, ".") {
+				// This looks like "DESCRIBE keyspace.table" or "DESC keyspace.table"
+				// Transform it to "DESCRIBE TABLE keyspace.table"
+				transformedCommand := parts[0] + " TABLE " + identifier
+				logger.DebugfToFile("parseMetaCommand", "Transformed '%s' to '%s'", command, transformedCommand)
+				command = transformedCommand
+			} else {
+				// Single identifier - could be keyspace or table in current keyspace
+				// For now, assume it's a keyspace (cqlsh behavior)
+				// Transform it to "DESCRIBE KEYSPACE <identifier>"
+				transformedCommand := parts[0] + " KEYSPACE " + identifier
+				logger.DebugfToFile("parseMetaCommand", "Transformed '%s' to '%s' (assuming keyspace)", command, transformedCommand)
+				command = transformedCommand
+			}
+		}
+	}
+
 	// DESCRIBE, LIST, and other complex commands use the ANTLR parser
 	logger.DebugfToFile("parseMetaCommand", "Called with: '%s'", command)
 	is := antlr.NewInputStream(command)
