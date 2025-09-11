@@ -798,6 +798,35 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handleEnterKey()
 
 	default:
+		// Handle Alt+D (delete word forward)
+		if msg.String() == "alt+d" {
+			currentValue := m.input.Value()
+			cursorPos := m.input.Position()
+			if cursorPos < len(currentValue) {
+				// Find the end of the word to cut
+				end := cursorPos
+				
+				// Skip leading spaces
+				for end < len(currentValue) && currentValue[end] == ' ' {
+					end++
+				}
+				
+				// Find the end of the word
+				for end < len(currentValue) && currentValue[end] != ' ' {
+					end++
+				}
+				
+				// Store the cut text in clipboard buffer
+				m.clipboardBuffer = currentValue[cursorPos:end]
+				
+				// Remove the word from the input
+				newValue := currentValue[:cursorPos] + currentValue[end:]
+				m.input.SetValue(newValue)
+				// Cursor stays at the same position
+			}
+			return m, nil
+		}
+
 		// AI info request view input is handled at the beginning of handleKeyboardInput
 		// Handle AI selection modal 'i' key for custom input
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
