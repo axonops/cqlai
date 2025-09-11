@@ -75,6 +75,7 @@ type MainModel struct {
 	historyIndex             int
 	currentInput             string // Temporary storage for current input when navigating history
 	fullHistoryContent       string // Full history content (not limited by viewport)
+	clipboardBuffer          string // Buffer for cut/copy operations (Ctrl+K, Ctrl+U, Ctrl+Y)
 	session                  *db.Session
 	sessionManager           *session.Manager // Application state manager
 	config                   *config.Config   // Full configuration
