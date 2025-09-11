@@ -420,6 +420,44 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeyCtrlK:
+		// Cut from cursor to end of line (kill line)
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos < len(currentValue) {
+			// Store the cut text in clipboard buffer
+			m.clipboardBuffer = currentValue[cursorPos:]
+			// Remove the text from cursor to end
+			m.input.SetValue(currentValue[:cursorPos])
+		}
+		return m, nil
+
+	case tea.KeyCtrlU:
+		// Cut from beginning of line to cursor (unix-line-discard)
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos > 0 {
+			// Store the cut text in clipboard buffer
+			m.clipboardBuffer = currentValue[:cursorPos]
+			// Remove the text from beginning to cursor
+			m.input.SetValue(currentValue[cursorPos:])
+			m.input.SetCursor(0)
+		}
+		return m, nil
+
+	case tea.KeyCtrlY:
+		// Paste (yank) from clipboard buffer
+		if m.clipboardBuffer != "" {
+			currentValue := m.input.Value()
+			cursorPos := m.input.Position()
+			// Insert clipboard content at cursor position
+			newValue := currentValue[:cursorPos] + m.clipboardBuffer + currentValue[cursorPos:]
+			m.input.SetValue(newValue)
+			// Move cursor to end of pasted text
+			m.input.SetCursor(cursorPos + len(m.clipboardBuffer))
+		}
+		return m, nil
+
 	case tea.KeyEsc:
 		// If AI conversation is active and processing, cancel it
 		if m.aiConversationActive && m.aiProcessing {
