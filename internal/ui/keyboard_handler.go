@@ -420,6 +420,93 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeyCtrlK:
+		// Cut from cursor to end of line (kill line)
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos < len(currentValue) {
+			// Store the cut text in clipboard buffer
+			m.clipboardBuffer = currentValue[cursorPos:]
+			// Remove the text from cursor to end
+			m.input.SetValue(currentValue[:cursorPos])
+		}
+		return m, nil
+
+	case tea.KeyCtrlU:
+		// Cut from beginning of line to cursor (unix-line-discard)
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos > 0 {
+			// Store the cut text in clipboard buffer
+			m.clipboardBuffer = currentValue[:cursorPos]
+			// Remove the text from beginning to cursor
+			m.input.SetValue(currentValue[cursorPos:])
+			m.input.SetCursor(0)
+		}
+		return m, nil
+
+	case tea.KeyCtrlW:
+		// Cut word backward (delete word before cursor)
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos > 0 {
+			// Find the start of the word to cut
+			start := cursorPos - 1
+			
+			// Skip trailing spaces
+			for start >= 0 && currentValue[start] == ' ' {
+				start--
+			}
+			
+			// Find the beginning of the word
+			for start >= 0 && currentValue[start] != ' ' {
+				start--
+			}
+			start++ // Move to the first character of the word
+			
+			// Store the cut text in clipboard buffer
+			m.clipboardBuffer = currentValue[start:cursorPos]
+			
+			// Remove the word from the input
+			newValue := currentValue[:start] + currentValue[cursorPos:]
+			m.input.SetValue(newValue)
+			m.input.SetCursor(start)
+		}
+		return m, nil
+
+	case tea.KeyCtrlP:
+		// Move to previous line in history (same as Up arrow)
+		// If AI selection modal is showing, navigate options
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+			m.aiSelectionModal.PrevOption()
+			return m, nil
+		}
+		// If in history search mode, navigate search results
+		if m.historySearchMode {
+			if m.historySearchIndex > 0 {
+				m.historySearchIndex--
+				// Adjust scroll offset if needed
+				if m.historySearchIndex < m.historySearchScrollOffset {
+					m.historySearchScrollOffset = m.historySearchIndex
+				}
+			}
+			return m, nil
+		}
+		return m.handleUpArrow(msg)
+
+	case tea.KeyCtrlY:
+		// Paste (yank) from clipboard buffer
+		if m.clipboardBuffer != "" {
+			currentValue := m.input.Value()
+			cursorPos := m.input.Position()
+			// Insert clipboard content at cursor position
+			newValue := currentValue[:cursorPos] + m.clipboardBuffer + currentValue[cursorPos:]
+			m.input.SetValue(newValue)
+			// Move cursor to end of pasted text
+			m.input.SetCursor(cursorPos + len(m.clipboardBuffer))
+		}
+		return m, nil
+
 	case tea.KeyEsc:
 		// If AI conversation is active and processing, cancel it
 		if m.aiConversationActive && m.aiProcessing {
@@ -731,6 +818,56 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handleEnterKey()
 
 	default:
+		// Handle Alt+N (move to next line in history, same as Down arrow)
+		if msg.String() == "alt+n" {
+			// If AI selection modal is showing, navigate options
+			if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+				m.aiSelectionModal.NextOption()
+				return m, nil
+			}
+			// If in history search mode, navigate search results
+			if m.historySearchMode {
+				if m.historySearchIndex < len(m.historySearchResults)-1 {
+					m.historySearchIndex++
+					// Adjust scroll offset if needed
+					if m.historySearchIndex >= m.historySearchScrollOffset+10 {
+						m.historySearchScrollOffset = m.historySearchIndex - 9
+					}
+				}
+				return m, nil
+			}
+			return m.handleDownArrow(msg)
+		}
+
+		// Handle Alt+D (delete word forward)
+		if msg.String() == "alt+d" {
+			currentValue := m.input.Value()
+			cursorPos := m.input.Position()
+			if cursorPos < len(currentValue) {
+				// Find the end of the word to cut
+				end := cursorPos
+				
+				// Skip leading spaces
+				for end < len(currentValue) && currentValue[end] == ' ' {
+					end++
+				}
+				
+				// Find the end of the word
+				for end < len(currentValue) && currentValue[end] != ' ' {
+					end++
+				}
+				
+				// Store the cut text in clipboard buffer
+				m.clipboardBuffer = currentValue[cursorPos:end]
+				
+				// Remove the word from the input
+				newValue := currentValue[:cursorPos] + currentValue[end:]
+				m.input.SetValue(newValue)
+				// Cursor stays at the same position
+			}
+			return m, nil
+		}
+
 		// AI info request view input is handled at the beginning of handleKeyboardInput
 		// Handle AI selection modal 'i' key for custom input
 		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {

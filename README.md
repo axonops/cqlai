@@ -206,12 +206,23 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | Shortcut | Action | macOS Alternative |
 |----------|--------|-------------------|
 | `↑`/`↓` | Navigate command history | Same |
+| `Ctrl+P`/`Ctrl+N` | Previous/Next in command history | Same |
+| `Alt+N` | Move to next line in history | `Option+N` |
 | `Tab` | Autocomplete commands and table/keyspace names | Same |
 | `Ctrl+C` | Clear input or cancel operation (press twice to exit) | `⌘+C` or `Ctrl+C` |
 | `Ctrl+D` | Exit application | `⌘+D` or `Ctrl+D` |
 | `Ctrl+R` | Search command history | `⌘+R` or `Ctrl+R` |
 | `Esc` | Close modals/cancel operations | Same |
 | `Enter` | Execute command | Same |
+
+#### Text Editing
+| Shortcut | Action | macOS Alternative |
+|----------|--------|-------------------|
+| `Ctrl+K` | Cut from cursor to end of line | Same |
+| `Ctrl+U` | Cut from beginning to cursor | Same |
+| `Ctrl+W` | Cut word backward | Same |
+| `Alt+D` | Delete word forward | `Option+D` |
+| `Ctrl+Y` | Paste previously cut text | Same |
 
 #### View Switching
 | Shortcut | Action |
