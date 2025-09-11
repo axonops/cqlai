@@ -8,10 +8,12 @@ import (
 
 // QueryResult wraps query results with metadata
 type QueryResult struct {
-	Data        [][]string
+	Data        [][]string               // Formatted strings for display
+	RawData     []map[string]interface{} // Raw values for JSON export (preserves types)
 	Duration    time.Duration
 	RowCount    int
 	ColumnTypes []string // Data types of each column
+	Headers     []string // Column names without PK/C indicators
 }
 
 // StreamingQueryResult wraps query results for progressive loading

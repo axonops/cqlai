@@ -555,7 +555,7 @@ func (e *Executor) handleQueryResult(result db.QueryResult) error {
 
 	switch e.options.Format {
 	case OutputFormatJSON:
-		return e.outputJSON(result.Data)
+		return e.outputJSONWithRawData(result)
 	case OutputFormatCSV:
 		return e.outputCSV(result.Data)
 	default:
@@ -734,6 +734,24 @@ func (e *Executor) outputJSON(data [][]string) error {
 	encoder := json.NewEncoder(e.writer)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(jsonRows)
+}
+
+// outputJSONWithRawData outputs data in JSON format using raw data if available
+func (e *Executor) outputJSONWithRawData(result db.QueryResult) error {
+	if len(result.Data) <= 1 {
+		fmt.Fprintln(e.writer, "[]")
+		return nil
+	}
+
+	// Use raw data if available to preserve types
+	if result.RawData != nil && len(result.RawData) > 0 {
+		encoder := json.NewEncoder(e.writer)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(result.RawData)
+	}
+
+	// Fall back to string conversion
+	return e.outputJSON(result.Data)
 }
 
 // outputStreamingJSON outputs streaming data in JSON format

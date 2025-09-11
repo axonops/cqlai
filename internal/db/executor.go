@@ -201,9 +201,16 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 
 	// Collect results - use MapScan for better type handling
 	results := [][]string{headers}
+	rawData := make([]map[string]interface{}, 0)
 
 	logger.DebugToFile("executeSelectQuery", "Starting row scan with MapScan...")
 	rowNum := 0
+
+	// Extract clean column names (without PK/C indicators)
+	cleanHeaders := make([]string, len(filteredColumns))
+	for i, col := range filteredColumns {
+		cleanHeaders[i] = col.Name
+	}
 
 	// Use MapScan which handles types better than Scan with interface{}
 	for {
@@ -213,8 +220,23 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 			break
 		}
 
-		row := make([]string, len(filteredColumns))
+		// Store raw data for JSON export (preserves types)
+		rawRow := make(map[string]interface{})
+		for _, col := range filteredColumns {
+			if val, ok := rowMap[col.Name]; ok {
+				rawRow[col.Name] = val
+				// Debug logging for UDT inspection
+				if col.TypeInfo.Type() == gocql.TypeUDT {
+					logger.DebugfToFile("ExecuteSelectQuery", "UDT column %s: value=%v, type=%T", col.Name, val, val)
+				}
+			} else {
+				rawRow[col.Name] = nil
+			}
+		}
+		rawData = append(rawData, rawRow)
 
+		// Create formatted row for display
+		row := make([]string, len(filteredColumns))
 		for i, col := range filteredColumns {
 			if val, ok := rowMap[col.Name]; ok {
 				if val == nil {
@@ -251,9 +273,11 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 
 	queryResult := QueryResult{
 		Data:        results,
+		RawData:     rawData,
 		Duration:    duration,
 		RowCount:    rowNum, // rowNum already contains the count of data rows (excluding header)
 		ColumnTypes: columnTypes,
+		Headers:     cleanHeaders,
 	}
 
 	// Just pass the result, UI will handle formatting

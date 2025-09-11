@@ -518,6 +518,11 @@ func (h *MetaCommandHandler) WriteCaptureText(command string, output string) err
 
 // FormatResultAsJSON formats query results as JSON
 func FormatResultAsJSON(headers []string, rows [][]string) (string, error) {
+	return FormatResultAsJSONWithRawData(headers, rows, nil)
+}
+
+// FormatResultAsJSONWithRawData formats query results as JSON with optional raw data
+func FormatResultAsJSONWithRawData(headers []string, rows [][]string, rawData []map[string]interface{}) (string, error) {
 	type QueryResult struct {
 		Query   string                   `json:"query,omitempty"`
 		Columns []string                 `json:"columns"`
@@ -531,24 +536,31 @@ func FormatResultAsJSON(headers []string, rows [][]string) (string, error) {
 		Count:   len(rows),
 	}
 
-	for _, row := range rows {
-		rowMap := make(map[string]interface{})
-		for i, col := range headers {
-			if i < len(row) {
-				// Try to parse as number or boolean
-				value := row[i]
-				if value == "null" {
-					rowMap[col] = nil
-				} else if value == "true" || value == "false" {
-					rowMap[col] = value == "true"
-				} else if num, err := json.Number(value).Float64(); err == nil {
-					rowMap[col] = num
-				} else {
-					rowMap[col] = value
+	// Use raw data if provided, otherwise fall back to string parsing
+	if rawData != nil && len(rawData) == len(rows) {
+		// Use the raw data directly - it preserves types
+		result.Rows = rawData
+	} else {
+		// Fall back to parsing strings (backward compatibility)
+		for _, row := range rows {
+			rowMap := make(map[string]interface{})
+			for i, col := range headers {
+				if i < len(row) {
+					// Try to parse as number or boolean
+					value := row[i]
+					if value == "null" {
+						rowMap[col] = nil
+					} else if value == "true" || value == "false" {
+						rowMap[col] = value == "true"
+					} else if num, err := json.Number(value).Float64(); err == nil {
+						rowMap[col] = num
+					} else {
+						rowMap[col] = value
+					}
 				}
 			}
+			result.Rows = append(result.Rows, rowMap)
 		}
-		result.Rows = append(result.Rows, rowMap)
 	}
 
 	jsonBytes, err := json.MarshalIndent(result, "", "  ")
@@ -595,6 +607,11 @@ func (h *MetaCommandHandler) AppendCaptureRows(rows [][]string) error {
 
 // WriteCaptureResult writes query results to the capture file
 func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string, rows [][]string) error {
+	return h.WriteCaptureResultWithRawData(command, headers, rows, nil)
+}
+
+// WriteCaptureResultWithRawData writes query results to the capture file with optional raw data for JSON
+func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, headers []string, rows [][]string, rawData []map[string]interface{}) error {
 	if h.captureOutput == nil {
 		return nil
 	}
@@ -640,24 +657,31 @@ func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string
 			Count:   len(rows),
 		}
 
-		for _, row := range rows {
-			rowMap := make(map[string]interface{})
-			for i, col := range headers {
-				if i < len(row) {
-					// Try to parse as number or boolean
-					value := row[i]
-					if value == "null" {
-						rowMap[col] = nil
-					} else if value == "true" || value == "false" {
-						rowMap[col] = value == "true"
-					} else if num, err := json.Number(value).Float64(); err == nil {
-						rowMap[col] = num
-					} else {
-						rowMap[col] = value
+		// Use raw data if provided, otherwise fall back to string parsing
+		if rawData != nil && len(rawData) == len(rows) {
+			// Use the raw data directly - it preserves types
+			result.Rows = rawData
+		} else {
+			// Fall back to parsing strings (backward compatibility)
+			for _, row := range rows {
+				rowMap := make(map[string]interface{})
+				for i, col := range headers {
+					if i < len(row) {
+						// Try to parse as number or boolean
+						value := row[i]
+						if value == "null" {
+							rowMap[col] = nil
+						} else if value == "true" || value == "false" {
+							rowMap[col] = value == "true"
+						} else if num, err := json.Number(value).Float64(); err == nil {
+							rowMap[col] = num
+						} else {
+							rowMap[col] = value
+						}
 					}
 				}
+				result.Rows = append(result.Rows, rowMap)
 			}
-			result.Rows = append(result.Rows, rowMap)
 		}
 
 		jsonBytes, err := json.MarshalIndent(result, "  ", "  ")
