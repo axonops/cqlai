@@ -1,0 +1,443 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release (e.g., v1.0.0)'
+        required: true
+        default: 'v0.1.0'
+
+env:
+  GO_VERSION: '1.24'
+  GCP_PROJECT: axonops-public
+  GCP_REGION: europe
+  APT_REPO: axonops-apt
+  YUM_REPO: axonops-yum
+  DOCKER_REPO: axonops-docker
+  IMAGE_NAME: cqlai
+
+jobs:
+  # Build binaries for all platforms
+  build-binaries:
+    name: Build ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        include:
+          - platform: linux-amd64
+            goos: linux
+            goarch: amd64
+          - platform: darwin-amd64
+            goos: darwin
+            goarch: amd64
+          - platform: darwin-arm64
+            goos: darwin
+            goarch: arm64
+          - platform: windows-amd64
+            goos: windows
+            goarch: amd64
+            ext: .exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ -n "${{ github.event.inputs.tag_name }}" ]]; then
+            VERSION=${{ github.event.inputs.tag_name }}
+          else
+            VERSION="dev-${GITHUB_SHA::8}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
+          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o "${OUTPUT_NAME}" \
+            ./cmd/cqlai
+          
+          # Make executable on Unix systems
+          if [ "${{ matrix.goos }}" != "windows" ]; then
+            chmod +x "${OUTPUT_NAME}"
+          fi
+
+      - name: Package binary
+        run: |
+          OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "cqlai-${{ matrix.platform }}.zip" "${OUTPUT_NAME}" README.md LICENSE
+          else
+            tar czf "cqlai-${{ matrix.platform }}.tar.gz" "${OUTPUT_NAME}" README.md LICENSE
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: |
+            cqlai-${{ matrix.platform }}.tar.gz
+            cqlai-${{ matrix.platform }}.zip
+          if-no-files-found: error
+
+  # Build DEB and RPM packages
+  build-packages:
+    name: Build DEB/RPM Packages
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          # Remove 'v' prefix for package version
+          PACKAGE_VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o cqlai \
+            ./cmd/cqlai
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm dpkg-dev
+
+      - name: Create DEB package
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+          
+          # Create debian package structure
+          mkdir -p cqlai-deb/DEBIAN
+          mkdir -p cqlai-deb/usr/bin
+          mkdir -p cqlai-deb/usr/share/doc/cqlai
+          
+          # Copy files
+          cp cqlai cqlai-deb/usr/bin/
+          chmod 755 cqlai-deb/usr/bin/cqlai
+          cp README.md LICENSE cqlai-deb/usr/share/doc/cqlai/
+          
+          # Create control file
+          cat > cqlai-deb/DEBIAN/control << EOF
+          Package: cqlai
+          Version: ${VERSION}
+          Section: database
+          Priority: optional
+          Architecture: amd64
+          Maintainer: AxonOps <support@axonops.com>
+          Description: AI-powered Cassandra CQL Shell
+           Modern interactive terminal for Apache Cassandra with AI assistance
+          Homepage: https://github.com/axonops/cqlai
+          EOF
+          
+          # Build package
+          dpkg-deb --build cqlai-deb
+          mv cqlai-deb.deb cqlai_${VERSION}_amd64.deb
+
+      - name: Create RPM package
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+          
+          # Setup RPM build tree
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          
+          # Create source tarball
+          mkdir cqlai-${VERSION}
+          cp cqlai README.md LICENSE cqlai-${VERSION}/
+          tar czf ~/rpmbuild/SOURCES/cqlai-${VERSION}.tar.gz cqlai-${VERSION}
+          
+          # Create spec file
+          cat > ~/rpmbuild/SPECS/cqlai.spec << EOF
+          Name:           cqlai
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        AI-powered Cassandra CQL Shell
+          License:        Apache-2.0
+          URL:            https://github.com/axonops/cqlai
+          Source0:        cqlai-${VERSION}.tar.gz
+          
+          %description
+          Modern interactive terminal for Apache Cassandra with AI assistance
+          
+          %prep
+          %setup -q
+          
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          install -m 755 cqlai %{buildroot}/usr/bin/cqlai
+          
+          %files
+          /usr/bin/cqlai
+          
+          %changelog
+          * $(date +"%a %b %d %Y") AxonOps <support@axonops.com> - ${VERSION}-1
+          - Release ${VERSION}
+          EOF
+          
+          # Build RPM
+          rpmbuild -ba ~/rpmbuild/SPECS/cqlai.spec
+          cp ~/rpmbuild/RPMS/x86_64/cqlai-${VERSION}-1*.rpm ./
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            *.deb
+            *.rpm
+
+  # Build Docker image
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create Dockerfile if not exists
+        run: |
+          if [ ! -f Dockerfile ]; then
+            cat > Dockerfile << 'EOF'
+          FROM golang:1.24-alpine AS builder
+          
+          WORKDIR /app
+          COPY go.mod go.sum ./
+          RUN go mod download
+          
+          COPY . .
+          RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+              -ldflags="-s -w" \
+              -o cqlai \
+              ./cmd/cqlai
+          
+          FROM alpine:latest
+          RUN apk --no-cache add ca-certificates
+          WORKDIR /root/
+          COPY --from=builder /app/cqlai /usr/local/bin/cqlai
+          
+          ENTRYPOINT ["cqlai"]
+          EOF
+          fi
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          DOCKER_TAG="${VERSION#v}"
+          echo "docker_tag=${DOCKER_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.docker_tag }}
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
+          outputs: type=docker,dest=/tmp/cqlai.tar
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/cqlai.tar
+
+  # Upload to GCP Artifact Registry
+  upload-gcp:
+    name: Upload to GCP
+    needs: [build-packages, build-docker]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GOOGLEKEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload DEB to Artifact Registry
+        run: |
+          DEB_FILE=$(ls *.deb | head -1)
+          gcloud artifacts apt upload ${{ env.APT_REPO }} \
+            --location=${{ env.GCP_REGION }} \
+            --source="${DEB_FILE}" \
+            --project=${{ env.GCP_PROJECT }}
+
+      - name: Upload RPM to Artifact Registry
+        run: |
+          RPM_FILE=$(ls *.rpm | head -1)
+          gcloud artifacts yum upload ${{ env.YUM_REPO }} \
+            --location=${{ env.GCP_REGION }} \
+            --source="${RPM_FILE}" \
+            --project=${{ env.GCP_PROJECT }}
+
+      - name: Push Docker image
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+          docker load --input cqlai.tar
+          
+          VERSION="${GITHUB_REF#refs/tags/}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "refs/heads/main" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          fi
+          DOCKER_TAG="${VERSION#v}"
+          
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${DOCKER_TAG}
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
+
+  # Create GitHub Release
+  create-release:
+    name: Create GitHub Release
+    needs: [build-binaries, build-packages, upload-gcp]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          
+          # Collect all release files
+          find . -name "*.tar.gz" -exec mv {} release-assets/ \;
+          find . -name "*.zip" -exec mv {} release-assets/ \;
+          find . -name "*.deb" -exec mv {} release-assets/ \;
+          find . -name "*.rpm" -exec mv {} release-assets/ \;
+          
+          # Create checksums
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create Release Notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cat > release-notes.md << EOF
+          ## CQLAI Release ${VERSION}
+          
+          ### Installation Methods
+          
+          #### Direct Download
+          Download the appropriate binary for your platform from the assets below.
+          
+          #### APT (Debian/Ubuntu)
+          \`\`\`bash
+          # Configure repository
+          echo "deb https://europe-apt.pkg.dev/projects/axonops-public axonops-apt main" | sudo tee /etc/apt/sources.list.d/axonops.list
+          curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+          
+          # Install
+          sudo apt update && sudo apt install cqlai
+          \`\`\`
+          
+          #### YUM (RHEL/CentOS/Fedora)
+          \`\`\`bash
+          # Configure repository
+          cat << 'REPO' | sudo tee /etc/yum.repos.d/axonops.repo
+          [axonops]
+          name=AxonOps Repository
+          baseurl=https://europe-yum.pkg.dev/projects/axonops-public
+          enabled=1
+          gpgcheck=0
+          REPO
+          
+          # Install
+          sudo yum install cqlai
+          \`\`\`
+          
+          #### Docker
+          \`\`\`bash
+          docker pull europe-docker.pkg.dev/axonops-public/axonops-docker/cqlai:latest
+          docker run -it --rm europe-docker.pkg.dev/axonops-public/axonops-docker/cqlai:latest --host cassandra-host
+          \`\`\`
+          
+          ### Checksums
+          Verify your download with the SHA256 checksums in \`SHA256SUMS.txt\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: CQLAI ${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'rc') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
