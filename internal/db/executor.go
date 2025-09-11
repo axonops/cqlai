@@ -11,6 +11,19 @@ import (
 	"github.com/axonops/cqlai/internal/logger"
 )
 
+// formatUDTMap formats a UDT map for display
+func formatUDTMap(m map[string]interface{}) string {
+	if len(m) == 0 {
+		return "{}"
+	}
+	
+	var parts []string
+	for k, v := range m {
+		parts = append(parts, fmt.Sprintf("%s: %v", k, v))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
 // captureTracer implements gocql.Tracer to capture trace IDs
 type captureTracer struct {
 	traceID []byte
@@ -212,8 +225,17 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		cleanHeaders[i] = col.Name
 	}
 
-	// Use MapScan which handles types better than Scan with interface{}
+	// Use MapScan for better type handling
+	// IMPORTANT LIMITATIONS:
+	// 1. NULL values: gocql returns zero values (0, false, "") for NULL columns when scanning 
+	//    into interface{}. To properly detect NULLs, we would need to scan into typed pointers
+	//    (*int, *string, etc), but we don't know column types at compile time.
+	// 2. UDTs: gocql often returns empty maps for UDTs when using MapScan or scanning into
+	//    interface{}. To properly handle UDTs, you need to scan into specific struct types
+	//    that match the UDT schema, which requires compile-time knowledge of the UDT structure.
+	// These are fundamental limitations of using dynamic typing with gocql.
 	for {
+		// First try MapScan for the row
 		rowMap := make(map[string]interface{})
 		if !iter.MapScan(rowMap) {
 			logger.DebugToFile("executeSelectQuery", "MapScan returned false - no more rows or error")
@@ -222,27 +244,50 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 
 		// Store raw data for JSON export (preserves types)
 		rawRow := make(map[string]interface{})
-		for _, col := range filteredColumns {
-			if val, ok := rowMap[col.Name]; ok {
-				rawRow[col.Name] = val
-				// Debug logging for UDT inspection
-				if col.TypeInfo.Type() == gocql.TypeUDT {
-					logger.DebugfToFile("ExecuteSelectQuery", "UDT column %s: value=%v, type=%T", col.Name, val, val)
-				}
-			} else {
-				rawRow[col.Name] = nil
-			}
-		}
-		rawData = append(rawData, rawRow)
-
 		// Create formatted row for display
 		row := make([]string, len(filteredColumns))
+		
 		for i, col := range filteredColumns {
-			if val, ok := rowMap[col.Name]; ok {
-				if val == nil {
-					row[i] = "null"
+			val, hasValue := rowMap[col.Name]
+			
+			if !hasValue || val == nil {
+				rawRow[col.Name] = nil
+				row[i] = "null"
+			} else {
+				// Special handling for UDTs
+				if col.TypeInfo.Type() == gocql.TypeUDT {
+					// When scanning into interface{}, gocql returns a map for UDTs
+					// Unfortunately, it often returns an empty map due to how it handles dynamic types
+					// This is a known limitation of gocql when not using specific struct types
+					
+					if m, ok := val.(map[string]interface{}); ok {
+						if len(m) > 0 {
+							// We got actual UDT data
+							rawRow[col.Name] = m
+							row[i] = formatUDTMap(m)
+						} else {
+							// Empty map - common issue with gocql and UDTs
+							// This is a known limitation when using MapScan or Scan with interface{}
+							// To properly handle UDTs, you need to scan into specific struct types
+							logger.DebugfToFile("ExecuteSelectQuery", "UDT %s returned empty map (gocql limitation)", col.Name)
+							rawRow[col.Name] = m
+							row[i] = "{}"
+						}
+					} else if bytes, ok := val.([]byte); ok {
+						// Sometimes UDTs come as raw bytes
+						logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
+						// We would need the UDT schema to properly unmarshal this
+						rawRow[col.Name] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
+						row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
+					} else {
+						rawRow[col.Name] = val
+						row[i] = fmt.Sprintf("%v", val)
+					}
 				} else {
-					// Handle different types appropriately
+					// Store the actual value for JSON
+					rawRow[col.Name] = val
+					
+					// Format for display
 					switch v := val.(type) {
 					case gocql.UUID:
 						row[i] = v.String()
@@ -254,10 +299,9 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 						row[i] = fmt.Sprintf("%v", val)
 					}
 				}
-			} else {
-				row[i] = "null"
 			}
 		}
+		rawData = append(rawData, rawRow)
 		results = append(results, row)
 		rowNum++
 	}
