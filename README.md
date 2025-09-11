@@ -411,6 +411,35 @@ Configure your preferred AI provider in `cqlai.json`:
 - **Confirmation required**: Destructive operations require additional confirmation
 - **Schema validation**: Queries are validated against your current schema
 
+## Known Limitations
+
+### JSON Output (CAPTURE JSON and --format json)
+
+When outputting data as JSON, there are some limitations due to how the underlying gocql driver handles dynamic typing:
+
+#### NULL Values
+- **Issue**: NULL values in primitive columns (int, boolean, text, etc.) appear as zero values (`0`, `false`, `""`) instead of `null`
+- **Cause**: The gocql driver returns zero values for NULLs when scanning into dynamic types (`interface{}`)
+- **Workaround**: Use `SELECT JSON` queries which return proper JSON from Cassandra server-side
+
+#### User-Defined Types (UDTs)
+- **Issue**: UDT columns appear as empty objects `{}` in JSON output
+- **Cause**: The gocql driver cannot properly unmarshal UDTs without compile-time knowledge of their structure
+- **Workaround**: Use `SELECT JSON` queries for proper UDT serialization
+
+#### Example
+```sql
+-- Regular SELECT (has limitations)
+SELECT * FROM users;  
+-- Returns: {"id": 1, "age": 0, "active": false}  -- age and active might be NULL
+
+-- Using SELECT JSON (preserves types correctly)
+SELECT JSON * FROM users;
+-- Returns: {"id": 1, "age": null, "active": null}  -- NULLs properly represented
+```
+
+**Note**: Complex types (lists, sets, maps, vectors) are properly preserved in JSON output.
+
 ## Development
 
 To work on `cqlai`, you'll need Go (≥ 1.22) and ANTLR v4.
