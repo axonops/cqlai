@@ -445,6 +445,35 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeyCtrlW:
+		// Cut word backward (delete word before cursor)
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos > 0 {
+			// Find the start of the word to cut
+			start := cursorPos - 1
+			
+			// Skip trailing spaces
+			for start >= 0 && currentValue[start] == ' ' {
+				start--
+			}
+			
+			// Find the beginning of the word
+			for start >= 0 && currentValue[start] != ' ' {
+				start--
+			}
+			start++ // Move to the first character of the word
+			
+			// Store the cut text in clipboard buffer
+			m.clipboardBuffer = currentValue[start:cursorPos]
+			
+			// Remove the word from the input
+			newValue := currentValue[:start] + currentValue[cursorPos:]
+			m.input.SetValue(newValue)
+			m.input.SetCursor(start)
+		}
+		return m, nil
+
 	case tea.KeyCtrlY:
 		// Paste (yank) from clipboard buffer
 		if m.clipboardBuffer != "" {
