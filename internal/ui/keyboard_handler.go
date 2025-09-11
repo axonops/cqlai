@@ -474,6 +474,26 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeyCtrlP:
+		// Move to previous line in history (same as Up arrow)
+		// If AI selection modal is showing, navigate options
+		if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+			m.aiSelectionModal.PrevOption()
+			return m, nil
+		}
+		// If in history search mode, navigate search results
+		if m.historySearchMode {
+			if m.historySearchIndex > 0 {
+				m.historySearchIndex--
+				// Adjust scroll offset if needed
+				if m.historySearchIndex < m.historySearchScrollOffset {
+					m.historySearchScrollOffset = m.historySearchIndex
+				}
+			}
+			return m, nil
+		}
+		return m.handleUpArrow(msg)
+
 	case tea.KeyCtrlY:
 		// Paste (yank) from clipboard buffer
 		if m.clipboardBuffer != "" {
@@ -798,6 +818,27 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handleEnterKey()
 
 	default:
+		// Handle Alt+N (move to next line in history, same as Down arrow)
+		if msg.String() == "alt+n" {
+			// If AI selection modal is showing, navigate options
+			if m.aiSelectionModal != nil && m.aiSelectionModal.Active && !m.aiSelectionModal.InputMode {
+				m.aiSelectionModal.NextOption()
+				return m, nil
+			}
+			// If in history search mode, navigate search results
+			if m.historySearchMode {
+				if m.historySearchIndex < len(m.historySearchResults)-1 {
+					m.historySearchIndex++
+					// Adjust scroll offset if needed
+					if m.historySearchIndex >= m.historySearchScrollOffset+10 {
+						m.historySearchScrollOffset = m.historySearchIndex - 9
+					}
+				}
+				return m, nil
+			}
+			return m.handleDownArrow(msg)
+		}
+
 		// Handle Alt+D (delete word forward)
 		if msg.String() == "alt+d" {
 			currentValue := m.input.Value()
