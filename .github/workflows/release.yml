@@ -273,11 +273,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: Build Docker image for amd64
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.docker_tag }}
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
@@ -331,9 +331,12 @@ jobs:
             --source="${RPM_FILE}" \
             --project=${{ env.GCP_PROJECT }}
 
-      - name: Push Docker image
+      - name: Configure Docker for GCP
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      - name: Push Docker image
+        run: |
           docker load --input cqlai.tar
           
           VERSION="${GITHUB_REF#refs/tags/}"
