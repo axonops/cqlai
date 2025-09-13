@@ -28,7 +28,6 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
     - Modal overlays for history, help, and command completion.
 - **Client-Side Meta-Commands:** A powerful set of `cqlsh`-compatible commands parsed by a real grammar (ANTLR):
     - `DESCRIBE` (keyspaces, tables, types, functions, etc.).
-    - `COPY ... TO/FROM` for high-performance CSV import and export.
     - `SOURCE 'file.cql'` to execute scripts.
     - `CONSISTENCY`, `PAGING`, `TRACING` to manage session settings.
     - `SHOW` to view current session details.
