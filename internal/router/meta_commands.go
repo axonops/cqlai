@@ -451,8 +451,6 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		// File Operations
 		{"─────────", "─────────", "─────────────"},
 		{"Files", "SOURCE 'file'", "Execute CQL from file"},
-		{"", "COPY TO 'file.csv'", "Export table to CSV"},
-		{"", "COPY FROM 'file.csv'", "Import CSV to table"},
 
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},

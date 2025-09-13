@@ -79,7 +79,7 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 	// Check if it's a meta-command (starts with certain keywords)
 	upperCommand := strings.ToUpper(command)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "TRACING", "SOURCE", "SHOW", "EXPAND", "CAPTURE", "HELP"}
 
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s'", command)
 
