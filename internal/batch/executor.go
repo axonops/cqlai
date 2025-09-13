@@ -744,7 +744,7 @@ func (e *Executor) outputJSONWithRawData(result db.QueryResult) error {
 	}
 
 	// Use raw data if available to preserve types
-	if result.RawData != nil && len(result.RawData) > 0 {
+	if len(result.RawData) > 0 {
 		encoder := json.NewEncoder(e.writer)
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(result.RawData)

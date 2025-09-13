@@ -400,7 +400,7 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			headers := v.Data[0]
 			rows := v.Data[1:]
 			// Use raw data if available for better type preservation in JSON
-			if v.RawData != nil && len(v.RawData) > 0 {
+			if len(v.RawData) > 0 {
 				_ = metaHandler.WriteCaptureResultWithRawData(command, headers, rows, v.RawData)
 			} else {
 				_ = metaHandler.WriteCaptureResult(command, headers, rows)
