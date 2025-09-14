@@ -34,7 +34,7 @@ func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
 
 		// Process the command
 		start := time.Now()
-		result := router.ProcessCommand(command, m.session)
+		result := router.ProcessCommand(command, m.session, m.sessionManager)
 		m.lastQueryTime = time.Since(start)
 
 		// Add command to full history and viewport
