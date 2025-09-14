@@ -29,8 +29,10 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - **Client-Side Meta-Commands:** A powerful set of `cqlsh`-compatible commands parsed by a real grammar (ANTLR):
     - `DESCRIBE` (keyspaces, tables, types, functions, etc.).
     - `SOURCE 'file.cql'` to execute scripts.
+    - `COPY TO/FROM` to export/import data to/from CSV files.
     - `CONSISTENCY`, `PAGING`, `TRACING` to manage session settings.
     - `SHOW` to view current session details.
+    - `CAPTURE` to save query output to files.
 - **Advanced Autocompletion:** Context-aware completion for keywords, table/keyspace names, and more.
 - **Configuration:**
     - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
@@ -240,10 +242,266 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Alt+←`/`Alt+→` | Scroll table horizontally (wide tables) | `Option+←`/`Option+→` |
 | `↑`/`↓` | Navigate table rows (when in table view) | Same |
 
-**Note for macOS Users:** 
+**Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative
 - `Alt` key is labeled as `Option` on Mac keyboards
 - Function keys (F1-F6) may require holding `Fn` key depending on your Mac settings
+
+### Tab Completion
+
+CQLAI provides intelligent, context-aware tab completion to speed up your workflow. Press `Tab` at any point to see available completions.
+
+#### What Can Be Completed
+
+**CQL Keywords & Commands:**
+- All CQL keywords: `SELECT`, `INSERT`, `CREATE`, `ALTER`, `DROP`, etc.
+- Meta-commands: `DESCRIBE`, `CONSISTENCY`, `COPY`, `SHOW`, etc.
+- Data types: `TEXT`, `INT`, `UUID`, `TIMESTAMP`, etc.
+- Consistency levels: `ONE`, `QUORUM`, `ALL`, `LOCAL_QUORUM`, etc.
+
+**Schema Objects:**
+- Keyspace names
+- Table names (within current keyspace)
+- Column names (when context allows)
+- User-defined type names
+- Function and aggregate names
+- Index names
+
+**Context-Aware Completions:**
+```sql
+-- After SELECT, suggests column names and keywords
+SELECT <Tab>           -- Shows: *, column names, DISTINCT, JSON, etc.
+
+-- After FROM, suggests table names
+SELECT * FROM <Tab>    -- Shows: available tables in current keyspace
+
+-- After USE, suggests keyspace names
+USE <Tab>              -- Shows: available keyspaces
+
+-- After DESCRIBE, suggests object types
+DESCRIBE <Tab>         -- Shows: KEYSPACE, TABLE, TYPE, etc.
+
+-- After consistency command
+CONSISTENCY <Tab>      -- Shows: ONE, QUORUM, ALL, etc.
+```
+
+**File Path Completion:**
+```sql
+-- For commands that accept file paths
+SOURCE '<Tab>          -- Shows: files in current directory
+SOURCE '/path/<Tab>    -- Shows: files in /path/
+```
+
+#### Completion Behavior
+
+- **Case Insensitive:** Type `sel<Tab>` to get `SELECT`
+- **Partial Matching:** Type part of a word and press Tab
+- **Multiple Matches:** When multiple completions are available:
+  - First Tab: Shows inline completion if unique
+  - Second Tab: Shows all available options in a modal
+- **Smart Filtering:** Completions are filtered based on current context
+- **Escape to Cancel:** Press `Esc` to close the completion modal
+
+#### Examples
+
+```sql
+-- Complete table name
+SELECT * FROM us<Tab>
+-- Completes to: SELECT * FROM users
+
+-- Complete consistency level
+CONSISTENCY LOC<Tab>
+-- Shows: LOCAL_ONE, LOCAL_QUORUM, LOCAL_SERIAL
+
+-- Complete column names after SELECT
+SELECT id, na<Tab> FROM users
+-- Completes to: SELECT id, name FROM users
+
+-- Complete file paths for SOURCE command
+SOURCE 'sche<Tab>
+-- Completes to: SOURCE 'schema.cql'
+
+-- Complete COPY command options
+COPY users TO 'file.csv' WITH <Tab>
+-- Shows: HEADER, DELIMITER, NULLVAL, PAGESIZE, etc.
+
+-- Show all tables when multiple exist
+SELECT * FROM <Tab>
+-- Shows modal with: users, orders, products, etc.
+```
+
+#### Tips for Effective Use
+
+1. **Use Tab liberally:** The completion system is smart and context-aware
+2. **Type minimum characters:** Often 2-3 characters are enough to get unique completion
+3. **Use for discovery:** Press Tab on empty input to see what's available
+4. **File paths:** Remember to include quotes for file path completion
+5. **Navigate completions:** Use arrow keys to select from multiple options
+
+## Available Commands
+
+CQLAI supports all standard CQL commands plus additional meta-commands for enhanced functionality.
+
+### CQL Commands
+Execute any valid CQL statement supported by your Cassandra cluster:
+- DDL: `CREATE`, `ALTER`, `DROP` (KEYSPACE, TABLE, INDEX, etc.)
+- DML: `SELECT`, `INSERT`, `UPDATE`, `DELETE`
+- DCL: `GRANT`, `REVOKE`
+- Other: `USE`, `TRUNCATE`, `BEGIN BATCH`, etc.
+
+### Meta-Commands
+
+Meta-commands provide additional functionality beyond standard CQL:
+
+#### Session Management
+- **CONSISTENCY** `<level>` - Set consistency level (ONE, QUORUM, ALL, etc.)
+  ```sql
+  CONSISTENCY QUORUM
+  CONSISTENCY LOCAL_ONE
+  ```
+
+- **PAGING** `<size>` | OFF - Set result paging size
+  ```sql
+  PAGING 1000
+  PAGING OFF
+  ```
+
+- **TRACING** ON | OFF - Enable/disable query tracing
+  ```sql
+  TRACING ON
+  SELECT * FROM users;
+  TRACING OFF
+  ```
+
+- **OUTPUT** [FORMAT] - Set output format
+  ```sql
+  OUTPUT          -- Show current format
+  OUTPUT TABLE    -- Table format (default)
+  OUTPUT JSON     -- JSON format
+  OUTPUT EXPAND   -- Expanded vertical format
+  OUTPUT ASCII    -- ASCII table format
+  ```
+
+#### Schema Description
+- **DESCRIBE** - Show schema information
+  ```sql
+  DESCRIBE KEYSPACES                    -- List all keyspaces
+  DESCRIBE KEYSPACE <name>              -- Show keyspace definition
+  DESCRIBE TABLES                       -- List tables in current keyspace
+  DESCRIBE TABLE <name>                 -- Show table structure
+  DESCRIBE TYPES                        -- List user-defined types
+  DESCRIBE TYPE <name>                  -- Show UDT definition
+  DESCRIBE FUNCTIONS                    -- List user functions
+  DESCRIBE FUNCTION <name>              -- Show function definition
+  DESCRIBE AGGREGATES                   -- List user aggregates
+  DESCRIBE AGGREGATE <name>             -- Show aggregate definition
+  DESCRIBE MATERIALIZED VIEWS           -- List materialized views
+  DESCRIBE MATERIALIZED VIEW <name>     -- Show view definition
+  DESCRIBE INDEX <name>                 -- Show index definition
+  DESCRIBE CLUSTER                      -- Show cluster information
+  DESC <keyspace>.<table>               -- Shorthand for table description
+  ```
+
+#### Data Export/Import
+- **COPY TO** - Export table data to CSV file
+  ```sql
+  -- Basic export
+  COPY users TO 'users.csv'
+
+  -- Export specific columns
+  COPY users (id, name, email) TO 'users_partial.csv'
+
+  -- Export with options
+  COPY users TO 'users.csv' WITH HEADER = TRUE AND DELIMITER = '|'
+
+  -- Export to stdout
+  COPY users TO STDOUT WITH HEADER = TRUE
+
+  -- Available options:
+  -- HEADER = TRUE/FALSE      -- Include column headers
+  -- DELIMITER = ','          -- Field delimiter
+  -- NULLVAL = 'NULL'        -- String to use for NULL values
+  -- PAGESIZE = 1000         -- Rows per page for large exports
+  ```
+
+- **COPY FROM** - Import CSV data into table
+  ```sql
+  -- Basic import from file
+  COPY users FROM 'users.csv'
+
+  -- Import with header row
+  COPY users FROM 'users.csv' WITH HEADER = TRUE
+
+  -- Import specific columns (when CSV doesn't have all columns)
+  COPY users (id, name, email) FROM 'users_partial.csv'
+
+  -- Import from stdin
+  COPY users FROM STDIN
+
+  -- Import with custom options
+  COPY users FROM 'users.csv' WITH HEADER = TRUE AND DELIMITER = '|' AND NULLVAL = 'N/A'
+
+  -- Available options:
+  -- HEADER = TRUE/FALSE      -- First row contains column names
+  -- DELIMITER = ','          -- Field delimiter
+  -- NULLVAL = 'NULL'        -- String representing NULL values
+  -- MAXROWS = -1            -- Maximum rows to import (-1 = unlimited)
+  -- SKIPROWS = 0            -- Number of initial rows to skip
+  -- MAXPARSEERRORS = -1     -- Max parsing errors allowed (-1 = unlimited)
+  -- MAXINSERTERRORS = 1000  -- Max insert errors allowed
+  -- MAXBATCHSIZE = 20       -- Max rows per batch insert
+  -- MINBATCHSIZE = 2        -- Min rows per batch insert
+  -- CHUNKSIZE = 5000        -- Rows between progress updates
+  -- ENCODING = 'UTF8'       -- File encoding
+  -- QUOTE = '"'             -- Quote character for strings
+  ```
+
+- **CAPTURE** - Capture query output to file
+  ```sql
+  CAPTURE 'output.txt'          -- Start capturing to text file
+  CAPTURE JSON 'output.json'    -- Capture as JSON
+  CAPTURE CSV 'output.csv'      -- Capture as CSV
+  SELECT * FROM users;
+  CAPTURE OFF                   -- Stop capturing
+  ```
+
+#### Information Display
+- **SHOW** - Display session information
+  ```sql
+  SHOW VERSION          -- Show Cassandra version
+  SHOW HOST            -- Show current connection details
+  SHOW SESSION         -- Show all session settings
+  ```
+
+- **EXPAND** ON | OFF - Toggle expanded output mode
+  ```sql
+  EXPAND ON            -- Vertical output (one field per line)
+  SELECT * FROM users WHERE id = 1;
+  EXPAND OFF           -- Normal table output
+  ```
+
+#### Script Execution
+- **SOURCE** - Execute CQL scripts from file
+  ```sql
+  SOURCE 'schema.cql'           -- Execute script
+  SOURCE '/path/to/script.cql'  -- Absolute path
+  ```
+
+#### Help
+- **HELP** - Display command help
+  ```sql
+  HELP                 -- Show all commands
+  HELP DESCRIBE        -- Help for specific command
+  HELP CONSISTENCY     -- Help for consistency levels
+  ```
+
+### AI Commands
+- **.ai** `<natural language query>` - Generate CQL from natural language
+  ```sql
+  .ai show all users with active status
+  .ai create a table for storing user sessions
+  .ai find orders placed in the last 30 days
+  ```
 
 ## Configuration
 
