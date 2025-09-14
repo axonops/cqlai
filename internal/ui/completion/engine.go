@@ -259,15 +259,27 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 	hasFrom := strings.Contains(upperInput, " FROM ")
 	hasWith := strings.Contains(upperInput, " WITH ")
 
-	// If we have WITH, suggest options
-	if hasWith {
+	// Also check if the last word is WITH (user just typed it)
+	words := strings.Fields(upperInput)
+	lastWord := ""
+	if len(words) > 0 {
+		lastWord = words[len(words)-1]
+	}
+
+	// If we have WITH or just typed WITH, suggest options
+	if hasWith || lastWord == "WITH" {
 		return CopyOptions
 	}
 
 	// If we have TO or FROM but no WITH, suggest WITH
 	if (hasTo || hasFrom) && !hasWith {
-		// Check if we end with a quote (completed filename)
-		if strings.HasSuffix(strings.TrimSpace(input), "'") {
+		// Check if we end with a quote (completed filename) or if we're past a filename
+		trimmed := strings.TrimSpace(input)
+		if strings.HasSuffix(trimmed, "'") || strings.HasSuffix(trimmed, "\"") {
+			return []string{"WITH"}
+		}
+		// Check if we have a complete filename (has both opening and closing quotes)
+		if (strings.Count(input, "'") >= 2) || (strings.Count(input, "\"") >= 2) {
 			return []string{"WITH"}
 		}
 		// If no closing quote yet, don't suggest anything (user is typing filename)

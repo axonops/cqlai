@@ -1,8 +1,7 @@
 package completion
 
 import (
-	"fmt"
-	"os"
+	"strings"
 )
 
 // getDescribeCompletions returns completions for DESCRIBE commands
@@ -256,27 +255,27 @@ func (pce *ParserBasedCompletionEngine) getOutputSuggestions(tokens []string) []
 
 // getCopyCompletions returns completions for COPY commands
 func (ce *CompletionEngine) getCopyCompletions(words []string, wordPos int) []string {
-	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] getCopyCompletions: words=%v, wordPos=%d\n", words, wordPos)
-		defer debugFile.Close()
+	// Convert all words to uppercase for comparison
+	upperWords := make([]string, len(words))
+	for i, w := range words {
+		upperWords[i] = strings.ToUpper(w)
 	}
 
 	// First scan for key tokens to understand context
 	hasTo := false
 	hasFrom := false
 	hasWith := false
+	toIndex := -1
+	fromIndex := -1
 
-	for i, word := range words {
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] getCopyCompletions: word[%d]='%s'\n", i, word)
-			defer debugFile.Close()
-		}
+	for i, word := range upperWords {
 		switch word {
 		case "TO":
 			hasTo = true
+			toIndex = i
 		case "FROM":
 			hasFrom = true
+			fromIndex = i
 		case "WITH":
 			hasWith = true
 		}
@@ -289,24 +288,27 @@ func (ce *CompletionEngine) getCopyCompletions(words []string, wordPos int) []st
 			return ce.getTableAndKeyspaceTableNames()
 		}
 		// After table name (could be keyspace.table), suggest TO or FROM
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] getCopyCompletions: No TO/FROM found, returning CopyDirections\n")
-			defer debugFile.Close()
-		}
 		return CopyDirections
 	}
 
-	// After WITH, suggest options
-	if hasWith {
+	// If we have WITH or the last word is WITH, suggest options
+	if hasWith || (len(upperWords) > 0 && upperWords[len(upperWords)-1] == "WITH") {
 		// We're after WITH, suggest COPY options
 		return CopyOptions
 	}
 
 	// After TO/FROM but before WITH
 	if (hasTo || hasFrom) && !hasWith {
-		// We have TO/FROM but no WITH, so suggest WITH
-		// This handles the case after the filename
-		return []string{"WITH"}
+		// Check if we're after the filename
+		directionIndex := toIndex
+		if hasFrom {
+			directionIndex = fromIndex
+		}
+
+		// If we're at least 2 positions after TO/FROM (table TO 'filename'), suggest WITH
+		if wordPos > directionIndex+1 {
+			return []string{"WITH"}
+		}
 	}
 
 	return []string{}
