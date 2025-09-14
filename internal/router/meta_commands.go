@@ -6,27 +6,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // MetaCommandHandler handles non-CQL meta commands
 type MetaCommandHandler struct {
-	session       *db.Session
-	expandMode    bool
-	captureFile   string
-	captureOutput *os.File
-	captureFormat string // "text", "json", or "csv"
-	csvWriter     *csv.Writer
+	session        *db.Session
+	sessionManager *session.Manager
+	expandMode     bool
+	captureFile    string
+	captureOutput  *os.File
+	captureFormat  string // "text", "json", or "csv"
+	csvWriter      *csv.Writer
 }
 
 // NewMetaCommandHandler creates a new meta command handler
-func NewMetaCommandHandler(session *db.Session) *MetaCommandHandler {
+func NewMetaCommandHandler(session *db.Session, sessionMgr *session.Manager) *MetaCommandHandler {
 	return &MetaCommandHandler{
-		session:       session,
-		expandMode:    false,
-		captureFormat: "text",
+		session:        session,
+		sessionManager: sessionMgr,
+		expandMode:     false,
+		captureFormat:  "text",
 	}
 }
 
@@ -54,6 +58,8 @@ func (h *MetaCommandHandler) HandleMetaCommand(command string) interface{} {
 		return h.handleSource(command)
 	case "CAPTURE":
 		return h.handleCapture(command)
+	case "COPY":
+		return h.handleCopy(command)
 	case "HELP":
 		return h.handleHelp()
 	default:
@@ -256,7 +262,7 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 		}
 
 		// Execute the statement
-		result := ProcessCommand(stmt+";", h.session)
+		result := ProcessCommand(stmt+";", h.session, h.sessionManager)
 
 		// Check if it's an error
 		if err, ok := result.(error); ok {
@@ -390,204 +396,100 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	return fmt.Sprintf("Now capturing query output to %s (format: %s). Use 'CAPTURE OFF' to stop.", filename, format)
 }
 
-// handleHelp handles HELP command
-func (h *MetaCommandHandler) handleHelp() interface{} {
-	help := [][]string{
-		{"Category", "Command", "Description"},
-		{"━━━━━━━━━", "━━━━━━━━", "━━━━━━━━━━━"},
+// executeBatch executes a batch of INSERT queries and returns the number of errors
+func (h *MetaCommandHandler) executeBatch(queries []string) int {
+	errors := 0
+	for _, query := range queries {
+		result := h.session.ExecuteCQLQuery(query)
+		if _, ok := result.(error); ok {
+			errors++
+		}
+	}
+	return errors
+}
 
-		// CQL Operations
-		{"CQL", "SELECT ...", "Query data from tables"},
-		{"", "INSERT ...", "Insert data into tables"},
-		{"", "UPDATE ...", "Update existing data"},
-		{"", "DELETE ...", "Delete data from tables"},
-		{"", "TRUNCATE ...", "Remove all data from table"},
-		{"", "CREATE ...", "Create keyspace/table/index/etc"},
-		{"", "ALTER ...", "Modify keyspace/table structure"},
-		{"", "DROP ...", "Remove keyspace/table/index/etc"},
-		{"", "USE <keyspace>", "Switch to specified keyspace"},
+// getTableColumns retrieves column names for a table
+func (h *MetaCommandHandler) getTableColumns(table string) []string {
+	// Parse table name (could be keyspace.table)
+	parts := strings.Split(table, ".")
+	var keyspace, tableName string
 
-		// AI Features
-		{"─────────", "─────────", "─────────────"},
-		{"AI", ".AI <request>", "Generate CQL from natural language"},
-		{"", ".AI show users", "Example: generate SELECT query"},
-		{"", ".AI create user table", "Example: generate CREATE TABLE"},
-
-		// Schema Commands
-		{"─────────", "─────────", "─────────────"},
-		{"Schema", "DESCRIBE KEYSPACES", "List all keyspaces"},
-		{"", "DESCRIBE TABLES", "List tables in current keyspace"},
-		{"", "DESCRIBE TABLE <name>", "Show table schema details"},
-		{"", "DESCRIBE TYPE <name>", "Show user-defined type"},
-		{"", "DESCRIBE TYPES", "List all UDTs"},
-		{"", "DESCRIBE CLUSTER", "Show cluster information"},
-		{"", "DESC ...", "Short form of DESCRIBE"},
-
-		// Session Settings
-		{"─────────", "─────────", "─────────────"},
-		{"Session", "CONSISTENCY [level]", "Show/set consistency level"},
-		{"", "  ONE, QUORUM, ALL", "Common consistency levels"},
-		{"", "  LOCAL_ONE, LOCAL_QUORUM", "Datacenter-aware levels"},
-		{"", "TRACING ON|OFF", "Enable/disable query tracing"},
-		{"", "PAGING [size]", "Set result page size"},
-		{"", "EXPAND ON|OFF", "Toggle vertical output format"},
-
-		// Output Control
-		{"─────────", "─────────", "─────────────"},
-		{"Output", "OUTPUT [format]", "Set output format:"},
-		{"", "  TABLE", "Formatted table (default)"},
-		{"", "  JSON", "JSON format"},
-		{"", "  EXPAND", "Vertical format"},
-		{"", "CAPTURE 'file'", "Start capturing output to file"},
-		{"", "CAPTURE JSON 'file'", "Capture as JSON format"},
-		{"", "CAPTURE OFF", "Stop capturing output"},
-
-		// Information
-		{"─────────", "─────────", "─────────────"},
-		{"Info", "SHOW VERSION", "Show Cassandra version"},
-		{"", "SHOW HOST", "Show connection details"},
-		{"", "SHOW SESSION", "Display session settings"},
-
-		// File Operations
-		{"─────────", "─────────", "─────────────"},
-		{"Files", "SOURCE 'file'", "Execute CQL from file"},
-
-		// Keyboard Shortcuts
-		{"─────────", "─────────", "─────────────"},
-		{"Keys", "↑/↓ or Ctrl+P/N", "Navigate command history"},
-		{"", "Ctrl+R", "Search history"},
-		{"", "Tab", "Auto-complete"},
-		{"", "Ctrl+L", "Clear screen"},
-		{"", "Ctrl+C", "Cancel current command"},
-		{"", "Ctrl+D", "Exit (EOF)"},
-
-		// Text Editing
-		{"", "Ctrl+A/E", "Jump to start/end of line"},
-		{"", "Alt+B/F", "Move by word"},
-		{"", "Ctrl+K/U", "Cut to end/start of line"},
-		{"", "Ctrl+W", "Cut previous word"},
-		{"", "Alt+D", "Delete next word"},
-		{"", "Ctrl+Y", "Paste cut text"},
-
-		// Navigation
-		{"─────────", "─────────", "─────────────"},
-		{"Navigate", "PgUp/PgDown", "Scroll results"},
-		{"", "Home/End", "Jump to first/last row"},
-		{"", "←/→", "Scroll horizontally (wide tables)"},
-
-		// Exit
-		{"─────────", "─────────", "─────────────"},
-		{"Exit", "EXIT or QUIT", "Exit cqlai"},
-		{"", "Ctrl+D", "Exit via EOF"},
-
-		{"", "", ""},
-		{"", "Type 'HELP <topic>' for more details", ""},
+	if len(parts) == 2 {
+		keyspace = parts[0]
+		tableName = parts[1]
+	} else {
+		// Use current keyspace
+		keyspace = h.sessionManager.CurrentKeyspace()
+		if keyspace == "" {
+			return []string{}
+		}
+		tableName = parts[0]
 	}
 
-	return help
+	// Build query with values inline
+	query := fmt.Sprintf(`SELECT column_name FROM system_schema.columns
+	          WHERE keyspace_name = '%s' AND table_name = '%s'
+	          ORDER BY position`, keyspace, tableName)
+
+	result := h.session.ExecuteCQLQuery(query)
+
+	switch v := result.(type) {
+	case db.QueryResult:
+		columns := make([]string, 0, len(v.Data))
+		for _, row := range v.Data {
+			if len(row) > 0 {
+				columns = append(columns, row[0])
+			}
+		}
+		return columns
+	default:
+		return []string{}
+	}
+}
+
+// formatValueForInsert formats a value for use in a CQL INSERT statement
+// The column and table parameters are included for future type-aware formatting
+func (h *MetaCommandHandler) formatValueForInsert(value string, _ string, _ string) string {
+	// Handle common cases
+	if value == "" {
+		return "NULL"
+	}
+
+	// Try to parse as number (including decimals)
+	if strings.Contains(value, ".") {
+		if _, err := strconv.ParseFloat(value, 64); err == nil {
+			return value // Numbers don't need quotes
+		}
+	} else {
+		if _, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return value // Numbers don't need quotes
+		}
+	}
+
+	// Try to parse as boolean
+	if value == "true" || value == "false" {
+		return value // Booleans don't need quotes
+	}
+
+	// Handle hex values (for BLOBs)
+	if strings.HasPrefix(value, "0x") {
+		return value // Hex values don't need quotes
+	}
+
+	// Handle UUIDs (basic check)
+	if len(value) == 36 && strings.Count(value, "-") == 4 {
+		// Looks like a UUID - return as-is without quotes
+		return value
+	}
+
+	// String value - escape single quotes and wrap in quotes
+	escaped := strings.ReplaceAll(value, "'", "''")
+	return fmt.Sprintf("'%s'", escaped)
 }
 
 // IsExpandMode returns whether expand mode is on
 func (h *MetaCommandHandler) IsExpandMode() bool {
 	return h.expandMode
-}
-
-// GetCaptureFile returns the current capture file if any
-func (h *MetaCommandHandler) GetCaptureFile() *os.File {
-	return h.captureOutput
-}
-
-// GetCaptureFormat returns the current capture format ("text" or "json")
-func (h *MetaCommandHandler) GetCaptureFormat() string {
-	return h.captureFormat
-}
-
-// IsCapturing returns true if currently capturing output
-func (h *MetaCommandHandler) IsCapturing() bool {
-	return h.captureOutput != nil
-}
-
-// WriteToCapture writes data to the capture file if active
-func (h *MetaCommandHandler) WriteToCapture(data string) error {
-	if h.captureOutput != nil {
-		_, err := h.captureOutput.WriteString(data)
-		return err
-	}
-	return nil
-}
-
-// WriteCaptureText writes text output (like DESCRIBE results) to the capture file
-func (h *MetaCommandHandler) WriteCaptureText(command string, output string) error {
-	if h.captureOutput == nil {
-		return nil
-	}
-
-	switch h.captureFormat {
-	case "csv":
-		// For CSV format, write as a single column with the output
-		// Write command as comment
-		_ = h.csvWriter.Write([]string{"# Command: " + command})
-		
-		// Split output by lines and write each as a row
-		lines := strings.Split(output, "\n")
-		for _, line := range lines {
-			if err := h.csvWriter.Write([]string{line}); err != nil {
-				return err
-			}
-		}
-		
-		// Add empty row to separate commands
-		_ = h.csvWriter.Write([]string{})
-		
-		// Flush to ensure data is written
-		h.csvWriter.Flush()
-		return h.csvWriter.Error()
-
-	case "json":
-		// For JSON format, create a text result object
-		type TextResult struct {
-			Command string `json:"command"`
-			Output  string `json:"output"`
-			Type    string `json:"type"`
-		}
-
-		result := TextResult{
-			Command: command,
-			Output:  output,
-			Type:    "text",
-		}
-
-		jsonBytes, err := json.MarshalIndent(result, "  ", "  ")
-		if err != nil {
-			return err
-		}
-
-		// Check if this is the first entry
-		info, _ := h.captureOutput.Stat()
-		if info.Size() > 2 { // More than just "[\n"
-			_, _ = h.captureOutput.WriteString(",\n")
-		}
-		_, _ = h.captureOutput.WriteString("  ")
-		_, _ = h.captureOutput.Write(jsonBytes)
-
-	default:
-		// Text format - write the command and output
-		_, _ = fmt.Fprintf(h.captureOutput, "\n> %s\n", command)
-		_, _ = h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
-		_, _ = h.captureOutput.WriteString(output)
-		if !strings.HasSuffix(output, "\n") {
-			_, _ = h.captureOutput.WriteString("\n")
-		}
-		// Add just a blank line for separation
-		_, _ = h.captureOutput.WriteString("\n")
-	}
-
-	return nil
-}
-
-// FormatResultAsJSON formats query results as JSON
-func FormatResultAsJSON(headers []string, rows [][]string) (string, error) {
-	return FormatResultAsJSONWithRawData(headers, rows, nil)
 }
 
 // FormatResultAsJSONWithRawData formats query results as JSON with optional raw data
@@ -638,152 +540,6 @@ func FormatResultAsJSONWithRawData(headers []string, rows [][]string, rawData []
 	}
 
 	return string(jsonBytes), nil
-}
-
-// AppendCaptureRows appends additional rows to the capture file (for paging)
-func (h *MetaCommandHandler) AppendCaptureRows(rows [][]string) error {
-	if h.captureOutput == nil {
-		return nil
-	}
-
-	switch h.captureFormat {
-	case "csv":
-		// Write data rows only (no headers for continuation)
-		for _, row := range rows {
-			if err := h.csvWriter.Write(row); err != nil {
-				return err
-			}
-		}
-		// Flush to ensure data is written
-		h.csvWriter.Flush()
-		return h.csvWriter.Error()
-
-	case "json":
-		// For JSON, we can't easily append to an existing object
-		// So we'll skip continuation rows in JSON format
-		// This maintains valid JSON structure
-		return nil
-
-	default:
-		// Text format - just append the rows, no command header
-		for _, row := range rows {
-			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
-		}
-	}
-
-	return nil
-}
-
-// WriteCaptureResult writes query results to the capture file
-func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string, rows [][]string) error {
-	return h.WriteCaptureResultWithRawData(command, headers, rows, nil)
-}
-
-// WriteCaptureResultWithRawData writes query results to the capture file with optional raw data for JSON
-func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, headers []string, rows [][]string, rawData []map[string]interface{}) error {
-	if h.captureOutput == nil {
-		return nil
-	}
-
-	switch h.captureFormat {
-	case "csv":
-		// Write headers as first row (with query command as comment)
-		// Write comment with the query
-		_ = h.csvWriter.Write([]string{"# Query: " + command})
-
-		// Write headers
-		if err := h.csvWriter.Write(headers); err != nil {
-			return err
-		}
-
-		// Write data rows
-		for _, row := range rows {
-			if err := h.csvWriter.Write(row); err != nil {
-				return err
-			}
-		}
-
-		// Add empty row to separate queries
-		_ = h.csvWriter.Write([]string{})
-
-		// Flush to ensure data is written
-		h.csvWriter.Flush()
-		return h.csvWriter.Error()
-
-	case "json":
-		// Format as JSON
-		type QueryResult struct {
-			Query   string                   `json:"query"`
-			Columns []string                 `json:"columns"`
-			Rows    []map[string]interface{} `json:"rows"`
-			Count   int                      `json:"row_count"`
-		}
-
-		result := QueryResult{
-			Query:   command,
-			Columns: headers,
-			Rows:    make([]map[string]interface{}, 0, len(rows)),
-			Count:   len(rows),
-		}
-
-		// Use raw data if provided, otherwise fall back to string parsing
-		if rawData != nil && len(rawData) == len(rows) {
-			// Use the raw data directly - it preserves types
-			result.Rows = rawData
-		} else {
-			// Fall back to parsing strings (backward compatibility)
-			for _, row := range rows {
-				rowMap := make(map[string]interface{})
-				for i, col := range headers {
-					if i < len(row) {
-						// Try to parse as number or boolean
-						value := row[i]
-						if value == "null" {
-							rowMap[col] = nil
-						} else if value == "true" || value == "false" {
-							rowMap[col] = value == "true"
-						} else if num, err := json.Number(value).Float64(); err == nil {
-							rowMap[col] = num
-						} else {
-							rowMap[col] = value
-						}
-					}
-				}
-				result.Rows = append(result.Rows, rowMap)
-			}
-		}
-
-		jsonBytes, err := json.MarshalIndent(result, "  ", "  ")
-		if err != nil {
-			return err
-		}
-
-		// Check if this is the first entry
-		info, _ := h.captureOutput.Stat()
-		if info.Size() > 2 { // More than just "[\n"
-			_, _ = h.captureOutput.WriteString(",\n")
-		}
-		_, _ = h.captureOutput.WriteString("  ")
-		_, _ = h.captureOutput.Write(jsonBytes)
-
-	default:
-		// Text format - write the command and a simple table representation
-		_, _ = fmt.Fprintf(h.captureOutput, "\n> %s\n", command)
-		_, _ = h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
-
-		// Write headers
-		_, _ = h.captureOutput.WriteString(strings.Join(headers, "\t") + "\n")
-
-		// Write rows
-		for _, row := range rows {
-			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
-		}
-
-		// Add just a blank line for separation, no row count
-		_, _ = h.captureOutput.WriteString("\n")
-	}
-
-	return nil
 }
 
 // Close closes any open resources

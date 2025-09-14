@@ -57,10 +57,10 @@ func stripComments(input string) string {
 }
 
 // ProcessCommand processes a user command.
-func ProcessCommand(command string, session *db.Session) interface{} {
+func ProcessCommand(command string, session *db.Session, sessionMgr *session.Manager) interface{} {
 	// Initialize meta handler if needed
 	if metaHandler == nil {
-		metaHandler = NewMetaCommandHandler(session)
+		metaHandler = NewMetaCommandHandler(session, sessionMgr)
 	}
 
 	// Strip comments and trim the command
@@ -79,7 +79,7 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 	// Check if it's a meta-command (starts with certain keywords)
 	upperCommand := strings.ToUpper(command)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "TRACING", "SOURCE", "SHOW", "EXPAND", "CAPTURE", "HELP"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
 
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s'", command)
 
@@ -100,7 +100,7 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 	if isMetaCommand {
 		// Parse as meta-command
 		logger.DebugToFile("ProcessCommand", "Routing to parseMetaCommand")
-		return parseMetaCommand(command, session)
+		return parseMetaCommand(command, session, sessionMgr)
 	} else {
 		// Check if we need to transform SELECT to SELECT JSON
 		if sessionManager != nil && sessionManager.GetOutputFormat() == config.OutputFormatJSON {
@@ -124,7 +124,7 @@ func ProcessCommand(command string, session *db.Session) interface{} {
 }
 
 // parseMetaCommand parses and executes meta-commands
-func parseMetaCommand(command string, session *db.Session) interface{} {
+func parseMetaCommand(command string, session *db.Session, sessionMgr *session.Manager) interface{} {
 	// Strip trailing semicolon if present (meta-commands don't need them)
 	command = strings.TrimSpace(command)
 	command = strings.TrimSuffix(command, ";")
@@ -142,6 +142,7 @@ func parseMetaCommand(command string, session *db.Session) interface{} {
 		strings.HasPrefix(upperCommand, "EXPAND") ||
 		strings.HasPrefix(upperCommand, "SOURCE") ||
 		strings.HasPrefix(upperCommand, "CAPTURE") ||
+		strings.HasPrefix(upperCommand, "COPY") ||
 		strings.HasPrefix(upperCommand, "HELP") ||
 		strings.HasPrefix(upperCommand, "CONSISTENCY") {
 		return metaHandler.HandleMetaCommand(command)
