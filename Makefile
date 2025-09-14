@@ -107,6 +107,17 @@ test-coverage: test
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(NC)"
 
+## test-copy: Run COPY command tests
+test-copy: build
+	@echo "$(BLUE)Running COPY command tests...$(NC)"
+	@if [ -x test/test_copy_commands.sh ]; then \
+		./test/test_copy_commands.sh; \
+	else \
+		echo "$(RED)Test script not found or not executable$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ COPY command tests complete$(NC)"
+
 ## benchmark: Run benchmarks
 benchmark:
 	@echo "$(BLUE)Running benchmarks...$(NC)"

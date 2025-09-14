@@ -98,34 +98,93 @@ jobs:
       - name: Run basic connectivity test
         run: |
           echo "Running basic connectivity test..."
-          
+
           # Create basic connectivity test file
           cat > basic_connectivity_test.cql <<EOF
           CREATE KEYSPACE IF NOT EXISTS test_connectivity
           WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1};
-          
+
           USE test_connectivity;
-          
+
           CREATE TABLE IF NOT EXISTS test_table (
               id uuid PRIMARY KEY,
               data text
           );
-          
+
           INSERT INTO test_table (id, data) VALUES (uuid(), 'test data');
-          
+
           SELECT * FROM test_table;
-          
+
           DROP KEYSPACE test_connectivity;
           EOF
-          
+
           ./cqlai -f basic_connectivity_test.cql
-          
+
           if [ $? -eq 0 ]; then
             echo "✅ Basic connectivity test passed"
           else
             echo "❌ Basic connectivity test failed"
             exit 1
           fi
+
+      - name: Run COPY command tests
+        run: |
+          echo "Running COPY TO/FROM command tests..."
+
+          # Create test keyspace and table
+          ./cqlai -e "CREATE KEYSPACE IF NOT EXISTS copy_test WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1};"
+          ./cqlai -k copy_test -e "CREATE TABLE IF NOT EXISTS test_copy (id int PRIMARY KEY, name text, value int, active boolean);"
+
+          # Insert test data
+          ./cqlai -k copy_test -e "INSERT INTO test_copy (id, name, value, active) VALUES (1, 'Alice', 100, true);"
+          ./cqlai -k copy_test -e "INSERT INTO test_copy (id, name, value, active) VALUES (2, 'Bob', 200, false);"
+          ./cqlai -k copy_test -e "INSERT INTO test_copy (id, name, value, active) VALUES (3, 'Charlie', 300, true);"
+
+          # Test COPY TO
+          echo "Testing COPY TO..."
+          ./cqlai -k copy_test -e "COPY test_copy TO '/tmp/test_export.csv' WITH HEADER=true"
+
+          if [ -f /tmp/test_export.csv ]; then
+            echo "✅ COPY TO created file successfully"
+            echo "File contents:"
+            head -5 /tmp/test_export.csv
+          else
+            echo "❌ COPY TO failed to create file"
+            exit 1
+          fi
+
+          # Test COPY FROM
+          echo "Testing COPY FROM..."
+          ./cqlai -k copy_test -e "TRUNCATE test_copy;"
+          ./cqlai -k copy_test -e "COPY test_copy FROM '/tmp/test_export.csv' WITH HEADER=true"
+
+          # Verify data was imported
+          count=$(./cqlai -k copy_test -e "SELECT COUNT(*) FROM test_copy;" | grep -o '[0-9]\+' | head -1)
+          if [ "$count" = "3" ]; then
+            echo "✅ COPY FROM imported $count rows successfully"
+          else
+            echo "❌ COPY FROM failed: expected 3 rows, got $count"
+            exit 1
+          fi
+
+          # Test COPY with options
+          echo "Testing COPY with MAXROWS..."
+          ./cqlai -k copy_test -e "TRUNCATE test_copy;"
+          ./cqlai -k copy_test -e "COPY test_copy FROM '/tmp/test_export.csv' WITH HEADER=true AND MAXROWS=2"
+
+          count=$(./cqlai -k copy_test -e "SELECT COUNT(*) FROM test_copy;" | grep -o '[0-9]\+' | head -1)
+          if [ "$count" = "2" ]; then
+            echo "✅ COPY FROM with MAXROWS working correctly"
+          else
+            echo "❌ COPY FROM MAXROWS failed: expected 2 rows, got $count"
+            exit 1
+          fi
+
+          # Clean up
+          ./cqlai -e "DROP KEYSPACE copy_test;"
+          rm -f /tmp/test_export.csv
+
+          echo "✅ All COPY command tests passed"
 
   test-summary:
     needs: test
