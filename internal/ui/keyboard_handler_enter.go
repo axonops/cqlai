@@ -181,7 +181,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	}
 
 	start := time.Now()
-	result := router.ProcessCommand(command, m.session)
+	result := router.ProcessCommand(command, m.session, m.sessionManager)
 	m.lastQueryTime = time.Since(start)
 
 	// Add command to history viewport

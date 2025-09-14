@@ -17,7 +17,7 @@ func (m *MainModel) handleCommentLine(command string) (*MainModel, tea.Cmd) {
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 	// Process the comment (router will strip it)
-	_ = router.ProcessCommand(command, m.session)
+	_ = router.ProcessCommand(command, m.session, m.sessionManager)
 	return m, nil
 }
 
@@ -30,7 +30,7 @@ func (m *MainModel) handleBlockComment(command string) (*MainModel, tea.Cmd) {
 		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
 		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
-		_ = router.ProcessCommand(command, m.session)
+		_ = router.ProcessCommand(command, m.session, m.sessionManager)
 		return m, nil
 	} else if !m.multiLineMode {
 		// Multi-line block comment - enter special mode
@@ -63,7 +63,7 @@ func (m *MainModel) handleMultiLineBlockComment(command string) (*MainModel, tea
 		m.historyViewport.GotoBottom()
 		
 		// Process (will be stripped as comment)
-		_ = router.ProcessCommand(fullComment, m.session)
+		_ = router.ProcessCommand(fullComment, m.session, m.sessionManager)
 		return m, nil
 	}
 	// Not a block comment - return nil to indicate no handling
