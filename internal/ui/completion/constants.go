@@ -122,6 +122,7 @@ var TopLevelCommands = []string{
 	"SOURCE",
 	"CAPTURE",
 	"EXPAND",
+	"COPY",
 }
 
 // DescribeObjects are the objects that can be described
@@ -151,6 +152,16 @@ var ShowCommands = []string{
 // OutputFormats for OUTPUT command
 var OutputFormats = []string{
 	"ASCII", "TABLE", "EXPAND", "JSON",
+}
+
+// CopyDirections for COPY command
+var CopyDirections = []string{
+	"TO", "FROM",
+}
+
+// CopyOptions for COPY command WITH clause
+var CopyOptions = []string{
+	"HEADER", "DELIMITER", "NULLVAL", "PAGESIZE", "ENCODING", "QUOTE",
 }
 
 // BatchTypes for BEGIN command
@@ -308,6 +319,7 @@ var TopLevelKeywords = []string{
 	"BEGIN",
 	"CAPTURE",
 	"CONSISTENCY",
+	"COPY",
 	"CREATE",
 	"DELETE",
 	"DESCRIBE",

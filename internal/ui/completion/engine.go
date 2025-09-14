@@ -30,11 +30,11 @@ func NewCompletionEngine(dbSession *db.Session, sessionMgr *session.Manager) *Co
 
 // Complete returns possible completions for the given input
 func (ce *CompletionEngine) Complete(input string) []string {
-	return ce.CompleteLegacy(input)
+	return ce.CompleteNative(input)
 }
 
-// CompleteLegacy returns possible completions for the given input using the old implementation
-func (ce *CompletionEngine) CompleteLegacy(input string) []string {
+// CompleteNative returns possible completions for the given input using native pattern matching
+func (ce *CompletionEngine) CompleteNative(input string) []string {
 	// Debug output
 	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Complete called with input: '%s'\n", input)
@@ -57,9 +57,16 @@ func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 		// Fall through to parser if no special handling
 	}
 
+	// Special case: Handle COPY command with native completion
+	// COPY is a meta-command, not part of CQL grammar
+	if strings.HasPrefix(upperInput, "COPY ") || upperInput == "COPY" {
+		// Use native completion for COPY
+		return ce.handleCopyNativeCompletion(input)
+	}
+
 	// Check if we're completing after a keyspace name with a dot
-	// e.g., "SELECT * FROM system." (but not INSERT INTO which was handled above)
-	if strings.Contains(input, ".") && !strings.HasPrefix(upperInput, "INSERT INTO ") {
+	// e.g., "SELECT * FROM system." or "COPY system." (but not INSERT INTO which was handled above)
+	if strings.Contains(input, ".") && !strings.HasPrefix(upperInput, "INSERT INTO ") && !strings.HasPrefix(upperInput, "COPY ") {
 		if completions := ce.handleKeyspaceTableCompletion(input); completions != nil {
 			return completions
 		}
@@ -114,18 +121,18 @@ func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 		defer debugFile.Close()
 	}
 
-	// If parser doesn't return suggestions, fall back to legacy approach
+	// If parser doesn't return suggestions, fall back to native pattern matching
 	if len(suggestions) == 0 {
 		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] Falling back to legacy completion\n")
+			fmt.Fprintf(debugFile, "[DEBUG] Falling back to native completion\n")
 			defer debugFile.Close()
 		}
-		legacySuggestions := ce.completeLegacy(input)
+		nativeSuggestions := ce.completeNative(input)
 		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] Legacy completion returned %d suggestions: %v\n", len(legacySuggestions), legacySuggestions)
+			fmt.Fprintf(debugFile, "[DEBUG] Native completion returned %d suggestions: %v\n", len(nativeSuggestions), nativeSuggestions)
 			defer debugFile.Close()
 		}
-		return legacySuggestions
+		return nativeSuggestions
 	}
 
 	// Return just the suggestions (next words only), not full phrases
@@ -133,8 +140,8 @@ func (ce *CompletionEngine) CompleteLegacy(input string) []string {
 	return suggestions
 }
 
-// completeLegacy is the fallback completion method
-func (ce *CompletionEngine) completeLegacy(input string) []string {
+// completeNative is the native pattern-based completion method
+func (ce *CompletionEngine) completeNative(input string) []string {
 	// Don't trim - we need to know if there's trailing space
 	if input == "" {
 		return ce.getTopLevelCommands()
@@ -169,7 +176,7 @@ func (ce *CompletionEngine) completeLegacy(input string) []string {
 
 	// Debug logging
 	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] completeLegacy: input='%s', words=%v, afterSpace=%v, wordToComplete='%s'\n",
+		fmt.Fprintf(debugFile, "[DEBUG] completeNative: input='%s', words=%v, afterSpace=%v, wordToComplete='%s'\n",
 			input, words, afterSpace, wordToComplete)
 		defer debugFile.Close()
 	}
@@ -227,6 +234,57 @@ func (ce *CompletionEngine) completeLegacy(input string) []string {
 	// Return just the suggestions (next tokens only), not full lines
 	// The keyboard handler will handle how to apply them
 	return suggestions
+}
+
+// handleCopyNativeCompletion handles COPY command completion natively
+func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
+	// Parse the input more carefully to handle quotes
+	upperInput := strings.ToUpper(strings.TrimSpace(input))
+
+	// If just "COPY", return table names
+	if upperInput == "COPY" {
+		return ce.getTableAndKeyspaceTableNames()
+	}
+
+	// Check if we're completing after COPY with a dot (keyspace.table)
+	if strings.Contains(input, ".") && !strings.Contains(input, "'") {
+		// Let the keyspace.table completion handle it
+		if completions := ce.handleKeyspaceTableCompletion(input); completions != nil {
+			return completions
+		}
+	}
+
+	// Parse to find TO/FROM and WITH
+	hasTo := strings.Contains(upperInput, " TO ")
+	hasFrom := strings.Contains(upperInput, " FROM ")
+	hasWith := strings.Contains(upperInput, " WITH ")
+
+	// If we have WITH, suggest options
+	if hasWith {
+		return CopyOptions
+	}
+
+	// If we have TO or FROM but no WITH, suggest WITH
+	if (hasTo || hasFrom) && !hasWith {
+		// Check if we end with a quote (completed filename)
+		if strings.HasSuffix(strings.TrimSpace(input), "'") {
+			return []string{"WITH"}
+		}
+		// If no closing quote yet, don't suggest anything (user is typing filename)
+		return []string{}
+	}
+
+	// If we don't have TO/FROM yet
+	if !hasTo && !hasFrom {
+		// Check if we have a table name
+		words := strings.Fields(upperInput)
+		if len(words) >= 2 {
+			// We have "COPY tablename", suggest TO/FROM
+			return CopyDirections
+		}
+	}
+
+	return []string{}
 }
 
 // getCompletionsForContext returns completions based on the command context
@@ -297,6 +355,12 @@ func (ce *CompletionEngine) getCompletionsForContext(words []string, afterSpace 
 		if wordPos == 1 {
 			return ConsistencyLevels
 		}
+	case "COPY":
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] getCompletionsForContext: Routing to getCopyCompletions\n")
+			defer debugFile.Close()
+		}
+		return ce.getCopyCompletions(words, wordPos)
 	}
 
 	// If we don't recognize the command, return empty

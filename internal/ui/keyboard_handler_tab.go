@@ -42,8 +42,24 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 		words := strings.Fields(strings.ToUpper(currentInput))
 		if len(words) > 0 {
 			lastWord := words[len(words)-1]
+			shouldAddSpace := false
+
 			// Check if last word is a complete keyword
 			if completion.IsCompleteKeyword(lastWord) {
+				shouldAddSpace = true
+			} else if len(words) >= 2 {
+				// Special case for COPY command: after table name, add space
+				if words[0] == "COPY" {
+					// Check if we're after a table name (could be keyspace.table)
+					// COPY tablename -> add space
+					// COPY keyspace.tablename -> add space
+					if len(words) == 2 || (len(words) == 2 && strings.Contains(words[1], ".")) {
+						shouldAddSpace = true
+					}
+				}
+			}
+
+			if shouldAddSpace {
 				// Add a space and get next completions
 				currentInput += " "
 				m.input.SetValue(currentInput)
