@@ -162,6 +162,8 @@ var CopyDirections = []string{
 // CopyOptions for COPY command WITH clause
 var CopyOptions = []string{
 	"HEADER", "DELIMITER", "NULLVAL", "PAGESIZE", "ENCODING", "QUOTE",
+	"MAXROWS", "SKIPROWS", "MAXPARSEERRORS", "MAXINSERTERRORS",
+	"MAXBATCHSIZE", "MINBATCHSIZE", "CHUNKSIZE",
 }
 
 // BatchTypes for BEGIN command
