@@ -33,16 +33,16 @@ trap cleanup EXIT
 
 # Create test CSV files for import testing
 cat > "$TEST_DIR/test_import.csv" <<EOF
-id,name,age,active
-10,John,25,true
-11,Jane,30,false
-12,Jim,35,true
+id,name,price,active
+10,John,25.99,true
+11,Jane,30.50,false
+12,Jim,35.00,true
 EOF
 
 cat > "$TEST_DIR/test_import_no_header.csv" <<EOF
-20,Jack,28,true
-21,Jill,22,false
-22,Joe,33,true
+20,Jack,28.99,true
+21,Jill,22.00,false
+22,Joe,33.75,true
 EOF
 
 # Function to run a test
@@ -102,25 +102,29 @@ echo "=== COPY FROM Tests ==="
 run_test "COPY FROM with header" "COPY copy_test.products FROM '$TEST_DIR/test_import.csv' WITH HEADER=true"
 
 # Verify import
-count=$(./cqlai -k copy_test -e "SELECT COUNT(*) FROM products;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+output=$(./cqlai -k copy_test -e "SELECT COUNT(*) FROM products;" 2>/dev/null)
+count=$(echo "$output" | grep "| [0-9]" | awk '{print $2}')
 if [ "$count" = "3" ]; then
     echo -e "  ${GREEN}✓${NC} Imported correct number of rows: $count"
 else
     echo -e "  ${RED}✗${NC} Expected 3 rows, got: $count"
+    echo "  Debug output: $output"
 fi
 
 # Test COPY FROM without header
-run_test "COPY FROM without header" "COPY copy_test.products (id, name, age, active) FROM '$TEST_DIR/test_import_no_header.csv'"
+run_test "COPY FROM without header" "COPY copy_test.products (id, name, price, active) FROM '$TEST_DIR/test_import_no_header.csv'"
 
 # Test COPY FROM with MAXROWS
 ./cqlai -k copy_test -e "TRUNCATE products;" > /dev/null 2>&1
 run_test "COPY FROM with MAXROWS" "COPY copy_test.products FROM '$TEST_DIR/test_import.csv' WITH HEADER=true AND MAXROWS=2"
 
-count=$(./cqlai -k copy_test -e "SELECT COUNT(*) FROM products;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+output=$(./cqlai -k copy_test -e "SELECT COUNT(*) FROM products;" 2>/dev/null)
+count=$(echo "$output" | grep "| [0-9]" | awk '{print $2}')
 if [ "$count" = "2" ]; then
     echo -e "  ${GREEN}✓${NC} MAXROWS working: imported $count rows"
 else
     echo -e "  ${RED}✗${NC} MAXROWS failed: expected 2 rows, got: $count"
+    echo "  Debug output: $output"
 fi
 
 # Test COPY FROM with SKIPROWS
