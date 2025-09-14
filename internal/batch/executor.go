@@ -146,7 +146,7 @@ func (e *Executor) Execute(cql string) error {
 	}()
 
 	// Process the CQL command
-	result := router.ProcessCommand(cql, e.session)
+	result := router.ProcessCommand(cql, e.session, e.sessionManager)
 
 	// Handle the result based on type
 	var err error
