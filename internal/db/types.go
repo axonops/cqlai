@@ -206,6 +206,21 @@ func (h *CQLTypeHandler) formatByType(val interface{}) string {
 		return h.formatGenericMap(v)
 	case []interface{}:
 		return h.formatGenericList(v)
+	case []map[string]interface{}:
+		// Format list of maps (e.g., list<frozen<udt>>)
+		// Use formatGenericMap which will quote strings inside the maps
+		if len(v) == 0 {
+			return "[]"
+		}
+		items := make([]string, 0, len(v))
+		for i, m := range v {
+			if h.CollectionLimit > 0 && i >= h.CollectionLimit {
+				items = append(items, "...")
+				break
+			}
+			items = append(items, h.formatGenericMap(m))
+		}
+		return "[" + strings.Join(items, ", ") + "]"
 	case []string:
 		return h.formatStringList(v)
 	case []int:
@@ -561,11 +576,63 @@ func (h *CQLTypeHandler) formatVector(val interface{}) string {
 
 // Collection formatters
 
+// formatValueInCollection formats a value that appears inside a collection or UDT
+// This adds quotes to strings for proper CQL representation
+func (h *CQLTypeHandler) formatValueInCollection(val interface{}) string {
+	if val == nil {
+		return h.NullString
+	}
+
+	switch v := val.(type) {
+	case string:
+		// Quote strings inside collections/UDTs
+		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+	case map[string]interface{}:
+		return h.formatGenericMap(v)
+	case []interface{}:
+		return h.formatGenericListWithQuotes(v)
+	case []map[string]interface{}:
+		// Format list of maps (e.g., list<frozen<udt>>)
+		// Use formatGenericMap which will quote strings inside the maps
+		if len(v) == 0 {
+			return "[]"
+		}
+		items := make([]string, 0, len(v))
+		for i, m := range v {
+			if h.CollectionLimit > 0 && i >= h.CollectionLimit {
+				items = append(items, "...")
+				break
+			}
+			items = append(items, h.formatGenericMap(m))
+		}
+		return "[" + strings.Join(items, ", ") + "]"
+	default:
+		// For other types, use the regular formatting
+		return h.formatByType(val)
+	}
+}
+
+func (h *CQLTypeHandler) formatGenericListWithQuotes(l []interface{}) string {
+	if len(l) == 0 {
+		return "[]"
+	}
+
+	items := make([]string, 0, len(l))
+	for i, v := range l {
+		if h.CollectionLimit > 0 && i >= h.CollectionLimit {
+			items = append(items, "...")
+			break
+		}
+		items = append(items, h.formatValueInCollection(v))
+	}
+	return "[" + strings.Join(items, ", ") + "]"
+}
+
 func (h *CQLTypeHandler) formatGenericMap(m map[string]interface{}) string {
 	if len(m) == 0 {
 		return "{}"
 	}
-	
+
 	pairs := make([]string, 0, len(m))
 	count := 0
 	for k, v := range m {
@@ -573,7 +640,9 @@ func (h *CQLTypeHandler) formatGenericMap(m map[string]interface{}) string {
 			pairs = append(pairs, "...")
 			break
 		}
-		pairs = append(pairs, fmt.Sprintf("%s: %s", k, h.formatByType(v)))
+		// Format values with quotes for strings inside UDTs
+		formattedValue := h.formatValueInCollection(v)
+		pairs = append(pairs, fmt.Sprintf("%s: %s", k, formattedValue))
 		count++
 	}
 	return "{" + strings.Join(pairs, ", ") + "}"

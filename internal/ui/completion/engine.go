@@ -64,6 +64,13 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 		return ce.handleCopyNativeCompletion(input)
 	}
 
+	// Check if we're trying to access UDT fields (column.field)
+	if ce.isUDTFieldAccess(input) {
+		if completions := ce.handleUDTFieldCompletion(input); completions != nil {
+			return completions
+		}
+	}
+
 	// Check if we're completing after a keyspace name with a dot
 	// e.g., "SELECT * FROM system." or "COPY system." (but not INSERT INTO which was handled above)
 	if strings.Contains(input, ".") && !strings.HasPrefix(upperInput, "INSERT INTO ") && !strings.HasPrefix(upperInput, "COPY ") {

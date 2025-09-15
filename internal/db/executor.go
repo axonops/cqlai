@@ -2,6 +2,8 @@ package db
 
 import (
 	"fmt"
+	"math/big"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,16 +14,187 @@ import (
 )
 
 // formatUDTMap formats a UDT map for display
+// formatValueInUDT formats a value that appears inside a UDT or collection
+// Strings should be quoted in this context
+func formatValueInUDT(val interface{}) string {
+	switch v := val.(type) {
+	case nil:
+		return "null"
+	case string:
+		// Quote strings inside UDTs/collections
+		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+	case map[string]interface{}:
+		return formatUDTMap(v)
+	case map[interface{}]interface{}:
+		// Convert to string-keyed map for display
+		m := make(map[string]interface{})
+		for k, val := range v {
+			m[fmt.Sprintf("%v", k)] = val
+		}
+		return formatUDTMap(m)
+	case []interface{}:
+		// Format list/set/tuple
+		if len(v) == 0 {
+			return "[]"
+		}
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, formatValueInUDT(item))
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case []map[string]interface{}:
+		// Format list of UDT maps
+		if len(v) == 0 {
+			return "[]"
+		}
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, formatUDTMap(item))
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case gocql.UUID:
+		return v.String()
+	case []byte:
+		return fmt.Sprintf("0x%x", v)
+	case time.Time:
+		return v.Format(time.RFC3339)
+	case time.Duration:
+		return v.String()
+	case net.IP:
+		return v.String()
+	case *big.Int:
+		return v.String()
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprintf("%v", v)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
 func formatUDTMap(m map[string]interface{}) string {
 	if len(m) == 0 {
 		return "{}"
 	}
-	
+
 	var parts []string
 	for k, v := range m {
-		parts = append(parts, fmt.Sprintf("%s: %v", k, v))
+		parts = append(parts, fmt.Sprintf("%s: %v", k, formatValueInUDT(v)))
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// FormatValue formats any value for display, handling nested structures
+// This is called for top-level values, so strings should NOT be quoted
+func FormatValue(val interface{}) string {
+	switch v := val.(type) {
+	case nil:
+		return "null"
+	case string:
+		// Don't quote top-level strings
+		return v
+	case map[string]interface{}:
+		return formatUDTMap(v)
+	case map[interface{}]interface{}:
+		// Convert to string-keyed map for display
+		m := make(map[string]interface{})
+		for k, val := range v {
+			m[fmt.Sprintf("%v", k)] = val
+		}
+		return formatUDTMap(m)
+	case []interface{}:
+		// Format list/set/tuple
+		if len(v) == 0 {
+			return "[]"
+		}
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, FormatValue(item))
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case []map[string]interface{}:
+		// Format list of UDT maps (e.g., list<frozen<phone>>)
+		if len(v) == 0 {
+			return "[]"
+		}
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, formatUDTMap(item))
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case gocql.UUID:
+		return v.String()
+	case []byte:
+		return fmt.Sprintf("0x%x", v)
+	case time.Time:
+		return v.Format(time.RFC3339)
+	case time.Duration:
+		return v.String()
+	case net.IP:
+		return v.String()
+	case *big.Int:
+		return v.String()
+	case bool:
+		return fmt.Sprintf("%v", v)
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%v", v)
+	case float32, float64:
+		return fmt.Sprintf("%v", v)
+	default:
+		// For unknown types, treat as string and quote it
+		return "'" + strings.ReplaceAll(fmt.Sprintf("%v", val), "'", "''") + "'"
+	}
+}
+
+// extractTableName extracts the keyspace and table name from a SELECT query
+func extractTableName(query string) (keyspace, table string) {
+	// Simple extraction - look for FROM tablename pattern
+	upperQuery := strings.ToUpper(strings.TrimSpace(query))
+	fromIndex := strings.Index(upperQuery, "FROM ")
+	if fromIndex == -1 {
+		return "", ""
+	}
+
+	// Get the part after FROM
+	afterFrom := strings.TrimSpace(query[fromIndex+5:])
+
+	// Split by whitespace or special characters to get the table name
+	parts := strings.FieldsFunc(afterFrom, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == ';' || r == '('
+	})
+
+	if len(parts) > 0 {
+		fullName := parts[0]
+		if strings.Contains(fullName, ".") {
+			// Has keyspace prefix
+			tableParts := strings.Split(fullName, ".")
+			if len(tableParts) == 2 {
+				return tableParts[0], tableParts[1]
+			}
+			return "", tableParts[len(tableParts)-1]
+		}
+		return "", fullName
+	}
+
+	return "", ""
+}
+
+// getColumnTypeFromSystemTable gets the full type definition for a column from system tables
+func (s *Session) getColumnTypeFromSystemTable(keyspace, table, column string) string {
+	if s.Session == nil {
+		return ""
+	}
+
+	query := `SELECT type FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ? AND column_name = ?`
+
+	var columnType string
+	iter := s.Query(query, keyspace, table, column).Iter()
+	if !iter.Scan(&columnType) {
+		iter.Close()
+		return ""
+	}
+	iter.Close()
+
+	return columnType
 }
 
 // captureTracer implements gocql.Tracer to capture trace IDs
@@ -97,6 +270,11 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Add debug logging
 	logger.DebugToFile("executeSelectQuery", "Starting executeSelectQuery")
+
+	// Initialize UDT registry if needed (will be cached)
+	if s.udtRegistry == nil {
+		s.udtRegistry = NewUDTRegistry(s.Session)
+	}
 
 	// Check if we should use streaming for large results
 	// This is a simple heuristic - could be made configurable
@@ -193,10 +371,30 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Prepare headers with key indicators and collect column types
 	headers := make([]string, len(filteredColumns))
 	columnTypes := make([]string, len(filteredColumns))
+
+	// For UDT columns, we need to get the full type definition from system tables
+	queryKeyspace, tableName := extractTableName(query)
+	currentKeyspace := queryKeyspace
+	if currentKeyspace == "" {
+		currentKeyspace = s.Keyspace()
+	}
+
 	for i, col := range filteredColumns {
 		headers[i] = col.Name
 		// Store the column type - use TypeInfoToString to handle custom types
-		columnTypes[i] = TypeInfoToString(col.TypeInfo)
+		basicType := TypeInfoToString(col.TypeInfo)
+
+		// If it's a UDT, try to get the full type definition
+		if basicType == "udt" && currentKeyspace != "" && tableName != "" {
+			fullType := s.getColumnTypeFromSystemTable(currentKeyspace, tableName, col.Name)
+			if fullType != "" {
+				columnTypes[i] = fullType
+			} else {
+				columnTypes[i] = basicType
+			}
+		} else {
+			columnTypes[i] = basicType
+		}
 
 		// Add indicators for key columns
 		if keyInfo, exists := keyColumns[col.Name]; exists {
@@ -225,20 +423,23 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		cleanHeaders[i] = col.Name
 	}
 
-	// Use MapScan for better type handling
-	// IMPORTANT LIMITATIONS:
-	// 1. NULL values: gocql returns zero values (0, false, "") for NULL columns when scanning 
-	//    into interface{}. To properly detect NULLs, we would need to scan into typed pointers
-	//    (*int, *string, etc), but we don't know column types at compile time.
-	// 2. UDTs: gocql often returns empty maps for UDTs when using MapScan or scanning into
-	//    interface{}. To properly handle UDTs, you need to scan into specific struct types
-	//    that match the UDT schema, which requires compile-time knowledge of the UDT structure.
-	// These are fundamental limitations of using dynamic typing with gocql.
+	// Use Scan with interface{} slice instead of MapScan to get raw bytes for UDTs
+	// MapScan returns empty maps for UDTs, but we need to use RawBytes for UDT columns
 	for {
-		// First try MapScan for the row
-		rowMap := make(map[string]interface{})
-		if !iter.MapScan(rowMap) {
-			logger.DebugToFile("executeSelectQuery", "MapScan returned false - no more rows or error")
+		// Create a slice to scan into - use RawBytes for UDT columns
+		scanDest := make([]interface{}, len(filteredColumns))
+		for i, col := range filteredColumns {
+			if col.TypeInfo.Type() == gocql.TypeUDT {
+				// Use RawBytes for UDT columns to bypass gocql's broken UDT decoding
+				scanDest[i] = new(RawBytes)
+			} else {
+				scanDest[i] = new(interface{})
+			}
+		}
+
+		// Scan the row
+		if !iter.Scan(scanDest...) {
+			logger.DebugToFile("executeSelectQuery", "Scan returned false - no more rows or error")
 			break
 		}
 
@@ -246,58 +447,125 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		rawRow := make(map[string]interface{})
 		// Create formatted row for display
 		row := make([]string, len(filteredColumns))
-		
+
 		for i, col := range filteredColumns {
-			val, hasValue := rowMap[col.Name]
-			
-			if !hasValue || val == nil {
-				rawRow[col.Name] = nil
+			// Extract value based on type
+			var val interface{}
+			if col.TypeInfo.Type() == gocql.TypeUDT {
+				// For UDT columns, we used RawBytes
+				rawBytes := scanDest[i].(*RawBytes)
+				if rawBytes != nil && *rawBytes != nil {
+					val = []byte(*rawBytes)
+				} else {
+					val = nil
+				}
+			} else {
+				// Regular column - dereference the pointer
+				val = *(scanDest[i].(*interface{}))
+			}
+
+			if val == nil {
+				rawRow[cleanHeaders[i]] = nil
 				row[i] = "null"
 			} else {
-				// Special handling for UDTs
-				if col.TypeInfo.Type() == gocql.TypeUDT {
-					// When scanning into interface{}, gocql returns a map for UDTs
-					// Unfortunately, it often returns an empty map due to how it handles dynamic types
-					// This is a known limitation of gocql when not using specific struct types
-					
-					if m, ok := val.(map[string]interface{}); ok {
+				// Special handling for UDTs and complex types
+				typeStr := columnTypes[i]
+
+				// Parse the type string to get structured type information
+				typeInfo, parseErr := ParseCQLType(typeStr)
+
+				// Add debug logging to understand what we're getting
+				logger.DebugfToFile("ExecuteSelectQuery", "Column %s: typeStr=%s, gocqlType=%v, parsedType=%v, parseErr=%v, valType=%T",
+					col.Name, typeStr, col.TypeInfo.Type(), typeInfo, parseErr, val)
+
+				if col.TypeInfo.Type() == gocql.TypeUDT || (typeInfo != nil && typeInfo.BaseType == "udt") {
+					// UDT handling - try to decode if we got raw bytes
+					if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
+						logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
+
+						// Use our binary decoder to decode the UDT
+						decoder := NewBinaryDecoder(s.udtRegistry)
+
+						// Determine the keyspace - prefer query keyspace, then current
+						keyspace := currentKeyspace
+						if keyspace == "" {
+							keyspace = s.Keyspace()
+							if keyspace == "" && s.cluster != nil {
+								keyspace = s.cluster.Keyspace
+							}
+						}
+
+						// Try to decode the UDT
+						if typeInfo != nil {
+							decoded, err := decoder.Decode(bytes, typeInfo, keyspace)
+							if err != nil {
+								logger.DebugfToFile("ExecuteSelectQuery", "Failed to decode UDT %s: %v", col.Name, err)
+								// Fall back to showing raw bytes info
+								rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
+								row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
+							} else {
+								// Successfully decoded UDT
+								rawRow[cleanHeaders[i]] = decoded
+								// Format for display
+								if m, ok := decoded.(map[string]interface{}); ok {
+									row[i] = formatUDTMap(m)
+								} else {
+									row[i] = fmt.Sprintf("%v", decoded)
+								}
+							}
+						} else {
+							// Couldn't parse type, show raw bytes
+							rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
+							row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
+						}
+					} else if m, ok := val.(map[string]interface{}); ok {
+						// Sometimes gocql returns a map directly
 						if len(m) > 0 {
-							// We got actual UDT data
-							rawRow[col.Name] = m
+							rawRow[cleanHeaders[i]] = m
 							row[i] = formatUDTMap(m)
 						} else {
 							// Empty map - common issue with gocql and UDTs
-							// This is a known limitation when using MapScan or Scan with interface{}
-							// To properly handle UDTs, you need to scan into specific struct types
-							logger.DebugfToFile("ExecuteSelectQuery", "UDT %s returned empty map (gocql limitation)", col.Name)
-							rawRow[col.Name] = m
+							logger.DebugfToFile("ExecuteSelectQuery", "UDT %s returned empty map", col.Name)
+							rawRow[cleanHeaders[i]] = m
 							row[i] = "{}"
 						}
-					} else if bytes, ok := val.([]byte); ok {
-						// Sometimes UDTs come as raw bytes
-						logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
-						// We would need the UDT schema to properly unmarshal this
-						rawRow[col.Name] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
-						row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
 					} else {
-						rawRow[col.Name] = val
+						// Other format - just display as is
+						rawRow[cleanHeaders[i]] = val
 						row[i] = fmt.Sprintf("%v", val)
+					}
+				} else if typeInfo != nil && (typeInfo.BaseType == "list" || typeInfo.BaseType == "set" ||
+					typeInfo.BaseType == "map" || typeInfo.BaseType == "tuple") {
+					// Handle collections that might contain UDTs
+					if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
+						decoder := NewBinaryDecoder(s.udtRegistry)
+						keyspace := s.Keyspace()
+						if keyspace == "" && s.cluster != nil {
+							keyspace = s.cluster.Keyspace
+						}
+
+						decoded, err := decoder.Decode(bytes, typeInfo, keyspace)
+						if err != nil {
+							logger.DebugfToFile("ExecuteSelectQuery", "Failed to decode collection %s: %v", col.Name, err)
+							rawRow[cleanHeaders[i]] = val
+							row[i] = fmt.Sprintf("%v", val)
+						} else {
+							rawRow[cleanHeaders[i]] = decoded
+							row[i] = FormatValue(decoded)
+						}
+					} else {
+						// Use existing collection formatting
+						rawRow[cleanHeaders[i]] = val
+						// Debug: log the type of val
+						logger.DebugfToFile("ExecuteSelectQuery", "Collection %s value type: %T", col.Name, val)
+						row[i] = FormatValue(val)
 					}
 				} else {
 					// Store the actual value for JSON
-					rawRow[col.Name] = val
-					
-					// Format for display
-					switch v := val.(type) {
-					case gocql.UUID:
-						row[i] = v.String()
-					case []byte:
-						row[i] = fmt.Sprintf("0x%x", v)
-					case time.Time:
-						row[i] = v.Format(time.RFC3339)
-					default:
-						row[i] = fmt.Sprintf("%v", val)
-					}
+					rawRow[cleanHeaders[i]] = val
+
+					// Format for display - use formatValue which handles collections properly
+					row[i] = FormatValue(val)
 				}
 			}
 		}
@@ -416,10 +684,32 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	headers := make([]string, len(filteredColumns))
 	columnNames := make([]string, len(filteredColumns))
 	columnTypes := make([]string, len(filteredColumns))
+
+	// For UDT columns, we need to get the full type definition from system tables
+	queryKeyspace, tableName := extractTableName(query)
+	currentKeyspace := queryKeyspace
+	if currentKeyspace == "" {
+		currentKeyspace = s.Keyspace()
+	}
+
 	for i, col := range filteredColumns {
 		columnNames[i] = col.Name // Store original name
 		headers[i] = col.Name     // Start with original name
-		columnTypes[i] = TypeInfoToString(col.TypeInfo)
+
+		// Store the column type - use TypeInfoToString to handle custom types
+		basicType := TypeInfoToString(col.TypeInfo)
+
+		// If it's a UDT, try to get the full type definition
+		if basicType == "udt" && currentKeyspace != "" && tableName != "" {
+			fullType := s.getColumnTypeFromSystemTable(currentKeyspace, tableName, col.Name)
+			if fullType != "" {
+				columnTypes[i] = fullType
+			} else {
+				columnTypes[i] = basicType
+			}
+		} else {
+			columnTypes[i] = basicType
+		}
 
 		// Add indicators for key columns
 		if keyInfo, exists := keyColumns[col.Name]; exists {
@@ -439,6 +729,7 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 		ColumnTypes: columnTypes,
 		Iterator:    iter,
 		StartTime:   startTime,
+		Keyspace:    currentKeyspace,
 	}
 }
 

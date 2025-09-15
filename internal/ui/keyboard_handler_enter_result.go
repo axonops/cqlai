@@ -14,6 +14,39 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// extractTableNameFromQuery extracts the table name from a SELECT query
+func extractTableNameFromQuery(query string) (keyspace, table string) {
+	// Simple extraction - look for FROM tablename pattern
+	upperQuery := strings.ToUpper(strings.TrimSpace(query))
+	fromIndex := strings.Index(upperQuery, "FROM ")
+	if fromIndex == -1 {
+		return "", ""
+	}
+
+	// Get the part after FROM
+	afterFrom := strings.TrimSpace(query[fromIndex+5:])
+
+	// Split by whitespace or special characters to get the table name
+	parts := strings.FieldsFunc(afterFrom, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == ';' || r == '('
+	})
+
+	if len(parts) > 0 {
+		fullName := parts[0]
+		if strings.Contains(fullName, ".") {
+			// Has keyspace prefix
+			tableParts := strings.Split(fullName, ".")
+			if len(tableParts) == 2 {
+				return tableParts[0], tableParts[1]
+			}
+			return "", tableParts[len(tableParts)-1]
+		}
+		return "", fullName
+	}
+
+	return "", ""
+}
+
 // processCommandResult processes the result from a command execution
 func (m *MainModel) processCommandResult(command string, result interface{}, startTime time.Time) (*MainModel, tea.Cmd) {
 	switch v := result.(type) {
@@ -55,9 +88,54 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	// Create type handler once for all rows
 	typeHandler := db.NewCQLTypeHandler()
 
+	// Get column information for UDT detection
+	cols := v.Iterator.Columns()
+	currentKeyspace := ""
+	tableName := ""
+	if m.lastCommand != "" {
+		// Extract keyspace and table from the query
+		queryKeyspace, queryTable := extractTableNameFromQuery(m.lastCommand)
+		tableName = queryTable
+
+		// Use query keyspace if present, otherwise use session keyspace
+		if queryKeyspace != "" {
+			currentKeyspace = queryKeyspace
+		} else if m.session != nil {
+			currentKeyspace = m.session.Keyspace()
+		}
+	}
+
+	logger.DebugfToFile("HandleEnterKey", "Processing streaming result: currentKeyspace=%s, tableName=%s, columns=%d",
+		currentKeyspace, tableName, len(cols))
+	for _, col := range cols {
+		logger.DebugfToFile("HandleEnterKey", "Column: %s, Type: %v", col.Name, col.TypeInfo.Type())
+	}
+
+	// Initialize UDT registry if needed
+	var udtRegistry *db.UDTRegistry
+	var decoder *db.BinaryDecoder
+	if m.session != nil {
+		if m.session.GetUDTRegistry() == nil {
+			m.session.SetUDTRegistry(db.NewUDTRegistry(m.session.Session))
+		}
+		udtRegistry = m.session.GetUDTRegistry()
+		decoder = db.NewBinaryDecoder(udtRegistry)
+	}
+
 	for initialRows < maxInitialRows {
-		rowMap := make(map[string]interface{})
-		if !v.Iterator.MapScan(rowMap) {
+		// Create scan destinations - use RawBytes for UDT columns
+		scanDest := make([]interface{}, len(v.ColumnNames))
+		for i, col := range cols {
+			if col.TypeInfo.Type() == gocql.TypeUDT {
+				// Use RawBytes for UDT columns to get raw data
+				scanDest[i] = new(db.RawBytes)
+			} else {
+				// Use regular interface{} for other types
+				scanDest[i] = new(interface{})
+			}
+		}
+
+		if !v.Iterator.Scan(scanDest...) {
 			// Check for iterator error
 			if err := v.Iterator.Close(); err != nil {
 				logger.DebugfToFile("HandleEnterKey", "Iterator error: %v", err)
@@ -70,29 +148,89 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 				m.input.Reset()
 				return m, nil
 			}
-			logger.DebugfToFile("HandleEnterKey", "MapScan returned false after %d rows", initialRows)
+			logger.DebugfToFile("HandleEnterKey", "Scan returned false after %d rows", initialRows)
 			break
 		}
-		logger.DebugfToFile("HandleEnterKey", "Row %d map keys: %v", initialRows, rowMap)
 
 		// Convert row to string array using original column names
 		row := make([]string, len(v.ColumnNames))
 		for i, colName := range v.ColumnNames {
-			if val, ok := rowMap[colName]; ok {
-				// Get type info from the iterator columns if available
-				var typeInfo gocql.TypeInfo
-				if v.Iterator != nil && v.Iterator.Columns() != nil {
-					cols := v.Iterator.Columns()
-					for _, col := range cols {
-						if col.Name == colName {
-							typeInfo = col.TypeInfo
-							break
+			var val interface{}
+
+			// Get column info
+			var col *gocql.ColumnInfo
+			for _, c := range cols {
+				if c.Name == colName {
+					col = &c
+					break
+				}
+			}
+
+			// Extract value based on type
+			if col != nil && col.TypeInfo.Type() == gocql.TypeUDT {
+				// For UDT columns, we used RawBytes
+				rawBytes := scanDest[i].(*db.RawBytes)
+				if *rawBytes == nil {
+					val = nil
+				} else {
+					// We have raw bytes for the UDT
+					val = []byte(*rawBytes)
+				}
+			} else {
+				// For other columns, we used interface{}
+				val = *(scanDest[i].(*interface{}))
+			}
+
+			if val == nil {
+				row[i] = typeHandler.NullString
+			} else {
+				// Check if it's a UDT and we have raw bytes
+				if col != nil && col.TypeInfo.Type() == gocql.TypeUDT {
+					logger.DebugfToFile("HandleEnterKey", "Column %s is UDT, val type: %T, val: %v", colName, val, val)
+
+					if bytes, ok := val.([]byte); ok && len(bytes) > 0 && decoder != nil {
+						logger.DebugfToFile("HandleEnterKey", "Got %d bytes for UDT column %s", len(bytes), colName)
+
+						// Get full type definition from system tables if possible
+						var fullType string
+						if currentKeyspace != "" && tableName != "" && m.session != nil {
+							fullType = m.session.GetColumnTypeFromSystemTable(currentKeyspace, tableName, colName)
+							logger.DebugfToFile("HandleEnterKey", "Full type for %s: %s", colName, fullType)
 						}
+
+						// Try to decode the UDT
+						if fullType != "" {
+							if typeInfo, err := db.ParseCQLType(fullType); err == nil {
+								logger.DebugfToFile("HandleEnterKey", "Parsed type info for %s: %+v", colName, typeInfo)
+								if decoded, err := decoder.Decode(bytes, typeInfo, currentKeyspace); err == nil {
+									logger.DebugfToFile("HandleEnterKey", "Successfully decoded UDT %s: %v", colName, decoded)
+									val = decoded
+								} else {
+									logger.DebugfToFile("HandleEnterKey", "Failed to decode UDT %s: %v", colName, err)
+								}
+							} else {
+								logger.DebugfToFile("HandleEnterKey", "Failed to parse type for %s: %v", colName, err)
+							}
+						} else {
+							logger.DebugfToFile("HandleEnterKey", "No full type found for %s (keyspace=%s, table=%s)", colName, currentKeyspace, tableName)
+						}
+					} else if m, ok := val.(map[string]interface{}); ok {
+						logger.DebugfToFile("HandleEnterKey", "UDT %s came as map with %d entries", colName, len(m))
+						// gocql might have already decoded it as a map
+						if len(m) == 0 {
+							logger.DebugfToFile("HandleEnterKey", "Empty map for UDT %s - this is the gocql issue", colName)
+						}
+					} else {
+						logger.DebugfToFile("HandleEnterKey", "UDT %s has unexpected type: %T", colName, val)
 					}
 				}
-				row[i] = typeHandler.FormatValue(val, typeInfo)
-			} else {
-				row[i] = typeHandler.NullString
+
+				// Format the value
+				if col != nil {
+					row[i] = typeHandler.FormatValue(val, col.TypeInfo)
+				} else {
+					row[i] = fmt.Sprintf("%v", val)
+				}
 			}
 		}
 

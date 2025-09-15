@@ -25,6 +25,7 @@ type Session struct {
 	tracing          bool
 	cassandraVersion string
 	schemaCache      *SchemaCache
+	udtRegistry      *UDTRegistry
 	lastTraceID      []byte // Store the last trace ID for retrieval
 }
 
@@ -428,6 +429,29 @@ func (s *Session) GetTraceData() ([][]string, []string, *TraceInfo, error) {
 	_ = sessionIter.Close()
 
 	return results, headers, traceInfo, nil
+}
+
+// Keyspace returns the current keyspace
+func (s *Session) Keyspace() string {
+	if s.cluster != nil {
+		return s.cluster.Keyspace
+	}
+	return ""
+}
+
+// GetUDTRegistry returns the UDT registry
+func (s *Session) GetUDTRegistry() *UDTRegistry {
+	return s.udtRegistry
+}
+
+// SetUDTRegistry sets the UDT registry
+func (s *Session) SetUDTRegistry(registry *UDTRegistry) {
+	s.udtRegistry = registry
+}
+
+// GetColumnTypeFromSystemTable gets the full type definition for a column
+func (s *Session) GetColumnTypeFromSystemTable(keyspace, table, column string) string {
+	return s.getColumnTypeFromSystemTable(keyspace, table, column)
 }
 
 // SetKeyspace changes the current keyspace by recreating the session
