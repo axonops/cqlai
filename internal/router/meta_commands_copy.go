@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -9,9 +10,104 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 )
+
+// formatCSVValue formats a value for CSV export, handling complex types like UDTs
+func formatCSVValue(val interface{}) string {
+	switch v := val.(type) {
+	case []byte:
+		// Format as hex string with 0x prefix (standard for BLOBs)
+		return fmt.Sprintf("0x%x", v)
+	case time.Time:
+		// Use RFC3339 format for timestamps
+		return v.Format(time.RFC3339)
+	case gocql.UUID:
+		return v.String()
+	case map[string]interface{}, []interface{}, map[interface{}]interface{}:
+		// For UDTs, collections, and other complex types, use JSON encoding
+		jsonBytes, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(jsonBytes)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// parseCSVValue parses a CSV value back to its proper type for insertion
+func parseCSVValue(value string, columnType string) (interface{}, error) {
+	// Handle null values
+	if value == "" || value == "null" {
+		return nil, nil
+	}
+
+	// Parse the column type
+	typeInfo, err := db.ParseCQLType(columnType)
+	if err != nil {
+		// If we can't parse the type, return as string
+		return value, nil
+	}
+
+	switch typeInfo.BaseType {
+	case "blob":
+		// Handle hex encoded blobs
+		if strings.HasPrefix(value, "0x") {
+			value = value[2:] // Remove 0x prefix
+			// Convert hex string to bytes
+			bytes := make([]byte, len(value)/2)
+			for i := 0; i < len(value); i += 2 {
+				b, err := strconv.ParseUint(value[i:i+2], 16, 8)
+				if err != nil {
+					return nil, fmt.Errorf("invalid hex string: %v", err)
+				}
+				bytes[i/2] = byte(b)
+			}
+			return bytes, nil
+		}
+		return []byte(value), nil
+
+	case "udt", "list", "set", "map", "tuple":
+		// Try to parse as JSON for complex types
+		if strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") {
+			var result interface{}
+			if err := json.Unmarshal([]byte(value), &result); err != nil {
+				// If JSON parsing fails, return as string
+				return value, nil
+			}
+			return result, nil
+		}
+		return value, nil
+
+	case "uuid", "timeuuid":
+		// Parse UUID
+		uuid, err := gocql.ParseUUID(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid UUID: %v", err)
+		}
+		return uuid, nil
+
+	case "timestamp":
+		// Parse timestamp
+		t, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			// Try other common formats
+			t, err = time.Parse("2006-01-02 15:04:05", value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid timestamp: %v", err)
+			}
+		}
+		return t, nil
+
+	default:
+		// For other types, return as string and let gocql handle conversion
+		return value, nil
+	}
+}
 
 // handleCopy handles COPY TO/FROM commands
 func (h *MetaCommandHandler) handleCopy(command string) interface{} {
@@ -230,14 +326,8 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 					if val == nil {
 						row[i] = options["NULLVAL"]
 					} else {
-						// Handle byte arrays (BLOBs) specially
-						switch v := val.(type) {
-						case []byte:
-							// Format as hex string with 0x prefix (standard for BLOBs)
-							row[i] = fmt.Sprintf("0x%x", v)
-						default:
-							row[i] = fmt.Sprintf("%v", val)
-						}
+						// Handle different data types specially
+						row[i] = formatCSVValue(val)
 					}
 				} else {
 					row[i] = options["NULLVAL"]

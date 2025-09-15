@@ -23,6 +23,7 @@ type StreamingQueryResult struct {
 	ColumnTypes []string     // Data types of each column
 	Iterator    *gocql.Iter  // Iterator for fetching more rows
 	StartTime   time.Time    // Query start time for duration calculation
+	Keyspace    string       // Keyspace extracted from query or session
 }
 
 // KeyColumnInfo holds information about key columns
@@ -36,16 +37,37 @@ func TypeInfoToString(typeInfo gocql.TypeInfo) string {
 	if typeInfo == nil {
 		return "unknown"
 	}
-	
-	// For custom types, try to get more specific information
+
 	t := typeInfo.Type()
+
+	// Handle UDT types specially to include the UDT name
+	if t == gocql.TypeUDT {
+		// Try to cast to a more specific type that might have UDT info
+		// For now, return a generic "udt" - the actual UDT name needs to be
+		// fetched from system tables based on the column metadata
+		return "udt"
+	}
+
+	// For custom types, try to get more specific information
 	if t == gocql.TypeCustom {
 		// Check if it's a vector type by looking at the string representation
 		// The TypeInfo interface doesn't expose the custom type name directly,
 		// but we can infer it from context or default to "vector" for now
 		return "vector"
 	}
-	
+
+	// Handle collection types with their element types
+	switch t {
+	case gocql.TypeList:
+		return "list"
+	case gocql.TypeSet:
+		return "set"
+	case gocql.TypeMap:
+		return "map"
+	case gocql.TypeTuple:
+		return "tuple"
+	}
+
 	return TypeToString(t)
 }
 
