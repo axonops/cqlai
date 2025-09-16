@@ -213,9 +213,15 @@ func (s *Session) getColumnTypeUsingMetadata(keyspace, table, column string) str
 
 	// Look for the column in the metadata
 	if colMeta, exists := tableMeta.Columns[column]; exists {
+		// Log type information for debugging
+		logger.DebugfToFile("getColumnTypeUsingMetadata", "Column %s: TypeInfo=%T, Type=%v",
+			column, colMeta.Type, colMeta.Type.Type())
+
 		typeStr := formatTypeInfo(colMeta.Type)
+
 		// For UDT types, ensure we have the fully qualified name
-		if colMeta.Type.Type() == gocql.TypeUDT {
+		if colMeta.Type.Type() == gocql.TypeUDT || colMeta.Type.Type() == gocql.TypeCustom {
+			// Try to cast to UDTTypeInfo
 			if udtInfo, ok := colMeta.Type.(gocql.UDTTypeInfo); ok {
 				// Return the fully qualified UDT name
 				if udtInfo.Keyspace != "" {
@@ -223,6 +229,11 @@ func (s *Session) getColumnTypeUsingMetadata(keyspace, table, column string) str
 				} else {
 					typeStr = udtInfo.Name
 				}
+				logger.DebugfToFile("getColumnTypeUsingMetadata", "UDT cast successful: %s", typeStr)
+			} else {
+				logger.DebugfToFile("getColumnTypeUsingMetadata", "UDT cast failed for %s, falling back to system table", column)
+				// Fall back to system table approach for UDT type name
+				return s.getColumnTypeFromSystemTable(keyspace, table, column)
 			}
 		}
 		return typeStr
