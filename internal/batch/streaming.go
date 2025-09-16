@@ -41,11 +41,15 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 
 	for i, col := range cols {
 		if col.TypeInfo.Type() == gocql.TypeTuple {
-			// Get the tuple element count from TypeInfo
-			tupleInfo := col.TypeInfo.(gocql.TupleTypeInfo)
-			tupleElements := len(tupleInfo.Elems)
-			tupleColumns[i] = tupleElements
-			scanCount += tupleElements
+			// Get the tuple element count from TypeInfo - use safe type assertion
+			if tupleInfo, ok := col.TypeInfo.(gocql.TupleTypeInfo); ok {
+				tupleElements := len(tupleInfo.Elems)
+				tupleColumns[i] = tupleElements
+				scanCount += tupleElements
+			} else {
+				// If we can't get tuple info, treat as single column
+				scanCount++
+			}
 		} else {
 			scanCount++
 		}
