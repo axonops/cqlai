@@ -18,6 +18,29 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 
 ---
 
+## Project Status
+
+**CQLAI is currently in active development (v0.0.5)** and is highly functional for daily use with Cassandra clusters. While we're still working toward a stable 1.0 release, the tool is already being used successfully in development and testing environments.
+
+### What Works Well
+- All core CQL operations and queries
+- Meta-commands (`DESCRIBE`, `SHOW`, `CONSISTENCY`, etc.)
+- Data import/export with `COPY TO/FROM`
+- AI-powered query generation (OpenAI, Anthropic, Gemini)
+- SSL/TLS connections and authentication
+- User-Defined Types (UDTs) and complex data types
+- Batch mode for scripting
+
+### Coming Soon
+- Complete cqlsh feature parity
+- Enhanced AI context awareness
+- Performance optimizations for very large result sets
+- Additional export formats
+
+We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls) to help us reach 1.0.
+
+---
+
 ## Features
 
 - **Interactive CQL Shell:** Execute any CQL query that your Cassandra cluster supports.
