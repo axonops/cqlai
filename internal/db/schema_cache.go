@@ -2,13 +2,15 @@ package db
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/axonops/cqlai/internal/logger"
 )
 
-// SchemaCache maintains an in-memory cache of Cassandra schema metadata
+// SchemaCache provides schema information using gocql's metadata API
+// This replaces the old implementation that maintained its own cache
 type SchemaCache struct {
 	Keyspaces   []string
 	Tables      map[string][]CachedTableInfo        // keyspace -> tables
@@ -28,239 +30,315 @@ type CachedTableInfo struct {
 
 // SearchIndex contains pre-computed data for fuzzy searching
 type SearchIndex struct {
-	TableTokens  map[string][]string  // table -> tokens for fuzzy matching
+	TableTokens map[string][]string // table -> tokens for fuzzy matching
 }
 
-// NewSchemaCache creates a new schema cache
+// NewSchemaCache creates a new schema cache using gocql metadata
 func NewSchemaCache(session *Session) *SchemaCache {
 	return &SchemaCache{
 		session:     session,
 		Tables:      make(map[string][]CachedTableInfo),
 		Columns:     make(map[string]map[string][]ColumnInfo),
 		SearchIndex: &SearchIndex{
-			TableTokens:  make(map[string][]string),
+			TableTokens: make(map[string][]string),
 		},
+		Mu: sync.RWMutex{},
 	}
 }
 
-// executeSchemaQuery executes a query and always returns all data (non-streaming)
-func (sc *SchemaCache) executeSchemaQuery(query string) ([][]string, error) {
+// GetAllKeyspaces returns all non-system keyspaces
+// Note: gocql doesn't provide a direct method to list all keyspaces,
+// so we need to query system tables for this specific case
+func (sc *SchemaCache) GetAllKeyspaces() ([]string, error) {
+	if sc.session == nil || sc.session.Session == nil {
+		return nil, fmt.Errorf("no session available")
+	}
+
+	// For listing all keyspaces, we still need to query system tables
+	// as gocql requires knowing the keyspace name to get its metadata
+	query := "SELECT keyspace_name FROM system_schema.keyspaces"
 	iter := sc.session.Query(query).Iter()
 	defer iter.Close()
-	
-	// Get column info
-	columns := iter.Columns()
-	if len(columns) == 0 {
-		return nil, fmt.Errorf("no columns returned")
-	}
-	
-	// Prepare result data
-	var data [][]string
-	
-	// Add header row
-	header := make([]string, len(columns))
-	for i, col := range columns {
-		header[i] = col.Name
-	}
-	data = append(data, header)
-	
-	// Fetch all rows
-	values := make([]interface{}, len(columns))
-	scanDest := make([]interface{}, len(columns))
-	for i := range values {
-		scanDest[i] = &values[i]
-	}
-	
-	for iter.Scan(scanDest...) {
-		row := make([]string, len(columns))
-		for i, val := range values {
-			if val != nil {
-				row[i] = fmt.Sprintf("%v", val)
-			} else {
-				row[i] = ""
-			}
+
+	var keyspaces []string
+	var keyspace string
+	for iter.Scan(&keyspace) {
+		// Skip system keyspaces
+		if !strings.HasPrefix(keyspace, "system") {
+			keyspaces = append(keyspaces, keyspace)
 		}
-		data = append(data, row)
 	}
-	
+
 	if err := iter.Close(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get keyspaces: %w", err)
 	}
-	
-	return data, nil
+
+	return keyspaces, nil
 }
 
-// Refresh updates the schema cache from system_schema
+// GetKeyspaceTables returns all tables for a specific keyspace using gocql metadata
+func (sc *SchemaCache) GetKeyspaceTables(keyspace string) ([]CachedTableInfo, error) {
+	if sc.session == nil || sc.session.Session == nil {
+		return nil, fmt.Errorf("no session available")
+	}
+
+	// Use gocql's metadata API
+	ksMetadata, err := sc.session.KeyspaceMetadata(keyspace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get keyspace metadata: %w", err)
+	}
+
+	var tables []CachedTableInfo
+	for tableName, tableMeta := range ksMetadata.Tables {
+		// Convert gocql metadata to our format
+		tableInfo := CachedTableInfo{
+			TableInfo: TableInfo{
+				KeyspaceName: keyspace,
+				TableName:    tableName,
+			},
+			LastUpdated: time.Now(),
+		}
+
+		// Get partition and clustering keys
+		for _, pk := range tableMeta.PartitionKey {
+			tableInfo.PartitionKeys = append(tableInfo.PartitionKeys, pk.Name)
+		}
+		for _, ck := range tableMeta.ClusteringColumns {
+			tableInfo.ClusteringKeys = append(tableInfo.ClusteringKeys, ck.Name)
+		}
+
+		tables = append(tables, tableInfo)
+	}
+
+	return tables, nil
+}
+
+// GetTableColumns returns columns for a specific table using gocql metadata
+func (sc *SchemaCache) GetTableColumns(keyspace, table string) ([]ColumnInfo, error) {
+	if sc.session == nil || sc.session.Session == nil {
+		return nil, fmt.Errorf("no session available")
+	}
+
+	// Get table metadata from gocql
+	tableMeta, err := sc.session.GetTableMetadata(keyspace, table)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table metadata: %w", err)
+	}
+
+	var columns []ColumnInfo
+
+	// Process partition keys
+	for i, pk := range tableMeta.PartitionKey {
+		if colMeta, exists := tableMeta.Columns[pk.Name]; exists {
+			columns = append(columns, ColumnInfo{
+				Name:     pk.Name,
+				DataType: formatTypeInfo(colMeta.Type),
+				Kind:     "partition_key",
+				Position: i,
+			})
+		}
+	}
+
+	// Process clustering keys
+	for i, ck := range tableMeta.ClusteringColumns {
+		if colMeta, exists := tableMeta.Columns[ck.Name]; exists {
+			columns = append(columns, ColumnInfo{
+				Name:     ck.Name,
+				DataType: formatTypeInfo(colMeta.Type),
+				Kind:     "clustering",
+				Position: i,
+			})
+		}
+	}
+
+	// Process regular columns
+	for colName, colMeta := range tableMeta.Columns {
+		// Skip if already processed as key
+		isKey := false
+		for _, pk := range tableMeta.PartitionKey {
+			if pk.Name == colName {
+				isKey = true
+				break
+			}
+		}
+		if !isKey {
+			for _, ck := range tableMeta.ClusteringColumns {
+				if ck.Name == colName {
+					isKey = true
+					break
+				}
+			}
+		}
+
+		if !isKey {
+			columns = append(columns, ColumnInfo{
+				Name:     colName,
+				DataType: formatTypeInfo(colMeta.Type),
+				Kind:     "regular",
+				Position: -1,
+			})
+		}
+	}
+
+	return columns, nil
+}
+
+// Refresh loads or refreshes the schema metadata
+// With gocql's metadata API, this mainly updates the search index
 func (sc *SchemaCache) Refresh() error {
 	sc.Mu.Lock()
 	defer sc.Mu.Unlock()
 
-	logger.DebugfToFile("SchemaCache", "Starting schema refresh")
+	logger.DebugToFile("SchemaCache", "Starting schema refresh using metadata API")
 
-	// Query keyspaces
-	keyspaceQuery := "SELECT keyspace_name FROM system_schema.keyspaces"
-	keyspaceData, err := sc.executeSchemaQuery(keyspaceQuery)
+	// Get all keyspaces
+	keyspaces, err := sc.GetAllKeyspaces()
 	if err != nil {
-		logger.DebugfToFile("SchemaCache", "Error querying keyspaces: %v", err)
-		return fmt.Errorf("failed to query keyspaces: %w", err)
-	}
-	logger.DebugfToFile("SchemaCache", "Keyspace query returned %d rows", len(keyspaceData))
-	
-	if len(keyspaceData) > 1 {
-		sc.Keyspaces = []string{}
-		for _, row := range keyspaceData[1:] { // Skip header row
-			if len(row) > 0 {
-				sc.Keyspaces = append(sc.Keyspaces, row[0])
-				logger.DebugfToFile("SchemaCache", "Added keyspace: %s", row[0])
-			}
-		}
-		logger.DebugfToFile("SchemaCache", "Total keyspaces cached: %d", len(sc.Keyspaces))
+		return fmt.Errorf("failed to get keyspaces: %w", err)
 	}
 
-	// Query tables
-	tableQuery := "SELECT keyspace_name, table_name FROM system_schema.tables"
-	tableData, err := sc.executeSchemaQuery(tableQuery)
-	if err != nil {
-		logger.DebugfToFile("SchemaCache", "Error querying tables: %v", err)
-		return fmt.Errorf("failed to query tables: %w", err)
-	}
-	logger.DebugfToFile("SchemaCache", "Table query returned %d rows", len(tableData))
-	
-	if len(tableData) > 1 {
-		// Clear existing tables
-		sc.Tables = make(map[string][]CachedTableInfo)
-		
-		for _, row := range tableData[1:] { // Skip header row
-			if len(row) >= 2 {
-				keyspace := row[0]
-				tableName := row[1]
-				
-				tableInfo := CachedTableInfo{
-					TableInfo: TableInfo{
-						KeyspaceName: keyspace,
-						TableName:   tableName,
-					},
-					LastUpdated: time.Now(),
-				}
-				
-				sc.Tables[keyspace] = append(sc.Tables[keyspace], tableInfo)
-				logger.DebugfToFile("SchemaCache", "Added table: %s.%s", keyspace, tableName)
-			}
-		}
-		logger.DebugfToFile("SchemaCache", "Total tables cached: %d keyspaces", len(sc.Tables))
+	sc.Keyspaces = keyspaces
+
+	// Clear and rebuild the search-related caches
+	sc.Tables = make(map[string][]CachedTableInfo)
+	sc.Columns = make(map[string]map[string][]ColumnInfo)
+	sc.SearchIndex = &SearchIndex{
+		TableTokens: make(map[string][]string),
 	}
 
-	// Query columns
-	columnQuery := "SELECT keyspace_name, table_name, column_name, kind, type, position FROM system_schema.columns"
-	columnData, err := sc.executeSchemaQuery(columnQuery)
-	if err != nil {
-		logger.DebugfToFile("SchemaCache", "Error querying columns: %v", err)
-		return fmt.Errorf("failed to query columns: %w", err)
-	}
-	logger.DebugfToFile("SchemaCache", "Column query returned %d rows", len(columnData))
-	
-	if len(columnData) > 1 {
-		// Clear existing columns
-		sc.Columns = make(map[string]map[string][]ColumnInfo)
-		
-		for _, row := range columnData[1:] { // Skip header row
-			if len(row) >= 6 {
-				keyspace := row[0]
-				tableName := row[1]
-				columnName := row[2]
-				kind := row[3]
-				columnType := row[4]
-				position := 0
-				if row[5] != "" {
-					_, _ = fmt.Sscanf(row[5], "%d", &position)
-				}
-				
-				columnInfo := ColumnInfo{
-					Name:     columnName,
-					DataType: columnType,
-					Kind:     kind,
-					Position: position,
-				}
-				
-				if sc.Columns[keyspace] == nil {
-					sc.Columns[keyspace] = make(map[string][]ColumnInfo)
-				}
-				
-				sc.Columns[keyspace][tableName] = append(sc.Columns[keyspace][tableName], columnInfo)
-			}
+	// Populate tables and columns for each keyspace
+	for _, ks := range keyspaces {
+		tables, err := sc.GetKeyspaceTables(ks)
+		if err != nil {
+			logger.DebugfToFile("SchemaCache", "Failed to get tables for keyspace %s: %v", ks, err)
+			continue
 		}
-		logger.DebugfToFile("SchemaCache", "Total columns cached across all tables")
+
+		sc.Tables[ks] = tables
+
+		// Initialize column map for keyspace
+		if sc.Columns[ks] == nil {
+			sc.Columns[ks] = make(map[string][]ColumnInfo)
+		}
+
+		// Get columns for each table
+		for _, table := range tables {
+			columns, err := sc.GetTableColumns(ks, table.TableName)
+			if err != nil {
+				logger.DebugfToFile("SchemaCache", "Failed to get columns for %s.%s: %v", ks, table.TableName, err)
+				continue
+			}
+
+			sc.Columns[ks][table.TableName] = columns
+
+			// Build search tokens for fuzzy matching
+			tokens := buildSearchTokens(table.TableName)
+			sc.SearchIndex.TableTokens[fmt.Sprintf("%s.%s", ks, table.TableName)] = tokens
+		}
 	}
 
-	// Build search index
-	sc.buildSearchIndex()
-	
 	sc.LastRefresh = time.Now()
-	logger.DebugfToFile("SchemaCache", "Schema refresh completed: %d keyspaces, %d table groups", 
-		len(sc.Keyspaces), len(sc.Tables))
+	logger.DebugfToFile("SchemaCache", "Schema refresh completed. Found %d keyspaces", len(keyspaces))
 
 	return nil
 }
 
-// buildSearchIndex creates tokens for fuzzy searching
-func (sc *SchemaCache) buildSearchIndex() {
-	sc.SearchIndex.TableTokens = make(map[string][]string)
-	
-	for keyspace, tables := range sc.Tables {
-		for _, table := range tables {
-			tableKey := fmt.Sprintf("%s.%s", keyspace, table.TableName)
-			
-			// Generate tokens from table name only
-			tokens := tokenize(table.TableName)
-			sc.SearchIndex.TableTokens[tableKey] = tokens
-		}
+// RefreshIfNeeded refreshes the cache if it's older than the specified duration
+func (sc *SchemaCache) RefreshIfNeeded(maxAge time.Duration) error {
+	sc.Mu.RLock()
+	needsRefresh := time.Since(sc.LastRefresh) > maxAge
+	sc.Mu.RUnlock()
+
+	if needsRefresh {
+		return sc.Refresh()
 	}
+	return nil
 }
 
-// GetTableSchema returns the schema for a specific table
-func (sc *SchemaCache) GetTableSchema(keyspace, table string) (*TableSchema, error) {
+// GetTableInfo retrieves information about a specific table
+func (sc *SchemaCache) GetTableInfo(keyspace, table string) (*TableInfo, error) {
+	if sc.session == nil || sc.session.Session == nil {
+		return nil, fmt.Errorf("no session available")
+	}
+
+	tableMeta, err := sc.session.GetTableMetadata(keyspace, table)
+	if err != nil {
+		return nil, err
+	}
+
+	tableInfo := &TableInfo{
+		KeyspaceName: keyspace,
+		TableName:    table,
+	}
+
+	// Get partition and clustering keys
+	for _, pk := range tableMeta.PartitionKey {
+		tableInfo.PartitionKeys = append(tableInfo.PartitionKeys, pk.Name)
+	}
+	for _, ck := range tableMeta.ClusteringColumns {
+		tableInfo.ClusteringKeys = append(tableInfo.ClusteringKeys, ck.Name)
+	}
+
+	// Get columns
+	tableInfo.Columns, err = sc.GetTableColumns(keyspace, table)
+	if err != nil {
+		return nil, err
+	}
+
+	return tableInfo, nil
+}
+
+// buildSearchTokens creates tokens for fuzzy searching
+func buildSearchTokens(tableName string) []string {
+	tokens := []string{strings.ToLower(tableName)}
+
+	// Split on underscores and camelCase
+	parts := strings.Split(tableName, "_")
+	for _, part := range parts {
+		if part != "" {
+			tokens = append(tokens, strings.ToLower(part))
+		}
+	}
+
+	// Add camelCase splits
+	// Simple implementation - can be enhanced
+	for i := 1; i < len(tableName); i++ {
+		if tableName[i] >= 'A' && tableName[i] <= 'Z' {
+			if i > 0 {
+				tokens = append(tokens, strings.ToLower(tableName[:i]))
+				tokens = append(tokens, strings.ToLower(tableName[i:]))
+			}
+		}
+	}
+
+	return tokens
+}
+
+// Compatibility methods to maintain the same interface
+
+// GetCachedTableCount returns approximate count (not cached with metadata API)
+func (sc *SchemaCache) GetCachedTableCount(keyspace string) int {
 	sc.Mu.RLock()
 	defer sc.Mu.RUnlock()
-	
-	columns, ok := sc.Columns[keyspace][table]
-	if !ok {
-		return nil, fmt.Errorf("table %s.%s not found", keyspace, table)
+
+	if tables, exists := sc.Tables[keyspace]; exists {
+		return len(tables)
 	}
-	
-	// Convert to ColumnSchema format expected by TableSchema
-	columnSchemas := make([]ColumnSchema, len(columns))
-	partitionKeys := []string{}
-	clusteringKeys := []string{}
-	
-	for i, col := range columns {
-		columnSchemas[i] = ColumnSchema{
-			Name:     col.Name,
-			Type:     col.DataType,
-			Kind:     col.Kind,
-			Position: col.Position,
-		}
-		
-		switch col.Kind {
-		case "partition_key":
-			partitionKeys = append(partitionKeys, col.Name)
-		case "clustering":
-			clusteringKeys = append(clusteringKeys, col.Name)
-		}
-	}
-	
-	schema := &TableSchema{
-		Keyspace:       keyspace,
-		TableName:      table,
-		Columns:        columnSchemas,
-		PartitionKeys:  partitionKeys,
-		ClusteringKeys: clusteringKeys,
-	}
-	
-	return schema, nil
+	return 0
+}
+
+// IsInitialized checks if the schema cache has been populated
+func (sc *SchemaCache) IsInitialized() bool {
+	sc.Mu.RLock()
+	defer sc.Mu.RUnlock()
+	return len(sc.Keyspaces) > 0
 }
 
 // CountTotalTables returns the total number of tables across all keyspaces
 func (sc *SchemaCache) CountTotalTables() int {
+	sc.Mu.RLock()
+	defer sc.Mu.RUnlock()
+
 	count := 0
 	for _, tables := range sc.Tables {
 		count += len(tables)
@@ -268,70 +346,54 @@ func (sc *SchemaCache) CountTotalTables() int {
 	return count
 }
 
-// tokenize splits a string into tokens for fuzzy matching
-func tokenize(s string) []string {
-	// Simple tokenization - can be enhanced
-	tokens := []string{s}
-	
-	// Add split by underscore
-	if parts := splitByDelimiter(s, '_'); len(parts) > 1 {
-		tokens = append(tokens, parts...)
-	}
-	
-	// Add split by camelCase
-	if parts := splitCamelCase(s); len(parts) > 1 {
-		tokens = append(tokens, parts...)
-	}
-	
-	return tokens
-}
+// GetTableSchema returns schema information for a specific table
+// This method is used by AI components for query context
+func (sc *SchemaCache) GetTableSchema(keyspace, table string) (*TableSchema, error) {
+	sc.Mu.RLock()
+	defer sc.Mu.RUnlock()
 
-// Helper functions
+	// Check if we have the table in our cache
+	tables, ok := sc.Tables[keyspace]
+	if !ok {
+		return nil, fmt.Errorf("keyspace %s not found", keyspace)
+	}
 
-func splitByDelimiter(s string, delimiter rune) []string {
-	var parts []string
-	var current []rune
-	
-	for _, r := range s {
-		if r == delimiter {
-			if len(current) > 0 {
-				parts = append(parts, string(current))
-				current = []rune{}
-			}
-		} else {
-			current = append(current, r)
+	// Find the table
+	var foundTable *CachedTableInfo
+	for _, t := range tables {
+		if t.TableName == table {
+			foundTable = &t
+			break
 		}
 	}
-	
-	if len(current) > 0 {
-		parts = append(parts, string(current))
-	}
-	
-	return parts
-}
 
-func splitCamelCase(s string) []string {
-	var parts []string
-	var current []rune
-	
-	for i, r := range s {
-		if i > 0 && isUpper(r) && !isUpper(rune(s[i-1])) {
-			if len(current) > 0 {
-				parts = append(parts, string(current))
-				current = []rune{}
-			}
-		}
-		current = append(current, r)
+	if foundTable == nil {
+		return nil, fmt.Errorf("table %s.%s not found", keyspace, table)
 	}
-	
-	if len(current) > 0 {
-		parts = append(parts, string(current))
+
+	// Get columns from cache
+	columns, ok := sc.Columns[keyspace][table]
+	if !ok {
+		return nil, fmt.Errorf("columns for %s.%s not found", keyspace, table)
 	}
-	
-	return parts
-}
 
-func isUpper(r rune) bool {
-	return r >= 'A' && r <= 'Z'
-}
+	// Build TableSchema with proper types
+	schema := &TableSchema{
+		Keyspace:       keyspace,
+		TableName:      table,
+		PartitionKeys:  foundTable.PartitionKeys,
+		ClusteringKeys: foundTable.ClusteringKeys,
+	}
 
+	// Convert ColumnInfo to ColumnSchema
+	for _, col := range columns {
+		schema.Columns = append(schema.Columns, ColumnSchema{
+			Name:     col.Name,
+			Type:     col.DataType,
+			Kind:     col.Kind,
+			Position: col.Position,
+		})
+	}
+
+	return schema, nil
+}

@@ -450,8 +450,9 @@ func (s *Session) SetUDTRegistry(registry *UDTRegistry) {
 }
 
 // GetColumnTypeFromSystemTable gets the full type definition for a column
+// This method uses the metadata API when possible, falling back to system tables
 func (s *Session) GetColumnTypeFromSystemTable(keyspace, table, column string) string {
-	return s.getColumnTypeFromSystemTable(keyspace, table, column)
+	return s.getColumnTypeUsingMetadata(keyspace, table, column)
 }
 
 // SetKeyspace changes the current keyspace by recreating the session

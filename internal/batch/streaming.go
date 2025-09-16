@@ -40,7 +40,11 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	tupleColumns := make(map[int]int) // Map column index to number of tuple elements
 
 	for i, col := range cols {
-		if col.TypeInfo.Type() == gocql.TypeTuple {
+		switch {
+		case col.TypeInfo == nil:
+			// Handle nil TypeInfo (virtual tables)
+			scanCount++
+		case col.TypeInfo.Type() == gocql.TypeTuple:
 			// Get the tuple element count from TypeInfo - use safe type assertion
 			if tupleInfo, ok := col.TypeInfo.(gocql.TupleTypeInfo); ok {
 				tupleElements := len(tupleInfo.Elems)
@@ -50,7 +54,7 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 				// If we can't get tuple info, treat as single column
 				scanCount++
 			}
-		} else {
+		default:
 			scanCount++
 		}
 	}
@@ -76,13 +80,19 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	// Set up scan destinations - handle tuples specially
 	destIdx := 0
 	for i, col := range cols {
-		if tupleCount, isTuple := tupleColumns[i]; isTuple {
+		switch {
+		case tupleColumns[i] > 0:
 			// For tuple columns, create destinations for each element
+			tupleCount := tupleColumns[i]
 			for j := 0; j < tupleCount; j++ {
 				scanDest[destIdx] = new(interface{})
 				destIdx++
 			}
-		} else if col.TypeInfo.Type() == gocql.TypeUDT {
+		case col.TypeInfo == nil:
+			// Handle nil TypeInfo (virtual tables)
+			scanDest[destIdx] = new(interface{})
+			destIdx++
+		case col.TypeInfo.Type() == gocql.TypeUDT:
 			scanDest[destIdx] = new(db.RawBytes)
 			udtColumns[destIdx] = nil
 
@@ -95,10 +105,20 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 					if err == nil && parsedType != nil {
 						udtColumns[destIdx] = parsedType
 					}
+				} else if typeStr == "udt" || typeStr == "" {
+					// If we just have "udt" without details, try to extract from gocql TypeInfo
+					if udtInfo, ok := col.TypeInfo.(gocql.UDTTypeInfo); ok {
+						// Create a minimal CQLTypeInfo with the UDT name
+						udtColumns[destIdx] = &db.CQLTypeInfo{
+							BaseType: "udt",
+							UDTName:  udtInfo.Name,
+							Keyspace: udtInfo.Keyspace,
+						}
+					}
 				}
 			}
 			destIdx++
-		} else {
+		default:
 			scanDest[destIdx] = new(interface{})
 			destIdx++
 		}

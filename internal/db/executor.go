@@ -179,6 +179,7 @@ func extractTableName(query string) (keyspace, table string) {
 }
 
 // getColumnTypeFromSystemTable gets the full type definition for a column from system tables
+// This method is kept for backward compatibility but getColumnTypeUsingMetadata is preferred
 func (s *Session) getColumnTypeFromSystemTable(keyspace, table, column string) string {
 	if s.Session == nil {
 		return ""
@@ -195,6 +196,40 @@ func (s *Session) getColumnTypeFromSystemTable(keyspace, table, column string) s
 	_ = iter.Close()
 
 	return columnType
+}
+
+// getColumnTypeUsingMetadata gets the full type definition for a column using gocql metadata API
+func (s *Session) getColumnTypeUsingMetadata(keyspace, table, column string) string {
+	if s.Session == nil {
+		return ""
+	}
+
+	// Try to get table metadata
+	tableMeta, err := s.GetTableMetadata(keyspace, table)
+	if err != nil {
+		// Fall back to system table approach
+		return s.getColumnTypeFromSystemTable(keyspace, table, column)
+	}
+
+	// Look for the column in the metadata
+	if colMeta, exists := tableMeta.Columns[column]; exists {
+		typeStr := formatTypeInfo(colMeta.Type)
+		// For UDT types, ensure we have the fully qualified name
+		if colMeta.Type.Type() == gocql.TypeUDT {
+			if udtInfo, ok := colMeta.Type.(gocql.UDTTypeInfo); ok {
+				// Return the fully qualified UDT name
+				if udtInfo.Keyspace != "" {
+					typeStr = fmt.Sprintf("%s.%s", udtInfo.Keyspace, udtInfo.Name)
+				} else {
+					typeStr = udtInfo.Name
+				}
+			}
+		}
+		return typeStr
+	}
+
+	// Column not found, fall back to system table
+	return s.getColumnTypeFromSystemTable(keyspace, table, column)
 }
 
 // captureTracer implements gocql.Tracer to capture trace IDs
@@ -332,6 +367,12 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	columns := iter.Columns()
 	logger.DebugfToFile("executeSelectQuery", "Number of columns: %d", len(columns))
 
+	// Check if this is a virtual table query (system_views)
+	isVirtualTable := strings.Contains(strings.ToLower(query), "system_views.")
+	if isVirtualTable {
+		logger.DebugToFile("executeSelectQuery", "Detected virtual table query")
+	}
+
 	// Check if this is a DESCRIBE KEYSPACE or DESCRIBE TABLE query that should filter "type" column
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
 	shouldFilterType := (strings.HasPrefix(upperQuery, "DESCRIBE KEYSPACE") ||
@@ -351,10 +392,15 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		filteredColumns = newColumns
 	}
 
-	// Log column details
+	// Log column details and validate TypeInfo
 	for i, col := range filteredColumns {
-		logger.DebugfToFile("executeSelectQuery", "Column %d: Name=%s, Type=%v, TypeInfo=%T",
-			i, col.Name, col.TypeInfo.Type(), col.TypeInfo)
+		if col.TypeInfo != nil {
+			logger.DebugfToFile("executeSelectQuery", "Column %d: Name=%s, Type=%v, TypeInfo=%T",
+				i, col.Name, col.TypeInfo.Type(), col.TypeInfo)
+		} else {
+			logger.DebugfToFile("executeSelectQuery", "Column %d: Name=%s has nil TypeInfo (virtual table?)",
+				i, col.Name)
+		}
 	}
 
 	if len(filteredColumns) == 0 {
@@ -382,11 +428,16 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	for i, col := range filteredColumns {
 		headers[i] = col.Name
 		// Store the column type - use TypeInfoToString to handle custom types
-		basicType := TypeInfoToString(col.TypeInfo)
+		var basicType string
+		if col.TypeInfo == nil {
+			basicType = "unknown"
+		} else {
+			basicType = TypeInfoToString(col.TypeInfo)
+		}
 
 		// If it's a UDT, try to get the full type definition
 		if basicType == "udt" && currentKeyspace != "" && tableName != "" {
-			fullType := s.getColumnTypeFromSystemTable(currentKeyspace, tableName, col.Name)
+			fullType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
 			if fullType != "" {
 				columnTypes[i] = fullType
 			} else {
@@ -423,19 +474,51 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		cleanHeaders[i] = col.Name
 	}
 
-	// Use Scan with interface{} slice instead of MapScan to get raw bytes for UDTs
-	// MapScan returns empty maps for UDTs, but we need to use RawBytes for UDT columns
-	for {
-		// Create a slice to scan into - use RawBytes for UDT columns
-		scanDest := make([]interface{}, len(filteredColumns))
-		for i, col := range filteredColumns {
-			if col.TypeInfo.Type() == gocql.TypeUDT {
-				// Use RawBytes for UDT columns to bypass gocql's broken UDT decoding
-				scanDest[i] = new(RawBytes)
-			} else {
-				scanDest[i] = new(interface{})
+	// Virtual tables need different handling due to nil TypeInfo
+	if isVirtualTable {
+		// Use MapScan for virtual tables since TypeInfo might be incomplete
+		virtualResults := make([][]string, 0)
+		for {
+			rowMap := make(map[string]interface{})
+			if !iter.MapScan(rowMap) {
+				break
 			}
+
+			// Convert map to row array in column order
+			row := make([]string, len(filteredColumns))
+			rawRow := make(map[string]interface{})
+
+			for i, col := range filteredColumns {
+				val, exists := rowMap[col.Name]
+				if !exists {
+					val = nil
+				}
+				rawRow[col.Name] = val
+				row[i] = FormatValue(val)
+			}
+
+			virtualResults = append(virtualResults, row)
+			rawData = append(rawData, rawRow)
 		}
+		results = append(results, virtualResults...)
+	} else {
+		// Use Scan with interface{} slice for regular tables to get raw bytes for UDTs
+		// MapScan returns empty maps for UDTs, but we need to use RawBytes for UDT columns
+		for {
+			// Create a slice to scan into - use RawBytes for UDT columns
+			scanDest := make([]interface{}, len(filteredColumns))
+			for i, col := range filteredColumns {
+				// Handle nil TypeInfo (can happen with virtual tables)
+				switch {
+				case col.TypeInfo == nil:
+					scanDest[i] = new(interface{})
+				case col.TypeInfo.Type() == gocql.TypeUDT:
+					// Use RawBytes for UDT columns to bypass gocql's broken UDT decoding
+					scanDest[i] = new(RawBytes)
+				default:
+					scanDest[i] = new(interface{})
+				}
+			}
 
 		// Scan the row
 		if !iter.Scan(scanDest...) {
@@ -451,7 +534,11 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		for i, col := range filteredColumns {
 			// Extract value based on type
 			var val interface{}
-			if col.TypeInfo.Type() == gocql.TypeUDT {
+			switch {
+			case col.TypeInfo == nil:
+				// Handle nil TypeInfo (virtual tables)
+				val = *(scanDest[i].(*interface{}))
+			case col.TypeInfo.Type() == gocql.TypeUDT:
 				// For UDT columns, we used RawBytes
 				rawBytes := scanDest[i].(*RawBytes)
 				if rawBytes != nil && *rawBytes != nil {
@@ -459,7 +546,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 				} else {
 					val = nil
 				}
-			} else {
+			default:
 				// Regular column - dereference the pointer
 				val = *(scanDest[i].(*interface{}))
 			}
@@ -579,6 +666,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		rawData = append(rawData, rawRow)
 		results = append(results, row)
 		rowNum++
+	}
 	}
 	logger.DebugfToFile("executeSelectQuery", "Scan completed. Total rows: %d", rowNum)
 
@@ -704,11 +792,16 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 		headers[i] = col.Name     // Start with original name
 
 		// Store the column type - use TypeInfoToString to handle custom types
-		basicType := TypeInfoToString(col.TypeInfo)
+		var basicType string
+		if col.TypeInfo == nil {
+			basicType = "unknown"
+		} else {
+			basicType = TypeInfoToString(col.TypeInfo)
+		}
 
 		// If it's a UDT, try to get the full type definition
 		if basicType == "udt" && currentKeyspace != "" && tableName != "" {
-			fullType := s.getColumnTypeFromSystemTable(currentKeyspace, tableName, col.Name)
+			fullType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
 			if fullType != "" {
 				columnTypes[i] = fullType
 			} else {

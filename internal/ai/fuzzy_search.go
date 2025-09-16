@@ -23,7 +23,8 @@ type TableCandidate struct {
 // NewResolver creates a new table resolver
 func NewResolver(cache *db.SchemaCache) *Resolver {
 	return &Resolver{
-		cache: cache,
+		cache:       cache,
+		searchIndex: NewSearchIndexManager(cache),
 	}
 }
 
@@ -144,8 +145,30 @@ func (r *Resolver) calculateTokenOverlap(query string, tokens []string) float64 
 	return 0.0
 }
 
-// FindTablesWithFuzzy uses the fuzzy search library for better matching
+// FindTablesWithFuzzy uses the search index for optimized fuzzy matching
 func (r *Resolver) FindTablesWithFuzzy(query string, limit int) []TableCandidate {
+	// Use the search index manager for better performance
+	matches := r.searchIndex.FindTables(query, limit)
+
+	candidates := []TableCandidate{}
+	for _, match := range matches {
+		candidates = append(candidates, TableCandidate{
+			Keyspace:  match.Keyspace,
+			Table:     match.Table,
+			Score:     match.Score,
+			MatchType: "fuzzy",
+			Columns:   match.Columns,
+		})
+	}
+
+	logger.DebugfToFile("Resolver", "FindTablesWithFuzzy: query='%s', found=%d candidates",
+		query, len(candidates))
+
+	return candidates
+}
+
+// FindTablesWithFuzzyLegacy uses the fuzzy search library for better matching (deprecated)
+func (r *Resolver) FindTablesWithFuzzyLegacy(query string, limit int) []TableCandidate {
 	r.cache.Mu.RLock()
 	defer r.cache.Mu.RUnlock()
 

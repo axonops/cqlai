@@ -119,5 +119,6 @@ type PlanValidator struct {
 
 // Resolver handles fuzzy table name resolution
 type Resolver struct {
-	cache *db.SchemaCache
+	cache        *db.SchemaCache
+	searchIndex  *SearchIndexManager
 }

@@ -2,7 +2,7 @@ package db
 
 import (
 	"fmt"
-	"sync"
+	"strings"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
@@ -21,154 +21,132 @@ type UDTDefinition struct {
 	Fields   []UDTField
 }
 
-// UDTRegistry manages cached UDT definitions for all keyspaces
+// UDTRegistry manages UDT definitions using gocql's cached metadata
+// This simplified version relies on gocql's internal caching instead of maintaining our own cache
 type UDTRegistry struct {
-	definitions map[string]map[string]*UDTDefinition // keyspace -> udtname -> definition
-	mu          sync.RWMutex
-	session     *gocql.Session
+	session *gocql.Session
 }
 
 // NewUDTRegistry creates a new UDT registry with the given session
 func NewUDTRegistry(session *gocql.Session) *UDTRegistry {
 	return &UDTRegistry{
-		definitions: make(map[string]map[string]*UDTDefinition),
-		session:     session,
+		session: session,
 	}
 }
 
-// LoadKeyspaceUDTs loads all UDT definitions for a given keyspace
-func (r *UDTRegistry) LoadKeyspaceUDTs(keyspace string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Query system_schema.types for all UDTs in the keyspace
-	query := `
-		SELECT type_name, field_names, field_types
-		FROM system_schema.types
-		WHERE keyspace_name = ?`
-
-	iter := r.session.Query(query, keyspace).Iter()
-	defer iter.Close()
-
-	// Initialize the keyspace map if it doesn't exist
-	if r.definitions[keyspace] == nil {
-		r.definitions[keyspace] = make(map[string]*UDTDefinition)
-	}
-
-	var typeName string
-	var fieldNames []string
-	var fieldTypes []string
-
-	for iter.Scan(&typeName, &fieldNames, &fieldTypes) {
-		// Validate that field names and types have the same length
-		if len(fieldNames) != len(fieldTypes) {
-			return fmt.Errorf("mismatched field names and types for UDT %s.%s", keyspace, typeName)
-		}
-
-		// Create the UDT definition
-		udtDef := &UDTDefinition{
-			Keyspace: keyspace,
-			Name:     typeName,
-			Fields:   make([]UDTField, len(fieldNames)),
-		}
-
-		// Parse each field's type information
-		for i := range fieldNames {
-			typeInfo, err := ParseCQLType(fieldTypes[i])
-			if err != nil {
-				return fmt.Errorf("failed to parse type for field %s in UDT %s.%s: %w",
-					fieldNames[i], keyspace, typeName, err)
-			}
-
-			udtDef.Fields[i] = UDTField{
-				Name:     fieldNames[i],
-				TypeStr:  fieldTypes[i],
-				TypeInfo: typeInfo,
-			}
-		}
-
-		// Cache the definition
-		r.definitions[keyspace][typeName] = udtDef
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("failed to load UDTs for keyspace %s: %w", keyspace, err)
-	}
-
-	return nil
-}
-
-// GetUDTDefinition retrieves a cached UDT definition
+// GetUDTDefinition retrieves a UDT definition from gocql's cached metadata
 func (r *UDTRegistry) GetUDTDefinition(keyspace, udtName string) (*UDTDefinition, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.session == nil {
+		return nil, fmt.Errorf("no session available")
+	}
 
-	if ks, ok := r.definitions[keyspace]; ok {
-		if udt, ok := ks[udtName]; ok {
-			return udt, nil
+	// Get keyspace metadata from gocql (this is cached internally by gocql)
+	ksMetadata, err := r.session.KeyspaceMetadata(keyspace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get keyspace metadata: %w", err)
+	}
+
+	// Look for the UDT in the metadata
+	udtMeta, exists := ksMetadata.UserTypes[udtName]
+	if !exists {
+		return nil, fmt.Errorf("UDT %s.%s not found", keyspace, udtName)
+	}
+
+	// Convert to our UDTDefinition format
+	udtDef := &UDTDefinition{
+		Keyspace: keyspace,
+		Name:     udtName,
+		Fields:   make([]UDTField, len(udtMeta.FieldNames)),
+	}
+
+	// Convert each field
+	for i := range udtMeta.FieldNames {
+		// Convert TypeInfo to string representation
+		typeStr := formatGocqlTypeInfo(udtMeta.FieldTypes[i])
+
+		// Parse the type string to get our CQLTypeInfo
+		typeInfo, err := ParseCQLType(typeStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse type for field %s in UDT %s.%s: %w",
+				udtMeta.FieldNames[i], keyspace, udtName, err)
+		}
+
+		udtDef.Fields[i] = UDTField{
+			Name:     udtMeta.FieldNames[i],
+			TypeStr:  typeStr,
+			TypeInfo: typeInfo,
 		}
 	}
 
-	return nil, fmt.Errorf("UDT %s.%s not found in registry", keyspace, udtName)
+	return udtDef, nil
 }
 
-// GetUDTDefinitionOrLoad retrieves a UDT definition, loading it if necessary
+// GetUDTDefinitionOrLoad is now just an alias for GetUDTDefinition
+// since gocql handles the loading and caching internally
 func (r *UDTRegistry) GetUDTDefinitionOrLoad(keyspace, udtName string) (*UDTDefinition, error) {
-	// Try to get from cache first
-	if udt, err := r.GetUDTDefinition(keyspace, udtName); err == nil {
-		return udt, nil
-	}
-
-	// Not in cache, try to load the keyspace UDTs
-	if err := r.LoadKeyspaceUDTs(keyspace); err != nil {
-		return nil, err
-	}
-
-	// Try again after loading
 	return r.GetUDTDefinition(keyspace, udtName)
 }
 
-// Clear removes all cached UDT definitions
+// LoadKeyspaceUDTs is now a no-op since gocql handles loading automatically
+// Kept for backward compatibility
+func (r *UDTRegistry) LoadKeyspaceUDTs(keyspace string) error {
+	if r.session == nil {
+		return fmt.Errorf("no session available")
+	}
+	// gocql will load and cache metadata when KeyspaceMetadata is called
+	_, err := r.session.KeyspaceMetadata(keyspace)
+	return err
+}
+
+// LoadKeyspaceUDTsUsingMetadata is now a no-op since we always use metadata
+// Kept for backward compatibility
+func (r *UDTRegistry) LoadKeyspaceUDTsUsingMetadata(keyspace string) error {
+	return r.LoadKeyspaceUDTs(keyspace)
+}
+
+// Clear is a no-op since we don't maintain our own cache
+// gocql's cache is managed internally
 func (r *UDTRegistry) Clear() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.definitions = make(map[string]map[string]*UDTDefinition)
+	// No-op - gocql manages its own cache
 }
 
-// ClearKeyspace removes cached UDT definitions for a specific keyspace
+// ClearKeyspace is a no-op since we don't maintain our own cache
 func (r *UDTRegistry) ClearKeyspace(keyspace string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.definitions, keyspace)
+	// No-op - gocql manages its own cache
 }
 
-// GetAllUDTs returns all cached UDT definitions for a keyspace
+// GetAllUDTs returns all UDT definitions for a keyspace from gocql's cached metadata
 func (r *UDTRegistry) GetAllUDTs(keyspace string) map[string]*UDTDefinition {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if ks, ok := r.definitions[keyspace]; ok {
-		// Return a copy to prevent external modification
-		result := make(map[string]*UDTDefinition, len(ks))
-		for k, v := range ks {
-			result[k] = v
-		}
-		return result
+	if r.session == nil {
+		return nil
+	}
+	ksMetadata, err := r.session.KeyspaceMetadata(keyspace)
+	if err != nil {
+		return nil
 	}
 
-	return nil
+	result := make(map[string]*UDTDefinition)
+	for udtName := range ksMetadata.UserTypes {
+		if udtDef, err := r.GetUDTDefinition(keyspace, udtName); err == nil {
+			result[udtName] = udtDef
+		}
+	}
+
+	return result
 }
 
-// HasUDT checks if a UDT is cached
+// HasUDT checks if a UDT exists in the keyspace
 func (r *UDTRegistry) HasUDT(keyspace, udtName string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if ks, ok := r.definitions[keyspace]; ok {
-		_, exists := ks[udtName]
-		return exists
+	if r.session == nil {
+		return false
 	}
-	return false
+	ksMetadata, err := r.session.KeyspaceMetadata(keyspace)
+	if err != nil {
+		return false
+	}
+
+	_, exists := ksMetadata.UserTypes[udtName]
+	return exists
 }
 
 // String returns a string representation of a UDT definition
@@ -189,4 +167,114 @@ func (d *UDTDefinition) GetFieldByName(name string) (*UDTField, int, error) {
 		}
 	}
 	return nil, -1, fmt.Errorf("field %s not found in UDT %s.%s", name, d.Keyspace, d.Name)
+}
+
+// formatGocqlTypeInfo converts gocql.TypeInfo to a string representation for UDT fields
+func formatGocqlTypeInfo(typeInfo gocql.TypeInfo) string {
+	if typeInfo == nil {
+		return "unknown"
+	}
+
+	// Check the base type first
+	baseType := typeInfo.Type()
+
+	// Handle simple types
+	switch baseType {
+	case gocql.TypeList, gocql.TypeSet, gocql.TypeMap:
+		// Handle collection types
+		if collType, ok := typeInfo.(gocql.CollectionType); ok {
+			switch collType.Type() {
+			case gocql.TypeList:
+				return fmt.Sprintf("list<%s>", formatGocqlTypeInfo(collType.Elem))
+			case gocql.TypeSet:
+				return fmt.Sprintf("set<%s>", formatGocqlTypeInfo(collType.Elem))
+			case gocql.TypeMap:
+				return fmt.Sprintf("map<%s, %s>", formatGocqlTypeInfo(collType.Key), formatGocqlTypeInfo(collType.Elem))
+			}
+		}
+	case gocql.TypeTuple:
+		// Handle tuple types
+		if tupleType, ok := typeInfo.(gocql.TupleTypeInfo); ok {
+			var elements []string
+			for _, elem := range tupleType.Elems {
+				elements = append(elements, formatGocqlTypeInfo(elem))
+			}
+			return fmt.Sprintf("tuple<%s>", strings.Join(elements, ", "))
+		}
+	case gocql.TypeUDT:
+		// Handle nested UDT types
+		if udtType, ok := typeInfo.(gocql.UDTTypeInfo); ok {
+			if udtType.Keyspace != "" {
+				return fmt.Sprintf("%s.%s", udtType.Keyspace, udtType.Name)
+			}
+			return udtType.Name
+		}
+	default:
+		// Handle native types
+		return gocqlTypeToString(baseType)
+	}
+
+	return gocqlTypeToString(baseType)
+}
+
+// gocqlTypeToString converts a gocql.Type to its string representation
+func gocqlTypeToString(t gocql.Type) string {
+	switch t {
+	case gocql.TypeCustom:
+		return "custom"
+	case gocql.TypeAscii:
+		return "ascii"
+	case gocql.TypeBigInt:
+		return "bigint"
+	case gocql.TypeBlob:
+		return "blob"
+	case gocql.TypeBoolean:
+		return "boolean"
+	case gocql.TypeCounter:
+		return "counter"
+	case gocql.TypeDecimal:
+		return "decimal"
+	case gocql.TypeDouble:
+		return "double"
+	case gocql.TypeFloat:
+		return "float"
+	case gocql.TypeInt:
+		return "int"
+	case gocql.TypeText:
+		return "text"
+	case gocql.TypeTimestamp:
+		return "timestamp"
+	case gocql.TypeUUID:
+		return "uuid"
+	case gocql.TypeVarchar:
+		return "varchar"
+	case gocql.TypeVarint:
+		return "varint"
+	case gocql.TypeTimeUUID:
+		return "timeuuid"
+	case gocql.TypeInet:
+		return "inet"
+	case gocql.TypeDate:
+		return "date"
+	case gocql.TypeDuration:
+		return "duration"
+	case gocql.TypeTime:
+		return "time"
+	case gocql.TypeSmallInt:
+		return "smallint"
+	case gocql.TypeTinyInt:
+		return "tinyint"
+	case gocql.TypeList:
+		return "list"
+	case gocql.TypeMap:
+		return "map"
+	case gocql.TypeSet:
+		return "set"
+	case gocql.TypeTuple:
+		return "tuple"
+	case gocql.TypeUDT:
+		return "udt"
+	default:
+		return "unknown"
+	}
 }
