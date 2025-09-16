@@ -114,9 +114,11 @@ func (hm *HistoryManager) SaveCommand(command string) error {
 
 // GetHistory returns the command history
 func (hm *HistoryManager) GetHistory() []string {
-	// Return a copy to prevent external modification
+	// Return a copy in reverse order (most recent first)
 	result := make([]string, len(hm.history))
-	copy(result, hm.history)
+	for i := 0; i < len(hm.history); i++ {
+		result[i] = hm.history[len(hm.history)-1-i]
+	}
 	return result
 }
 

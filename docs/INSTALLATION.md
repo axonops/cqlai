@@ -20,10 +20,10 @@ Add the CQLAI repository and install:
 
 ```bash
 # Add the repository key
-curl -fsSL https://pkg.axonops.com/apt/KEY.gpg | sudo apt-key add -
+curl -fsSL https://packages.axonops.com/apt/KEY.gpg | sudo apt-key add -
 
 # Add the repository
-echo "deb https://pkg.axonops.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cqlai.list
+echo "deb https://packages.axonops.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cqlai.list
 
 # Update package list
 sudo apt update
@@ -55,10 +55,10 @@ Add the CQLAI repository and install:
 sudo tee /etc/yum.repos.d/cqlai.repo <<EOF
 [cqlai]
 name=CQLAI Repository
-baseurl=https://pkg.axonops.com/rpm/stable/\$basearch
+baseurl=https://packages.axonops.com/rpm/stable/\$basearch
 enabled=1
 gpgcheck=1
-gpgkey=https://pkg.axonops.com/rpm/KEY.gpg
+gpgkey=https://packages.axonops.com/rpm/KEY.gpg
 EOF
 
 # Install CQLAI
@@ -93,12 +93,12 @@ CQLAI is available as a Docker image for containerized deployments.
 
 ### Pull the Latest Image
 ```bash
-docker pull axonops/cqlai:latest
+docker pull registry.axonops.com/axonops-public/axonops-docker/cqlai:latest
 ```
 
 ### Pull Specific Version
 ```bash
-docker pull axonops/cqlai:0.0.5
+docker pull registry.axonops.com/axonops-public/axonops-docker/cqlai:0.0.5
 ```
 
 ### Running CQLAI in Docker
@@ -107,20 +107,20 @@ docker pull axonops/cqlai:0.0.5
 ```bash
 # Connect to Cassandra on host network
 docker run -it --rm --network host \
-  axonops/cqlai:latest \
+  registry.axonops.com/axonops-public/axonops-docker/cqlai:latest \
   -h localhost -p 9042 -u cassandra
 
 # With custom configuration
 docker run -it --rm \
   -v $(pwd)/cqlai.json:/app/cqlai.json:ro \
-  axonops/cqlai:latest
+  registry.axonops.com/axonops-public/axonops-docker/cqlai:latest
 ```
 
 #### Batch Mode
 ```bash
 # Execute a single query
 docker run --rm --network host \
-  axonops/cqlai:latest \
+  registry.axonops.com/axonops-public/axonops-docker/cqlai:latest \
   -h localhost -u cassandra \
   -e "SELECT * FROM system.local;"
 
@@ -128,7 +128,7 @@ docker run --rm --network host \
 docker run --rm \
   -v $(pwd)/queries.cql:/queries.cql:ro \
   --network host \
-  axonops/cqlai:latest \
+  registry.axonops.com/axonops-public/axonops-docker/cqlai:latest \
   -h localhost -u cassandra \
   -f /queries.cql
 ```
@@ -140,7 +140,7 @@ version: '3.8'
 
 services:
   cqlai:
-    image: axonops/cqlai:latest
+    image: registry.axonops.com/axonops-public/axonops-docker/cqlai:latest
     container_name: cqlai
     network_mode: host
     volumes:

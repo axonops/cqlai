@@ -80,6 +80,20 @@ func (cm *ConversationManager) GetConversation(id string) (*AIConversation, erro
 	return conv, nil
 }
 
+// GetConversationMessages returns the messages from a conversation
+func (cm *ConversationManager) GetConversationMessages(conversationID string) []ConversationMessage {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	if conv, exists := cm.conversations[conversationID]; exists {
+		// Return a copy to avoid external modifications
+		messages := make([]ConversationMessage, len(conv.Messages))
+		copy(messages, conv.Messages)
+		return messages
+	}
+	return nil
+}
+
 // CleanupOldConversations removes conversations older than the specified duration
 func (cm *ConversationManager) CleanupOldConversations(maxAge time.Duration) {
 	cm.mu.Lock()

@@ -321,48 +321,27 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 
 // continueAnthropic continues an Anthropic conversation
 func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput string) (*AIResult, *InteractionRequest, error) {
-	// Build messages array from conversation history
-	var messages []anthropic.MessageParam
-
-	// On first call, start with the original request
-	if len(conv.Messages) == 0 {
+	// On first call, initialize with the original request
+	if len(conv.anthropicMessages) == 0 {
 		userPrompt := UserPrompt(conv.OriginalRequest, conv.SchemaContext)
 		if strings.TrimSpace(userPrompt) == "" {
 			return nil, nil, fmt.Errorf("original request cannot be empty")
 		}
-		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)))
+		conv.anthropicMessages = append(conv.anthropicMessages, anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)))
 		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userPrompt})
-	} else {
-		// Build message history
-		for _, msg := range conv.Messages {
-			// Skip messages with empty content to avoid "text content blocks must be non-empty" error
-			if strings.TrimSpace(msg.Content) == "" {
-				logger.DebugfToFile("AIConversation", "[%s] Skipping empty message with role: %s", conv.ID, msg.Role)
-				continue
-			}
-			switch msg.Role {
-			case "user":
-				messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
-			case "assistant":
-				messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
-			}
+	} else if userInput != "" {
+		// Add new user input if provided (for follow-up questions)
+		followUpMessage := userInput
+		if len(conv.Messages) > 0 {
+			// This is a follow-up in an existing conversation
+			followUpMessage = "Follow-up question (answer only this, don't repeat previous response): " + userInput
 		}
-
-		// Add new user input if provided
-		if userInput != "" {
-			// For follow-up questions, make it clear this is a follow-up
-			followUpMessage := userInput
-			if len(conv.Messages) > 0 {
-				// This is a follow-up in an existing conversation
-				followUpMessage = "Follow-up question (answer only this, don't repeat previous response): " + userInput
-			}
-			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(followUpMessage)))
-			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userInput}) // Store original for history
-		}
+		conv.anthropicMessages = append(conv.anthropicMessages, anthropic.NewUserMessage(anthropic.NewTextBlock(followUpMessage)))
+		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userInput}) // Store original for history
 	}
 
 	// Validate that we have at least one message to send
-	if len(messages) == 0 {
+	if len(conv.anthropicMessages) == 0 {
 		return nil, nil, fmt.Errorf("no valid messages to send to API")
 	}
 
@@ -370,7 +349,7 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 	tools := getAnthropicTools()
 
 	// Make API call with retry logic
-	logger.DebugfToFile("AIConversation", "[%s] Calling Anthropic API with %d messages and %d tools", conv.ID, len(messages), len(tools))
+	logger.DebugfToFile("AIConversation", "[%s] Calling Anthropic API with %d messages and %d tools", conv.ID, len(conv.anthropicMessages), len(tools))
 
 	response, err := retryWithBackoff(ctx, 3, func(ctx context.Context) (*anthropic.Message, error) {
 		return conv.anthropicClient.Messages.New(ctx, anthropic.MessageNewParams{
@@ -380,7 +359,7 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 			System: []anthropic.TextBlockParam{
 				{Text: SystemPrompt},
 			},
-			Messages: messages,
+			Messages: conv.anthropicMessages,
 			Tools:    tools,
 		})
 	})
@@ -482,8 +461,10 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 			}
 		}
 
-		// Add assistant message to conversation history
-		// Extract text from the response for conversation history
+		// Add the assistant message with tool uses to anthropicMessages
+		conv.anthropicMessages = append(conv.anthropicMessages, assistantMessage)
+
+		// Extract text for conversation history
 		var assistantText string
 		for _, content := range response.Content {
 			if content.Type == "text" {
@@ -492,24 +473,27 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 		}
 		conv.Messages = append(conv.Messages, ConversationMessage{Role: "assistant", Content: assistantText})
 
-		// If we have tool results, we need to continue the conversation
+		// If we have tool results, add them properly and continue
 		if len(toolResults) > 0 {
-			// Add tool results as user messages
-			var resultMessages []string
+			// Add tool results as proper tool result blocks
 			for _, tr := range toolResults {
+				responseContent := tr.Result.Data
+				isError := false
 				if tr.Result.Error != nil {
-					resultMessages = append(resultMessages, fmt.Sprintf("Tool %s error: %v", tr.ID, tr.Result.Error))
-				} else {
-					resultMessages = append(resultMessages, tr.Result.Data)
+					responseContent = fmt.Sprintf("Error: %v", tr.Result.Error)
+					isError = true
 				}
+				conv.anthropicMessages = append(conv.anthropicMessages, anthropic.NewUserMessage(anthropic.NewToolResultBlock(
+					tr.ID,
+					responseContent,
+					isError,
+				)))
+
+				// Store in simple format for conversation history
+				conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: responseContent})
 			}
 
-			combinedResult := strings.Join(resultMessages, "\n")
-			// Add instruction to use tools for the response
-			combinedResult += "\n\nBased on this information, please provide a response using the appropriate tool (info for informational responses, submit_query_plan for CQL queries)."
-			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: combinedResult})
-
-			// Continue the conversation
+			// Continue the conversation with the tool results
 			return conv.Continue(ctx, "")
 		}
 	}

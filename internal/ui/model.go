@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/axonops/cqlai/internal/ai"
@@ -180,13 +181,33 @@ func (m *MainModel) rebuildAIConversation() {
 	for _, msg := range m.aiConversationMessages {
 		switch msg.Role {
 		case "user":
-			wrappedContent := m.wrapAIText(msg.Content)
+			// Skip tool result messages that were stored as user messages
+			if strings.HasPrefix(msg.Content, "Tables in ") ||
+			   strings.HasPrefix(msg.Content, "Keyspaces: ") ||
+			   strings.HasPrefix(msg.Content, "Columns in ") {
+				continue
+			}
+
+			// Extract just the user request from messages that include schema context
+			displayContent := msg.Content
+			if strings.Contains(msg.Content, "Available schema context:") && strings.Contains(msg.Content, "User request:") {
+				// Extract just the user request part
+				if idx := strings.Index(msg.Content, "User request: "); idx != -1 {
+					displayContent = strings.TrimSpace(msg.Content[idx+len("User request: "):])
+				}
+			}
+
+			wrappedContent := m.wrapAIText(displayContent)
 			if msg.Type == "selection" {
 				conversation += "\n" + m.styles.AccentText.Render("You selected: ") + wrappedContent + "\n\n"
 			} else {
 				conversation += "\n" + m.styles.AccentText.Render("You: ") + wrappedContent + "\n\n"
 			}
 		case "assistant":
+			// Skip intermediate tool result messages
+			if strings.HasPrefix(msg.Content, "Tool ") && strings.Contains(msg.Content, " result: ") {
+				continue
+			}
 			wrappedContent := m.wrapAIText(msg.Content)
 			// Check if this is an error message
 			if len(msg.Content) > 6 && msg.Content[:6] == "Error:" {
@@ -436,6 +457,21 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ConversationID != "" {
 			m.aiConversationID = msg.ConversationID
 			logger.DebugfToFile("AI", "Conversation ID: %s", msg.ConversationID)
+
+			// Sync conversation history from AI manager
+			if history := ai.GetConversationHistory(msg.ConversationID); history != nil {
+				// Clear and rebuild conversation messages from AI manager
+				m.aiConversationMessages = []AIMessage{}
+				for _, msg := range history {
+					m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+						Role:    msg.Role,
+						Content: msg.Content,
+					})
+				}
+				logger.DebugfToFile("AI", "Synced %d messages from AI conversation history", len(history))
+				// Rebuild the conversation view
+				m.rebuildAIConversation()
+			}
 		}
 
 		// Check if we're in AI conversation view mode waiting for response

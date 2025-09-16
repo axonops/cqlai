@@ -62,9 +62,10 @@ type AIConversation struct {
 	CurrentRound int
 	MaxRounds    int
 
-	// Provider-specific clients
-	anthropicClient *anthropic.Client
-	openaiClient    *openai.Client
+	// Provider-specific clients and message history
+	anthropicClient   *anthropic.Client
+	anthropicMessages []anthropic.MessageParam // Track actual Anthropic message format
+	openaiClient      *openai.Client
 }
 
 // ConversationMessage represents a message in the conversation

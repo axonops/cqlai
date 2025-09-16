@@ -142,3 +142,8 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// GetConversationHistory returns the conversation messages for a given conversation ID
+func GetConversationHistory(conversationID string) []ConversationMessage {
+	return conversationManager.GetConversationMessages(conversationID)
+}

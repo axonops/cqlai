@@ -63,10 +63,7 @@ func (sc *SchemaCache) GetAllKeyspaces() ([]string, error) {
 	var keyspaces []string
 	var keyspace string
 	for iter.Scan(&keyspace) {
-		// Skip system keyspaces
-		if !strings.HasPrefix(keyspace, "system") {
-			keyspaces = append(keyspaces, keyspace)
-		}
+		keyspaces = append(keyspaces, keyspace)
 	}
 
 	if err := iter.Close(); err != nil {
