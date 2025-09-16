@@ -33,8 +33,26 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	// Get column information from the iterator
 	cols := result.Iterator.Columns()
 
-	// Create scan destinations - use RawBytes for UDT columns
-	scanDest := make([]interface{}, len(cols))
+	// For tables with tuples, gocql expects us to provide scan destinations
+	// for each tuple field, not just the tuple column itself.
+	// Calculate the total number of scan destinations needed.
+	scanCount := 0
+	tupleColumns := make(map[int]int) // Map column index to number of tuple elements
+
+	for i, col := range cols {
+		if col.TypeInfo.Type() == gocql.TypeTuple {
+			// Get the tuple element count from TypeInfo
+			tupleInfo := col.TypeInfo.(gocql.TupleTypeInfo)
+			tupleElements := len(tupleInfo.Elems)
+			tupleColumns[i] = tupleElements
+			scanCount += tupleElements
+		} else {
+			scanCount++
+		}
+	}
+
+	// Create scan destinations
+	scanDest := make([]interface{}, scanCount)
 	udtColumns := make(map[int]*db.CQLTypeInfo)
 
 	// Get UDT decoder and registry if we might have UDT columns
@@ -51,9 +69,18 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 		currentKeyspace = e.sessionManager.CurrentKeyspace()
 	}
 
+	// Set up scan destinations - handle tuples specially
+	destIdx := 0
 	for i, col := range cols {
-		if col.TypeInfo.Type() == gocql.TypeUDT {
-			scanDest[i] = new(db.RawBytes)
+		if tupleCount, isTuple := tupleColumns[i]; isTuple {
+			// For tuple columns, create destinations for each element
+			for j := 0; j < tupleCount; j++ {
+				scanDest[destIdx] = new(interface{})
+				destIdx++
+			}
+		} else if col.TypeInfo.Type() == gocql.TypeUDT {
+			scanDest[destIdx] = new(db.RawBytes)
+			udtColumns[destIdx] = nil
 
 			// Try to get the full type string from column types if available
 			if i < len(result.ColumnTypes) {
@@ -62,12 +89,14 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 					// Parse the type string to get the UDT info
 					parsedType, err := db.ParseCQLType(typeStr)
 					if err == nil && parsedType != nil {
-						udtColumns[i] = parsedType
+						udtColumns[destIdx] = parsedType
 					}
 				}
 			}
+			destIdx++
 		} else {
-			scanDest[i] = new(interface{})
+			scanDest[destIdx] = new(interface{})
+			destIdx++
 		}
 	}
 
@@ -98,20 +127,29 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 
 			// Convert row to string array
 			row := make([]string, len(result.ColumnNames))
-			for i, col := range cols {
-				colName := col.Name
-				colIdx := -1
-				for j, name := range result.ColumnNames {
-					if name == colName {
-						colIdx = j
-						break
-					}
+
+			// Process scanned values - reconstruct tuples
+			destIdx := 0
+			for i := range cols {
+				if i >= len(row) {
+					break
 				}
 
-				if colIdx >= 0 {
-					if udtTypeInfo, hasUDT := udtColumns[i]; hasUDT {
+				if tupleCount, isTuple := tupleColumns[i]; isTuple {
+					// Reconstruct tuple from its elements
+					tupleElements := make([]interface{}, tupleCount)
+					for j := 0; j < tupleCount && destIdx < len(scanDest); j++ {
+						if scanDest[destIdx] != nil {
+							tupleElements[j] = *(scanDest[destIdx].(*interface{}))
+						}
+						destIdx++
+					}
+					// Format tuple as (elem1, elem2, ...)
+					row[i] = db.FormatValue(tupleElements)
+				} else if destIdx < len(scanDest) {
+					if udtTypeInfo, hasUDT := udtColumns[destIdx]; hasUDT {
 						// Handle UDT column
-						rawBytes := scanDest[i].(*db.RawBytes)
+						rawBytes := scanDest[destIdx].(*db.RawBytes)
 						if rawBytes != nil && *rawBytes != nil && decoder != nil {
 							// Determine keyspace
 							keyspace := udtTypeInfo.Keyspace
@@ -121,18 +159,19 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 
 							decodedValue, err := decoder.Decode([]byte(*rawBytes), udtTypeInfo, keyspace)
 							if err == nil {
-								row[colIdx] = db.FormatValue(decodedValue)
+								row[i] = db.FormatValue(decodedValue)
 							} else {
-								row[colIdx] = db.FormatValue(*rawBytes)
+								row[i] = db.FormatValue(*rawBytes)
 							}
 						} else {
-							row[colIdx] = "null"
+							row[i] = "null"
 						}
 					} else {
 						// Regular column
-						val := *(scanDest[i].(*interface{}))
-						row[colIdx] = db.FormatValue(val)
+						val := *(scanDest[destIdx].(*interface{}))
+						row[i] = db.FormatValue(val)
 					}
+					destIdx++
 				}
 			}
 
