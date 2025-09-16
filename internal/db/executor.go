@@ -189,10 +189,10 @@ func (s *Session) getColumnTypeFromSystemTable(keyspace, table, column string) s
 	var columnType string
 	iter := s.Query(query, keyspace, table, column).Iter()
 	if !iter.Scan(&columnType) {
-		iter.Close()
+		_ = iter.Close()
 		return ""
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	return columnType
 }
@@ -478,7 +478,13 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 				logger.DebugfToFile("ExecuteSelectQuery", "Column %s: typeStr=%s, gocqlType=%v, parsedType=%v, parseErr=%v, valType=%T",
 					col.Name, typeStr, col.TypeInfo.Type(), typeInfo, parseErr, val)
 
-				if col.TypeInfo.Type() == gocql.TypeUDT || (typeInfo != nil && typeInfo.BaseType == "udt") {
+				// Determine the data type category
+				isUDT := col.TypeInfo.Type() == gocql.TypeUDT || (typeInfo != nil && typeInfo.BaseType == "udt")
+				isCollection := typeInfo != nil && (typeInfo.BaseType == "list" || typeInfo.BaseType == "set" ||
+					typeInfo.BaseType == "map" || typeInfo.BaseType == "tuple")
+
+				switch {
+				case isUDT:
 					// UDT handling - try to decode if we got raw bytes
 					if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
 						logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
@@ -534,8 +540,8 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 						rawRow[cleanHeaders[i]] = val
 						row[i] = fmt.Sprintf("%v", val)
 					}
-				} else if typeInfo != nil && (typeInfo.BaseType == "list" || typeInfo.BaseType == "set" ||
-					typeInfo.BaseType == "map" || typeInfo.BaseType == "tuple") {
+
+				case isCollection:
 					// Handle collections that might contain UDTs
 					if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
 						decoder := NewBinaryDecoder(s.udtRegistry)
@@ -560,7 +566,8 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 						logger.DebugfToFile("ExecuteSelectQuery", "Collection %s value type: %T", col.Name, val)
 						row[i] = FormatValue(val)
 					}
-				} else {
+
+				default:
 					// Store the actual value for JSON
 					rawRow[cleanHeaders[i]] = val
 

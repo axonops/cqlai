@@ -101,10 +101,10 @@ func (ce *CompletionEngine) getUDTFieldsForColumn(tableName, columnName string) 
 
 	iter := ce.session.Query(query, currentKeyspace, tableName, columnName).Iter()
 	if !iter.Scan(&columnType) {
-		iter.Close()
+		_ = iter.Close()
 		return nil
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	// Parse the column type to check if it's a UDT
 	typeInfo, err := db.ParseCQLType(columnType)
@@ -124,10 +124,10 @@ func (ce *CompletionEngine) getUDTFieldsForColumn(tableName, columnName string) 
 
 	iter = ce.session.Query(udtQuery, udtKeyspace, typeInfo.UDTName).Iter()
 	if !iter.Scan(&fieldNames) {
-		iter.Close()
+		_ = iter.Close()
 		return nil
 	}
-	iter.Close()
+	_ = iter.Close()
 
 	return fieldNames
 }

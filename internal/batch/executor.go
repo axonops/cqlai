@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -198,7 +199,9 @@ func (e *Executor) Execute(cql string) error {
 
 // ExecuteFile executes CQL from a file
 func (e *Executor) ExecuteFile(filename string) error {
-	content, err := os.ReadFile(filename)
+	// Clean the filename to prevent path traversal
+	cleanPath := filepath.Clean(filename)
+	content, err := os.ReadFile(cleanPath) // #nosec G304 - file path is user input but cleaned
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}

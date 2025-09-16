@@ -9,25 +9,7 @@ import (
 )
 
 // MockSession implements a minimal gocql.Session interface for testing
-type MockSession struct {
-	queries map[string][]mockRow
-}
-
-type mockRow struct {
-	typeName   string
-	fieldNames []string
-	fieldTypes []string
-}
-
-type MockQuery struct {
-	rows []mockRow
-	pos  int
-}
-
-type MockIter struct {
-	rows []mockRow
-	pos  int
-}
+type MockSession struct{}
 
 func (m *MockSession) Query(query string, values ...interface{}) *gocql.Query {
 	// Note: In real tests, we'd need to mock gocql.Query properly
@@ -226,11 +208,13 @@ func TestUDTDefinition_Methods(t *testing.T) {
 		// Test first field
 		field, index, err = udtDef.GetFieldByName("street")
 		require.NoError(t, err)
+		assert.Equal(t, "street", field.Name)
 		assert.Equal(t, 0, index)
 
 		// Test last field
 		field, index, err = udtDef.GetFieldByName("zip")
 		require.NoError(t, err)
+		assert.Equal(t, "zip", field.Name)
 		assert.Equal(t, 2, index)
 
 		// Test non-existent field
