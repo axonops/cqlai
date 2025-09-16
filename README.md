@@ -46,7 +46,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 
 ## Installation
 
-You can install `cqlai` in several ways:
+You can install `cqlai` in several ways. For detailed instructions including package managers (APT, YUM) and Docker, see the [Installation Guide](docs/INSTALLATION.md).
 
 ### Pre-compiled Binaries
 
@@ -558,7 +558,7 @@ usercert = ~/certs/client-cert.pem
 validate = true
 ```
 
-See [CQLSHRC_SUPPORT.md](CQLSHRC_SUPPORT.md) for complete CQLSHRC compatibility details.
+See [CQLSHRC_SUPPORT.md](docs/CQLSHRC_SUPPORT.md) for complete CQLSHRC compatibility details.
 
 ### CQLAI JSON Configuration
 
