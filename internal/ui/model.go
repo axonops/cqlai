@@ -249,7 +249,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	ti := textinput.New()
 	ti.Placeholder = "Enter CQL command..."
 	ti.Focus()
-	ti.CharLimit = 256
+	ti.CharLimit = 4096 // Increased to support long queries, especially from AI
 
 	styles := DefaultStyles()
 
@@ -258,7 +258,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 
 	infoReplyInput := textinput.New()
 	infoReplyInput.Placeholder = "Type your response..."
-	infoReplyInput.CharLimit = 500
+	infoReplyInput.CharLimit = 4096 // Increased for consistency
 	infoReplyInput.Width = 50
 
 	// Load configuration from file and environment
