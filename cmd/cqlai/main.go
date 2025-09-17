@@ -9,6 +9,7 @@ import (
 	"github.com/axonops/cqlai/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -70,6 +71,25 @@ func main() {
 	if version {
 		fmt.Println("cqlai version 0.0.5")
 		os.Exit(0)
+	}
+
+	// Handle password prompting if username provided without password
+	if username != "" && password == "" && isTerminal() {
+		fmt.Fprintf(os.Stderr, "Password: ")
+		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr) // Print newline after password input
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
+			os.Exit(1)
+		}
+		password = string(passwordBytes)
+	}
+
+	// Also check environment variable as fallback
+	if password == "" {
+		if envPass := os.Getenv("CQLAI_PASSWORD"); envPass != "" {
+			password = envPass
+		}
 	}
 
 	// Create connection options

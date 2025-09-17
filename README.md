@@ -132,10 +132,16 @@ docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 
 Connect to a Cassandra host:
 ```bash
+# With password on command line (not recommended - visible in ps)
 cqlai --host 127.0.0.1 --port 9042 --username cassandra --password cassandra
 
-# Using short options
-cqlai -u cassandra -p cassandra --host 127.0.0.1
+# With password prompt (secure - password hidden)
+cqlai --host 127.0.0.1 --port 9042 -u cassandra
+# Password: [hidden input]
+
+# Using environment variable (secure for scripts/containers)
+export CQLAI_PASSWORD=cassandra
+cqlai --host 127.0.0.1 -u cassandra
 ```
 
 Or use a configuration file:
@@ -159,11 +165,16 @@ cqlai [options]
 | `--port <port>` | | Cassandra port (overrides config) |
 | `--keyspace <keyspace>` | `-k` | Default keyspace (overrides config) |
 | `--username <username>` | `-u` | Username for authentication |
-| `--password <password>` | `-p` | Password for authentication |
+| `--password <password>` | `-p` | Password for authentication* |
 | `--no-confirm` | | Disable confirmation prompts |
 | `--connect-timeout <seconds>` | | Connection timeout (default: 10) |
 | `--request-timeout <seconds>` | | Request timeout (default: 10) |
 | `--debug` | | Enable debug logging |
+
+*\*Note: Password can be provided in three ways:*
+1. *Command line with `-p` (not recommended - visible in process list)*
+2. *Interactive prompt when `-u` is used without `-p` (recommended)*
+3. *Environment variable `CQLAI_PASSWORD` (good for automation)*
 
 #### Batch Mode Options
 | Option | Short | Description |
