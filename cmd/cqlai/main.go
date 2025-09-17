@@ -69,7 +69,7 @@ func main() {
 
 	// Handle version flag
 	if version {
-		fmt.Println("cqlai version 0.0.5")
+		fmt.Println("cqlai version 0.0.6")
 		os.Exit(0)
 	}
 
