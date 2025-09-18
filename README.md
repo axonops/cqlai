@@ -1,6 +1,8 @@
 # CQLAI - AI-Powered Cassandra CQL Shell
 
-![cqlai banner](./assets/AxonOps-RGB-transparent-small.png)
+<div align="center">
+  <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
+</div>
 
 **CQLAI** is a fast, portable, and AI-enhanced interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, natural language query generation, client-side command parsing, and enhanced productivity features.
 
@@ -802,3 +804,11 @@ make grammar
 This project is licensed under the Apache 2.0 license. See the LICENSE file for details.
 
 Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/) directory. To regenerate license attributions, run `make licenses`.
+
+---
+
+<div align="center">
+  <br>
+  <p>Developed by</p>
+  <img src="./assets/AxonOps-RGB-transparent-small.png" alt="AxonOps" width="200">
+</div>
