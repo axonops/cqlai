@@ -134,6 +134,99 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	}, nil
 }
 
+// DescribeAllTablesQuery executes queries to list all tables from all keyspaces
+func (s *Session) DescribeAllTablesQuery() ([]TableListInfo, error) {
+	// Query all tables from all keyspaces
+	tableQuery := `SELECT keyspace_name, table_name, gc_grace_seconds, compaction, compression
+	               FROM system_schema.tables`
+	iter := s.Query(tableQuery).Iter()
+
+	tableMap := make(map[string]*TableListInfo) // keyspace.table -> TableListInfo
+
+	for {
+		var keyspaceName, tableName string
+		var gcGrace int
+		var compaction, compression map[string]string
+
+		if !iter.Scan(&keyspaceName, &tableName, &gcGrace, &compaction, &compression) {
+			break
+		}
+
+		// Format table name with keyspace prefix
+		fullTableName := fmt.Sprintf("%s.%s", keyspaceName, tableName)
+
+		tableInfo := &TableListInfo{
+			Name:           fullTableName,
+			GcGrace:        gcGrace,
+			Compaction:     compaction,
+			Compression:    compression,
+			PartitionKeys:  []string{},
+			ClusteringKeys: []string{},
+		}
+
+		tableMap[fullTableName] = tableInfo
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to list tables: %v", err)
+	}
+
+	// Now query all columns and filter for primary keys in the application
+	// We can't use WHERE kind IN (...) as it requires ALLOW FILTERING
+	columnQuery := `SELECT keyspace_name, table_name, column_name, kind, position
+	                FROM system_schema.columns`
+
+	colIter := s.Query(columnQuery).Iter()
+	for {
+		var keyspaceName, tableName, columnName, kind string
+		var position int
+
+		if !colIter.Scan(&keyspaceName, &tableName, &columnName, &kind, &position) {
+			break
+		}
+
+		// Only process partition_key and clustering columns
+		if kind != "partition_key" && kind != "clustering" {
+			continue
+		}
+
+		fullTableName := fmt.Sprintf("%s.%s", keyspaceName, tableName)
+		if tableInfo, ok := tableMap[fullTableName]; ok {
+			switch kind {
+			case "partition_key":
+				// Ensure slice is big enough
+				for len(tableInfo.PartitionKeys) <= position {
+					tableInfo.PartitionKeys = append(tableInfo.PartitionKeys, "")
+				}
+				tableInfo.PartitionKeys[position] = columnName
+			case "clustering":
+				// Ensure slice is big enough
+				for len(tableInfo.ClusteringKeys) <= position {
+					tableInfo.ClusteringKeys = append(tableInfo.ClusteringKeys, "")
+				}
+				tableInfo.ClusteringKeys[position] = columnName
+			}
+		}
+	}
+
+	if err := colIter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to query column information: %v", err)
+	}
+
+	// Build the result slice from the map
+	var tables []TableListInfo
+	for _, tableInfo := range tableMap {
+		tables = append(tables, *tableInfo)
+	}
+
+	// Sort by keyspace and table name
+	sort.Slice(tables, func(i, j int) bool {
+		return tables[i].Name < tables[j].Name
+	})
+
+	return tables, nil
+}
+
 // DescribeTablesQuery executes queries to list all tables (for pre-4.0)
 func (s *Session) DescribeTablesQuery(keyspace string) ([]TableListInfo, error) {
 	// Query table details
@@ -245,28 +338,28 @@ func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string)
 
 // DBDescribeTables handles version detection and returns appropriate data
 func (s *Session) DBDescribeTables(sessionMgr *session.Manager) (interface{}, []TableListInfo, error) {
-	// Get current keyspace - required for both paths
+	// Get current keyspace
 	currentKeyspace := ""
 	if sessionMgr != nil {
 		currentKeyspace = sessionMgr.CurrentKeyspace()
 	}
-	if currentKeyspace == "" {
-		return nil, nil, fmt.Errorf("no keyspace selected")
-	}
-	
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// In Cassandra 5.0, DESCRIBE TABLES returns all tables from all keyspaces
-		// The filtering will be done at the router layer
-		result := s.ExecuteCQLQuery("DESCRIBE TABLES")
-		return result, nil, nil // Server-side result, no TableListInfo needed
-	}
-	
-	// Fall back to manual construction for pre-4.0
-	tables, err := s.DescribeTablesQuery(currentKeyspace)
-	if err != nil {
-		return nil, nil, err
-	}
 
-	return nil, tables, nil // Manual query result, return TableListInfo for formatting
+	// Always use manual construction - DESCRIBE is not a real CQL query even in 4.0+
+	// DESCRIBE commands are meta-commands that need to be handled specially
+
+	if currentKeyspace != "" {
+		// If keyspace is selected, show tables from that keyspace
+		tables, err := s.DescribeTablesQuery(currentKeyspace)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, tables, nil // Manual query result, return TableListInfo for formatting
+	} else {
+		// If no keyspace selected, show all tables from all keyspaces
+		tables, err := s.DescribeAllTablesQuery()
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, tables, nil // Manual query result, return TableListInfo for formatting
+	}
 }

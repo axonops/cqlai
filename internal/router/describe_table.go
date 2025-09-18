@@ -269,13 +269,10 @@ var compressionAbbrev = map[string]string{
 
 // describeTables lists all tables in the current keyspace.
 func (v *CqlCommandVisitorImpl) describeTables() interface{} {
-	// Get current keyspace first
+	// Get current keyspace - not required anymore, we'll show all tables if no keyspace is selected
 	currentKeyspace := ""
 	if sessionManager != nil {
 		currentKeyspace = sessionManager.CurrentKeyspace()
-	}
-	if currentKeyspace == "" {
-		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
 	}
 
 	serverResult, tables, err := v.session.DBDescribeTables(sessionManager)

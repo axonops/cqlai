@@ -22,7 +22,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 
 ## Project Status
 
-**CQLAI is currently in active development (v0.0.5)** and is highly functional for daily use with Cassandra clusters. While we're still working toward a stable 1.0 release, the tool is already being used successfully in development and testing environments.
+**CQLAI is currently in active development** but it is highly functional for daily use with Cassandra clusters. While we're still working toward a stable 1.0 release, the tool is already being used successfully in development and testing environments.
 
 ### What Works Well
 - All core CQL operations and queries

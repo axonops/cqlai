@@ -91,14 +91,8 @@ func (s *Session) DBDescribeKeyspace(keyspaceName string) (interface{}, *Keyspac
 
 // DBDescribeKeyspaces handles version detection and returns appropriate data
 func (s *Session) DBDescribeKeyspaces() (interface{}, []KeyspaceListInfo, error) {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// Use server-side DESCRIBE KEYSPACES
-		result := s.ExecuteCQLQuery("DESCRIBE KEYSPACES")
-		return result, nil, nil // Server-side result, no KeyspaceListInfo needed
-	}
-
-	// Fall back to manual construction for pre-4.0
+	// Always use manual construction - DESCRIBE is not a real CQL query even in 4.0+
+	// DESCRIBE commands are meta-commands that need to be handled specially
 	keyspaces, err := s.DescribeKeyspacesQuery()
 	if err != nil {
 		return nil, nil, err

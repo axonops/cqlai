@@ -154,13 +154,23 @@ func parseMetaCommand(command string, session *db.Session, sessionMgr *session.M
 		parts := strings.Fields(command)
 		if len(parts) == 2 {
 			identifier := parts[1]
-			if strings.Contains(identifier, ".") {
+			upperIdentifier := strings.ToUpper(identifier)
+
+			// Check if this is a special DESCRIBE command (KEYSPACES, TABLES, TYPES, etc.)
+			// These should NOT be transformed
+			switch {
+			case upperIdentifier == "KEYSPACES" || upperIdentifier == "TABLES" ||
+				upperIdentifier == "TYPES" || upperIdentifier == "FUNCTIONS" ||
+				upperIdentifier == "AGGREGATES" || upperIdentifier == "CLUSTER":
+				// Keep the command as-is - these are special DESCRIBE commands
+				logger.DebugfToFile("parseMetaCommand", "Keeping '%s' as-is (special DESCRIBE command)", command)
+			case strings.Contains(identifier, "."):
 				// This looks like "DESCRIBE keyspace.table" or "DESC keyspace.table"
 				// Transform it to "DESCRIBE TABLE keyspace.table"
 				transformedCommand := parts[0] + " TABLE " + identifier
 				logger.DebugfToFile("parseMetaCommand", "Transformed '%s' to '%s'", command, transformedCommand)
 				command = transformedCommand
-			} else {
+			default:
 				// Single identifier - could be keyspace or table in current keyspace
 				// For now, assume it's a keyspace (cqlsh behavior)
 				// Transform it to "DESCRIBE KEYSPACE <identifier>"
