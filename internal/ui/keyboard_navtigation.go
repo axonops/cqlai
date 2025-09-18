@@ -237,13 +237,18 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	}
 
 
-	// If history modal is showing, navigate up
+	// If history modal is showing, navigate up (go to older command)
 	if m.showHistoryModal && len(m.commandHistory) > 0 {
+		// Navigate to older commands (decrease index in original array)
 		if m.historyModalIndex > 0 {
 			m.historyModalIndex--
 			// Adjust scroll offset if selection moves out of view
-			if m.historyModalIndex < m.historyModalScrollOffset {
-				m.historyModalScrollOffset = m.historyModalIndex
+			// Since display is reversed, we need to recalculate scroll offset
+			reversedIndex := len(m.commandHistory) - 1 - m.historyModalIndex
+			if reversedIndex < m.historyModalScrollOffset {
+				m.historyModalScrollOffset = reversedIndex
+			} else if reversedIndex >= m.historyModalScrollOffset + 10 {
+				m.historyModalScrollOffset = reversedIndex - 9
 			}
 		}
 		return m, nil
@@ -274,7 +279,7 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	// Show history modal if there's history to show
 	if len(m.commandHistory) > 0 && !m.showHistoryModal {
 		m.showHistoryModal = true
-		m.historyModalIndex = 0 // Start at most recent
+		m.historyModalIndex = len(m.commandHistory) - 1 // Start at most recent (last in array)
 		m.historyModalScrollOffset = 0
 	}
 	return m, nil
@@ -301,14 +306,18 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	}
 
 
-	// If history modal is showing, navigate down
+	// If history modal is showing, navigate down (go to newer command)
 	if m.showHistoryModal && len(m.commandHistory) > 0 {
-		// Remember we're showing newest first, so down means newer (higher index)
+		// Navigate to newer commands (increase index in original array)
 		if m.historyModalIndex < len(m.commandHistory)-1 {
 			m.historyModalIndex++
 			// Adjust scroll offset if selection moves out of view
-			if m.historyModalIndex >= m.historyModalScrollOffset+10 {
-				m.historyModalScrollOffset = m.historyModalIndex - 9
+			// Since display is reversed, we need to recalculate scroll offset
+			reversedIndex := len(m.commandHistory) - 1 - m.historyModalIndex
+			if reversedIndex < m.historyModalScrollOffset {
+				m.historyModalScrollOffset = reversedIndex
+			} else if reversedIndex >= m.historyModalScrollOffset + 10 {
+				m.historyModalScrollOffset = reversedIndex - 9
 			}
 		}
 		return m, nil

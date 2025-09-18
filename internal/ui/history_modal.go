@@ -58,30 +58,34 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	for i, item := range hm.items {
 		reversedItems[len(hm.items)-1-i] = item
 	}
-	
+
+	// Convert the selected index from original order to reversed order
+	// If selected is at end of original array (newest), it should be at start of reversed (index 0)
+	reversedSelected := len(hm.items) - 1 - hm.selected
+
 	// Determine visible range
 	endIndex := hm.scrollOffset + hm.maxShow
 	if endIndex > len(reversedItems) {
 		endIndex = len(reversedItems)
 	}
 	displayItems := reversedItems[hm.scrollOffset:endIndex]
-	
+
 	// Calculate the box width based on content (with a reasonable max)
 	boxContentWidth := hm.maxWidth - 6 // Account for border and arrow
 	boxWidth := hm.maxWidth
-	
+
 	// Create the modal style without forced background
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent)
-	
+
 	// Build the content
 	var content []string
-	
+
 	// Title with scroll indicator
 	titleText := "Command History"
 	if len(reversedItems) > hm.maxShow {
-		titleText = fmt.Sprintf("Command History (%d-%d of %d)", 
+		titleText = fmt.Sprintf("Command History (%d-%d of %d)",
 			hm.scrollOffset+1, endIndex, len(reversedItems))
 	}
 	titleStyle := lipgloss.NewStyle().
@@ -89,8 +93,8 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 		Bold(true).
 		Align(lipgloss.Center)
 	content = append(content, titleStyle.Render(titleText))
-	
-	
+
+
 	// Show scroll up indicator if not at top
 	if hm.scrollOffset > 0 {
 		scrollStyle := lipgloss.NewStyle().
@@ -98,15 +102,16 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 			Align(lipgloss.Center)
 		content = append(content, scrollStyle.Render("▲ (older)"))
 	}
-	
+
 	// Items
 	for i, item := range displayItems {
 		actualIndex := hm.scrollOffset + i
 		// Truncate the item if it's too long
 		displayText := hm.truncateWithEllipsis(item, boxContentWidth)
-		
+
 		var line string
-		if actualIndex == hm.selected {
+		// Compare with the reversed selected index
+		if actualIndex == reversedSelected {
 			// Selected item with arrow
 			itemStyle := lipgloss.NewStyle().
 				Foreground(styles.Accent).
