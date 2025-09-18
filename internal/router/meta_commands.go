@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/parquet"
 	"github.com/axonops/cqlai/internal/session"
 )
 
@@ -20,8 +21,10 @@ type MetaCommandHandler struct {
 	expandMode     bool
 	captureFile    string
 	captureOutput  *os.File
-	captureFormat  string // "text", "json", or "csv"
+	captureFormat  string // "text", "json", "csv", or "parquet"
 	csvWriter      *csv.Writer
+	parquetWriter  *parquet.ParquetCaptureWriter
+	captureHeaders []string // Store headers for parquet writer
 }
 
 // NewMetaCommandHandler creates a new meta command handler
