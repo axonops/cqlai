@@ -18,6 +18,22 @@ func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// If input has focus and contains text, page left in the input
+	if m.input.Focused() && len(m.input.Value()) > 0 {
+		cursorPos := m.input.Position()
+		// Page left by half the viewport width
+		pageSize := m.windowWidth / 2
+		if pageSize < 20 {
+			pageSize = 20
+		}
+		newPos := cursorPos - pageSize
+		if newPos < 0 {
+			newPos = 0
+		}
+		m.input.SetCursor(newPos)
+		return m, nil
+	}
+
 	// Scroll by 80% of viewport height to maintain context
 	scrollAmount := 0
 	switch {
@@ -57,6 +73,23 @@ func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 // handlePageDown handles PageDown key press
 func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+	// If input has focus and contains text, page right in the input
+	if m.input.Focused() && len(m.input.Value()) > 0 {
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		valueLen := len(currentValue)
+		// Page right by half the viewport width
+		pageSize := m.windowWidth / 2
+		if pageSize < 20 {
+			pageSize = 20
+		}
+		newPos := cursorPos + pageSize
+		if newPos > valueLen {
+			newPos = valueLen
+		}
+		m.input.SetCursor(newPos)
+		return m, nil
+	}
 
 	// Scroll by 80% of viewport height to maintain context
 	scrollAmount := 0

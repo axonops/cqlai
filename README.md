@@ -253,6 +253,10 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 #### Text Editing
 | Shortcut | Action | macOS Alternative |
 |----------|--------|-------------------|
+| `Ctrl+A` | Jump to beginning of line | Same |
+| `Ctrl+E` | Jump to end of line | Same |
+| `Ctrl+Left`/`Ctrl+Right` | Jump by word (or 20 chars) | Same |
+| `PgUp`/`PgDn` (in input) | Page left/right in long queries | `Fn+↑`/`Fn+↓` |
 | `Ctrl+K` | Cut from cursor to end of line | Same |
 | `Ctrl+U` | Cut from beginning to cursor | Same |
 | `Ctrl+W` | Cut word backward | Same |
@@ -271,7 +275,7 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 #### Scrolling
 | Shortcut | Action | macOS Alternative |
 |----------|--------|-------------------|
-| `PgUp`/`PgDn` | Scroll viewport by page | `Fn+↑`/`Fn+↓` |
+| `PgUp`/`PgDn` | Scroll viewport by page (or page input when typing) | `Fn+↑`/`Fn+↓` |
 | `Alt+↑`/`Alt+↓` | Scroll viewport line by line | `Option+↑`/`Option+↓` |
 | `Alt+←`/`Alt+→` | Scroll table horizontally (wide tables) | `Option+←`/`Option+→` |
 | `↑`/`↓` | Navigate table rows (when in table view) | Same |

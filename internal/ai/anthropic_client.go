@@ -566,7 +566,7 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 
 		// Ask for clarification
 		clarification := "Please respond with ONLY the QueryPlan JSON object, no other text."
-		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: clarification})
+		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: clarification, SystemGenerated: true})
 
 		// Try again
 		return conv.Continue(ctx, "")

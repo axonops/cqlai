@@ -59,8 +59,14 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 
 	// Add command information if available
 	if m.LastCommand != "" {
+		// Truncate long commands to fit in the top bar
+		displayCommand := m.LastCommand
+		maxCommandLength := 50
+		if len(displayCommand) > maxCommandLength {
+			displayCommand = displayCommand[:maxCommandLength] + "..."
+		}
 		content += separatorStyle.Render(" │ ") +
-			labelStyle.Render("Last: ") + commandStyle.Render(m.LastCommand)
+			labelStyle.Render("Last: ") + commandStyle.Render(displayCommand)
 
 		if m.HasQueryData {
 			content += separatorStyle.Render(" │ ") +

@@ -58,7 +58,7 @@ func (m *MainModel) handleAICommand(command string) (*MainModel, tea.Cmd) {
 		input.Prompt = "> "
 		input.Focus()
 		input.CharLimit = 4096 // Increased to support long queries
-		input.Width = m.historyViewport.Width - 10
+		input.Width = m.historyViewport.Width - 2 // Reduced margin for better scrolling
 		m.aiConversationInput = input
 		
 		// Initialize conversation viewport

@@ -80,6 +80,8 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 
 		// Text Editing
 		{"", "Ctrl+A/E", "Jump to start/end of line"},
+		{"", "Ctrl+Left/Right", "Jump by word (or 20 chars)"},
+		{"", "PgUp/PgDown", "Page left/right in input field"},
 		{"", "Alt+B/F", "Move by word"},
 		{"", "Ctrl+K/U", "Cut to end/start of line"},
 		{"", "Ctrl+W", "Cut previous word"},
@@ -88,7 +90,7 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 
 		// Navigation
 		{"─────────", "─────────", "─────────────"},
-		{"Navigate", "PgUp/PgDown", "Scroll results by page"},
+		{"Navigate", "PgUp/PgDown", "Scroll results/Page input"},
 		{"", "Alt+↑/↓", "Scroll line by line"},
 		{"", "↑/↓", "Navigate command history"},
 		{"", "←/→", "Scroll horizontally (wide tables)"},

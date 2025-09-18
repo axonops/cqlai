@@ -494,6 +494,69 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m.handleUpArrow(msg)
 
+	case tea.KeyCtrlA:
+		// Move cursor to beginning of line
+		m.input.CursorStart()
+		return m, nil
+
+	case tea.KeyCtrlE:
+		// Move cursor to end of line
+		m.input.CursorEnd()
+		return m, nil
+
+	case tea.KeyCtrlLeft:
+		// Jump backward by word or by 20 characters if no word boundary
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		if cursorPos > 0 {
+			// Try to find previous word boundary
+			newPos := cursorPos - 1
+			// Skip spaces
+			for newPos > 0 && currentValue[newPos] == ' ' {
+				newPos--
+			}
+			// Skip word characters
+			for newPos > 0 && currentValue[newPos-1] != ' ' {
+				newPos--
+			}
+			// If we didn't move much, jump by 20 characters
+			if cursorPos - newPos < 5 {
+				newPos = cursorPos - 20
+				if newPos < 0 {
+					newPos = 0
+				}
+			}
+			m.input.SetCursor(newPos)
+		}
+		return m, nil
+
+	case tea.KeyCtrlRight:
+		// Jump forward by word or by 20 characters if no word boundary
+		currentValue := m.input.Value()
+		cursorPos := m.input.Position()
+		valueLen := len(currentValue)
+		if cursorPos < valueLen {
+			// Try to find next word boundary
+			newPos := cursorPos + 1
+			// Skip current word
+			for newPos < valueLen && currentValue[newPos-1] != ' ' {
+				newPos++
+			}
+			// Skip spaces
+			for newPos < valueLen && currentValue[newPos] == ' ' {
+				newPos++
+			}
+			// If we didn't move much, jump by 20 characters
+			if newPos - cursorPos < 5 {
+				newPos = cursorPos + 20
+				if newPos > valueLen {
+					newPos = valueLen
+				}
+			}
+			m.input.SetCursor(newPos)
+		}
+		return m, nil
+
 	case tea.KeyCtrlY:
 		// Paste (yank) from clipboard buffer
 		if m.clipboardBuffer != "" {
@@ -662,8 +725,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				input := textinput.New()
 				input.Placeholder = ""
 				input.Prompt = "> "
-				input.CharLimit = 500
-				input.Width = m.historyViewport.Width - 10
+				input.CharLimit = 4096 // Increased to support long queries
+				input.Width = m.historyViewport.Width - 2 // Reduced margin for better scrolling
 				input.Focus()
 				m.aiConversationInput = input
 
