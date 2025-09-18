@@ -53,22 +53,17 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 		return ""
 	}
 	
-	// Show most recent commands first - reverse the order
-	reversedItems := make([]string, len(hm.items))
-	for i, item := range hm.items {
-		reversedItems[len(hm.items)-1-i] = item
-	}
-
-	// Convert the selected index from original order to reversed order
-	// If selected is at end of original array (newest), it should be at start of reversed (index 0)
-	reversedSelected := len(hm.items) - 1 - hm.selected
+	// Commands are stored in the array, let's check what order
+	// Just use them as-is for now
+	displayItems := hm.items
+	selectedIndex := hm.selected
 
 	// Determine visible range
 	endIndex := hm.scrollOffset + hm.maxShow
-	if endIndex > len(reversedItems) {
-		endIndex = len(reversedItems)
+	if endIndex > len(displayItems) {
+		endIndex = len(displayItems)
 	}
-	displayItems := reversedItems[hm.scrollOffset:endIndex]
+	visibleItems := displayItems[hm.scrollOffset:endIndex]
 
 	// Calculate the box width based on content (with a reasonable max)
 	boxContentWidth := hm.maxWidth - 6 // Account for border and arrow
@@ -84,9 +79,9 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 
 	// Title with scroll indicator
 	titleText := "Command History"
-	if len(reversedItems) > hm.maxShow {
+	if len(displayItems) > hm.maxShow {
 		titleText = fmt.Sprintf("Command History (%d-%d of %d)",
-			hm.scrollOffset+1, endIndex, len(reversedItems))
+			hm.scrollOffset+1, endIndex, len(displayItems))
 	}
 	titleStyle := lipgloss.NewStyle().
 		Foreground(styles.Accent).
@@ -104,14 +99,14 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	}
 
 	// Items
-	for i, item := range displayItems {
+	for i, item := range visibleItems {
 		actualIndex := hm.scrollOffset + i
 		// Truncate the item if it's too long
 		displayText := hm.truncateWithEllipsis(item, boxContentWidth)
 
 		var line string
-		// Compare with the reversed selected index
-		if actualIndex == reversedSelected {
+		// Compare with the selected index
+		if actualIndex == selectedIndex {
 			// Selected item with arrow
 			itemStyle := lipgloss.NewStyle().
 				Foreground(styles.Accent).
@@ -127,7 +122,7 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	}
 	
 	// Show scroll down indicator if not at bottom
-	if endIndex < len(reversedItems) {
+	if endIndex < len(displayItems) {
 		scrollStyle := lipgloss.NewStyle().
 			Foreground(styles.MutedText.GetForeground()).
 			Align(lipgloss.Center)
