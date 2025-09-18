@@ -98,6 +98,7 @@ func parseCopyOptions(optionsStr string) map[string]string {
 	options := map[string]string{
 		"HEADER":          "false",
 		"NULLVAL":         "null",
+		"FORMAT":          "csv",
 		"DELIMITER":       ",",
 		"QUOTE":           "\"",
 		"ESCAPE":          "\\",
@@ -141,6 +142,13 @@ func parseCopyOptions(optionsStr string) map[string]string {
 
 // executeCopyTo executes the COPY TO operation
 func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filename string, options map[string]string) interface{} {
+	// Check format option
+	format := strings.ToLower(options["FORMAT"])
+	if format == "parquet" {
+		return h.executeCopyToParquet(table, columns, filename, options)
+	}
+
+	// Default to CSV format
 	// Build SELECT query
 	var query string
 	if len(columns) > 0 {
