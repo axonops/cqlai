@@ -109,7 +109,8 @@ func TestCompressionComparison(t *testing.T) {
 		{"No compression", ""},
 		{"Snappy", "snappy"},
 		{"GZIP", "gzip"},
-		{"LZ4", "lz4"},
+		// LZ4 is not implemented in Apache Arrow Go
+		// {"LZ4", "lz4"},
 		{"ZSTD", "zstd"},
 	}
 

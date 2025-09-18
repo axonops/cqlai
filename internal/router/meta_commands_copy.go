@@ -333,6 +333,13 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 	// Parse options
 	options := parseCopyOptions(optionsStr)
 
+	// Check format option and delegate to appropriate handler
+	format := strings.ToLower(options["FORMAT"])
+	if format == "parquet" {
+		return h.executeCopyFromParquet(table, columns, filename, options)
+	}
+
+	// Default to CSV format
 	// Set defaults
 	if options["DELIMITER"] == "" {
 		options["DELIMITER"] = ","

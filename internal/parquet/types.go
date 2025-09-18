@@ -605,3 +605,36 @@ func (tm *TypeMapper) AppendValueToBuilder(builder array.Builder, value interfac
 
 	return nil
 }
+// ArrowToCassandraType converts Arrow data types back to Cassandra types
+func (tm *TypeMapper) ArrowToCassandraType(arrowType arrow.DataType) string {
+	switch arrowType.ID() {
+	case arrow.BOOL:
+		return "boolean"
+	case arrow.INT8, arrow.UINT8:
+		return "tinyint"
+	case arrow.INT16, arrow.UINT16:
+		return "smallint"
+	case arrow.INT32, arrow.UINT32:
+		return "int"
+	case arrow.INT64, arrow.UINT64:
+		return "bigint"
+	case arrow.FLOAT32:
+		return "float"
+	case arrow.FLOAT64:
+		return "double"
+	case arrow.STRING, arrow.LARGE_STRING:
+		return "text"
+	case arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY:
+		return "blob"
+	case arrow.DATE32, arrow.DATE64:
+		return "date"
+	case arrow.TIMESTAMP:
+		return "timestamp"
+	case arrow.TIME32, arrow.TIME64:
+		return "time"
+	case arrow.DECIMAL128, arrow.DECIMAL256:
+		return "decimal"
+	default:
+		return "text" // Default fallback
+	}
+}
