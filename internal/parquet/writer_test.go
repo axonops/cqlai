@@ -29,6 +29,9 @@ func TestNewParquetCaptureWriter(t *testing.T) {
 		assert.NotNil(t, writer.schema)
 		assert.NotNil(t, writer.builder)
 		assert.Equal(t, int64(10000), writer.chunkSize)
+
+		// Don't close stdout - just mark as closed to prevent actual write
+		writer.isClosed = true
 	})
 
 	t.Run("create writer with file", func(t *testing.T) {
@@ -49,10 +52,13 @@ func TestNewParquetCaptureWriter(t *testing.T) {
 	})
 
 	t.Run("schema mismatch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		outputPath := filepath.Join(tempDir, "test_mismatch.parquet")
+
 		columnNames := []string{"id", "name", "age"}
 		columnTypes := []string{"int", "text"} // Mismatch: fewer types than names
 
-		writer, err := NewParquetCaptureWriter("-", columnNames, columnTypes, DefaultWriterOptions())
+		writer, err := NewParquetCaptureWriter(outputPath, columnNames, columnTypes, DefaultWriterOptions())
 		assert.Error(t, err)
 		assert.Nil(t, writer)
 	})
@@ -260,7 +266,10 @@ func TestCloseWithoutData(t *testing.T) {
 
 func TestWriterMethods(t *testing.T) {
 	t.Run("GetRowCount", func(t *testing.T) {
-		writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		tempDir := t.TempDir()
+		outputPath := filepath.Join(tempDir, "test_rowcount.parquet")
+
+		writer, err := NewParquetCaptureWriter(outputPath, []string{"id"}, []string{"int"}, DefaultWriterOptions())
 		require.NoError(t, err)
 		defer writer.Close()
 
@@ -272,7 +281,10 @@ func TestWriterMethods(t *testing.T) {
 	})
 
 	t.Run("IsStreaming", func(t *testing.T) {
-		writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		tempDir := t.TempDir()
+		outputPath := filepath.Join(tempDir, "test_streaming.parquet")
+
+		writer, err := NewParquetCaptureWriter(outputPath, []string{"id"}, []string{"int"}, DefaultWriterOptions())
 		require.NoError(t, err)
 		defer writer.Close()
 
@@ -280,7 +292,10 @@ func TestWriterMethods(t *testing.T) {
 	})
 
 	t.Run("WriteHeader", func(t *testing.T) {
-		writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		tempDir := t.TempDir()
+		outputPath := filepath.Join(tempDir, "test_header.parquet")
+
+		writer, err := NewParquetCaptureWriter(outputPath, []string{"id"}, []string{"int"}, DefaultWriterOptions())
 		require.NoError(t, err)
 		defer writer.Close()
 
@@ -303,7 +318,10 @@ func TestWriterMethods(t *testing.T) {
 }
 
 func TestWriterAfterClose(t *testing.T) {
-	writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "test_after_close.parquet")
+
+	writer, err := NewParquetCaptureWriter(outputPath, []string{"id"}, []string{"int"}, DefaultWriterOptions())
 	require.NoError(t, err)
 
 	err = writer.Close()
