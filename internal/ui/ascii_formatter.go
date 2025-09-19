@@ -53,12 +53,18 @@ func FormatASCIITable(data [][]string) string {
 	if len(data) == 0 {
 		return "No results"
 	}
-	
-	// Calculate column widths (using rune count for proper Unicode handling)
+
+	const maxColumnWidth = 50
+
+	// Calculate column widths - minimum of actual max width and limit
 	columnWidths := make([]int, len(data[0]))
 	for _, row := range data {
 		for i, cell := range row {
-			cellWidth := len([]rune(cell)) // Count runes, not bytes
+			cellWidth := len([]rune(cell))
+			// Cap at maxColumnWidth but don't pad unnecessarily
+			if cellWidth > maxColumnWidth {
+				cellWidth = maxColumnWidth
+			}
 			if cellWidth > columnWidths[i] {
 				columnWidths[i] = cellWidth
 			}
@@ -89,11 +95,17 @@ func FormatASCIITable(data [][]string) string {
 	buf.WriteString("|")
 	for i, header := range data[0] {
 		buf.WriteString(" ")
-		buf.WriteString(header)
-		// Add padding (using rune count)
-		headerWidth := len([]rune(header))
-		for j := headerWidth; j < columnWidths[i]; j++ {
-			buf.WriteString(" ")
+		// Headers might also need truncation
+		headerRunes := []rune(header)
+		if len(headerRunes) > columnWidths[i] {
+			truncated := string(headerRunes[:columnWidths[i]-3]) + "..."
+			buf.WriteString(truncated)
+		} else {
+			buf.WriteString(header)
+			// Add padding
+			for j := len(headerRunes); j < columnWidths[i]; j++ {
+				buf.WriteString(" ")
+			}
 		}
 		buf.WriteString(" |")
 	}
@@ -107,11 +119,21 @@ func FormatASCIITable(data [][]string) string {
 		buf.WriteString("|")
 		for i, cell := range row {
 			buf.WriteString(" ")
-			buf.WriteString(cell)
-			// Add padding (using rune count)
-			cellWidth := len([]rune(cell))
-			for j := cellWidth; j < columnWidths[i]; j++ {
-				buf.WriteString(" ")
+
+			// Truncate cell if it exceeds the column width
+			cellRunes := []rune(cell)
+			if len(cellRunes) > columnWidths[i] {
+				// Truncate with ellipsis
+				truncated := string(cellRunes[:columnWidths[i]-3]) + "..."
+				buf.WriteString(truncated)
+				// Padding already accounted for in truncation
+			} else {
+				buf.WriteString(cell)
+				// Add padding (using rune count)
+				cellWidth := len(cellRunes)
+				for j := cellWidth; j < columnWidths[i]; j++ {
+					buf.WriteString(" ")
+				}
 			}
 			buf.WriteString(" |")
 		}
