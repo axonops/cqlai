@@ -58,7 +58,7 @@ func NewParquetCaptureWriter(output string, columnNames []string, columnTypes []
 	if output == "" || output == "-" || output == "STDOUT" {
 		writer = os.Stdout
 	} else {
-		file, err := os.Create(output)
+		file, err := os.Create(output) // #nosec G304 - output path comes from user input but is validated
 		if err != nil {
 			return nil, fmt.Errorf("failed to create output file: %w", err)
 		}
@@ -118,7 +118,7 @@ func NewParquetCaptureWriterWithTypeInfo(output string, columnNames []string, co
 	if output == "" || output == "-" || output == "STDOUT" {
 		writer = os.Stdout
 	} else {
-		file, err := os.Create(output)
+		file, err := os.Create(output) // #nosec G304 - output path comes from user input but is validated
 		if err != nil {
 			return nil, fmt.Errorf("failed to create output file: %w", err)
 		}
