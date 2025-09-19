@@ -451,7 +451,7 @@ func CreateBuilderForType(allocator memory.Allocator, dataType arrow.DataType) a
 	case *arrow.ListType:
 		return array.NewListBuilder(allocator, dt.Elem())
 	case *arrow.MapType:
-		return array.NewMapBuilder(allocator, dt.KeyType(), dt.ValueType(), false)
+		return array.NewMapBuilder(allocator, dt.KeyType(), dt.ItemType(), false)
 	case *arrow.StructType:
 		return array.NewStructBuilder(allocator, dt)
 	default:
@@ -491,14 +491,15 @@ func parseUDTDisplayString(s string) map[string]interface{} {
 		value := strings.TrimSpace(parts[1])
 
 		// Remove quotes from value if present
-		if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+		switch {
+		case strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'"):
 			value = value[1 : len(value)-1]
 			// Unescape single quotes
 			value = strings.ReplaceAll(value, "''", "'")
 			result[key] = value
-		} else if value == "null" {
+		case value == "null":
 			result[key] = nil
-		} else {
+		default:
 			// Try to parse as number
 			if i, err := strconv.ParseInt(value, 10, 64); err == nil {
 				result[key] = i
@@ -524,14 +525,15 @@ func splitRespectingQuotes(s string, sep rune) []string {
 
 	for i, r := range s {
 		if !inQuotes {
-			if r == '\'' || r == '"' {
+			switch r {
+			case '\'', '"':
 				inQuotes = true
 				quoteChar = r
 				current.WriteRune(r)
-			} else if r == sep {
+			case sep:
 				result = append(result, current.String())
 				current.Reset()
-			} else {
+			default:
 				current.WriteRune(r)
 			}
 		} else {

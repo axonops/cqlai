@@ -119,7 +119,7 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 
 		// Create Parquet writer - use streaming result's TypeInfo if available
 		var parquetWriter *parquet.ParquetCaptureWriter
-		if v.ColumnTypeInfos != nil && len(v.ColumnTypeInfos) > 0 {
+		if len(v.ColumnTypeInfos) > 0 {
 			// Use the new writer with TypeInfo for proper UDT support
 			parquetWriter, err = parquet.NewParquetCaptureWriterWithTypeInfo(filename, cleanHeaders, columnTypes, v.ColumnTypeInfos, writerOptions)
 		} else {
@@ -220,10 +220,11 @@ func parseSize(sizeStr string) (int64, error) {
 	sizeStr = strings.ToUpper(strings.TrimSpace(sizeStr))
 
 	multiplier := int64(1)
-	if strings.HasSuffix(sizeStr, "K") {
+	switch {
+	case strings.HasSuffix(sizeStr, "K"):
 		multiplier = 1000
 		sizeStr = strings.TrimSuffix(sizeStr, "K")
-	} else if strings.HasSuffix(sizeStr, "M") {
+	case strings.HasSuffix(sizeStr, "M"):
 		multiplier = 1000000
 		sizeStr = strings.TrimSuffix(sizeStr, "M")
 	}

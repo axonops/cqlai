@@ -126,10 +126,7 @@ func FormatValue(val interface{}) string {
 		if len(v) == 0 {
 			return "[]"
 		}
-		var parts []string
-		for _, item := range v {
-			parts = append(parts, item)
-		}
+		parts := v // v is already []string, no need to copy element by element
 		return "[" + strings.Join(parts, " ") + "]"
 	case map[string]string:
 		// Format map<text, text>

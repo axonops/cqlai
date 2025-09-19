@@ -173,12 +173,11 @@ func (h *MetaCommandHandler) handleTracing(command string) interface{} {
 func (h *MetaCommandHandler) handlePaging(command string) interface{} {
 	parts := strings.Fields(command)
 
-	if len(parts) == 1 {
+	switch len(parts) {
+	case 1:
 		// Show current page size
 		return fmt.Sprintf("Current page size: %d", h.session.PageSize())
-	}
-
-	if len(parts) == 2 {
+	case 2:
 		// Try to parse the page size
 		var pageSize int
 		if _, err := fmt.Sscanf(parts[1], "%d", &pageSize); err != nil {
@@ -191,35 +190,39 @@ func (h *MetaCommandHandler) handlePaging(command string) interface{} {
 
 		h.session.SetPageSize(pageSize)
 		return fmt.Sprintf("Page size set to %d", pageSize)
+	case 3:
+		if strings.ToUpper(parts[1]) == "OFF" {
+			// Disable paging (set to very large number)
+			h.session.SetPageSize(10000)
+			return "Paging disabled (set to 10000)"
+		}
+		return "Usage: PAGING [size] | PAGING OFF"
+	default:
+		return "Usage: PAGING [size] | PAGING OFF"
 	}
-
-	if len(parts) == 3 && strings.ToUpper(parts[1]) == "OFF" {
-		// Disable paging (set to very large number)
-		h.session.SetPageSize(10000)
-		return "Paging disabled (set to 10000)"
-	}
-
-	return "Usage: PAGING [size] | PAGING OFF"
 }
 
 // handleExpand handles EXPAND command for vertical output
 func (h *MetaCommandHandler) handleExpand(command string) interface{} {
 	parts := strings.Fields(strings.ToUpper(command))
 
-	if len(parts) == 1 {
+	switch len(parts) {
+	case 1:
 		if h.expandMode {
 			return "Expand mode is currently ON (vertical output)"
 		}
 		return "Expand mode is currently OFF (table output)"
-	}
-
-	switch parts[1] {
-	case "ON":
-		h.expandMode = true
-		return "Expand mode turned ON - results will be shown vertically"
-	case "OFF":
-		h.expandMode = false
-		return "Expand mode turned OFF - results will be shown as tables"
+	case 2:
+		switch parts[1] {
+		case "ON":
+			h.expandMode = true
+			return "Expand mode turned ON - results will be shown vertically"
+		case "OFF":
+			h.expandMode = false
+			return "Expand mode turned OFF - results will be shown as tables"
+		default:
+			return "Usage: EXPAND ON | OFF"
+		}
 	default:
 		return "Usage: EXPAND ON | OFF"
 	}

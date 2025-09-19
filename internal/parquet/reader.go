@@ -22,7 +22,7 @@ type ParquetReader struct {
 	columnNames  []string
 	columnTypes  []string
 	rowGroupIdx  int
-	currentBatch arrow.Record
+	currentBatch arrow.RecordBatch
 	batchIdx     int
 	totalRows    int64
 }
