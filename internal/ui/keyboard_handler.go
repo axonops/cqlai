@@ -200,8 +200,14 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 					results := m.aiHistoryManager.SearchHistory(m.historySearchQuery)
 					m.historySearchResults = results
 					if len(results) > 0 {
-						m.historySearchIndex = 0
-						m.historySearchScrollOffset = 0
+						// Start at the bottom (newest matching command)
+						m.historySearchIndex = len(results) - 1
+						// Set scroll offset to show the bottom
+						if len(results) > 10 {
+							m.historySearchScrollOffset = len(results) - 10
+						} else {
+							m.historySearchScrollOffset = 0
+						}
 					}
 				}
 				return m, nil
@@ -227,8 +233,19 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				} else {
 					m.historySearchResults = m.commandHistory
 				}
-				m.historySearchIndex = 0
-				m.historySearchScrollOffset = 0
+				// Start at the bottom (newest command)
+				if len(m.historySearchResults) > 0 {
+					m.historySearchIndex = len(m.historySearchResults) - 1
+					// Set scroll offset to show the bottom
+					if len(m.historySearchResults) > 10 {
+						m.historySearchScrollOffset = len(m.historySearchResults) - 10
+					} else {
+						m.historySearchScrollOffset = 0
+					}
+				} else {
+					m.historySearchIndex = 0
+					m.historySearchScrollOffset = 0
+				}
 			}
 			return m, nil
 		}
@@ -398,7 +415,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			// Enter history search mode
 			m.historySearchMode = true
 			m.historySearchQuery = ""
-			m.historySearchIndex = 0
 
 			// Search with empty query shows all history
 			if m.historyManager != nil {
@@ -409,8 +425,19 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				copy(m.historySearchResults, m.commandHistory)
 			}
 
-			// Reset scroll offset
-			m.historySearchScrollOffset = 0
+			// Start at the bottom (newest command)
+			if len(m.historySearchResults) > 0 {
+				m.historySearchIndex = len(m.historySearchResults) - 1
+				// Set scroll offset to show the bottom
+				if len(m.historySearchResults) > 10 {
+					m.historySearchScrollOffset = len(m.historySearchResults) - 10
+				} else {
+					m.historySearchScrollOffset = 0
+				}
+			} else {
+				m.historySearchIndex = 0
+				m.historySearchScrollOffset = 0
+			}
 		} else {
 			// Exit history search mode
 			m.historySearchMode = false
@@ -867,10 +894,9 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		// If history modal is showing, select the current entry
 		if m.showHistoryModal && len(m.commandHistory) > 0 {
-			// Get the selected command (remember we're showing newest first)
-			selectedIndex := len(m.commandHistory) - 1 - m.historyModalIndex
-			if selectedIndex >= 0 && selectedIndex < len(m.commandHistory) {
-				m.input.SetValue(m.commandHistory[selectedIndex])
+			// Use the index directly - the modal display handles the reversal
+			if m.historyModalIndex >= 0 && m.historyModalIndex < len(m.commandHistory) {
+				m.input.SetValue(m.commandHistory[m.historyModalIndex])
 			}
 			// Close the modal
 			m.showHistoryModal = false
@@ -988,9 +1014,19 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				}
 			}
 
-			// Reset index and scroll offset if results changed
-			m.historySearchIndex = 0
-			m.historySearchScrollOffset = 0
+			// Start at the bottom (newest matching command) if results changed
+			if len(m.historySearchResults) > 0 {
+				m.historySearchIndex = len(m.historySearchResults) - 1
+				// Set scroll offset to show the bottom
+				if len(m.historySearchResults) > 10 {
+					m.historySearchScrollOffset = len(m.historySearchResults) - 10
+				} else {
+					m.historySearchScrollOffset = 0
+				}
+			} else {
+				m.historySearchIndex = 0
+				m.historySearchScrollOffset = 0
+			}
 			return m, nil
 		}
 

@@ -262,7 +262,12 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	// Write initial rows to capture file if capturing
 	metaHandler := router.GetMetaHandler()
 	if metaHandler != nil && metaHandler.IsCapturing() && len(m.slidingWindow.Rows) > 0 {
-		_ = metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
+		// If we have column types (for Parquet support), use the new method
+		if len(v.ColumnTypes) > 0 {
+			_ = metaHandler.WriteCaptureResultWithTypes(command, v.Headers, v.ColumnTypes, m.slidingWindow.Rows, nil)
+		} else {
+			_ = metaHandler.WriteCaptureResult(command, v.Headers, m.slidingWindow.Rows)
+		}
 		m.slidingWindow.MarkRowsAsCaptured(len(m.slidingWindow.Rows))
 	}
 
@@ -537,8 +542,11 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			// Extract headers and rows from data
 			headers := v.Data[0]
 			rows := v.Data[1:]
-			// Use raw data if available for better type preservation in JSON
-			if len(v.RawData) > 0 {
+			// If we have column types (for Parquet support), use the new method
+			if len(v.ColumnTypes) > 0 {
+				_ = metaHandler.WriteCaptureResultWithTypes(command, headers, v.ColumnTypes, rows, v.RawData)
+			} else if len(v.RawData) > 0 {
+				// Otherwise use raw data if available for better type preservation in JSON
 				_ = metaHandler.WriteCaptureResultWithRawData(command, headers, rows, v.RawData)
 			} else {
 				_ = metaHandler.WriteCaptureResult(command, headers, rows)

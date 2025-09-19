@@ -243,12 +243,8 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if m.historyModalIndex > 0 {
 			m.historyModalIndex--
 			// Adjust scroll offset if selection moves out of view
-			// Since display is reversed, we need to recalculate scroll offset
-			reversedIndex := len(m.commandHistory) - 1 - m.historyModalIndex
-			if reversedIndex < m.historyModalScrollOffset {
-				m.historyModalScrollOffset = reversedIndex
-			} else if reversedIndex >= m.historyModalScrollOffset + 10 {
-				m.historyModalScrollOffset = reversedIndex - 9
+			if m.historyModalIndex < m.historyModalScrollOffset {
+				m.historyModalScrollOffset = m.historyModalIndex
 			}
 		}
 		return m, nil
@@ -280,7 +276,16 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	if len(m.commandHistory) > 0 && !m.showHistoryModal {
 		m.showHistoryModal = true
 		m.historyModalIndex = len(m.commandHistory) - 1 // Start at most recent (last in array)
-		m.historyModalScrollOffset = 0
+		// Set scroll offset to show the bottom of the list (newest commands)
+		// If we have more than maxShow (10) items, scroll to show the last 10
+		if len(m.commandHistory) > 10 {
+			m.historyModalScrollOffset = len(m.commandHistory) - 10
+		} else {
+			m.historyModalScrollOffset = 0
+		}
+		// Debug log
+		logger.DebugfToFile("History", "Opening history modal: index=%d, scroll=%d, total=%d",
+			m.historyModalIndex, m.historyModalScrollOffset, len(m.commandHistory))
 	}
 	return m, nil
 }
@@ -312,12 +317,8 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if m.historyModalIndex < len(m.commandHistory)-1 {
 			m.historyModalIndex++
 			// Adjust scroll offset if selection moves out of view
-			// Since display is reversed, we need to recalculate scroll offset
-			reversedIndex := len(m.commandHistory) - 1 - m.historyModalIndex
-			if reversedIndex < m.historyModalScrollOffset {
-				m.historyModalScrollOffset = reversedIndex
-			} else if reversedIndex >= m.historyModalScrollOffset + 10 {
-				m.historyModalScrollOffset = reversedIndex - 9
+			if m.historyModalIndex >= m.historyModalScrollOffset + 10 {
+				m.historyModalScrollOffset = m.historyModalIndex - 9
 			}
 		}
 		return m, nil

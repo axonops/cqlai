@@ -8,22 +8,24 @@ import (
 
 // QueryResult wraps query results with metadata
 type QueryResult struct {
-	Data        [][]string               // Formatted strings for display
-	RawData     []map[string]interface{} // Raw values for JSON export (preserves types)
-	Duration    time.Duration
-	RowCount    int
-	ColumnTypes []string // Data types of each column
-	Headers     []string // Column names without PK/C indicators
+	Data            [][]string               // Formatted strings for display
+	RawData         []map[string]interface{} // Raw values for JSON export (preserves types)
+	Duration        time.Duration
+	RowCount        int
+	ColumnTypes     []string         // Data types of each column
+	ColumnTypeInfos []gocql.TypeInfo // TypeInfo objects for each column (for UDT support)
+	Headers         []string         // Column names without PK/C indicators
 }
 
 // StreamingQueryResult wraps query results for progressive loading
 type StreamingQueryResult struct {
-	Headers     []string     // Column headers (with PK/C indicators)
-	ColumnNames []string     // Original column names (for data lookup)
-	ColumnTypes []string     // Data types of each column
-	Iterator    *gocql.Iter  // Iterator for fetching more rows
-	StartTime   time.Time    // Query start time for duration calculation
-	Keyspace    string       // Keyspace extracted from query or session
+	Headers         []string         // Column headers (with PK/C indicators)
+	ColumnNames     []string         // Original column names (for data lookup)
+	ColumnTypes     []string         // Data types of each column
+	ColumnTypeInfos []gocql.TypeInfo // TypeInfo objects for each column (for UDT support)
+	Iterator        *gocql.Iter      // Iterator for fetching more rows
+	StartTime       time.Time        // Query start time for duration calculation
+	Keyspace        string           // Keyspace extracted from query or session
 }
 
 // KeyColumnInfo holds information about key columns
