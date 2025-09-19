@@ -114,11 +114,9 @@ func (hm *HistoryManager) SaveCommand(command string) error {
 
 // GetHistory returns the command history
 func (hm *HistoryManager) GetHistory() []string {
-	// Return a copy in reverse order (most recent first)
+	// Return a copy in chronological order (oldest first, newest last)
 	result := make([]string, len(hm.history))
-	for i := 0; i < len(hm.history); i++ {
-		result[i] = hm.history[len(hm.history)-1-i]
-	}
+	copy(result, hm.history)
 	return result
 }
 
@@ -130,14 +128,14 @@ func (hm *HistoryManager) SearchHistory(query string) []string {
 
 	var matches []string
 	queryLower := strings.ToLower(query)
-	
-	// Search in reverse order (most recent first)
-	for i := len(hm.history) - 1; i >= 0; i-- {
-		if strings.Contains(strings.ToLower(hm.history[i]), queryLower) {
-			matches = append(matches, hm.history[i])
+
+	// Search in chronological order (oldest first, newest last)
+	for _, cmd := range hm.history {
+		if strings.Contains(strings.ToLower(cmd), queryLower) {
+			matches = append(matches, cmd)
 		}
 	}
-	
+
 	return matches
 }
 
