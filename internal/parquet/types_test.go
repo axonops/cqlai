@@ -99,16 +99,29 @@ func TestCollectionTypes(t *testing.T) {
 		require.NoError(t, err)
 		mapType, ok := result.(*arrow.MapType)
 		require.True(t, ok)
-		// Check that we have a map type with the correct key and value types
-		// Maps in Arrow have a value type that is a struct with key and value fields
-		itemType := mapType.ItemType()
-		require.NotNil(t, itemType)
-		// The item type should be a struct with key and value fields
-		structType, ok := itemType.(*arrow.StructType)
-		require.True(t, ok, "Map item type should be a struct")
-		assert.Equal(t, 2, structType.NumFields())
-		assert.Equal(t, arrow.BinaryTypes.String, structType.Field(0).Type)
-		assert.Equal(t, arrow.PrimitiveTypes.Int32, structType.Field(1).Type)
+
+		// Check the key type
+		assert.Equal(t, arrow.BinaryTypes.String, mapType.KeyType())
+
+		// Check the item type (value type in Cassandra terminology)
+		assert.Equal(t, arrow.PrimitiveTypes.Int32, mapType.ItemType())
+
+		// The Elem() method returns the underlying struct representation
+		// which is used internally by Arrow for map storage
+		elem := mapType.Elem()
+		require.NotNil(t, elem)
+		valueStruct, ok := elem.(*arrow.StructType)
+		require.True(t, ok, "Map Elem should be a struct type")
+		assert.Equal(t, 2, valueStruct.NumFields())
+
+		// Check the struct fields
+		keyField := valueStruct.Field(0)
+		assert.Equal(t, "key", keyField.Name)
+		assert.Equal(t, arrow.BinaryTypes.String, keyField.Type)
+
+		valueField := valueStruct.Field(1)
+		assert.Equal(t, "value", valueField.Name)
+		assert.Equal(t, arrow.PrimitiveTypes.Int32, valueField.Type)
 	})
 
 	t.Run("nested list", func(t *testing.T) {
