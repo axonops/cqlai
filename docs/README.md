@@ -11,6 +11,7 @@ This directory contains detailed documentation for CQLAI, a modern Cassandra CQL
 ### Features
 - [AI Configuration](AI_CONFIG.md) - Setting up AI providers (OpenAI, Anthropic, etc.)
 - [Batch Mode](BATCH_MODE.md) - Non-interactive query execution
+- [Parquet Support](PARQUET.md) - Import/export data in Apache Parquet format
 - [UDT Support](UDT_SUPPORT.md) - User-Defined Types handling
 - [CQL Type Support](CQL_TYPE_SUPPORT.md) - Supported Cassandra data types
 

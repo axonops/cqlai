@@ -27,11 +27,12 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 ### What Works Well
 - All core CQL operations and queries
 - Meta-commands (`DESCRIBE`, `SHOW`, `CONSISTENCY`, etc.)
-- Data import/export with `COPY TO/FROM`
+- Data import/export with `COPY TO/FROM` (CSV and Parquet formats)
 - AI-powered query generation (OpenAI, Anthropic, Gemini)
 - SSL/TLS connections and authentication
 - User-Defined Types (UDTs) and complex data types
 - Batch mode for scripting
+- Apache Parquet format support for efficient data interchange
 
 ### Coming Soon
 - Complete cqlsh feature parity
@@ -54,10 +55,10 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
 - **Client-Side Meta-Commands:** A powerful set of `cqlsh`-compatible commands parsed by a real grammar (ANTLR):
     - `DESCRIBE` (keyspaces, tables, types, functions, etc.).
     - `SOURCE 'file.cql'` to execute scripts.
-    - `COPY TO/FROM` to export/import data to/from CSV files.
+    - `COPY TO/FROM` to export/import data to/from CSV and Parquet files.
     - `CONSISTENCY`, `PAGING`, `TRACING` to manage session settings.
     - `SHOW` to view current session details.
-    - `CAPTURE` to save query output to files.
+    - `CAPTURE` to save query output to files (CSV, JSON, Parquet).
 - **Advanced Autocompletion:** Context-aware completion for keywords, table/keyspace names, and more.
 - **Configuration:**
     - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
@@ -443,10 +444,16 @@ Meta-commands provide additional functionality beyond standard CQL:
   ```
 
 #### Data Export/Import
-- **COPY TO** - Export table data to CSV file
+- **COPY TO** - Export table data to CSV or Parquet file
   ```sql
-  -- Basic export
+  -- Basic export to CSV
   COPY users TO 'users.csv'
+
+  -- Export to Parquet format (auto-detected by extension)
+  COPY users TO 'users.parquet'
+
+  -- Export to Parquet with explicit format and compression
+  COPY users TO 'data.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='SNAPPY'
 
   -- Export specific columns
   COPY users (id, name, email) TO 'users_partial.csv'
@@ -458,21 +465,30 @@ Meta-commands provide additional functionality beyond standard CQL:
   COPY users TO STDOUT WITH HEADER = TRUE
 
   -- Available options:
-  -- HEADER = TRUE/FALSE      -- Include column headers
-  -- DELIMITER = ','          -- Field delimiter
+  -- FORMAT = 'CSV'/'PARQUET' -- Output format (default: CSV, auto-detected)
+  -- HEADER = TRUE/FALSE      -- Include column headers (CSV only)
+  -- DELIMITER = ','          -- Field delimiter (CSV only)
   -- NULLVAL = 'NULL'        -- String to use for NULL values
   -- PAGESIZE = 1000         -- Rows per page for large exports
+  -- COMPRESSION = 'SNAPPY'  -- For Parquet: SNAPPY, GZIP, ZSTD, LZ4, NONE
+  -- CHUNKSIZE = 10000       -- Rows per chunk for Parquet
   ```
 
-- **COPY FROM** - Import CSV data into table
+- **COPY FROM** - Import CSV or Parquet data into table
   ```sql
-  -- Basic import from file
+  -- Basic import from CSV file
   COPY users FROM 'users.csv'
 
-  -- Import with header row
+  -- Import from Parquet file (auto-detected)
+  COPY users FROM 'users.parquet'
+
+  -- Import from Parquet with explicit format
+  COPY users FROM 'data.parquet' WITH FORMAT='PARQUET'
+
+  -- Import with header row (CSV)
   COPY users FROM 'users.csv' WITH HEADER = TRUE
 
-  -- Import specific columns (when CSV doesn't have all columns)
+  -- Import specific columns
   COPY users (id, name, email) FROM 'users_partial.csv'
 
   -- Import from stdin
@@ -707,6 +723,47 @@ Configure your preferred AI provider in `cqlai.json`:
 - **Dangerous operation warnings**: DROP, DELETE, TRUNCATE operations show warnings
 - **Confirmation required**: Destructive operations require additional confirmation
 - **Schema validation**: Queries are validated against your current schema
+
+## Apache Parquet Support
+
+CQLAI provides comprehensive support for Apache Parquet format, making it ideal for data analytics workflows and integration with modern data ecosystems.
+
+### Key Benefits
+
+- **Efficient Storage**: Columnar format with excellent compression (50-80% smaller than CSV)
+- **Fast Analytics**: Optimized for analytical queries in Spark, Presto, and other engines
+- **Type Preservation**: Maintains Cassandra data types including collections and UDTs
+- **Machine Learning Ready**: Direct compatibility with pandas, PyArrow, and ML frameworks
+- **Streaming Support**: Memory-efficient streaming for large datasets
+
+### Quick Examples
+
+```sql
+-- Export to Parquet (auto-detected by extension)
+COPY users TO 'users.parquet';
+
+-- Export with compression
+COPY events TO 'events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='ZSTD';
+
+-- Import from Parquet
+COPY users FROM 'users.parquet';
+
+-- Capture query results in Parquet format
+CAPTURE 'results.parquet' FORMAT='PARQUET';
+SELECT * FROM large_table WHERE condition = true;
+CAPTURE OFF;
+```
+
+### Supported Features
+
+- All Cassandra primitive types (int, text, timestamp, uuid, etc.)
+- Collection types (list, set, map)
+- User-Defined Types (UDTs)
+- Frozen collections
+- Vector types for ML workloads (Cassandra 5.0+)
+- Multiple compression algorithms (Snappy, GZIP, ZSTD, LZ4)
+
+For detailed documentation, see [Parquet Support Guide](docs/PARQUET.md).
 
 ## Known Limitations
 
