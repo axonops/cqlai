@@ -50,6 +50,7 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		{"", "  EXPAND", "Vertical format"},
 		{"", "CAPTURE 'file'", "Start capturing output to file"},
 		{"", "CAPTURE JSON 'file'", "Capture as JSON format"},
+		{"", "CAPTURE PARQUET 'file'", "Capture as Parquet format"},
 		{"", "CAPTURE OFF", "Stop capturing output"},
 
 		// Information
@@ -61,13 +62,13 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		// File Operations
 		{"─────────", "─────────", "─────────────"},
 		{"Files", "SOURCE 'file'", "Execute CQL from file"},
-		{"", "COPY <table> TO 'file'", "Export table data to CSV"},
-		{"", "COPY <table> FROM 'file'", "Import CSV data to table"},
+		{"", "COPY <table> TO 'file'", "Export table data to CSV/Parquet"},
+		{"", "COPY <table> FROM 'file'", "Import CSV/Parquet to table"},
+		{"", "  WITH FORMAT='parquet'", "Use Apache Parquet format"},
 		{"", "  WITH HEADER=true", "First row has column names"},
-		{"", "  WITH DELIMITER=','", "Field separator character"},
-		{"", "  WITH NULLVAL='NULL'", "NULL value representation"},
+		{"", "  WITH DELIMITER=','", "Field separator (CSV only)"},
 		{"", "  WITH MAXROWS=n", "Max rows to import (-1=all)"},
-		{"", "  WITH SKIPROWS=n", "Skip first n rows"},
+		{"", "  WITH SKIPROWS=n", "Skip first n rows (CSV only)"},
 
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},
@@ -93,7 +94,7 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		{"Navigate", "PgUp/PgDown", "Scroll results/Page input"},
 		{"", "Alt+↑/↓", "Scroll line by line"},
 		{"", "↑/↓", "Navigate command history"},
-		{"", "←/→", "Scroll horizontally (wide tables)"},
+		{"", "Alt+←/→", "Scroll horizontally (wide tables)"},
 
 		// Exit
 		{"─────────", "─────────", "─────────────"},
