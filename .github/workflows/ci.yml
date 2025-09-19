@@ -80,7 +80,8 @@ jobs:
 
       - name: Run unit tests
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          # Run tests excluding integration tests (which require Cassandra)
+          go test -v -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v /test/)
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -264,6 +265,7 @@ jobs:
           rm -f /tmp/test_export.csv
 
           echo "✅ All COPY command tests passed"
+
 
       - name: Run version-specific tests (if exists)
         run: |

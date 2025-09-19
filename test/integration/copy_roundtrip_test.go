@@ -1,3 +1,5 @@
+// +build integration
+
 package integration_test
 
 import (
@@ -34,6 +36,7 @@ func getTestSession(t *testing.T) (*db.Session, *router.MetaCommandHandler, func
 	dbSession, err := db.NewSessionWithOptions(options)
 	if err != nil {
 		t.Skipf("Skipping test - Cassandra not available: %v", err)
+		return nil, nil, nil
 	}
 
 	// Create test keyspace
