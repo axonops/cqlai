@@ -84,8 +84,8 @@ func TestVectorTypes(t *testing.T) {
 		firstRow := rows[0]
 		if embedding, ok := firstRow["embedding"].([]interface{}); ok {
 			assert.Len(t, embedding, 128)
-			// Check first few values
-			assert.InDelta(t, float32(0.0), embedding[0], 0.01)
+			// Check first few values - Sin(1.0) * 0.5 ≈ 0.4207
+			assert.InDelta(t, float32(0.4207), embedding[0], 0.01)
 		}
 
 		if features, ok := firstRow["features"].([]interface{}); ok {
