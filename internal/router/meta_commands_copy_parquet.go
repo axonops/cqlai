@@ -210,6 +210,71 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 		}
 		return fmt.Sprintf("Exported %d rows to %s (Parquet format)", rowCount, filename)
 
+	case db.QueryResult:
+		// Handle non-streaming query results (primarily for testing)
+		if len(v.Data) == 0 {
+			return "No data to export"
+		}
+
+		headers := v.Headers
+		cleanHeaders := make([]string, len(headers))
+		for i, header := range headers {
+			// Clean header for Parquet
+			if idx := strings.Index(header, " (PK)"); idx != -1 {
+				cleanHeaders[i] = header[:idx]
+			} else if idx := strings.Index(header, " (C)"); idx != -1 {
+				cleanHeaders[i] = header[:idx]
+			} else {
+				cleanHeaders[i] = header
+			}
+		}
+
+		// Set up Parquet writer options
+		writerOptions := parquet.DefaultWriterOptions()
+		if chunkSize := options["CHUNKSIZE"]; chunkSize != "" {
+			if size, err := parseSize(chunkSize); err == nil {
+				writerOptions.ChunkSize = size
+			}
+		}
+
+		// Create Parquet writer
+		parquetWriter, err := parquet.NewParquetCaptureWriter(filename, cleanHeaders, v.ColumnTypes, writerOptions)
+		if err != nil {
+			return fmt.Sprintf("Error creating Parquet writer: %v", err)
+		}
+		defer parquetWriter.Close()
+
+		// Set compression if specified
+		if compression := options["COMPRESSION"]; compression != "" {
+			if err := parquetWriter.SetCompression(strings.ToLower(compression)); err != nil {
+				logger.DebugfToFile("CopyToParquet", "Failed to set compression %s: %v", compression, err)
+			}
+		}
+
+		// Write data
+		if v.RawData != nil {
+			// Use raw data if available
+			if err := parquetWriter.WriteRows(v.RawData); err != nil {
+				return fmt.Sprintf("Error writing data: %v", err)
+			}
+		} else {
+			// Fall back to string data
+			if err := parquetWriter.WriteStringRows(cleanHeaders, v.Data); err != nil {
+				return fmt.Sprintf("Error writing data: %v", err)
+			}
+		}
+
+		// Close the writer to flush data
+		if err := parquetWriter.Close(); err != nil {
+			return fmt.Sprintf("Error closing Parquet file: %v", err)
+		}
+
+		rowCount := len(v.Data)
+		if isStdout {
+			return nil
+		}
+		return fmt.Sprintf("Exported %d rows to %s (Parquet format)", rowCount, filename)
+
 	default:
 		return fmt.Sprintf("Unexpected result type: %T", result)
 	}
