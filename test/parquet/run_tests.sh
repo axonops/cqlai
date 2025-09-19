@@ -24,7 +24,7 @@ run_test() {
     local test_name=$1
     echo -n "Running $test_name... "
 
-    if go test -v -timeout 30s ./test/parquet -run "^$test_name$" > /tmp/test_output_$$.log 2>&1; then
+    if go test -v -timeout 30s ./... -run "^$test_name$" > /tmp/test_output_$$.log 2>&1; then
         echo -e "${GREEN}PASSED${NC}"
         ((PASSED++))
     else
