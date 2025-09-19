@@ -121,6 +121,42 @@ func FormatValue(val interface{}) string {
 			parts = append(parts, formatUDTMap(item))
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
+	case []string:
+		// Format list/set of strings
+		if len(v) == 0 {
+			return "[]"
+		}
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, item)
+		}
+		return "[" + strings.Join(parts, " ") + "]"
+	case map[string]string:
+		// Format map<text, text>
+		if len(v) == 0 {
+			return "{}"
+		}
+		var parts []string
+		for key, val := range v {
+			parts = append(parts, fmt.Sprintf("%s:%s", key, val))
+		}
+		return "map[" + strings.Join(parts, " ") + "]"
+	case map[string]int:
+		// Format map<text, int>
+		if len(v) == 0 {
+			return "{}"
+		}
+		var parts []string
+		for key, val := range v {
+			parts = append(parts, fmt.Sprintf("%s:%d", key, val))
+		}
+		return "map[" + strings.Join(parts, " ") + "]"
+	case []int, []int32, []int64:
+		// Format list/set of integers
+		return fmt.Sprintf("%v", v)
+	case []float32, []float64:
+		// Format list/set of floats (including vectors)
+		return fmt.Sprintf("%v", v)
 	case gocql.UUID:
 		return v.String()
 	case []byte:
@@ -428,6 +464,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Prepare headers with key indicators and collect column types
 	headers := make([]string, len(filteredColumns))
 	columnTypes := make([]string, len(filteredColumns))
+	columnTypeInfos := make([]gocql.TypeInfo, len(filteredColumns))
 
 	// For UDT columns, we need to get the full type definition from system tables
 	queryKeyspace, tableName := extractTableName(query)
@@ -438,24 +475,27 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 
 	for i, col := range filteredColumns {
 		headers[i] = col.Name
-		// Store the column type - use TypeInfoToString to handle custom types
-		var basicType string
-		if col.TypeInfo == nil {
-			basicType = "unknown"
-		} else {
-			basicType = TypeInfoToString(col.TypeInfo)
-		}
+		// Store the TypeInfo for proper type handling (especially UDTs)
+		columnTypeInfos[i] = col.TypeInfo
 
-		// If it's a UDT, try to get the full type definition
-		if basicType == "udt" && currentKeyspace != "" && tableName != "" {
-			fullType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
-			if fullType != "" {
-				columnTypes[i] = fullType
-			} else {
-				columnTypes[i] = basicType
-			}
+		// Store the column type - use formatTypeInfo to get full type info including collection element types
+		if col.TypeInfo == nil {
+			columnTypes[i] = "unknown"
 		} else {
-			columnTypes[i] = basicType
+			// Use formatTypeInfo for all columns to get proper type with element types
+			fullType := formatTypeInfo(col.TypeInfo)
+
+			// For UDTs, we might need additional metadata
+			if col.TypeInfo.Type() == gocql.TypeUDT && currentKeyspace != "" && tableName != "" {
+				// Try to get the UDT name from metadata if formatTypeInfo didn't get it
+				if fullType == "udt" || fullType == "" {
+					udtType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
+					if udtType != "" {
+						fullType = udtType
+					}
+				}
+			}
+			columnTypes[i] = fullType
 		}
 
 		// Add indicators for key columns
@@ -524,8 +564,10 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 				case col.TypeInfo == nil:
 					scanDest[i] = new(interface{})
 				case col.TypeInfo.Type() == gocql.TypeUDT:
-					// Use RawBytes for UDT columns to bypass gocql's broken UDT decoding
-					scanDest[i] = new(RawBytes)
+					// Use map[string]interface{} for UDT columns
+					// Note: gocql doesn't populate UDTs properly when scanning into interface{}
+					// but it does work when scanning into *map[string]interface{}
+					scanDest[i] = new(map[string]interface{})
 				default:
 					scanDest[i] = new(interface{})
 				}
@@ -550,10 +592,10 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 				// Handle nil TypeInfo (virtual tables)
 				val = *(scanDest[i].(*interface{}))
 			case col.TypeInfo.Type() == gocql.TypeUDT:
-				// For UDT columns, we used RawBytes
-				rawBytes := scanDest[i].(*RawBytes)
-				if rawBytes != nil && *rawBytes != nil {
-					val = []byte(*rawBytes)
+				// For UDT columns, we used *map[string]interface{}
+				udtMap := scanDest[i].(*map[string]interface{})
+				if udtMap != nil && *udtMap != nil {
+					val = *udtMap
 				} else {
 					val = nil
 				}
@@ -640,30 +682,9 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 					}
 
 				case isCollection:
-					// Handle collections that might contain UDTs
-					if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
-						decoder := NewBinaryDecoder(s.udtRegistry)
-						keyspace := s.Keyspace()
-						if keyspace == "" && s.cluster != nil {
-							keyspace = s.cluster.Keyspace
-						}
-
-						decoded, err := decoder.Decode(bytes, typeInfo, keyspace)
-						if err != nil {
-							logger.DebugfToFile("ExecuteSelectQuery", "Failed to decode collection %s: %v", col.Name, err)
-							rawRow[cleanHeaders[i]] = val
-							row[i] = fmt.Sprintf("%v", val)
-						} else {
-							rawRow[cleanHeaders[i]] = decoded
-							row[i] = FormatValue(decoded)
-						}
-					} else {
-						// Use existing collection formatting
-						rawRow[cleanHeaders[i]] = val
-						// Debug: log the type of val
-						logger.DebugfToFile("ExecuteSelectQuery", "Collection %s value type: %T", col.Name, val)
-						row[i] = FormatValue(val)
-					}
+					// Collections are already decoded by gocql, just format them
+					rawRow[cleanHeaders[i]] = val
+					row[i] = FormatValue(val)
 
 				default:
 					// Store the actual value for JSON
@@ -690,12 +711,13 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	duration := time.Since(startTime)
 
 	queryResult := QueryResult{
-		Data:        results,
-		RawData:     rawData,
-		Duration:    duration,
-		RowCount:    rowNum, // rowNum already contains the count of data rows (excluding header)
-		ColumnTypes: columnTypes,
-		Headers:     cleanHeaders,
+		Data:            results,
+		RawData:         rawData,
+		Duration:        duration,
+		RowCount:        rowNum, // rowNum already contains the count of data rows (excluding header)
+		ColumnTypes:     columnTypes,
+		ColumnTypeInfos: columnTypeInfos,
+		Headers:         cleanHeaders,
 	}
 
 	// Just pass the result, UI will handle formatting
@@ -790,6 +812,7 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	headers := make([]string, len(filteredColumns))
 	columnNames := make([]string, len(filteredColumns))
 	columnTypes := make([]string, len(filteredColumns))
+	columnTypeInfos := make([]gocql.TypeInfo, len(filteredColumns))
 
 	// For UDT columns, we need to get the full type definition from system tables
 	queryKeyspace, tableName := extractTableName(query)
@@ -802,24 +825,27 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 		columnNames[i] = col.Name // Store original name
 		headers[i] = col.Name     // Start with original name
 
-		// Store the column type - use TypeInfoToString to handle custom types
-		var basicType string
-		if col.TypeInfo == nil {
-			basicType = "unknown"
-		} else {
-			basicType = TypeInfoToString(col.TypeInfo)
-		}
+		// Store the TypeInfo for proper type handling (especially UDTs)
+		columnTypeInfos[i] = col.TypeInfo
 
-		// If it's a UDT, try to get the full type definition
-		if basicType == "udt" && currentKeyspace != "" && tableName != "" {
-			fullType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
-			if fullType != "" {
-				columnTypes[i] = fullType
-			} else {
-				columnTypes[i] = basicType
-			}
+		// Store the column type - use formatTypeInfo to get full type info including collection element types
+		if col.TypeInfo == nil {
+			columnTypes[i] = "unknown"
 		} else {
-			columnTypes[i] = basicType
+			// Use formatTypeInfo for all columns to get proper type with element types
+			fullType := formatTypeInfo(col.TypeInfo)
+
+			// For UDTs, we might need additional metadata
+			if col.TypeInfo.Type() == gocql.TypeUDT && currentKeyspace != "" && tableName != "" {
+				// Try to get the UDT name from metadata if formatTypeInfo didn't get it
+				if fullType == "udt" || fullType == "" {
+					udtType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
+					if udtType != "" {
+						fullType = udtType
+					}
+				}
+			}
+			columnTypes[i] = fullType
 		}
 
 		// Add indicators for key columns
@@ -835,12 +861,13 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 
 	// Return streaming result with iterator
 	return StreamingQueryResult{
-		Headers:     headers,
-		ColumnNames: columnNames,
-		ColumnTypes: columnTypes,
-		Iterator:    iter,
-		StartTime:   startTime,
-		Keyspace:    currentKeyspace,
+		Headers:         headers,
+		ColumnNames:     columnNames,
+		ColumnTypes:     columnTypes,
+		ColumnTypeInfos: columnTypeInfos,
+		Iterator:        iter,
+		StartTime:       startTime,
+		Keyspace:        currentKeyspace,
 	}
 }
 

@@ -72,6 +72,7 @@ func NewParquetReader(filename string) (*ParquetReader, error) {
 		columnTypes[i] = cassandraType
 	}
 
+
 	return &ParquetReader{
 		file:        f,
 		reader:      reader,
@@ -107,33 +108,25 @@ func (r *ParquetReader) NumRowGroups() int {
 func (r *ParquetReader) ReadBatch(batchSize int) ([]map[string]any, error) {
 	ctx := context.Background()
 
-	// If we don't have a current batch or we've consumed it, get the next row group
+	// If we don't have a current batch or we've consumed it, get the next batch
 	if r.currentBatch == nil || r.batchIdx >= int(r.currentBatch.NumRows()) {
-		if r.rowGroupIdx >= r.reader.NumRowGroups() {
-			return nil, io.EOF
-		}
+		// For the first batch, read the entire table
+		// Note: Row group reading seems to have issues with nested types
+		if r.rowGroupIdx == 0 {
+			table, err := r.arrowReader.ReadTable(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read table: %w", err)
+			}
+			r.rowGroupIdx++ // Mark that we've read the table
 
-		// Read the next row group
-		rowGroupReader := r.arrowReader.RowGroup(r.rowGroupIdx)
-		r.rowGroupIdx++
+			if table.NumRows() == 0 {
+				table.Release()
+				return nil, io.EOF
+			}
 
-		// Read all columns from this row group
-		// Try passing explicit column indices instead of nil
-		columnIndices := make([]int, len(r.columnNames))
-		for i := range columnIndices {
-			columnIndices[i] = i
-		}
-		table, err := rowGroupReader.ReadTable(ctx, columnIndices)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read row group: %w", err)
-		}
-
-		// Get the first chunk as a record batch
-		if table.NumRows() > 0 {
 			// Create a record batch from the table
-			// Use a reasonable chunk size - if batchSize is 0, use table size
 			chunkSize := int64(batchSize)
-			if chunkSize <= 0 {
+			if chunkSize <= 0 || chunkSize > table.NumRows() {
 				chunkSize = table.NumRows()
 			}
 			reader := array.NewTableReader(table, chunkSize)
@@ -142,7 +135,6 @@ func (r *ParquetReader) ReadBatch(batchSize int) ([]map[string]any, error) {
 				r.currentBatch = reader.RecordBatch()
 				r.currentBatch.Retain() // Keep the record alive
 				r.batchIdx = 0
-				// Don't return here - continue to extract rows below
 			} else {
 				table.Release()
 				reader.Release()
@@ -151,7 +143,6 @@ func (r *ParquetReader) ReadBatch(batchSize int) ([]map[string]any, error) {
 			reader.Release()
 			table.Release()
 		} else {
-			table.Release()
 			return nil, io.EOF
 		}
 	}
@@ -213,57 +204,6 @@ func (r *ParquetReader) ReadAll() ([]map[string]any, error) {
 	}
 
 	return rows, nil
-}
-
-// extractValue extracts a value from an Arrow array at the given index
-func extractValue(col arrow.Array, idx int) any {
-	if col.IsNull(idx) {
-		return nil
-	}
-
-	switch c := col.(type) {
-	case *array.Boolean:
-		return c.Value(idx)
-	case *array.Int8:
-		return c.Value(idx)
-	case *array.Int16:
-		return c.Value(idx)
-	case *array.Int32:
-		return c.Value(idx)
-	case *array.Int64:
-		return c.Value(idx)
-	case *array.Uint8:
-		return c.Value(idx)
-	case *array.Uint16:
-		return c.Value(idx)
-	case *array.Uint32:
-		return c.Value(idx)
-	case *array.Uint64:
-		return c.Value(idx)
-	case *array.Float32:
-		return c.Value(idx)
-	case *array.Float64:
-		return c.Value(idx)
-	case *array.String:
-		return c.Value(idx)
-	case *array.LargeString:
-		return c.Value(idx)
-	case *array.Binary:
-		return c.Value(idx)
-	case *array.LargeBinary:
-		return c.Value(idx)
-	case *array.FixedSizeBinary:
-		return c.Value(idx)
-	case *array.Date32:
-		return c.Value(idx).ToTime()
-	case *array.Date64:
-		return c.Value(idx).ToTime()
-	case *array.Timestamp:
-		return c.Value(idx).ToTime(c.DataType().(*arrow.TimestampType).Unit)
-	default:
-		// For complex types, try to convert to string
-		return fmt.Sprintf("%v", c.ValueStr(idx))
-	}
 }
 
 // Close closes the Parquet reader

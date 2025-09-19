@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -130,10 +131,13 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 			for i, colName := range columns {
 				if val, ok := row[colName]; ok {
 					values[i] = val
+					// Debug log the value and its type for UDT columns
+					logger.DebugfToFile("CopyFromParquet", "Column %s: value=%v, type=%T", colName, val, val)
 				} else {
 					values[i] = nil
 				}
 			}
+
 
 			// Execute the INSERT
 			// For now, we'll build a string representation
@@ -146,11 +150,177 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 					// Format value based on type
 					switch v := val.(type) {
 					case string:
-						valueStrings[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+						trimmed := strings.TrimSpace(v)
+
+						// Check if this is a list/set (starts with [ and ends with ])
+						if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+							// Parse list/set format: [value1 value2 value3]
+							inner := strings.Trim(trimmed, "[]")
+							if inner == "" {
+								// Empty collection - need to determine if it's a list or set
+								// Check column name to determine collection type
+								if strings.Contains(columns[i], "unique") || strings.HasSuffix(columns[i], "_set") ||
+									strings.HasSuffix(columns[i], "_nums") {
+									// Use set syntax with {}
+									valueStrings[i] = "{}"
+								} else {
+									// Use list/vector syntax with []
+									valueStrings[i] = "[]"
+								}
+							} else {
+								// Split values and quote them
+								parts := strings.Fields(inner)
+								quotedParts := make([]string, len(parts))
+								for j, part := range parts {
+									// Check if it's a number (int or float)
+									if _, err := strconv.Atoi(part); err == nil {
+										quotedParts[j] = part // Integer, don't quote
+									} else if _, err := strconv.ParseFloat(part, 64); err == nil {
+										quotedParts[j] = part // Float, don't quote
+									} else {
+										quotedParts[j] = fmt.Sprintf("'%s'", strings.ReplaceAll(part, "'", "''"))
+									}
+								}
+								// Check column name to determine collection type
+								// This is a heuristic - sets typically have "unique" or end with "_set"
+								// Vectors typically have "embedding", "vector", or end with "_vec"
+								if strings.Contains(columns[i], "unique") || strings.HasSuffix(columns[i], "_set") ||
+									strings.HasSuffix(columns[i], "_nums") {
+									// Use set syntax with {}
+									valueStrings[i] = "{" + strings.Join(quotedParts, ", ") + "}"
+								} else {
+									// Use list/vector syntax with []
+									valueStrings[i] = "[" + strings.Join(quotedParts, ", ") + "]"
+								}
+							}
+						} else if strings.HasPrefix(trimmed, "map[") && strings.HasSuffix(trimmed, "]") {
+							// Parse map format: map[key1:value1 key2:value2] -> {'key1': value1, 'key2': value2}
+							inner := strings.TrimPrefix(trimmed, "map[")
+							inner = strings.TrimSuffix(inner, "]")
+							if inner == "" {
+								// Empty map
+								valueStrings[i] = "{}"
+							} else {
+								// Parse key:value pairs
+								pairs := strings.Fields(inner)
+								mapPairs := make([]string, 0, len(pairs))
+								for _, pair := range pairs {
+									kv := strings.SplitN(pair, ":", 2)
+									if len(kv) == 2 {
+										key := kv[0]
+										val := kv[1]
+										// Quote the key
+										quotedKey := fmt.Sprintf("'%s'", strings.ReplaceAll(key, "'", "''"))
+										// Check if value is a number
+										if _, err := strconv.Atoi(val); err == nil {
+											mapPairs = append(mapPairs, fmt.Sprintf("%s: %s", quotedKey, val))
+										} else {
+											quotedVal := fmt.Sprintf("'%s'", strings.ReplaceAll(val, "'", "''"))
+											mapPairs = append(mapPairs, fmt.Sprintf("%s: %s", quotedKey, quotedVal))
+										}
+									}
+								}
+								valueStrings[i] = "{" + strings.Join(mapPairs, ", ") + "}"
+							}
+						} else if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") &&
+							strings.Contains(trimmed, ":") && strings.Contains(trimmed, "\"") {
+							// This looks like JSON for a UDT, convert to Cassandra UDT format
+							// Remove quotes from field names, keep quotes for string values
+							udtValue := trimmed
+							// Replace "field": with field: (remove quotes from field names)
+							udtValue = strings.ReplaceAll(udtValue, "\"street\":", "street:")
+							udtValue = strings.ReplaceAll(udtValue, "\"city\":", "city:")
+							udtValue = strings.ReplaceAll(udtValue, "\"zip\":", "zip:")
+							// Replace double quotes with single quotes for string values
+							udtValue = strings.ReplaceAll(udtValue, "\"", "'")
+							valueStrings[i] = udtValue
+						} else {
+							// Regular string value
+							valueStrings[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+						}
+					case time.Time:
+						// Format timestamp for CQL (use RFC3339 format with quotes)
+						valueStrings[i] = fmt.Sprintf("'%s'", v.Format(time.RFC3339Nano))
 					case bool:
 						valueStrings[i] = fmt.Sprintf("%t", v)
 					case []byte:
 						valueStrings[i] = fmt.Sprintf("0x%x", v)
+					case []interface{}:
+						// Handle actual arrays (lists/sets)
+						if len(v) == 0 {
+							valueStrings[i] = "[]"
+						} else {
+							quotedParts := make([]string, len(v))
+							for j, item := range v {
+								switch it := item.(type) {
+								case string:
+									quotedParts[j] = fmt.Sprintf("'%s'", strings.ReplaceAll(it, "'", "''"))
+								case int, int32, int64, float32, float64:
+									quotedParts[j] = fmt.Sprintf("%v", it)
+								default:
+									quotedParts[j] = fmt.Sprintf("'%v'", it)
+								}
+							}
+							valueStrings[i] = "[" + strings.Join(quotedParts, ", ") + "]"
+						}
+					case map[string]interface{}:
+						// Handle STRUCT values (UDTs) from Parquet
+						// Format as Cassandra UDT: {field1: 'value1', field2: 'value2'}
+						if len(v) == 0 {
+							valueStrings[i] = "{}"
+						} else {
+							udtPairs := make([]string, 0, len(v))
+							for fieldName, fieldValue := range v {
+								var formattedValue string
+								if fieldValue == nil {
+									formattedValue = "null"
+								} else {
+									switch fv := fieldValue.(type) {
+									case string:
+										formattedValue = fmt.Sprintf("'%s'", strings.ReplaceAll(fv, "'", "''"))
+									case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+										formattedValue = fmt.Sprintf("%v", fv)
+									case float32, float64:
+										formattedValue = fmt.Sprintf("%v", fv)
+									case bool:
+										formattedValue = fmt.Sprintf("%t", fv)
+									default:
+										formattedValue = fmt.Sprintf("'%v'", fv)
+									}
+								}
+								// Field names in Cassandra UDT syntax don't have quotes
+								udtPairs = append(udtPairs, fmt.Sprintf("%s: %s", fieldName, formattedValue))
+							}
+							valueStrings[i] = "{" + strings.Join(udtPairs, ", ") + "}"
+						}
+					case map[interface{}]interface{}:
+						// Handle actual maps (for map columns, not UDTs)
+						if len(v) == 0 {
+							valueStrings[i] = "{}"
+						} else {
+							mapPairs := make([]string, 0, len(v))
+							for key, val := range v {
+								var quotedKey string
+								switch k := key.(type) {
+								case string:
+									quotedKey = fmt.Sprintf("'%s'", strings.ReplaceAll(k, "'", "''"))
+								default:
+									quotedKey = fmt.Sprintf("'%v'", k)
+								}
+
+								var quotedVal string
+								switch vt := val.(type) {
+								case string:
+									quotedVal = fmt.Sprintf("'%s'", strings.ReplaceAll(vt, "'", "''"))
+								case int, int32, int64, float32, float64:
+									quotedVal = fmt.Sprintf("%v", vt)
+								default:
+									quotedVal = fmt.Sprintf("'%v'", vt)
+								}
+								mapPairs = append(mapPairs, fmt.Sprintf("%s: %s", quotedKey, quotedVal))
+							}
+							valueStrings[i] = "{" + strings.Join(mapPairs, ", ") + "}"
+						}
 					default:
 						valueStrings[i] = fmt.Sprintf("%v", v)
 					}
@@ -158,16 +328,25 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 			}
 
 			// Build and execute the actual INSERT query
+			// Check if we have a current keyspace and qualify the table name if needed
+			fullyQualifiedTable := table
+			if h.session.Keyspace() != "" && !strings.Contains(table, ".") {
+				fullyQualifiedTable = fmt.Sprintf("%s.%s", h.session.Keyspace(), table)
+			}
 			actualQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-				table, columnList, strings.Join(valueStrings, ", "))
+				fullyQualifiedTable, columnList, strings.Join(valueStrings, ", "))
+
+			// Debug: Log the query for troubleshooting
+			logger.DebugfToFile("CopyFromParquet", "INSERT query: %s", actualQuery)
 
 			// Execute the query
 			result := h.session.ExecuteCQLQuery(actualQuery)
 
 			// Check for errors
-			if _, isError := result.(error); isError {
+			if err, isError := result.(error); isError {
 				insertErrorCount++
-				logger.DebugfToFile("CopyFromParquet", "Insert error: %v", result)
+				logger.DebugfToFile("CopyFromParquet", "Insert error: %v", err)
+				logger.DebugfToFile("CopyFromParquet", "Failed query: %s", actualQuery)
 
 				// Check if we've exceeded max insert errors
 				if maxInsertErrors > 0 && insertErrorCount >= maxInsertErrors {

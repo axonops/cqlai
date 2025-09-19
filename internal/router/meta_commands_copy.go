@@ -14,6 +14,7 @@ import (
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // formatCSVValue formats a value for CSV export, handling complex types like UDTs
@@ -53,7 +54,7 @@ func (h *MetaCommandHandler) handleCopy(command string) interface{} {
 	case strings.Contains(upperCommand, " FROM "):
 		return h.handleCopyFrom(command)
 	default:
-		return "Invalid COPY syntax. Use: COPY table TO 'file.csv' or COPY table FROM 'file.csv'"
+		return "Invalid COPY syntax. Use: COPY table TO 'file' or COPY table FROM 'file'\nSupported formats: CSV (.csv) and Parquet (.parquet)\nFormat is auto-detected from file extension or can be specified with WITH FORMAT='csv|parquet'"
 	}
 }
 
@@ -66,7 +67,7 @@ func (h *MetaCommandHandler) handleCopyTo(command string) interface{} {
 	matches := re.FindStringSubmatch(command)
 
 	if len(matches) < 5 {
-		return "Invalid COPY TO syntax. Use: COPY table [(col1, col2)] TO 'file.csv' [WITH options]"
+		return "Invalid COPY TO syntax. Use: COPY table [(col1, col2)] TO 'file.csv|.parquet' [WITH FORMAT='csv|parquet' AND options]\nNote: Format is auto-detected from file extension (.csv, .parquet) if not specified"
 	}
 
 	table := matches[1]
@@ -98,7 +99,7 @@ func parseCopyOptions(optionsStr string) map[string]string {
 	options := map[string]string{
 		"HEADER":          "false",
 		"NULLVAL":         "null",
-		"FORMAT":          "csv",
+		// Don't set FORMAT default here - let executeCopyTo detect from extension
 		"DELIMITER":       ",",
 		"QUOTE":           "\"",
 		"ESCAPE":          "\\",
@@ -142,9 +143,28 @@ func parseCopyOptions(optionsStr string) map[string]string {
 
 // executeCopyTo executes the COPY TO operation
 func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filename string, options map[string]string) interface{} {
-	// Check format option
+	logger.DebugfToFile("CopyTo", "Called with filename: %s, options: %+v", filename, options)
+
+	// Determine format from option or filename extension
 	format := strings.ToLower(options["FORMAT"])
+	if format == "" {
+		// Check file extension if format not explicitly specified
+		ext := strings.ToLower(filepath.Ext(filename))
+		logger.DebugfToFile("CopyTo", "Detecting format from filename: %s, extension: %s", filename, ext)
+		switch ext {
+		case ".parquet":
+			format = "parquet"
+		case ".json":
+			format = "json"
+		default:
+			format = "csv" // Default to CSV
+		}
+	}
+	logger.DebugfToFile("CopyTo", "Selected format: %s", format)
+
+	// Route to appropriate handler
 	if format == "parquet" {
+		logger.DebugToFile("CopyTo", "Routing to Parquet handler")
 		return h.executeCopyToParquet(table, columns, filename, options)
 	}
 
@@ -310,7 +330,7 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 	matches := re.FindStringSubmatch(command)
 
 	if len(matches) < 5 {
-		return "Invalid COPY FROM syntax. Use: COPY table [(col1, col2)] FROM 'file.csv' [WITH options]"
+		return "Invalid COPY FROM syntax. Use: COPY table [(col1, col2)] FROM 'file.csv|.parquet' [WITH FORMAT='csv|parquet' AND options]\nNote: Format is auto-detected from file extension (.csv, .parquet) if not specified"
 	}
 
 	table := matches[1]
@@ -335,7 +355,24 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 
 	// Check format option and delegate to appropriate handler
 	format := strings.ToLower(options["FORMAT"])
+
+	// If format not specified, detect from file extension
+	if format == "" && !strings.EqualFold(filename, "STDIN") {
+		ext := strings.ToLower(filepath.Ext(filename))
+		logger.DebugfToFile("CopyFrom", "Detecting format from filename: %s, extension: %s", filename, ext)
+		switch ext {
+		case ".parquet":
+			format = "parquet"
+		case ".json":
+			format = "json"
+		default:
+			format = "csv" // Default to CSV
+		}
+	}
+	logger.DebugfToFile("CopyFrom", "Selected format: %s", format)
+
 	if format == "parquet" {
+		logger.DebugToFile("CopyFrom", "Routing to Parquet handler")
 		return h.executeCopyFromParquet(table, columns, filename, options)
 	}
 

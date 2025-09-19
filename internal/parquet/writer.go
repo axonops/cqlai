@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -67,6 +68,66 @@ func NewParquetCaptureWriter(output string, columnNames []string, columnTypes []
 	// Create type mapper and schema
 	typeMapper := NewTypeMapper()
 	schema, err := typeMapper.CreateArrowSchema(columnNames, columnTypes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Arrow schema: %w", err)
+	}
+
+	// Create allocator
+	allocator := memory.NewGoAllocator()
+
+	// Create record builder
+	builder := array.NewRecordBuilder(allocator, schema)
+
+	// Configure Parquet writer properties
+	props := parquet.NewWriterProperties(
+		parquet.WithCompression(options.Compression),
+		parquet.WithDictionaryDefault(false),
+		parquet.WithDataPageSize(1024*1024),      // 1MB data pages
+		parquet.WithMaxRowGroupLength(100000),     // 100k rows per group
+		parquet.WithCreatedBy("CQLAI Parquet Writer"),
+	)
+
+	// Configure Arrow writer properties
+	arrowProps := pqarrow.NewArrowWriterProperties(
+		pqarrow.WithStoreSchema(),
+	)
+
+	return &ParquetCaptureWriter{
+		writer:     writer,
+		schema:     schema,
+		builder:    builder,
+		allocator:  allocator,
+		chunkSize:  options.ChunkSize,
+		props:      props,
+		arrowProps: arrowProps,
+		records:    make([]arrow.RecordBatch, 0),
+		typeMapper: typeMapper,
+		firstWrite: true,
+		outputPath: output,
+	}, nil
+}
+
+// NewParquetCaptureWriterWithTypeInfo creates a new Parquet capture writer with TypeInfo support
+// This allows proper handling of complex types like UDTs with native STRUCT representation
+func NewParquetCaptureWriterWithTypeInfo(output string, columnNames []string, columnTypes []string, columnTypeInfos []gocql.TypeInfo, options WriterOptions) (*ParquetCaptureWriter, error) {
+	// Create output writer
+	var writer io.Writer
+	var err error
+
+	// Check if output is a file path or stdout
+	if output == "" || output == "-" || output == "STDOUT" {
+		writer = os.Stdout
+	} else {
+		file, err := os.Create(output)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create output file: %w", err)
+		}
+		writer = file
+	}
+
+	// Create type mapper and schema with TypeInfo support
+	typeMapper := NewTypeMapper()
+	schema, err := typeMapper.CreateArrowSchemaWithTypeInfo(columnNames, columnTypes, columnTypeInfos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Arrow schema: %w", err)
 	}

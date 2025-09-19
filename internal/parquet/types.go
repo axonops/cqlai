@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net"
@@ -24,6 +25,22 @@ func NewTypeMapper() *TypeMapper {
 	return &TypeMapper{
 		allocator: memory.DefaultAllocator,
 	}
+}
+
+// CassandraToArrowTypeWithInfo converts Cassandra type to Arrow data type with optional TypeInfo
+func (tm *TypeMapper) CassandraToArrowTypeWithInfo(cassandraType string, typeInfo gocql.TypeInfo) (arrow.DataType, error) {
+	// If we have TypeInfo and it's a UDT, use it
+	if typeInfo != nil && typeInfo.Type() == gocql.TypeUDT {
+		structType, err := tm.ParseUDTType(cassandraType, typeInfo)
+		if err != nil {
+			// Fall back to string if we can't parse
+			return arrow.BinaryTypes.String, nil
+		}
+		return structType, nil
+	}
+
+	// Otherwise use the regular type mapping
+	return tm.CassandraToArrowType(cassandraType)
 }
 
 // CassandraToArrowType maps Cassandra type strings to Arrow DataTypes
@@ -90,6 +107,11 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 		// IP addresses stored as strings
 		return arrow.BinaryTypes.String, nil
 
+	// Vector type - treat as list of floats
+	case "vector":
+		// Vectors are lists of float32 values
+		return arrow.ListOf(arrow.PrimitiveTypes.Float32), nil
+
 	default:
 		// Check for collection types
 		if strings.HasPrefix(cassandraType, "list<") {
@@ -98,6 +120,12 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 			return tm.parseSetType(cassandraType)
 		} else if strings.HasPrefix(cassandraType, "map<") {
 			return tm.parseMapType(cassandraType)
+		} else if strings.HasPrefix(cassandraType, "tuple<") {
+			// Parse tuple types
+			return tm.ParseTupleType(cassandraType)
+		} else if strings.HasPrefix(cassandraType, "udt<") || strings.Contains(cassandraType, ":") {
+			// Parse UDT types (either udt<...> format or named UDTs)
+			return tm.ParseUDTType(cassandraType, nil)
 		} else if strings.HasPrefix(cassandraType, "frozen<") {
 			// Handle frozen types by parsing the inner type
 			innerType := strings.TrimPrefix(cassandraType, "frozen<")
@@ -105,7 +133,9 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 			return tm.CassandraToArrowType(innerType)
 		}
 
-		// Default to string for unknown types
+		// If it's not a recognized type, it might be a named UDT
+		// For now, treat named UDTs as generic structs that will hold the map data
+		// We'll represent it as a String type and store the JSON representation
 		return arrow.BinaryTypes.String, nil
 	}
 }
@@ -207,9 +237,73 @@ func (tm *TypeMapper) ConvertValue(value interface{}, arrowType arrow.DataType) 
 		return tm.toList(value, arrowType.(*arrow.ListType))
 	case arrow.MAP:
 		return tm.toMap(value, arrowType.(*arrow.MapType))
+	case arrow.STRUCT:
+		// For STRUCT types (UDTs), pass through the value as-is
+		// It will be handled by AppendStructValue
+		return value, nil
 	default:
 		// Default conversion to string
 		return fmt.Sprintf("%v", value), nil
+	}
+}
+
+// extractValue extracts a value from an Arrow array at the given index
+func extractValue(col arrow.Array, idx int) any {
+	if col.IsNull(idx) {
+		return nil
+	}
+
+	switch c := col.(type) {
+	case *array.Boolean:
+		return c.Value(idx)
+	case *array.Int8:
+		return c.Value(idx)
+	case *array.Int16:
+		return c.Value(idx)
+	case *array.Int32:
+		return c.Value(idx)
+	case *array.Int64:
+		return c.Value(idx)
+	case *array.Uint8:
+		return c.Value(idx)
+	case *array.Uint16:
+		return c.Value(idx)
+	case *array.Uint32:
+		return c.Value(idx)
+	case *array.Uint64:
+		return c.Value(idx)
+	case *array.Float32:
+		return c.Value(idx)
+	case *array.Float64:
+		return c.Value(idx)
+	case *array.String:
+		return c.Value(idx)
+	case *array.LargeString:
+		return c.Value(idx)
+	case *array.Binary:
+		return c.Value(idx)
+	case *array.LargeBinary:
+		return c.Value(idx)
+	case *array.FixedSizeBinary:
+		return c.Value(idx)
+	case *array.Date32:
+		return c.Value(idx).ToTime()
+	case *array.Date64:
+		return c.Value(idx).ToTime()
+	case *array.Timestamp:
+		return c.Value(idx).ToTime(c.DataType().(*arrow.TimestampType).Unit)
+	case *array.List:
+		// Extract list values using helper function from complex_types.go
+		return ExtractListValue(c, idx)
+	case *array.Map:
+		// Extract map values using helper function from complex_types.go
+		return ExtractMapValue(c, idx)
+	case *array.Struct:
+		// Extract struct values using helper function from complex_types.go
+		return ExtractStructValue(c, idx)
+	default:
+		// For complex types, try to convert to string
+		return fmt.Sprintf("%v", c.ValueStr(idx))
 	}
 }
 
@@ -328,6 +422,13 @@ func (tm *TypeMapper) toString(value interface{}) (string, error) {
 		return v.String(), nil
 	case *big.Int:
 		return v.String(), nil
+	case map[string]interface{}:
+		// For UDTs, serialize as JSON
+		data, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v), nil
+		}
+		return string(data), nil
 	default:
 		return fmt.Sprintf("%v", value), nil
 	}
@@ -418,6 +519,18 @@ func (tm *TypeMapper) toList(value interface{}, listType *arrow.ListType) ([]int
 			result[i] = n
 		}
 		return result, nil
+	case []float32:
+		result := make([]interface{}, len(v))
+		for i, f := range v {
+			result[i] = f
+		}
+		return result, nil
+	case []float64:
+		result := make([]interface{}, len(v))
+		for i, f := range v {
+			result[i] = f
+		}
+		return result, nil
 	default:
 		return nil, fmt.Errorf("cannot convert %T to list", value)
 	}
@@ -433,6 +546,18 @@ func (tm *TypeMapper) toMap(value interface{}, mapType *arrow.MapType) (map[inte
 		return result, nil
 	case map[interface{}]interface{}:
 		return v, nil
+	case map[string]string:
+		result := make(map[interface{}]interface{})
+		for k, val := range v {
+			result[k] = val
+		}
+		return result, nil
+	case map[string]int:
+		result := make(map[interface{}]interface{})
+		for k, val := range v {
+			result[k] = val
+		}
+		return result, nil
 	default:
 		return nil, fmt.Errorf("cannot convert %T to map", value)
 	}
@@ -500,6 +625,40 @@ func (tm *TypeMapper) CreateArrowSchema(columnNames []string, columnTypes []stri
 			Name:     name,
 			Type:     arrowType,
 			Nullable: true, // All Cassandra columns can be null
+		}
+	}
+
+	return arrow.NewSchema(fields, nil), nil
+}
+
+// CreateArrowSchemaWithTypeInfo creates an Arrow schema with TypeInfo support for proper UDT handling
+func (tm *TypeMapper) CreateArrowSchemaWithTypeInfo(columnNames []string, columnTypes []string, columnTypeInfos []gocql.TypeInfo) (*arrow.Schema, error) {
+	if len(columnNames) != len(columnTypes) {
+		return nil, fmt.Errorf("column names and types length mismatch: %d != %d", len(columnNames), len(columnTypes))
+	}
+
+	fields := make([]arrow.Field, len(columnNames))
+	for i, name := range columnNames {
+		var arrowType arrow.DataType
+		var err error
+
+		// Use TypeInfo if available for this column
+		if columnTypeInfos != nil && i < len(columnTypeInfos) && columnTypeInfos[i] != nil {
+			arrowType, err = tm.CassandraToArrowTypeWithInfo(columnTypes[i], columnTypeInfos[i])
+		} else {
+			// Fall back to string-based type mapping
+			arrowType, err = tm.CassandraToArrowType(columnTypes[i])
+		}
+
+		if err != nil {
+			// Default to string if we can't map the type
+			arrowType = arrow.BinaryTypes.String
+		}
+
+		fields[i] = arrow.Field{
+			Name:     name,
+			Type:     arrowType,
+			Nullable: true,
 		}
 	}
 
@@ -594,8 +753,20 @@ func (tm *TypeMapper) AppendValueToBuilder(builder array.Builder, value interfac
 		} else {
 			b.AppendNull()
 		}
+	case *array.ListBuilder:
+		// Handle list types
+		listType := arrowType.(*arrow.ListType)
+		return tm.AppendListValue(b, convertedValue, listType.Elem())
+	case *array.MapBuilder:
+		// Handle map types
+		mapType := arrowType.(*arrow.MapType)
+		return tm.AppendMapValue(b, convertedValue, mapType.KeyType(), mapType.ItemType())
+	case *array.StructBuilder:
+		// Handle struct types (UDTs and Tuples)
+		structType := arrowType.(*arrow.StructType)
+		return tm.AppendStructValue(b, convertedValue, structType.Fields())
 	default:
-		// For complex types or unknown builders, try to append as string
+		// For unknown builders, try to append as string
 		if sb, ok := builder.(*array.StringBuilder); ok {
 			sb.Append(fmt.Sprintf("%v", value))
 		} else {
@@ -605,6 +776,8 @@ func (tm *TypeMapper) AppendValueToBuilder(builder array.Builder, value interfac
 
 	return nil
 }
+
+
 // ArrowToCassandraType converts Arrow data types back to Cassandra types
 func (tm *TypeMapper) ArrowToCassandraType(arrowType arrow.DataType) string {
 	switch arrowType.ID() {
