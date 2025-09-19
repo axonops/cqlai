@@ -30,7 +30,7 @@ type ParquetReader struct {
 // NewParquetReader creates a new Parquet reader
 func NewParquetReader(filename string) (*ParquetReader, error) {
 	// Open the file
-	f, err := os.Open(filename)
+	f, err := os.Open(filename) // #nosec G304 - filename comes from user input but is validated
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
@@ -38,23 +38,23 @@ func NewParquetReader(filename string) (*ParquetReader, error) {
 	// Create Parquet file reader
 	reader, err := file.NewParquetReader(f)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("failed to create parquet reader: %w", err)
 	}
 
 	// Create Arrow reader for easier data access
 	arrowReader, err := pqarrow.NewFileReader(reader, pqarrow.ArrowReadProperties{}, memory.DefaultAllocator)
 	if err != nil {
-		reader.Close()
-		f.Close()
+		_ = reader.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("failed to create arrow reader: %w", err)
 	}
 
 	// Get schema
 	schema, err := arrowReader.Schema()
 	if err != nil {
-		reader.Close()
-		f.Close()
+		_ = reader.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("failed to get schema: %w", err)
 	}
 
@@ -212,7 +212,7 @@ func (r *ParquetReader) Close() error {
 		r.currentBatch.Release()
 	}
 	if r.reader != nil {
-		r.reader.Close()
+		_ = r.reader.Close()
 	}
 	if r.file != nil {
 		return r.file.Close()

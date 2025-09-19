@@ -3,6 +3,7 @@ package parquet
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"net"
 	"strings"
@@ -314,12 +315,24 @@ func (tm *TypeMapper) toInt8(value interface{}) (int8, error) {
 	case int8:
 		return v, nil
 	case int16:
+		if v < math.MinInt8 || v > math.MaxInt8 {
+			return 0, fmt.Errorf("value %d out of range for int8", v)
+		}
 		return int8(v), nil
 	case int32:
+		if v < math.MinInt8 || v > math.MaxInt8 {
+			return 0, fmt.Errorf("value %d out of range for int8", v)
+		}
 		return int8(v), nil
 	case int64:
+		if v < math.MinInt8 || v > math.MaxInt8 {
+			return 0, fmt.Errorf("value %d out of range for int8", v)
+		}
 		return int8(v), nil
 	case int:
+		if v < math.MinInt8 || v > math.MaxInt8 {
+			return 0, fmt.Errorf("value %d out of range for int8", v)
+		}
 		return int8(v), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int8", value)
@@ -333,10 +346,19 @@ func (tm *TypeMapper) toInt16(value interface{}) (int16, error) {
 	case int16:
 		return v, nil
 	case int32:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, fmt.Errorf("value %d out of range for int16", v)
+		}
 		return int16(v), nil
 	case int64:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, fmt.Errorf("value %d out of range for int16", v)
+		}
 		return int16(v), nil
 	case int:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, fmt.Errorf("value %d out of range for int16", v)
+		}
 		return int16(v), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int16", value)
@@ -352,8 +374,14 @@ func (tm *TypeMapper) toInt32(value interface{}) (int32, error) {
 	case int32:
 		return v, nil
 	case int64:
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return 0, fmt.Errorf("value %d out of range for int32", v)
+		}
 		return int32(v), nil
 	case int:
+		if int64(v) < math.MinInt32 || int64(v) > math.MaxInt32 {
+			return 0, fmt.Errorf("value %d out of range for int32", v)
+		}
 		return int32(v), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int32", value)
@@ -450,6 +478,9 @@ func (tm *TypeMapper) toDate32(value interface{}) (arrow.Date32, error) {
 	case time.Time:
 		// Date32 is days since Unix epoch
 		days := v.Unix() / 86400
+		if days < math.MinInt32 || days > math.MaxInt32 {
+			return 0, fmt.Errorf("date value out of range for Date32")
+		}
 		return arrow.Date32(days), nil
 	case string:
 		// Try to parse date string
@@ -458,6 +489,9 @@ func (tm *TypeMapper) toDate32(value interface{}) (arrow.Date32, error) {
 			return 0, fmt.Errorf("cannot parse date: %w", err)
 		}
 		days := t.Unix() / 86400
+		if days < math.MinInt32 || days > math.MaxInt32 {
+			return 0, fmt.Errorf("date value out of range for Date32")
+		}
 		return arrow.Date32(days), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to Date32", value)
