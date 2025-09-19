@@ -543,12 +543,13 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			headers := v.Data[0]
 			rows := v.Data[1:]
 			// If we have column types (for Parquet support), use the new method
-			if len(v.ColumnTypes) > 0 {
+			switch {
+			case len(v.ColumnTypes) > 0:
 				_ = metaHandler.WriteCaptureResultWithTypes(command, headers, v.ColumnTypes, rows, v.RawData)
-			} else if len(v.RawData) > 0 {
+			case len(v.RawData) > 0:
 				// Otherwise use raw data if available for better type preservation in JSON
 				_ = metaHandler.WriteCaptureResultWithRawData(command, headers, rows, v.RawData)
-			} else {
+			default:
 				_ = metaHandler.WriteCaptureResult(command, headers, rows)
 			}
 		}

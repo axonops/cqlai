@@ -115,19 +115,20 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 
 	default:
 		// Check for collection types
-		if strings.HasPrefix(cassandraType, "list<") {
+		switch {
+		case strings.HasPrefix(cassandraType, "list<"):
 			return tm.parseListType(cassandraType)
-		} else if strings.HasPrefix(cassandraType, "set<") {
+		case strings.HasPrefix(cassandraType, "set<"):
 			return tm.parseSetType(cassandraType)
-		} else if strings.HasPrefix(cassandraType, "map<") {
+		case strings.HasPrefix(cassandraType, "map<"):
 			return tm.parseMapType(cassandraType)
-		} else if strings.HasPrefix(cassandraType, "tuple<") {
+		case strings.HasPrefix(cassandraType, "tuple<"):
 			// Parse tuple types
 			return tm.ParseTupleType(cassandraType)
-		} else if strings.HasPrefix(cassandraType, "udt<") || strings.Contains(cassandraType, ":") {
+		case strings.HasPrefix(cassandraType, "udt<") || strings.Contains(cassandraType, ":"):
 			// Parse UDT types (either udt<...> format or named UDTs)
 			return tm.ParseUDTType(cassandraType, nil)
-		} else if strings.HasPrefix(cassandraType, "frozen<") {
+		case strings.HasPrefix(cassandraType, "frozen<"):
 			// Handle frozen types by parsing the inner type
 			innerType := strings.TrimPrefix(cassandraType, "frozen<")
 			innerType = strings.TrimSuffix(innerType, ">")
@@ -379,7 +380,9 @@ func (tm *TypeMapper) toInt32(value interface{}) (int32, error) {
 		}
 		return int32(v), nil
 	case int:
-		if int64(v) < math.MinInt32 || int64(v) > math.MaxInt32 {
+		// On 64-bit systems, int can be larger than int32
+		// Check bounds before conversion
+		if v < math.MinInt32 || v > math.MaxInt32 {
 			return 0, fmt.Errorf("value %d out of range for int32", v)
 		}
 		return int32(v), nil

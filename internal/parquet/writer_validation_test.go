@@ -197,7 +197,7 @@ func TestParquetCompatibility(t *testing.T) {
 
 	recordCount := 0
 	for rr.Next() {
-		rec := rr.Record()
+		rec := rr.RecordBatch()
 		recordCount += int(rec.NumRows())
 
 		// Verify we can access the data

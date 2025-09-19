@@ -115,7 +115,8 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 	// For CQL statements, check for semicolon (skip for AI-generated commands)
 	if isCQLStatement {
-		if !strings.HasSuffix(strings.TrimSpace(command), ";") {
+		switch {
+		case !strings.HasSuffix(strings.TrimSpace(command), ";"):
 			// Enter multi-line mode
 			if !m.multiLineMode {
 				m.multiLineMode = true
@@ -135,9 +136,9 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			newInput.PlaceholderStyle = m.input.PlaceholderStyle
 			newInput.Focus()
 			m.input = newInput
-			
+
 			return m, nil
-		} else if m.multiLineMode {
+		case m.multiLineMode:
 			// We have a semicolon and we're in multi-line mode
 			m.multiLineBuffer = append(m.multiLineBuffer, command)
 			command = strings.Join(m.multiLineBuffer, " ")

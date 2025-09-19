@@ -27,7 +27,8 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 		// Stop capturing
 		if h.captureOutput != nil {
 			// If JSON format, properly close the array
-			if h.captureFormat == "json" {
+			switch h.captureFormat {
+			case "json":
 				// Seek back to remove trailing comma if exists
 				info, _ := h.captureOutput.Stat()
 				if info.Size() > 2 {
@@ -36,15 +37,19 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 				} else {
 					_, _ = h.captureOutput.WriteString("]\n")
 				}
-			} else if h.captureFormat == "csv" && h.csvWriter != nil {
-				// Flush CSV writer
-				h.csvWriter.Flush()
-				h.csvWriter = nil
-			} else if h.captureFormat == "parquet" && h.parquetWriter != nil {
-				// Close Parquet writer
-				_ = h.parquetWriter.Close()
-				h.parquetWriter = nil
-				h.captureHeaders = nil
+			case "csv":
+				if h.csvWriter != nil {
+					// Flush CSV writer
+					h.csvWriter.Flush()
+					h.csvWriter = nil
+				}
+			case "parquet":
+				if h.parquetWriter != nil {
+					// Close Parquet writer
+					_ = h.parquetWriter.Close()
+					h.parquetWriter = nil
+					h.captureHeaders = nil
+				}
 			}
 
 			_ = h.captureOutput.Close()
@@ -93,12 +98,19 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	}
 
 	// Add appropriate extension if not provided
-	if format == "json" && !strings.HasSuffix(filename, ".json") {
-		filename += ".json"
-	} else if format == "csv" && !strings.HasSuffix(filename, ".csv") {
-		filename += ".csv"
-	} else if format == "parquet" && !strings.HasSuffix(filename, ".parquet") {
-		filename += ".parquet"
+	switch format {
+	case "json":
+		if !strings.HasSuffix(filename, ".json") {
+			filename += ".json"
+		}
+	case "csv":
+		if !strings.HasSuffix(filename, ".csv") {
+			filename += ".csv"
+		}
+	case "parquet":
+		if !strings.HasSuffix(filename, ".parquet") {
+			filename += ".parquet"
+		}
 	}
 
 	// Close existing capture file if any

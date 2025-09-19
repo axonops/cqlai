@@ -1,4 +1,4 @@
-# CQLAI - AI-Powered Cassandra CQL Shell
+# CQLAI - AI-Powered Cassandra CQL TUI
 
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">

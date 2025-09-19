@@ -100,12 +100,7 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 	}
 
 	// Process data in batches
-	for {
-		// Check if we've reached the max rows limit
-		if maxRows > 0 && processedRows >= maxRows {
-			break
-		}
-
+	for maxRows <= 0 || processedRows < maxRows {
 		// Read a batch of rows
 		batch, err := reader.ReadBatch(batchSize)
 		if err == io.EOF {
@@ -153,7 +148,8 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 						trimmed := strings.TrimSpace(v)
 
 						// Check if this is a list/set (starts with [ and ends with ])
-						if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+						switch {
+						case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]"):
 							// Parse list/set format: [value1 value2 value3]
 							inner := strings.Trim(trimmed, "[]")
 							if inner == "" {
@@ -193,7 +189,7 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 									valueStrings[i] = "[" + strings.Join(quotedParts, ", ") + "]"
 								}
 							}
-						} else if strings.HasPrefix(trimmed, "map[") && strings.HasSuffix(trimmed, "]") {
+						case strings.HasPrefix(trimmed, "map[") && strings.HasSuffix(trimmed, "]"):
 							// Parse map format: map[key1:value1 key2:value2] -> {'key1': value1, 'key2': value2}
 							inner := strings.TrimPrefix(trimmed, "map[")
 							inner = strings.TrimSuffix(inner, "]")
@@ -222,8 +218,8 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 								}
 								valueStrings[i] = "{" + strings.Join(mapPairs, ", ") + "}"
 							}
-						} else if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") &&
-							strings.Contains(trimmed, ":") && strings.Contains(trimmed, "\"") {
+						case strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") &&
+							strings.Contains(trimmed, ":") && strings.Contains(trimmed, "\""):
 							// This looks like JSON for a UDT, convert to Cassandra UDT format
 							// Remove quotes from field names, keep quotes for string values
 							udtValue := trimmed
@@ -234,7 +230,7 @@ func (h *MetaCommandHandler) executeCopyFromParquet(table string, columns []stri
 							// Replace double quotes with single quotes for string values
 							udtValue = strings.ReplaceAll(udtValue, "\"", "'")
 							valueStrings[i] = udtValue
-						} else {
+						default:
 							// Regular string value
 							valueStrings[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 						}

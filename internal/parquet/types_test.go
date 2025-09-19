@@ -101,9 +101,11 @@ func TestCollectionTypes(t *testing.T) {
 		require.True(t, ok)
 		// Check that we have a map type with the correct key and value types
 		// Maps in Arrow have a value type that is a struct with key and value fields
-		structType := mapType.ValueType()
-		require.NotNil(t, structType)
-		// The struct should have key and value fields
+		itemType := mapType.ItemType()
+		require.NotNil(t, itemType)
+		// The item type should be a struct with key and value fields
+		structType, ok := itemType.(*arrow.StructType)
+		require.True(t, ok, "Map item type should be a struct")
 		assert.Equal(t, 2, structType.NumFields())
 		assert.Equal(t, arrow.BinaryTypes.String, structType.Field(0).Type)
 		assert.Equal(t, arrow.PrimitiveTypes.Int32, structType.Field(1).Type)
