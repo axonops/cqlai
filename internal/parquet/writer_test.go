@@ -259,28 +259,45 @@ func TestCloseWithoutData(t *testing.T) {
 }
 
 func TestWriterMethods(t *testing.T) {
-	writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
-	require.NoError(t, err)
-	defer writer.Close()
-
 	t.Run("GetRowCount", func(t *testing.T) {
+		writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		require.NoError(t, err)
+		defer writer.Close()
+
 		assert.Equal(t, int64(0), writer.GetRowCount())
 
-		writer.WriteRow(map[string]interface{}{"id": int32(1)})
+		err = writer.WriteRow(map[string]interface{}{"id": int32(1)})
+		require.NoError(t, err)
 		assert.Equal(t, int64(1), writer.GetRowCount())
 	})
 
 	t.Run("IsStreaming", func(t *testing.T) {
+		writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		require.NoError(t, err)
+		defer writer.Close()
+
 		assert.True(t, writer.IsStreaming())
 	})
 
 	t.Run("WriteHeader", func(t *testing.T) {
-		err := writer.WriteHeader()
+		writer, err := NewParquetCaptureWriter("-", []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		require.NoError(t, err)
+		defer writer.Close()
+
+		err = writer.WriteHeader()
 		assert.NoError(t, err) // Should be a no-op
 	})
 
 	t.Run("Flush", func(t *testing.T) {
-		err := writer.Flush()
+		// Use a temp file instead of stdout to avoid issues
+		tempDir := t.TempDir()
+		outputPath := filepath.Join(tempDir, "test_flush.parquet")
+
+		writer, err := NewParquetCaptureWriter(outputPath, []string{"id"}, []string{"int"}, DefaultWriterOptions())
+		require.NoError(t, err)
+		defer writer.Close()
+
+		err = writer.Flush()
 		assert.NoError(t, err)
 	})
 }
