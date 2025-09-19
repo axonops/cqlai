@@ -231,10 +231,7 @@ func (e *Executor) handleQueryResult(result db.QueryResult) error {
 		return e.outputCSV(result.Data)
 	default:
 		// Default to table format
-		err := e.outputTable(result.Data)
-		if err == nil && len(result.Data) > 1 {
-			fmt.Fprintf(e.writer, "\n(%d rows)\n", len(result.Data)-1)
-		}
-		return err
+		// Note: outputTable already includes row count
+		return e.outputTable(result.Data)
 	}
 }
