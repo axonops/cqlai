@@ -28,6 +28,36 @@ COPY users (id, name, email) TO '/path/to/users.parquet' WITH FORMAT='PARQUET';
 COPY users TO '/path/to/active_users.parquet' WITH FORMAT='PARQUET' WHERE status='active';
 ```
 
+### Partitioned Datasets
+
+Export data into partitioned directory structures for better organization and query performance:
+
+```sql
+-- Export with single partition column
+COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='date';
+
+-- Export with multiple partition columns
+COPY metrics TO '/data/metrics/' WITH FORMAT='PARQUET' AND PARTITION='year,month,day';
+
+-- Result directory structure:
+-- /data/metrics/
+-- ├── year=2024/
+-- │   ├── month=01/
+-- │   │   ├── day=01/
+-- │   │   │   └── part-00000.parquet
+-- │   │   └── day=02/
+-- │   │       └── part-00000.parquet
+-- │   └── month=02/
+-- │       └── day=01/
+-- │           └── part-00000.parquet
+```
+
+Partitioning benefits:
+- **Partition pruning**: Read only relevant partitions when filtering by partition columns
+- **Parallel processing**: Different partitions can be processed concurrently
+- **Incremental updates**: Add new partitions without rewriting existing data
+- **Storage optimization**: Archive old partitions separately
+
 ### Compression Options
 
 Parquet supports multiple compression algorithms:
@@ -79,6 +109,27 @@ COPY users (id, name, email) FROM '/path/to/users.parquet' WITH FORMAT='PARQUET'
 COPY users (user_id, full_name) FROM 'data.parquet' WITH FORMAT='PARQUET';
 ```
 
+### Importing Partitioned Datasets
+
+Import data from partitioned Parquet datasets:
+
+```sql
+-- Import from partitioned directory
+COPY events FROM '/data/events/' WITH FORMAT='PARQUET';
+
+-- Import with partition filter (reduces data scanned)
+COPY events FROM '/data/events/' WITH FORMAT='PARQUET' AND PARTITION_FILTER='year=2024,month=01';
+
+-- Import specific partitions with pattern
+COPY metrics FROM '/data/metrics/year=2024/' WITH FORMAT='PARQUET';
+```
+
+When importing partitioned datasets:
+- Partition columns are automatically detected from directory structure
+- Partition values are included as columns in the imported data
+- Supports Hive-style partitioning convention (key=value)
+- Handles special characters and NULL values appropriately
+
 ### Import Options
 
 ```sql
@@ -90,6 +141,9 @@ COPY users FROM 'users.parquet' WITH FORMAT='PARQUET' AND MAXROWS=10000;
 
 -- Combine options
 COPY users FROM 'users.parquet' WITH FORMAT='PARQUET' AND SKIPROWS=1 AND MAXROWS=5000;
+
+-- Set batch size for partitioned datasets
+COPY events FROM '/data/events/' WITH FORMAT='PARQUET' AND CHUNKSIZE=5000;
 ```
 
 ## Data Type Support
@@ -200,6 +254,93 @@ AND CHUNKSIZE='100K';
 
 CQLAI's CAPTURE command provides an interactive way to save query results to Parquet files, which is fundamentally different from the COPY command:
 
+#### Partitioned Capture
+
+Save captured query results to partitioned datasets for better organization:
+
+```sql
+-- Start partitioned capture with single partition column
+CAPTURE PARQUET '/data/analysis/' WITH PARTITION='date';
+
+-- Subsequent queries will be partitioned by date value
+SELECT * FROM events WHERE date >= '2024-01-01';
+-- Creates: /data/analysis/date=2024-01-01/part-00000.parquet
+--          /data/analysis/date=2024-01-02/part-00000.parquet
+--          etc.
+
+-- Multi-column partitioning
+CAPTURE PARQUET '/data/metrics/' WITH PARTITION='year,month,day';
+
+SELECT * FROM metrics WHERE year = 2024;
+-- Creates: /data/metrics/year=2024/month=01/day=01/part-00000.parquet
+--          /data/metrics/year=2024/month=01/day=02/part-00000.parquet
+
+CAPTURE OFF;
+```
+
+##### Virtual Column Extraction from TimeUUIDs
+
+A powerful feature of partitioned capture is the ability to extract time components from TimeUUID columns for partitioning:
+
+```sql
+-- Table with TimeUUID primary key
+CREATE TABLE events (
+    event_id timeuuid PRIMARY KEY,
+    event_name text,
+    event_value int
+);
+
+-- Partition by year and month extracted from TimeUUID
+CAPTURE PARQUET '/data/events/' WITH PARTITION='event_id.year,event_id.month';
+
+SELECT * FROM events;
+-- Creates: /data/events/event_id.year=2024/event_id.month=01/part-00000.parquet
+--          /data/events/event_id.year=2024/event_id.month=02/part-00000.parquet
+
+-- Virtual columns can be extracted:
+-- .year   - Extract year from TimeUUID
+-- .month  - Extract month from TimeUUID
+-- .day    - Extract day from TimeUUID
+-- .hour   - Extract hour from TimeUUID
+-- .date   - Extract date as YYYY-MM-DD string
+
+CAPTURE OFF;
+```
+
+Virtual columns are only used for directory partitioning and are not stored in the Parquet files themselves. When querying with tools like DuckDB or Apache Spark, these partition values are automatically available as columns based on the Hive-style directory structure.
+
+##### Compression and Performance Options
+
+Control compression and file sizes for optimal performance:
+
+```sql
+-- Use ZSTD compression for better compression ratio
+CAPTURE PARQUET '/data/compressed/' WITH COMPRESSION='ZSTD' AND PARTITION='date';
+
+-- Use LZ4 for fastest compression
+CAPTURE PARQUET '/data/fast/' WITH COMPRESSION='LZ4';
+
+-- Control maximum file size (useful for partitioned datasets)
+CAPTURE PARQUET '/data/sized/' WITH MAX_FILE_SIZE='500MB' AND PARTITION='date';
+-- When a partition file exceeds 500MB, a new file (part-00001.parquet) is created
+
+-- Combine all options
+CAPTURE PARQUET '/data/optimized/' WITH
+    PARTITION='event_id.year,event_id.month'
+    AND COMPRESSION='ZSTD'
+    AND MAX_FILE_SIZE='1GB';
+
+CAPTURE OFF;
+```
+
+Benefits of partitioned capture:
+- Organize large datasets by time or category
+- Enable efficient data lifecycle management
+- Support incremental processing pipelines
+- Optimize downstream analytics queries
+- Automatic virtual column extraction from TimeUUIDs
+- Compatible with Hive-style partitioned datasets
+
 #### Key Differences from COPY
 
 | Aspect | COPY | CAPTURE |
@@ -214,7 +355,7 @@ CQLAI's CAPTURE command provides an interactive way to save query results to Par
 
 ```sql
 -- Start capturing - subsequent query results will be saved
-CAPTURE '/tmp/analysis_results.parquet' FORMAT='PARQUET';
+CAPTURE PARQUET '/tmp/analysis_results.parquet';
 
 -- Run a query - results are written to the Parquet file
 SELECT * FROM users WHERE country='US';
@@ -239,7 +380,7 @@ When capturing large result sets, CQLAI automatically handles paging:
 
 ```sql
 -- Start capture with Parquet format
-CAPTURE '/tmp/large_results.parquet' FORMAT='PARQUET';
+CAPTURE PARQUET '/tmp/large_results.parquet';
 
 -- This query might return millions of rows
 SELECT * FROM events WHERE date >= '2024-01-01';
@@ -253,17 +394,29 @@ SELECT * FROM events WHERE date >= '2024-01-01';
 CAPTURE OFF;
 ```
 
-#### Capture Options
+#### Capture Syntax Examples
 
 ```sql
+-- Basic capture to Parquet
+CAPTURE PARQUET '/tmp/results.parquet';
+
 -- Capture with compression
-CAPTURE '/tmp/results.parquet' FORMAT='PARQUET' COMPRESSION='ZSTD';
+CAPTURE PARQUET '/tmp/compressed.parquet' WITH COMPRESSION='ZSTD';
 
--- Append to existing file (if supported)
-CAPTURE APPEND '/tmp/results.parquet' FORMAT='PARQUET';
+-- Capture with partitioning
+CAPTURE PARQUET '/tmp/partitioned/' WITH PARTITION='date';
 
--- Capture only - don't display results in terminal
-CAPTURE SILENT '/tmp/results.parquet' FORMAT='PARQUET';
+-- Capture with all options
+CAPTURE PARQUET '/data/output/' WITH
+    PARTITION='year,month'
+    AND COMPRESSION='LZ4'
+    AND MAX_FILE_SIZE='100MB';
+
+-- Check current capture status
+CAPTURE;
+
+-- Stop capturing
+CAPTURE OFF;
 ```
 
 #### Use Cases for Capture with Parquet
@@ -485,6 +638,48 @@ WITH FORMAT='PARQUET';
 SELECT COUNT(*) FROM user_events_archive;
 ```
 
+### Complete Partitioned Capture Workflow
+
+```sql
+-- 1. Create a table with TimeUUID
+CREATE TABLE IF NOT EXISTS events (
+    event_id timeuuid PRIMARY KEY,
+    event_type text,
+    user_id int,
+    data text
+);
+
+-- 2. Insert sample data
+INSERT INTO events (event_id, event_type, user_id, data)
+VALUES (now(), 'login', 123, 'user logged in');
+INSERT INTO events (event_id, event_type, user_id, data)
+VALUES (now(), 'purchase', 123, 'bought item ABC');
+INSERT INTO events (event_id, event_type, user_id, data)
+VALUES (now(), 'logout', 123, 'user logged out');
+
+-- 3. Start partitioned capture by year and month from TimeUUID
+CAPTURE PARQUET '/data/events/' WITH
+    PARTITION='event_id.year,event_id.month'
+    AND COMPRESSION='ZSTD';
+
+-- 4. Execute queries - results are partitioned automatically
+SELECT * FROM events WHERE event_type = 'login';
+SELECT * FROM events WHERE event_type = 'purchase';
+SELECT * FROM events WHERE user_id = 123;
+
+-- 5. Stop capturing
+CAPTURE OFF;
+
+-- 6. Query the partitioned data with DuckDB
+-- Files are organized as:
+-- /data/events/event_id.year=2024/event_id.month=01/part-00000.parquet
+-- /data/events/event_id.year=2024/event_id.month=02/part-00000.parquet
+
+-- 7. Query with partition pruning in DuckDB
+-- Only reads files from January 2024
+-- duckdb -c "SELECT * FROM '/data/events/**/*.parquet' WHERE \"event_id.year\" = 2024 AND \"event_id.month\" = 1;"
+```
+
 ## Best Practices
 
 1. **Always specify FORMAT='PARQUET'** for clarity, even when using .parquet extension
@@ -506,24 +701,12 @@ The following features are planned for future releases:
    - Type conversion warnings and options
    - Schema validation before import
 
-2. **Partitioned Parquet Files**
-   ```sql
-   -- Export to partitioned directory structure
-   COPY events TO '/data/events/'
-   WITH FORMAT='PARQUET'
-   AND PARTITION_BY='year,month';
-
-   -- Import from partitioned directory
-   COPY events FROM '/data/events/*/*.parquet'
-   WITH FORMAT='PARQUET';
-   ```
-
-3. **Parallel Processing**
+2. **Parallel Processing**
    - Multi-threaded export for large tables
    - Concurrent chunk processing
    - Parallel file writing for partitions
 
-4. **S3/Cloud Storage Integration**
+3. **S3/Cloud Storage Integration**
    ```sql
    -- Direct S3 export
    COPY users TO 's3://bucket/path/users.parquet'
@@ -535,7 +718,7 @@ The following features are planned for future releases:
    WITH FORMAT='PARQUET';
    ```
 
-5. **Statistics and Metadata**
+4. **Statistics and Metadata**
    - Row group statistics for query optimization
    - Column statistics (min, max, null count)
    - Bloom filters for efficient filtering

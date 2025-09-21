@@ -27,6 +27,13 @@ func isNullValue(val interface{}) bool {
 func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string, filename string, options map[string]string) interface{} {
 	logger.DebugfToFile("CopyToParquet", "Starting Parquet export for table: %s, filename: %s", table, filename)
 
+	// Check if partitioning is requested
+	partitionColumns := options["PARTITION"]
+	if partitionColumns != "" {
+		// Use partitioned writer for directory output
+		return h.executeCopyToParquetPartitioned(table, columns, filename, options)
+	}
+
 	// Build SELECT query
 	var query string
 	if len(columns) > 0 {
@@ -142,10 +149,10 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 		rowCount := 0
 
 		// Create scan destinations for each column
-		// Use v.ColumnNames for scanning, not headers (which have PK/C suffixes)
+		// Use cleanHeaders since that's what we'll iterate with
 		// Get column info from iterator to detect UDT columns
 		columns := v.Iterator.Columns()
-		scanDest := make([]interface{}, len(v.ColumnNames))
+		scanDest := make([]interface{}, len(cleanHeaders))
 		for i := range scanDest {
 			// Check if this column is a UDT
 			if i < len(columns) && columns[i].TypeInfo != nil &&
@@ -161,8 +168,8 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 
 			// Build row map from scanned values
 			cleanedRow := make(map[string]interface{})
-			for i := range v.ColumnNames {
-				if i < len(scanDest) && i < len(cleanHeaders) {
+			for i := range cleanHeaders {
+				if i < len(scanDest) {
 					var val interface{}
 
 					// Extract value based on how it was scanned

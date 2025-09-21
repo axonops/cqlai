@@ -10,21 +10,26 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
 	"github.com/axonops/cqlai/internal/session"
 )
 
 // MetaCommandHandler handles non-CQL meta commands
 type MetaCommandHandler struct {
-	session        *db.Session
-	sessionManager *session.Manager
-	expandMode     bool
-	captureFile    string
-	captureOutput  *os.File
-	captureFormat  string // "text", "json", "csv", or "parquet"
-	csvWriter      *csv.Writer
-	parquetWriter  *parquet.ParquetCaptureWriter
-	captureHeaders []string // Store headers for parquet writer
+	session                  *db.Session
+	sessionManager           *session.Manager
+	expandMode               bool
+	captureFile              string
+	captureOutput            *os.File
+	captureFormat            string // "text", "json", "csv", or "parquet"
+	csvWriter                *csv.Writer
+	parquetWriter            *parquet.ParquetCaptureWriter
+	captureHeaders           []string // Store headers for parquet writer
+	partitionedWriter        *parquet.PartitionedParquetWriter // For partitioned Parquet capture
+	captureOptions           map[string]string // Capture options (compression, partition, etc.)
+	capturePartitionColumns  []string // Partition columns for capture
+	captureColumnTypes       []string // Column types for partitioned capture
 }
 
 // NewMetaCommandHandler creates a new meta command handler
@@ -269,6 +274,7 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 
 		// Execute the statement
 		result := ProcessCommand(stmt+";", h.session, h.sessionManager)
+		logger.DebugfToFile("SOURCE", "Result type for '%s': %T", stmt, result)
 
 		// Check if it's an error
 		if err, ok := result.(error); ok {
@@ -276,6 +282,71 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 			results = append(results, fmt.Sprintf("Error in statement: %v", err))
 		} else {
 			successCount++
+
+			// If capturing is enabled and this is a query result, write to capture file
+			isCapturing := h.IsCapturing()
+			logger.DebugfToFile("SOURCE", "IsCapturing=%v, captureOutput=%v, partitionedWriter=%v, result type: %T",
+				isCapturing, h.captureOutput != nil, h.partitionedWriter != nil, result)
+			if isCapturing {
+				logger.DebugfToFile("SOURCE", "Capturing is enabled, result type: %T", result)
+				switch v := result.(type) {
+				case db.QueryResult:
+					logger.DebugfToFile("SOURCE", "QueryResult with %d rows", len(v.Data))
+					// Convert QueryResult to string arrays for capture
+					if len(v.Data) > 0 {
+						headers := v.Data[0]
+						rows := [][]string{}
+						if len(v.Data) > 1 {
+							rows = v.Data[1:]
+						}
+						// Use WriteCaptureResultWithTypes if we have column types
+						switch {
+						case len(v.ColumnTypes) > 0:
+							_ = h.WriteCaptureResultWithTypes(stmt, headers, v.ColumnTypes, rows, v.RawData)
+						case len(v.RawData) > 0:
+							_ = h.WriteCaptureResultWithRawData(stmt, headers, rows, v.RawData)
+						default:
+							_ = h.WriteCaptureResult(stmt, headers, rows)
+						}
+					}
+				case db.StreamingQueryResult:
+					// For streaming results, we need to fetch all rows
+					defer v.Iterator.Close()
+
+					rows := [][]string{}
+					rawRows := []map[string]interface{}{}
+
+					// Fetch rows from iterator
+					for {
+						row := make(map[string]interface{})
+						if !v.Iterator.MapScan(row) {
+							break
+						}
+
+						// Convert to string array
+						stringRow := make([]string, len(v.ColumnNames))
+						for i, col := range v.ColumnNames {
+							if val, ok := row[col]; ok {
+								stringRow[i] = fmt.Sprintf("%v", val)
+							} else {
+								stringRow[i] = "null"
+							}
+						}
+						rows = append(rows, stringRow)
+						rawRows = append(rawRows, row)
+					}
+
+					// Write to capture file
+					if len(rows) > 0 {
+						switch {
+						case len(v.ColumnTypes) > 0:
+							_ = h.WriteCaptureResultWithTypes(stmt, v.Headers, v.ColumnTypes, rows, rawRows)
+						default:
+							_ = h.WriteCaptureResultWithRawData(stmt, v.Headers, rows, rawRows)
+						}
+					}
+				}
+			}
 		}
 	}
 

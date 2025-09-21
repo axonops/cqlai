@@ -119,7 +119,75 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 		}
 		// Execute as regular CQL query
 		logger.DebugToFile("ProcessCommand", "Routing to executeCQLQuery")
-		return session.ExecuteCQLQuery(command)
+		result := session.ExecuteCQLQuery(command)
+
+		// Check if we should capture the result
+		if metaHandler != nil && metaHandler.IsCapturing() {
+			logger.DebugfToFile("ProcessCommand", "Capturing enabled, checking result type: %T", result)
+			switch v := result.(type) {
+			case db.QueryResult:
+				if len(v.Data) > 0 {
+					headers := v.Data[0]
+					rows := [][]string{}
+					if len(v.Data) > 1 {
+						rows = v.Data[1:]
+					}
+					switch {
+					case len(v.ColumnTypes) > 0:
+						_ = metaHandler.WriteCaptureResultWithTypes(command, headers, v.ColumnTypes, rows, v.RawData)
+					case len(v.RawData) > 0:
+						_ = metaHandler.WriteCaptureResultWithRawData(command, headers, rows, v.RawData)
+					default:
+						_ = metaHandler.WriteCaptureResult(command, headers, rows)
+					}
+				}
+			case db.StreamingQueryResult:
+				// For streaming results, we need to fetch all rows
+				defer v.Iterator.Close()
+
+				rows := [][]string{}
+				rawRows := []map[string]interface{}{}
+
+				// Fetch rows from iterator
+				for {
+					row := make(map[string]interface{})
+					if !v.Iterator.MapScan(row) {
+						break
+					}
+
+					// Debug: log the first row's types
+					if len(rawRows) == 0 && len(row) > 0 {
+						for key, val := range row {
+							logger.DebugfToFile("ProcessCommand", "Column %s: value type=%T, value=%v", key, val, val)
+						}
+					}
+
+					// Convert to string array
+					stringRow := make([]string, len(v.ColumnNames))
+					for i, col := range v.ColumnNames {
+						if val, ok := row[col]; ok {
+							stringRow[i] = fmt.Sprintf("%v", val)
+						} else {
+							stringRow[i] = "null"
+						}
+					}
+					rows = append(rows, stringRow)
+					rawRows = append(rawRows, row)
+				}
+
+				// Write to capture file
+				if len(rows) > 0 {
+					switch {
+					case len(v.ColumnTypes) > 0:
+						_ = metaHandler.WriteCaptureResultWithTypes(command, v.Headers, v.ColumnTypes, rows, rawRows)
+					default:
+						_ = metaHandler.WriteCaptureResultWithRawData(command, v.Headers, rows, rawRows)
+					}
+				}
+			}
+		}
+
+		return result
 	}
 }
 

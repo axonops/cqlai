@@ -14,6 +14,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // TypeMapper handles conversion between Cassandra and Arrow types
@@ -89,8 +90,8 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 
 	// UUID types
 	case "uuid", "timeuuid":
-		// UUIDs are stored as strings for compatibility
-		return arrow.BinaryTypes.String, nil
+		// UUIDs are stored as 16-byte fixed-length binary (FIXED_LEN_BYTE_ARRAY(16) in Parquet)
+		return &arrow.FixedSizeBinaryType{ByteWidth: 16}, nil
 
 	// Date/Time types
 	case "date":
@@ -227,6 +228,10 @@ func (tm *TypeMapper) ConvertValue(value interface{}, arrowType arrow.DataType) 
 		return tm.toString(value)
 	case arrow.BINARY:
 		return tm.toBinary(value)
+	case arrow.FIXED_SIZE_BINARY:
+		// For fixed-size binary (UUIDs)
+		fsb := arrowType.(*arrow.FixedSizeBinaryType)
+		return tm.toFixedSizeBinary(value, fsb.ByteWidth)
 	case arrow.DATE32:
 		return tm.toDate32(value)
 	case arrow.TIME64:
@@ -287,7 +292,16 @@ func extractValue(col arrow.Array, idx int) any {
 	case *array.LargeBinary:
 		return c.Value(idx)
 	case *array.FixedSizeBinary:
-		return c.Value(idx)
+		// For UUIDs, convert the 16-byte array back to UUID string
+		bytes := c.Value(idx)
+		if len(bytes) == 16 {
+			// This is likely a UUID, convert to string format
+			uuid, err := gocql.UUIDFromBytes(bytes)
+			if err == nil {
+				return uuid.String()
+			}
+		}
+		return bytes
 	case *array.Date32:
 		return c.Value(idx).ToTime()
 	case *array.Date64:
@@ -476,6 +490,35 @@ func (tm *TypeMapper) toBinary(value interface{}) ([]byte, error) {
 	}
 }
 
+// toFixedSizeBinary converts a value to fixed-size binary for UUIDs
+func (tm *TypeMapper) toFixedSizeBinary(value interface{}, byteWidth int) ([]byte, error) {
+	logger.DebugfToFile("TypeMapper", "toFixedSizeBinary called with value type=%T, value=%v", value, value)
+	switch v := value.(type) {
+	case gocql.UUID:
+		// gocql.UUID has a Bytes() method that returns [16]byte
+		bytes := v.Bytes()
+		logger.DebugfToFile("TypeMapper", "Converted gocql.UUID to %d bytes", len(bytes))
+		return bytes, nil
+	case string:
+		// Parse UUID string
+		uuid, err := gocql.ParseUUID(v)
+		if err != nil {
+			logger.DebugfToFile("TypeMapper", "Failed to parse UUID string: %v", err)
+			return nil, fmt.Errorf("cannot parse UUID string: %w", err)
+		}
+		bytes := uuid.Bytes()
+		logger.DebugfToFile("TypeMapper", "Parsed string UUID to %d bytes", len(bytes))
+		return bytes, nil
+	case []byte:
+		if len(v) != byteWidth {
+			return nil, fmt.Errorf("byte array length %d does not match expected width %d", len(v), byteWidth)
+		}
+		return v, nil
+	default:
+		return nil, fmt.Errorf("cannot convert %T to fixed-size binary", value)
+	}
+}
+
 func (tm *TypeMapper) toDate32(value interface{}) (arrow.Date32, error) {
 	switch v := value.(type) {
 	case time.Time:
@@ -653,10 +696,14 @@ func (tm *TypeMapper) CreateArrowSchema(columnNames []string, columnTypes []stri
 
 	fields := make([]arrow.Field, len(columnNames))
 	for i, name := range columnNames {
+		logger.DebugfToFile("TypeMapper", "Creating field %s with Cassandra type %s", name, columnTypes[i])
 		arrowType, err := tm.CassandraToArrowType(columnTypes[i])
 		if err != nil {
+			logger.DebugfToFile("TypeMapper", "Failed to map type %s: %v, using string", columnTypes[i], err)
 			// Default to string type if conversion fails
 			arrowType = arrow.BinaryTypes.String
+		} else {
+			logger.DebugfToFile("TypeMapper", "Mapped %s to Arrow type %v", columnTypes[i], arrowType)
 		}
 		fields[i] = arrow.Field{
 			Name:     name,
@@ -767,6 +814,12 @@ func (tm *TypeMapper) AppendValueToBuilder(builder array.Builder, value interfac
 			b.AppendNull()
 		}
 	case *array.BinaryBuilder:
+		if v, ok := convertedValue.([]byte); ok {
+			b.Append(v)
+		} else {
+			b.AppendNull()
+		}
+	case *array.FixedSizeBinaryBuilder:
 		if v, ok := convertedValue.([]byte); ok {
 			b.Append(v)
 		} else {
