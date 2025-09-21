@@ -40,8 +40,8 @@ func TestCassandraToArrowType(t *testing.T) {
 		{"boolean", "boolean", arrow.FixedWidthTypes.Boolean, false},
 
 		// UUID types
-		{"uuid", "uuid", arrow.BinaryTypes.String, false},
-		{"timeuuid", "timeuuid", arrow.BinaryTypes.String, false},
+		{"uuid", "uuid", &arrow.FixedSizeBinaryType{ByteWidth: 16}, false},
+		{"timeuuid", "timeuuid", &arrow.FixedSizeBinaryType{ByteWidth: 16}, false},
 
 		// Date/Time types
 		{"date", "date", arrow.FixedWidthTypes.Date32, false},
@@ -248,7 +248,7 @@ func TestCreateArrowSchema(t *testing.T) {
 	}
 
 	// Check field types
-	assert.Equal(t, arrow.BinaryTypes.String, schema.Field(0).Type)     // uuid
+	assert.Equal(t, &arrow.FixedSizeBinaryType{ByteWidth: 16}, schema.Field(0).Type)     // uuid
 	assert.Equal(t, arrow.BinaryTypes.String, schema.Field(1).Type)     // text
 	assert.Equal(t, arrow.PrimitiveTypes.Int32, schema.Field(2).Type)   // int
 	assert.Equal(t, arrow.FixedWidthTypes.Boolean, schema.Field(3).Type) // boolean

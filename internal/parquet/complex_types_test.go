@@ -306,7 +306,7 @@ func TestParseUDTType(t *testing.T) {
 				name string
 				typ  arrow.DataType
 			}{
-				{"id", arrow.BinaryTypes.String},
+				{"id", &arrow.FixedSizeBinaryType{ByteWidth: 16}},
 				{"items", arrow.ListOf(arrow.BinaryTypes.String)},
 			},
 		},
@@ -375,7 +375,7 @@ func TestParseTupleType(t *testing.T) {
 			tupleSpec:     "tuple<uuid,list<text>,map<text,int>>",
 			expectedField: 3,
 			fieldTypes: []arrow.DataType{
-				arrow.BinaryTypes.String,
+				&arrow.FixedSizeBinaryType{ByteWidth: 16},
 				arrow.ListOf(arrow.BinaryTypes.String),
 				arrow.MapOf(arrow.BinaryTypes.String, arrow.PrimitiveTypes.Int32),
 			},
