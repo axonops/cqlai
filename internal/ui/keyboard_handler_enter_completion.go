@@ -59,28 +59,29 @@ func (m *MainModel) handleCompletionSelection() (*MainModel, tea.Cmd) {
 			isQuotedString := (strings.HasPrefix(lastWord, "'") && strings.HasSuffix(lastWord, "'")) ||
 				(strings.HasPrefix(lastWord, "\"") && strings.HasSuffix(lastWord, "\""))
 
-			// Check if last word is TO or FROM (COPY command direction)
-			if upperLastWord == "TO" || upperLastWord == "FROM" {
+			// Determine how to apply the completion based on the last word
+			switch {
+			case upperLastWord == "TO" || upperLastWord == "FROM":
 				// Don't replace TO/FROM, just append the file path with space
 				newValue = currentInput + " " + selectedCompletion
-			} else if isQuotedString {
+			case isQuotedString:
 				// Last word is a complete quoted string, don't replace, append with space
 				newValue = currentInput + " " + selectedCompletion
-			} else if strings.HasSuffix(lastWord, "=") { //nolint:gocritic // more readable as if
+			case strings.HasSuffix(lastWord, "="):
 				// Don't replace, just append the value with quotes
 				newValue = currentInput + "'" + selectedCompletion + "'"
-			} else if isCompleteAssignment {
+			case isCompleteAssignment:
 				// This is a complete assignment, don't replace, just append with space
 				newValue = currentInput + " " + selectedCompletion
-			} else if strings.Contains(lastWord, ".") {
+			case strings.Contains(lastWord, "."):
 				// For keyspace.table patterns, always replace the part after the dot
 				// The completion engine returns just the table name
 				dotIndex := strings.LastIndex(currentInput, ".")
 				newValue = currentInput[:dotIndex+1] + selectedCompletion
-			} else if lastWord == "*" || strings.HasSuffix(lastWord, ")") {
+			case lastWord == "*" || strings.HasSuffix(lastWord, ")"):
 				// Don't replace, just append
 				newValue = currentInput + " " + selectedCompletion
-			} else {
+			default:
 				// Replace the partial word
 				newValue = currentInput[:lastSpace+1] + selectedCompletion
 			}
