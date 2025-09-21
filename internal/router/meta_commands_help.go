@@ -40,6 +40,7 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		{"", "  LOCAL_ONE, LOCAL_QUORUM", "Datacenter-aware levels"},
 		{"", "TRACING ON|OFF", "Enable/disable query tracing"},
 		{"", "PAGING [size]", "Set result page size"},
+		{"", "AUTOFETCH ON|OFF", "Auto-fetch all pages without scroll pauses"},
 		{"", "EXPAND ON|OFF", "Toggle vertical output format"},
 
 		// Output Control

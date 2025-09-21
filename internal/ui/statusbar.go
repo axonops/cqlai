@@ -10,7 +10,7 @@ var ()
 
 // StatusBarModel is the Bubble Tea model for the status bar.
 type StatusBarModel struct {
-	DC           string
+	Username     string
 	Host         string
 	Latency      string
 	Consistency  string
@@ -25,7 +25,7 @@ type StatusBarModel struct {
 // NewStatusBarModel creates a new StatusBarModel.
 func NewStatusBarModel() StatusBarModel {
 	return StatusBarModel{
-		DC:           "local",
+		Username:     "cassandra",
 		Host:         "127.0.0.1",
 		Latency:      "10ms",
 		Consistency:  "LOCAL_ONE",
@@ -70,6 +70,11 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 		keyspaceDisplay = "(none)"
 	}
 
+	usernameDisplay := m.Username
+	if usernameDisplay == "" {
+		usernameDisplay = "(anonymous)"
+	}
+
 	tracingState := "OFF"
 	tracingStyle := tracingOffStyle
 	if m.Tracing {
@@ -88,7 +93,7 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 	// Build the status text with colors
 	statusText := labelStyle.Render("KS: ") + keyspaceStyle.Render(keyspaceDisplay) +
 		separatorStyle.Render(" │ ") +
-		labelStyle.Render("DC: ") + hostStyle.Render(m.DC) +
+		labelStyle.Render("User: ") + hostStyle.Render(usernameDisplay) +
 		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Host: ") + hostStyle.Render(m.Host) +
 		separatorStyle.Render(" │ ") +

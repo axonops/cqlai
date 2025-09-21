@@ -262,26 +262,92 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 	}
 
 	// Parse to find TO/FROM and WITH
-	hasTo := strings.Contains(upperInput, " TO ")
-	hasFrom := strings.Contains(upperInput, " FROM ")
-	hasWith := strings.Contains(upperInput, " WITH ")
+	// Check both with trailing space and at end of input
+	hasTo := strings.Contains(upperInput, " TO ") || strings.HasSuffix(upperInput, " TO")
+	hasFrom := strings.Contains(upperInput, " FROM ") || strings.HasSuffix(upperInput, " FROM")
+	hasWith := strings.Contains(upperInput, " WITH ") || strings.HasSuffix(upperInput, " WITH")
 
 	// Also check if the last word is WITH (user just typed it)
 	words := strings.Fields(upperInput)
 	lastWord := ""
+	secondLastWord := ""
 	if len(words) > 0 {
 		lastWord = words[len(words)-1]
+		if len(words) > 1 {
+			secondLastWord = words[len(words)-2]
+		}
 	}
 
-	// If we have WITH or just typed WITH, suggest options
-	if hasWith || lastWord == "WITH" {
+	// If we have WITH, provide context-aware completions
+	if hasWith {
+		// Check if we have a complete option assignment (e.g., FORMAT='PARQUET', HEADER=TRUE, etc.)
+		// Look for patterns like OPTION=value, OPTION='value', or OPTION=number
+		if strings.Contains(lastWord, "=") {
+			// If the word contains = and ends with a quote, number, or TRUE/FALSE (case insensitive), it's complete
+			upperLastWord := strings.ToUpper(lastWord)
+			if strings.HasSuffix(lastWord, "'") ||
+			   strings.HasSuffix(upperLastWord, "TRUE") ||
+			   strings.HasSuffix(upperLastWord, "FALSE") ||
+			   len(lastWord) > 0 && (lastWord[len(lastWord)-1] >= '0' && lastWord[len(lastWord)-1] <= '9') {
+				// Complete option assignment, suggest AND
+				return []string{"AND"}
+			}
+		}
+
+		// Check if the input ends with a value that completes an assignment
+		trimmedInput := strings.TrimSpace(input)
+		if strings.HasSuffix(trimmedInput, "'") ||
+		   strings.HasSuffix(upperInput, "TRUE") ||
+		   strings.HasSuffix(upperInput, "FALSE") {
+			// Check if this is after an option assignment
+			withPart := input[strings.Index(upperInput, "WITH"):]
+			if strings.Contains(withPart, "=") {
+				// We have an assignment with a value, suggest AND
+				return []string{"AND"}
+			}
+		}
+
+		// Check if last character is a digit (for numeric values like PAGESIZE=1000)
+		if len(trimmedInput) > 0 {
+			lastChar := trimmedInput[len(trimmedInput)-1]
+			if lastChar >= '0' && lastChar <= '9' {
+				// Check if this is after an equals sign
+				withPart := input[strings.Index(upperInput, "WITH"):]
+				if strings.Contains(withPart, "=") {
+					return []string{"AND"}
+				}
+			}
+		}
+
+		// Check for specific option completions that need value lists
+		if strings.HasSuffix(upperInput, "FORMAT=") || secondLastWord == "FORMAT" {
+			return CopyFormats
+		}
+		if strings.HasSuffix(upperInput, "COMPRESSION=") || secondLastWord == "COMPRESSION" {
+			return ParquetCompressionTypes
+		}
+		if lastWord == "AND" {
+			return CopyOptions
+		}
+		// Default to options
 		return CopyOptions
 	}
 
-	// If we have TO or FROM but no WITH, suggest WITH
+	// If we just typed WITH, suggest options
+	if lastWord == "WITH" {
+		return CopyOptions
+	}
+
+	// If we have TO or FROM but no WITH
 	if (hasTo || hasFrom) && !hasWith {
-		// Check if we end with a quote (completed filename) or if we're past a filename
+		// Check if we're right after TO or FROM (with or without space)
 		trimmed := strings.TrimSpace(input)
+		if strings.HasSuffix(trimmed, " TO") || strings.HasSuffix(trimmed, " FROM") ||
+		   (lastWord == "TO" || lastWord == "FROM") {
+			return CopyFileSuggestions
+		}
+
+		// Check if we end with a quote (completed filename) or if we're past a filename
 		if strings.HasSuffix(trimmed, "'") || strings.HasSuffix(trimmed, "\"") {
 			return []string{"WITH"}
 		}
@@ -295,6 +361,12 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 
 	// If we don't have TO/FROM yet
 	if !hasTo && !hasFrom {
+		// Check if the last word IS "TO" or "FROM" (user just typed it)
+		if lastWord == "TO" || lastWord == "FROM" {
+			// User just typed TO/FROM, suggest file paths
+			return CopyFileSuggestions
+		}
+
 		// Check if we have a table name
 		words := strings.Fields(upperInput)
 		if len(words) >= 2 {
@@ -373,6 +445,10 @@ func (ce *CompletionEngine) getCompletionsForContext(words []string, afterSpace 
 	case "CONSISTENCY":
 		if wordPos == 1 {
 			return ConsistencyLevels
+		}
+	case "AUTOFETCH":
+		if wordPos == 1 {
+			return []string{"ON", "OFF"}
 		}
 	case "COPY":
 		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {

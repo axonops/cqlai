@@ -333,6 +333,8 @@ func (pce *ParserBasedCompletionEngine) getNextTokenSuggestions(tokens []antlr.T
 			return pce.getConsistencySuggestions(tokenTypes)
 		case "OUTPUT":
 			return pce.getOutputSuggestions(tokenTypes)
+		case "AUTOFETCH":
+			return pce.getAutoFetchSuggestions(tokenTypes)
 		case "COPY":
 			return pce.getCopySuggestions(tokenTypes)
 		}

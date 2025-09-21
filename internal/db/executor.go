@@ -755,7 +755,11 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	startTime := time.Now()
 	// Use the session's page size for pagination
 	q := s.Query(query)
-	q.PageSize(s.pageSize)
+	// Only set page size if it's greater than 0
+	// Setting to 0 or not setting at all disables client-side paging
+	if s.pageSize > 0 {
+		q.PageSize(s.pageSize)
+	}
 	
 	// Enable tracing if needed and capture trace ID
 	var tracer *captureTracer

@@ -21,6 +21,7 @@ func (m *MainModel) View() string {
 			currentKeyspace = m.sessionManager.CurrentKeyspace()
 		}
 		m.statusBar.Keyspace = currentKeyspace
+		m.statusBar.Username = m.session.Username()
 		m.statusBar.Tracing = m.session.Tracing()
 		m.statusBar.HasTraceData = m.hasTrace
 		m.statusBar.Consistency = m.session.Consistency()

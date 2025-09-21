@@ -38,32 +38,60 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 	// If input doesn't end with space and we have content, add a space
 	// This allows tab completion to continue after accepting a completion
 	if currentInput != "" && !strings.HasSuffix(currentInput, " ") {
-		// Check if the last word looks complete (is a valid CQL keyword)
-		words := strings.Fields(strings.ToUpper(currentInput))
-		if len(words) > 0 {
-			lastWord := words[len(words)-1]
-			shouldAddSpace := false
+		// Check if input ends with a complete value
+		upperInput := strings.ToUpper(currentInput)
+		endsWithCompleteValue := false
 
-			// Check if last word is a complete keyword
-			if completion.IsCompleteKeyword(lastWord) {
-				shouldAddSpace = true
-			} else if len(words) >= 2 {
-				// Special case for COPY command: after table name, add space
-				if words[0] == "COPY" {
-					// Check if we're after a table name (could be keyspace.table)
-					// COPY tablename -> add space
-					// COPY keyspace.tablename -> add space
-					if len(words) == 2 || (len(words) == 2 && strings.Contains(words[1], ".")) {
-						shouldAddSpace = true
+		// Check for various complete value patterns
+		if strings.HasSuffix(currentInput, "'") || strings.HasSuffix(currentInput, "\"") {
+			// Complete quoted string
+			endsWithCompleteValue = true
+		} else if strings.HasSuffix(upperInput, "TRUE") || strings.HasSuffix(upperInput, "FALSE") {
+			// Check if this is after an equals sign (boolean assignment)
+			if strings.Contains(currentInput, "=") {
+				endsWithCompleteValue = true
+			}
+		} else if len(currentInput) > 0 {
+			// Check if ends with a number (after equals)
+			lastChar := currentInput[len(currentInput)-1]
+			if lastChar >= '0' && lastChar <= '9' && strings.Contains(currentInput, "=") {
+				endsWithCompleteValue = true
+			}
+		}
+
+		if endsWithCompleteValue {
+			// This is a complete value, add space for next completion
+			currentInput += " "
+			m.input.SetValue(currentInput)
+			m.input.SetCursor(len(currentInput))
+		} else {
+			// Check if the last word looks complete (is a valid CQL keyword)
+			words := strings.Fields(strings.ToUpper(currentInput))
+			if len(words) > 0 {
+				lastWord := words[len(words)-1]
+				shouldAddSpace := false
+
+				// Check if last word is a complete keyword
+				if completion.IsCompleteKeyword(lastWord) {
+					shouldAddSpace = true
+				} else if len(words) >= 2 {
+					// Special case for COPY command: after table name, add space
+					if words[0] == "COPY" {
+						// Check if we're after a table name (could be keyspace.table)
+						// COPY tablename -> add space
+						// COPY keyspace.tablename -> add space
+						if len(words) == 2 || (len(words) == 2 && strings.Contains(words[1], ".")) {
+							shouldAddSpace = true
+						}
 					}
 				}
-			}
 
-			if shouldAddSpace {
-				// Add a space and get next completions
-				currentInput += " "
-				m.input.SetValue(currentInput)
-				m.input.SetCursor(len(currentInput))
+				if shouldAddSpace {
+					// Add a space and get next completions
+					currentInput += " "
+					m.input.SetValue(currentInput)
+					m.input.SetCursor(len(currentInput))
+				}
 			}
 		}
 	}

@@ -102,6 +102,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		!strings.HasPrefix(upperCommand, "CONSISTENCY") &&
 		!strings.HasPrefix(upperCommand, "OUTPUT") &&
 		!strings.HasPrefix(upperCommand, "PAGING") &&
+		!strings.HasPrefix(upperCommand, "AUTOFETCH") &&
 		!strings.HasPrefix(upperCommand, "TRACING") &&
 		!strings.HasPrefix(upperCommand, "SOURCE") &&
 		!strings.HasPrefix(upperCommand, "CAPTURE") &&

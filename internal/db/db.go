@@ -23,6 +23,8 @@ type Session struct {
 	consistency      gocql.Consistency
 	pageSize         int
 	tracing          bool
+	autoFetch        bool   // Auto-fetch all pages without scroll pauses
+	username         string // Current connection username
 	cassandraVersion string
 	schemaCache      *SchemaCache
 	udtRegistry      *UDTRegistry
@@ -198,6 +200,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		consistency:      gocql.LocalOne,
 		pageSize:         100,
 		tracing:          false,
+		username:         cfg.Username,
 		cassandraVersion: releaseVersion,
 	}
 
@@ -311,11 +314,30 @@ func (s *Session) SetTracing(enabled bool) {
 	s.tracing = enabled
 }
 
+// AutoFetch returns whether auto-fetch is enabled
+func (s *Session) AutoFetch() bool {
+	return s.autoFetch
+}
+
+// SetAutoFetch enables or disables auto-fetching all pages
+func (s *Session) SetAutoFetch(enabled bool) {
+	s.autoFetch = enabled
+}
+
+// Username returns the current connection username
+func (s *Session) Username() string {
+	return s.username
+}
+
 // Query creates a new query with session defaults applied
 func (s *Session) Query(stmt string, values ...interface{}) *gocql.Query {
 	query := s.Session.Query(stmt, values...)
 	query.Consistency(s.consistency)
-	query.PageSize(s.pageSize)
+	// Only set page size if it's greater than 0
+	// PageSize 0 means use server default (no client-side paging control)
+	if s.pageSize > 0 {
+		query.PageSize(s.pageSize)
+	}
 	// Tracing will be handled in ExecuteSelectQuery when needed
 	return query
 }
