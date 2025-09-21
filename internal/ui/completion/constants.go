@@ -5,14 +5,14 @@ package completion
 
 // Permissions for GRANT/REVOKE commands
 var CQLPermissions = []string{
-	"ALL", 
-	"ALTER", 
-	"AUTHORIZE", 
-	"CREATE", 
-	"DESCRIBE", 
-	"DROP", 
-	"EXECUTE", 
-	"MODIFY", 
+	"ALL",
+	"ALTER",
+	"AUTHORIZE",
+	"CREATE",
+	"DESCRIBE",
+	"DROP",
+	"EXECUTE",
+	"MODIFY",
 	"SELECT",
 	"INSERT",
 	"UPDATE",
@@ -75,8 +75,8 @@ var SystemFunctions = []string{
 
 // DDL object types
 var DDLObjectTypes = []string{
-	"TABLE", "KEYSPACE", "INDEX", "TYPE", 
-	"FUNCTION", "AGGREGATE", "MATERIALIZED", 
+	"TABLE", "KEYSPACE", "INDEX", "TYPE",
+	"FUNCTION", "AGGREGATE", "MATERIALIZED",
 	"ROLE", "USER", "TRIGGER",
 }
 
@@ -117,6 +117,7 @@ var TopLevelCommands = []string{
 	"OUTPUT",
 	"TRACING",
 	"PAGING",
+	"AUTOFETCH",
 	"SHOW",
 	"HELP",
 	"SOURCE",
@@ -140,7 +141,7 @@ var DescribeObjects = []string{
 
 // ResourceTypes for GRANT/REVOKE ON clause
 var ResourceTypes = []string{
-	"ALL", "KEYSPACE", "TABLE", "ROLE", 
+	"ALL", "KEYSPACE", "TABLE", "ROLE",
 	"FUNCTION", "AGGREGATE", "INDEX", "MATERIALIZED",
 }
 
@@ -159,11 +160,37 @@ var CopyDirections = []string{
 	"TO", "FROM",
 }
 
+// CopyFileSuggestions for COPY command file paths
+var CopyFileSuggestions = []string{
+	"'/tmp/export.csv'",
+	"'/tmp/export.parquet'",
+	"'/tmp/export.json'",
+	"'/home/user/data.csv'",
+	"'/home/user/data.parquet'",
+	"'/data/partitioned/export/'", // For partitioned datasets
+	"'./export.csv'",
+	"'./export.parquet'",
+	"'s3://bucket/path/data.parquet'", // Cloud storage example
+}
+
 // CopyOptions for COPY command WITH clause
 var CopyOptions = []string{
+	// CSV options
 	"HEADER", "DELIMITER", "NULLVAL", "PAGESIZE", "ENCODING", "QUOTE",
 	"MAXROWS", "SKIPROWS", "MAXPARSEERRORS", "MAXINSERTERRORS",
 	"MAXBATCHSIZE", "MINBATCHSIZE", "CHUNKSIZE",
+	// Parquet options
+	"FORMAT", "COMPRESSION", "PARTITION", "PARTITION_FILTER", "MAX_FILE_SIZE",
+}
+
+// CopyFormats for COPY command FORMAT option
+var CopyFormats = []string{
+	"PARQUET", "CSV", "JSON",
+}
+
+// ParquetCompressionTypes for COPY command COMPRESSION option
+var ParquetCompressionTypes = []string{
+	"SNAPPY", "GZIP", "ZSTD", "LZ4", "NONE",
 }
 
 // BatchTypes for BEGIN command
@@ -236,11 +263,11 @@ var KeyspaceOptions = []string{
 
 // CreateObjectTypes for CREATE command
 var CreateObjectTypes = []string{
-	"AGGREGATE", "FUNCTION", "INDEX", "KEYSPACE", "MATERIALIZED", 
+	"AGGREGATE", "FUNCTION", "INDEX", "KEYSPACE", "MATERIALIZED",
 	"ROLE", "TABLE", "TRIGGER", "TYPE", "USER",
 }
 
-// AlterObjectTypes for ALTER command  
+// AlterObjectTypes for ALTER command
 var AlterObjectTypes = []string{
 	"KEYSPACE", "MATERIALIZED", "ROLE", "TABLE", "TYPE", "USER",
 }
@@ -281,7 +308,7 @@ var OrKeyword = []string{"OR"}
 var FromCommaAs = []string{"FROM", ",", "AS"}
 var AscDescComma = []string{"ASC", "DESC", ","}
 
-// UpdateCompletionKeywords  
+// UpdateCompletionKeywords
 var SetUsing = []string{"SET", "USING"}
 var WhereIf = []string{"WHERE", "IF"}
 var IfAnd = []string{"IF", "AND"}
@@ -334,6 +361,7 @@ var TopLevelKeywords = []string{
 	"LIST",
 	"OUTPUT",
 	"PAGING",
+	"AUTOFETCH",
 	"REVOKE",
 	"SELECT",
 	"SHOW",

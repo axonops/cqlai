@@ -77,11 +77,13 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	}
 
 	// Check if it's a meta-command (starts with certain keywords)
-	upperCommand := strings.ToUpper(command)
+	// Trim semicolon for meta-command detection (meta-commands can have optional semicolons)
+	trimmedCommand := strings.TrimSuffix(strings.TrimSpace(command), ";")
+	upperCommand := strings.ToUpper(trimmedCommand)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
 
-	logger.DebugfToFile("ProcessCommand", "Called with: '%s'", command)
+	logger.DebugfToFile("ProcessCommand", "Called with: '%s', trimmed: '%s', upper: '%s'", command, trimmedCommand, upperCommand)
 
 	for _, meta := range metaCommands {
 		if strings.HasPrefix(upperCommand, meta) {
@@ -207,6 +209,7 @@ func parseMetaCommand(command string, session *db.Session, sessionMgr *session.M
 	if strings.HasPrefix(upperCommand, "SHOW") ||
 		strings.HasPrefix(upperCommand, "TRACING") ||
 		strings.HasPrefix(upperCommand, "PAGING") ||
+		strings.HasPrefix(upperCommand, "AUTOFETCH") ||
 		strings.HasPrefix(upperCommand, "EXPAND") ||
 		strings.HasPrefix(upperCommand, "SOURCE") ||
 		strings.HasPrefix(upperCommand, "CAPTURE") ||

@@ -60,6 +60,8 @@ func (h *MetaCommandHandler) HandleMetaCommand(command string) interface{} {
 		return h.handleTracing(command)
 	case "PAGING":
 		return h.handlePaging(command)
+	case "AUTOFETCH":
+		return h.handleAutoFetch(command)
 	case "EXPAND":
 		return h.handleExpand(command)
 	case "SOURCE":
@@ -144,6 +146,7 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 		result += fmt.Sprintf("Consistency: %s\n", h.session.Consistency())
 		result += fmt.Sprintf("Page size: %d\n", h.session.PageSize())
 		result += fmt.Sprintf("Tracing: %v\n", h.session.Tracing())
+		result += fmt.Sprintf("Auto-fetch: %v\n", h.session.AutoFetch())
 		result += fmt.Sprintf("Expand mode: %v", h.expandMode)
 		return result
 	}
@@ -181,8 +184,19 @@ func (h *MetaCommandHandler) handlePaging(command string) interface{} {
 	switch len(parts) {
 	case 1:
 		// Show current page size
-		return fmt.Sprintf("Current page size: %d", h.session.PageSize())
+		pageSize := h.session.PageSize()
+		if pageSize == 0 {
+			return "Paging disabled (using server defaults)"
+		}
+		return fmt.Sprintf("Current page size: %d", pageSize)
 	case 2:
+		// Check if it's "PAGING OFF"
+		if strings.ToUpper(parts[1]) == "OFF" {
+			// Set to a large value to effectively disable paging
+			h.session.SetPageSize(10000)
+			return "Paging disabled (set to 10000)"
+		}
+
 		// Try to parse the page size
 		var pageSize int
 		if _, err := fmt.Sscanf(parts[1], "%d", &pageSize); err != nil {
@@ -195,15 +209,35 @@ func (h *MetaCommandHandler) handlePaging(command string) interface{} {
 
 		h.session.SetPageSize(pageSize)
 		return fmt.Sprintf("Page size set to %d", pageSize)
-	case 3:
-		if strings.ToUpper(parts[1]) == "OFF" {
-			// Disable paging (set to very large number)
-			h.session.SetPageSize(10000)
-			return "Paging disabled (set to 10000)"
-		}
-		return "Usage: PAGING [size] | PAGING OFF"
 	default:
 		return "Usage: PAGING [size] | PAGING OFF"
+	}
+}
+
+// handleAutoFetch handles AUTOFETCH command for auto-fetching all pages
+func (h *MetaCommandHandler) handleAutoFetch(command string) interface{} {
+	parts := strings.Fields(command)
+
+	switch len(parts) {
+	case 1:
+		// Show current auto-fetch status
+		if h.session.AutoFetch() {
+			return "Auto-fetch is ON (all pages fetched automatically)"
+		}
+		return "Auto-fetch is OFF (pages fetched on scroll)"
+	case 2:
+		switch strings.ToUpper(parts[1]) {
+		case "ON":
+			h.session.SetAutoFetch(true)
+			return "Auto-fetch enabled (all pages will be fetched automatically)"
+		case "OFF":
+			h.session.SetAutoFetch(false)
+			return "Auto-fetch disabled (pages fetched on scroll)"
+		default:
+			return "Usage: AUTOFETCH ON | OFF"
+		}
+	default:
+		return "Usage: AUTOFETCH ON | OFF"
 	}
 }
 

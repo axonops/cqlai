@@ -259,6 +259,23 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	m.slidingWindow.iterator = v.Iterator
 	m.slidingWindow.hasMoreData = true // Assume more data until proven otherwise
 
+	// If auto-fetch is enabled, fetch all remaining pages immediately
+	if m.session != nil && m.session.AutoFetch() && m.slidingWindow.hasMoreData {
+		logger.DebugToFile("HandleEnterKey", "Auto-fetch enabled, loading all remaining rows")
+
+		// Load all remaining rows
+		for m.slidingWindow.hasMoreData {
+			loadedRows := m.slidingWindow.LoadMoreRows(10000) // Load in large batches
+			if loadedRows == 0 {
+				break
+			}
+			logger.DebugfToFile("HandleEnterKey", "Auto-fetched %d more rows, total: %d",
+				loadedRows, m.slidingWindow.TotalRowsSeen)
+		}
+		logger.DebugfToFile("HandleEnterKey", "Auto-fetch complete, total rows: %d",
+			m.slidingWindow.TotalRowsSeen)
+	}
+
 	// Write initial rows to capture file if capturing
 	metaHandler := router.GetMetaHandler()
 	if metaHandler != nil && metaHandler.IsCapturing() && len(m.slidingWindow.Rows) > 0 {
