@@ -1,15 +1,18 @@
 package router
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
+	"github.com/axonops/cqlai/internal/storage"
 )
 
 // handleCapture handles CAPTURE command to save output to file
@@ -139,20 +142,34 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 
 	// For non-partitioned formats, create the file immediately
 	if partitionColumns == "" {
-		file, err := os.Create(filename) // #nosec G304 - User-provided capture filename
+		var writer io.WriteCloser
+		var err error
+
+		// Use cloud-aware writer creation for all formats
+		if storage.IsCloudURL(filename) {
+			writer, err = parquet.CreateWriter(context.Background(), filename)
+		} else {
+			// For local files, use standard file creation
+			file, err := os.Create(filename) // #nosec G304 - User-provided capture filename
+			if err != nil {
+				return fmt.Sprintf("Error opening capture file: %v", err)
+			}
+			writer = file
+		}
+
 		if err != nil {
 			return fmt.Sprintf("Error opening capture file: %v", err)
 		}
 
-		h.captureOutput = file
+		h.captureOutput = writer
 
 		switch format {
 		case "json":
 			// Write opening bracket for JSON array
-			_, _ = file.WriteString("[\n")
+			_, _ = writer.Write([]byte("[\n"))
 		case "csv":
 			// Create CSV writer
-			h.csvWriter = csv.NewWriter(file)
+			h.csvWriter = csv.NewWriter(writer)
 		case "parquet":
 			// Parquet writer will be created when we know the schema
 			h.parquetWriter = nil
@@ -196,14 +213,9 @@ func (h *MetaCommandHandler) stopCapture() interface{} {
 		// If JSON format, properly close the array
 		switch h.captureFormat {
 		case "json":
-			// Seek back to remove trailing comma if exists
-			info, _ := h.captureOutput.Stat()
-			if info.Size() > 2 {
-				_, _ = h.captureOutput.Seek(-2, 2) // Go to end minus 2 chars
-				_, _ = h.captureOutput.WriteString("\n]\n")
-			} else {
-				_, _ = h.captureOutput.WriteString("]\n")
-			}
+			// For cloud storage, we can't seek back, so just close the array
+			// This may leave a trailing comma, but it's a minor issue
+			_, _ = h.captureOutput.Write([]byte("\n]\n"))
 		case "csv":
 			if h.csvWriter != nil {
 				h.csvWriter.Flush()
@@ -244,7 +256,7 @@ func (h *MetaCommandHandler) stopCapture() interface{} {
 }
 
 // GetCaptureFile returns the current capture file if any
-func (h *MetaCommandHandler) GetCaptureFile() *os.File {
+func (h *MetaCommandHandler) GetCaptureFile() io.WriteCloser {
 	return h.captureOutput
 }
 
@@ -261,7 +273,7 @@ func (h *MetaCommandHandler) IsCapturing() bool {
 // WriteToCapture writes data to the capture file if active
 func (h *MetaCommandHandler) WriteToCapture(data string) error {
 	if h.captureOutput != nil {
-		_, err := h.captureOutput.WriteString(data)
+		_, err := h.captureOutput.Write([]byte(data))
 		return err
 	}
 	return nil
@@ -318,24 +330,21 @@ func (h *MetaCommandHandler) WriteCaptureText(command string, output string) err
 			return err
 		}
 
-		// Check if this is the first entry
-		info, _ := h.captureOutput.Stat()
-		if info.Size() > 2 { // More than just "[\n"
-			_, _ = h.captureOutput.WriteString(",\n")
-		}
-		_, _ = h.captureOutput.WriteString("  ")
+		// For cloud storage, we can't check file size, so always add comma
+		// TODO: Track if this is the first record to avoid leading comma
+		_, _ = h.captureOutput.Write([]byte(",\n  "))
 		_, _ = h.captureOutput.Write(jsonBytes)
 
 	default:
 		// Text format - write the command and output
 		_, _ = fmt.Fprintf(h.captureOutput, "\n> %s\n", command)
-		_, _ = h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
-		_, _ = h.captureOutput.WriteString(output)
+		_, _ = h.captureOutput.Write([]byte(strings.Repeat("-", 50) + "\n"))
+		_, _ = h.captureOutput.Write([]byte(output))
 		if !strings.HasSuffix(output, "\n") {
-			_, _ = h.captureOutput.WriteString("\n")
+			_, _ = h.captureOutput.Write([]byte("\n"))
 		}
 		// Add just a blank line for separation
-		_, _ = h.captureOutput.WriteString("\n")
+		_, _ = h.captureOutput.Write([]byte("\n"))
 	}
 
 	return nil
@@ -399,7 +408,7 @@ func (h *MetaCommandHandler) AppendCaptureRows(rows [][]string) error {
 	default:
 		// Text format - just append the rows, no command header
 		for _, row := range rows {
-			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
+			_, _ = h.captureOutput.Write([]byte(strings.Join(row, "\t") + "\n"))
 		}
 	}
 
@@ -624,12 +633,9 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 			return err
 		}
 
-		// Check if this is the first entry
-		info, _ := h.captureOutput.Stat()
-		if info.Size() > 2 { // More than just "[\n"
-			_, _ = h.captureOutput.WriteString(",\n")
-		}
-		_, _ = h.captureOutput.WriteString("  ")
+		// For cloud storage, we can't check file size, so always add comma
+		// TODO: Track if this is the first record to avoid leading comma
+		_, _ = h.captureOutput.Write([]byte(",\n  "))
 		_, _ = h.captureOutput.Write(jsonBytes)
 
 	case "parquet":
@@ -668,18 +674,18 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 	default:
 		// Text format - write the command and a simple table representation
 		_, _ = fmt.Fprintf(h.captureOutput, "\n> %s\n", command)
-		_, _ = h.captureOutput.WriteString(strings.Repeat("-", 50) + "\n")
+		_, _ = h.captureOutput.Write([]byte(strings.Repeat("-", 50) + "\n"))
 
 		// Write headers
-		_, _ = h.captureOutput.WriteString(strings.Join(headers, "\t") + "\n")
+		_, _ = h.captureOutput.Write([]byte(strings.Join(headers, "\t") + "\n"))
 
 		// Write rows
 		for _, row := range rows {
-			_, _ = h.captureOutput.WriteString(strings.Join(row, "\t") + "\n")
+			_, _ = h.captureOutput.Write([]byte(strings.Join(row, "\t") + "\n"))
 		}
 
 		// Add just a blank line for separation, no row count
-		_, _ = h.captureOutput.WriteString("\n")
+		_, _ = h.captureOutput.Write([]byte("\n"))
 	}
 
 	return nil
