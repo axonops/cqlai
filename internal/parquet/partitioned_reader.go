@@ -147,10 +147,8 @@ func (pr *PartitionedParquetReader) parsePartitionPath(relPath string) map[strin
 func (pr *PartitionedParquetReader) nextFile() error {
 	// Close current reader if exists
 	if pr.currentReader != nil {
-		if err := pr.currentReader.Close(); err != nil {
-			// Log the error but continue - we're moving to the next file anyway
-			return fmt.Errorf("error closing current reader: %w", err)
-		}
+		// Ignore close errors - the reader might already be closed
+		_ = pr.currentReader.Close()
 		pr.currentReader = nil
 	}
 
@@ -274,8 +272,11 @@ func (pr *PartitionedParquetReader) ReadBatch(batchSize int) ([]map[string]inter
 		rows, err := pr.currentReader.ReadBatch(remaining)
 		if err != nil {
 			if err == io.EOF {
-				// Current file exhausted, try next file
-				pr.currentReader = nil
+				// Current file exhausted, close it and try next file
+				if pr.currentReader != nil {
+					_ = pr.currentReader.Close()
+					pr.currentReader = nil
+				}
 				continue
 			}
 			return nil, err
@@ -314,9 +315,12 @@ func (pr *PartitionedParquetReader) ReadBatch(batchSize int) ([]map[string]inter
 		batch = append(batch, rows...)
 		remaining -= len(rows)
 
-		// If no rows were read, move to next file
+		// If no rows were read, close current file and move to next
 		if len(rows) == 0 {
-			pr.currentReader = nil
+			if pr.currentReader != nil {
+				_ = pr.currentReader.Close()
+				pr.currentReader = nil
+			}
 		}
 	}
 

@@ -260,7 +260,7 @@ func TestExecuteCopyFromParquet(t *testing.T) {
 		result := handler.executeCopyFromParquet("test_table", []string{}, testFile, options)
 
 		// Should abort after 3 errors
-		assert.Contains(t, result, "Aborted after 3 insert errors")
+		assert.Contains(t, result, "aborted after 3 insert errors")
 		assert.Contains(t, result, "Successfully imported 0 rows")
 	})
 
@@ -295,7 +295,7 @@ func TestExecuteCopyFromParquet(t *testing.T) {
 		// Try to import non-existent column
 		result := handler.executeCopyFromParquet("test_table", []string{"id", "nonexistent"}, testFile, options)
 
-		assert.Contains(t, result, "Column 'nonexistent' not found in Parquet file")
+		assert.Contains(t, result, "column 'nonexistent' not found in Parquet file")
 	})
 
 	t.Run("COPY FROM rejects STDIN", func(t *testing.T) {
