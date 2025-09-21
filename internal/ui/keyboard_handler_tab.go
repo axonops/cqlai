@@ -43,15 +43,16 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 		endsWithCompleteValue := false
 
 		// Check for various complete value patterns
-		if strings.HasSuffix(currentInput, "'") || strings.HasSuffix(currentInput, "\"") {
+		switch {
+		case strings.HasSuffix(currentInput, "'") || strings.HasSuffix(currentInput, "\""):
 			// Complete quoted string
 			endsWithCompleteValue = true
-		} else if strings.HasSuffix(upperInput, "TRUE") || strings.HasSuffix(upperInput, "FALSE") {
+		case strings.HasSuffix(upperInput, "TRUE") || strings.HasSuffix(upperInput, "FALSE"):
 			// Check if this is after an equals sign (boolean assignment)
 			if strings.Contains(currentInput, "=") {
 				endsWithCompleteValue = true
 			}
-		} else if len(currentInput) > 0 {
+		case len(currentInput) > 0:
 			// Check if ends with a number (after equals)
 			lastChar := currentInput[len(currentInput)-1]
 			if lastChar >= '0' && lastChar <= '9' && strings.Contains(currentInput, "=") {
