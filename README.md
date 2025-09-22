@@ -35,10 +35,8 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - Apache Parquet format support for efficient data interchange
 
 ### Coming Soon
-- Complete cqlsh feature parity
 - Enhanced AI context awareness
-- Performance optimizations for very large result sets
-- Additional export formats
+- Cassandra MCP service
 
 We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls) to help us reach 1.0.
 
@@ -52,22 +50,22 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Virtualized, scrollable table for results, preventing memory overload from large queries.
     - Sticky footer/status bar showing connection details, query latency, and session status (consistency, tracing).
     - Modal overlays for history, help, and command completion.
-- **Client-Side Meta-Commands:** A powerful set of `cqlsh`-compatible commands parsed by a real grammar (ANTLR):
-    - `DESCRIBE` (keyspaces, tables, types, functions, etc.).
-    - `SOURCE 'file.cql'` to execute scripts.
-    - `COPY TO/FROM` to export/import data to/from CSV and Parquet files.
-    - `CONSISTENCY`, `PAGING`, `TRACING` to manage session settings.
-    - `SHOW` to view current session details.
-    - `CAPTURE` to save query output to files (CSV, JSON, Parquet).
-- **Advanced Autocompletion:** Context-aware completion for keywords, table/keyspace names, and more.
-- **Configuration:**
-    - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
-    - Support for SSL/TLS connections with certificate authentication.
-- **AI-Powered Query Generation:** 
+- **AI-Powered Query Generation:**
     - Natural language to CQL conversion using AI providers (OpenAI, Anthropic, Gemini).
     - Schema-aware query generation with automatic context.
     - Safe preview and confirmation before execution.
     - Support for complex operations including DDL and DML.
+- **Apache Parquet Support:**
+    - High-performance columnar data format for analytics and machine learning workflows.
+    - Export Cassandra tables to Parquet files with `COPY TO` command.
+    - Import Parquet files into Cassandra with automatic schema inference.
+    - Cloud storage integration (S3, Azure Blob, Google Cloud Storage).
+    - Partitioned datasets with Hive-style directory structures.
+    - TimeUUID virtual columns for intelligent time-based partitioning.
+    - Support for all Cassandra data types including UDTs, collections, and vectors.
+- **Configuration:**
+    - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
+    - Support for SSL/TLS connections with certificate authentication.
 - **Single Binary:** Distributed as a single, static binary with no external dependencies. Fast startup and small footprint.
 
 ## Installation
@@ -78,32 +76,6 @@ You can install `cqlai` in several ways. For detailed instructions including pac
 
 Download the appropriate binary for your OS and architecture from the [**Releases**](https://github.com/axonops/cqlai/releases) page.
 
-**macOS Users:**
-```bash
-# Download the binary (Intel Mac)
-curl -L https://github.com/axonops/cqlai/releases/latest/download/cqlai-darwin-amd64 -o cqlai
-
-# Or for Apple Silicon (M1/M2/M3)
-curl -L https://github.com/axonops/cqlai/releases/latest/download/cqlai-darwin-arm64 -o cqlai
-
-# Make it executable
-chmod +x cqlai
-
-# Move to PATH (optional)
-sudo mv cqlai /usr/local/bin/
-```
-
-**Linux Users:**
-```bash
-# Download the binary (x86_64)
-curl -L https://github.com/axonops/cqlai/releases/latest/download/cqlai-linux-amd64 -o cqlai
-
-# Make it executable
-chmod +x cqlai
-
-# Move to PATH (optional)
-sudo mv cqlai /usr/local/bin/
-```
 
 ### Using Go
 
@@ -233,9 +205,10 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
   ```
 - **AI-Powered Query Generation:**
   ```sql
-  .ai show all users with age greater than 25
+  .ai What keyspaces are there?
+  .ai What columns does the users table have?
   .ai create a table for storing product inventory
-  .ai delete orders older than 1 year
+  .ai delete orders older than 1 year from the orders table
   ```
 
 ### Keyboard Shortcuts

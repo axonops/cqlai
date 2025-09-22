@@ -180,15 +180,13 @@ func (m *MainModel) rebuildAIConversation() {
 	
 	// Format each message with current viewport width
 	for _, msg := range m.aiConversationMessages {
+		// Skip system-generated tool results (like "Found X tables matching")
+		if msg.Role == "system" && msg.SystemGenerated {
+			continue
+		}
+
 		switch msg.Role {
 		case "user":
-			// Skip tool result messages that were stored as user messages
-			if strings.HasPrefix(msg.Content, "Tables in ") ||
-			   strings.HasPrefix(msg.Content, "Keyspaces: ") ||
-			   strings.HasPrefix(msg.Content, "Columns in ") {
-				continue
-			}
-
 			// Extract just the user request from messages that include schema context
 			displayContent := msg.Content
 			if strings.Contains(msg.Content, "Available schema context:") && strings.Contains(msg.Content, "User request:") {
