@@ -471,7 +471,10 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 				assistantText += content.Text
 			}
 		}
-		conv.Messages = append(conv.Messages, ConversationMessage{Role: "assistant", Content: assistantText})
+		// Only add assistant message if there's actual text content
+		if assistantText != "" {
+			conv.Messages = append(conv.Messages, ConversationMessage{Role: "assistant", Content: assistantText})
+		}
 
 		// If we have tool results, add them properly and continue
 		if len(toolResults) > 0 {
@@ -489,8 +492,12 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 					isError,
 				)))
 
-				// Store in simple format for conversation history
-				conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: responseContent})
+				// Store in simple format for conversation history - mark as system generated
+				conv.Messages = append(conv.Messages, ConversationMessage{
+					Role:            "system",
+					Content:         responseContent,
+					SystemGenerated: true,
+				})
 			}
 
 			// Continue the conversation with the tool results
