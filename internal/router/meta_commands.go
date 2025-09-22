@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,7 +22,7 @@ type MetaCommandHandler struct {
 	sessionManager           *session.Manager
 	expandMode               bool
 	captureFile              string
-	captureOutput            *os.File
+	captureOutput            io.WriteCloser
 	captureFormat            string // "text", "json", "csv", or "parquet"
 	csvWriter                *csv.Writer
 	parquetWriter            *parquet.ParquetCaptureWriter
@@ -548,9 +549,8 @@ func (h *MetaCommandHandler) Close() {
 	if h.captureOutput != nil {
 		// If JSON format, close the array
 		if h.captureFormat == "json" {
-			// Remove trailing comma and newline if present, then close array
-			_, _ = h.captureOutput.Seek(-2, 1) // Go back 2 chars (comma and newline)
-			_, _ = h.captureOutput.WriteString("\n]\n")
+			// For cloud storage, we can't seek back, so just close the array
+			_, _ = h.captureOutput.Write([]byte("\n]\n"))
 		} else if h.captureFormat == "csv" && h.csvWriter != nil {
 			// Flush CSV writer
 			h.csvWriter.Flush()

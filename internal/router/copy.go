@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,15 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/parquet"
 )
+
+// nopCloser wraps an io.Writer to add a no-op Close method
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }
 
 // formatCSVValue formats a value for CSV export, handling complex types like UDTs
 func formatCSVValue(val interface{}) string {
@@ -180,22 +189,19 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 	// Check if output is STDOUT
 	isStdout := strings.ToUpper(filename) == "STDOUT"
 
-	// Open file for writing (unless STDOUT)
-	var writer io.Writer
-	var file *os.File
+	// Open file for writing (unless STDOUT) - supports cloud storage
+	var writer io.WriteCloser
 	var err error
 
 	if isStdout {
-		writer = os.Stdout
+		writer = nopCloser{os.Stdout}
 	} else {
-		// Clean the filename to prevent path traversal
-		cleanPath := filepath.Clean(filename)
-		file, err = os.Create(cleanPath) // #nosec G304 - file path is user input but cleaned
+		// Use cloud-aware writer creation
+		writer, err = parquet.CreateWriter(context.Background(), filename)
 		if err != nil {
 			return fmt.Sprintf("Error creating file: %v", err)
 		}
-		defer file.Close()
-		writer = file
+		defer writer.Close()
 	}
 
 	// Create CSV writer
