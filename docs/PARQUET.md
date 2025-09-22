@@ -44,10 +44,14 @@ Export data into partitioned directory structures for better organization and qu
 
 ```sql
 -- Export with single partition column
-COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='date';
+COPY events TO '/data/customers/' WITH FORMAT='PARQUET' AND PARTITION='customer_name';
 
 -- Export with multiple partition columns
 COPY metrics TO '/data/metrics/' WITH FORMAT='PARQUET' AND PARTITION='year,month,day';
+
+-- Export with TimeUUID virtual columns (extract time components)
+COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='event_id.year,event_id.month';
+-- Where event_id is a TimeUUID column
 
 -- Result directory structure:
 -- /data/metrics/
@@ -60,6 +64,33 @@ COPY metrics TO '/data/metrics/' WITH FORMAT='PARQUET' AND PARTITION='year,month
 -- │   └── month=02/
 -- │       └── day=01/
 -- │           └── part-00000.parquet
+```
+
+#### TimeUUID Virtual Column Extraction
+
+Extract time components from TimeUUID columns for intelligent partitioning:
+
+```sql
+-- Table with TimeUUID primary key
+CREATE TABLE events (
+    event_id timeuuid PRIMARY KEY,
+    event_name text,
+    event_value int
+);
+
+-- Partition by year and month extracted from TimeUUID
+COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='event_id.year,event_id.month';
+-- Creates: /data/events/event_id.year=2024/event_id.month=01/part-00000.parquet
+
+-- Available virtual columns for TimeUUID:
+-- .year   - Extract year (e.g., 2024)
+-- .month  - Extract month (1-12)
+-- .day    - Extract day (1-31)
+-- .hour   - Extract hour (0-23)
+-- .date   - Extract date as YYYY-MM-DD string
+
+-- Also works with timestamp columns
+COPY metrics TO '/data/metrics/' WITH FORMAT='PARQUET' AND PARTITION='created_at.year,created_at.month';
 ```
 
 Partitioning benefits:
