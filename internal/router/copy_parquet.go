@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
+	"github.com/axonops/cqlai/internal/storage"
 )
 
 // isNullValue checks if a value from gocql scanning represents a NULL value.
@@ -59,25 +59,18 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 	isStdout := strings.ToUpper(filename) == "STDOUT"
 
 	// Set up file path
-	var file *os.File
 	var err error
 
 	if isStdout {
 		filename = "-"
-	} else {
-		// Clean the filename to prevent path traversal
+	} else if !storage.IsCloudURL(filename) {
+		// Clean the filename to prevent path traversal for local files
 		cleanPath := filepath.Clean(filename)
 
-		// Add .parquet extension if not present
+		// Add .parquet extension if not present and not a cloud URL
 		if !strings.HasSuffix(cleanPath, ".parquet") {
 			cleanPath += ".parquet"
 		}
-
-		file, err = os.Create(cleanPath) // #nosec G304 - file path is user input but cleaned
-		if err != nil {
-			return fmt.Sprintf("Error creating file: %v", err)
-		}
-		defer file.Close()
 		filename = cleanPath
 	}
 
@@ -124,7 +117,7 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 			writerOptions.ChunkSize = 50000
 		}
 
-		// Create Parquet writer - use streaming result's TypeInfo if available
+		// Create Parquet writer with cloud support - use streaming result's TypeInfo if available
 		var parquetWriter *parquet.ParquetCaptureWriter
 		if len(v.ColumnTypeInfos) > 0 {
 			// Use the new writer with TypeInfo for proper UDT support

@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -50,19 +51,10 @@ func DefaultWriterOptions() WriterOptions {
 
 // NewParquetCaptureWriter creates a new Parquet capture writer
 func NewParquetCaptureWriter(output string, columnNames []string, columnTypes []string, options WriterOptions) (*ParquetCaptureWriter, error) {
-	// Create output writer
-	var writer io.Writer
-	var err error
-
-	// Check if output is a file path or stdout
-	if output == "" || output == "-" || output == "STDOUT" {
-		writer = os.Stdout
-	} else {
-		file, err := os.Create(output) // #nosec G304 - output path comes from user input but is validated
-		if err != nil {
-			return nil, fmt.Errorf("failed to create output file: %w", err)
-		}
-		writer = file
+	// Create output writer using the new cloud-aware function
+	writer, err := CreateWriter(context.Background(), output)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create writer: %w", err)
 	}
 
 	// Create type mapper and schema
