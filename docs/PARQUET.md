@@ -235,14 +235,14 @@ Support for machine learning and similarity search use cases:
 CREATE TABLE embeddings (
     id int PRIMARY KEY,
     content text,
-    vector list<float>,  -- Vector embeddings
+    vector vector<float, 1536>,  -- Vector embeddings with 1536 dimensions
     metadata text
 );
 
 -- Export vectors to Parquet
 COPY embeddings TO 'embeddings.parquet' WITH FORMAT='PARQUET';
 
--- Vectors are stored as LIST types in Parquet
+-- Vectors are stored as fixed-size LIST types in Parquet
 -- Compatible with Apache Arrow and pandas
 ```
 
