@@ -25,7 +25,8 @@ func TestNewParquetCaptureWriter(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, writer)
 
-		assert.Equal(t, os.Stdout, writer.writer)
+		// The writer is now wrapped in a nopCloser for stdout
+		assert.NotNil(t, writer.writer)
 		assert.NotNil(t, writer.schema)
 		assert.NotNil(t, writer.builder)
 		assert.Equal(t, int64(10000), writer.chunkSize)

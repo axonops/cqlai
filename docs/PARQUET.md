@@ -71,16 +71,20 @@ COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='event_id.yea
 Extract time components from TimeUUID columns for intelligent partitioning:
 
 ```sql
--- Table with TimeUUID primary key
+-- Proper time series table structure in Cassandra
 CREATE TABLE events (
-    event_id timeuuid PRIMARY KEY,
-    event_name text,
-    event_value int
-);
+    event_name text,           -- Partition key (e.g., 'temperature', 'cpu_usage')
+    event_time timeuuid,        -- Clustering column for time-based ordering
+    event_value double,
+    metadata map<text, text>,
+    PRIMARY KEY (event_name, event_time)
+) WITH CLUSTERING ORDER BY (event_time DESC);
 
--- Partition by year and month extracted from TimeUUID
-COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='event_id.year,event_id.month';
--- Creates: /data/events/event_id.year=2024/event_id.month=01/part-00000.parquet
+-- Partition by time components extracted from TimeUUID
+COPY events TO '/data/events/' WITH FORMAT='PARQUET'
+AND PARTITION='event_time.year,event_time.month,event_time.day,event_time.hour';
+-- Creates hierarchical structure:
+-- /data/events/event_time.year=2024/event_time.month=01/event_time.day=15/event_time.hour=14/part-00000.parquet
 
 -- Available virtual columns for TimeUUID:
 -- .year   - Extract year (e.g., 2024)
@@ -89,8 +93,19 @@ COPY events TO '/data/events/' WITH FORMAT='PARQUET' AND PARTITION='event_id.yea
 -- .hour   - Extract hour (0-23)
 -- .date   - Extract date as YYYY-MM-DD string
 
--- Also works with timestamp columns
-COPY metrics TO '/data/metrics/' WITH FORMAT='PARQUET' AND PARTITION='created_at.year,created_at.month';
+-- Example with sensor data
+CREATE TABLE sensor_data (
+    sensor_id text,
+    reading_time timeuuid,
+    temperature double,
+    humidity double,
+    PRIMARY KEY (sensor_id, reading_time)
+) WITH CLUSTERING ORDER BY (reading_time DESC);
+
+-- Export with hourly partitions for analysis
+COPY sensor_data TO 's3://bucket/sensor-data/' WITH FORMAT='PARQUET'
+AND PARTITION='reading_time.date,reading_time.hour';
+-- Creates: s3://bucket/sensor-data/reading_time.date=2024-01-15/reading_time.hour=14/part-00000.parquet
 ```
 
 Partitioning benefits:
@@ -392,19 +407,21 @@ CAPTURE OFF;
 A powerful feature of partitioned capture is the ability to extract time components from TimeUUID columns for partitioning:
 
 ```sql
--- Table with TimeUUID primary key
+-- Proper time series table structure
 CREATE TABLE events (
-    event_id timeuuid PRIMARY KEY,
-    event_name text,
-    event_value int
-);
+    event_name text,           -- Partition key
+    event_time timeuuid,        -- Clustering column
+    event_value double,
+    metadata map<text, text>,
+    PRIMARY KEY (event_name, event_time)
+) WITH CLUSTERING ORDER BY (event_time DESC);
 
--- Partition by year and month extracted from TimeUUID
-CAPTURE PARQUET '/data/events/' WITH PARTITION='event_id.year,event_id.month';
+-- Partition by time components extracted from TimeUUID
+CAPTURE PARQUET '/data/events/' WITH PARTITION='event_time.year,event_time.month,event_time.day';
 
-SELECT * FROM events;
--- Creates: /data/events/event_id.year=2024/event_id.month=01/part-00000.parquet
---          /data/events/event_id.year=2024/event_id.month=02/part-00000.parquet
+SELECT * FROM events WHERE event_name = 'temperature';
+-- Creates: /data/events/event_time.year=2024/event_time.month=01/event_time.day=15/part-00000.parquet
+--          /data/events/event_time.year=2024/event_time.month=01/event_time.day=16/part-00000.parquet
 
 -- Virtual columns can be extracted:
 -- .year   - Extract year from TimeUUID
