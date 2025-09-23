@@ -109,6 +109,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		!strings.HasPrefix(upperCommand, "EXPAND") &&
 		!strings.HasPrefix(upperCommand, "SHOW") &&
 		!strings.HasPrefix(upperCommand, "HELP") &&
+		!strings.HasPrefix(upperCommand, "SAVE") &&
 		!strings.HasPrefix(upperCommand, "CLEAR") &&
 		!strings.HasPrefix(upperCommand, "CLS") &&
 		!strings.HasPrefix(upperCommand, "EXIT") &&

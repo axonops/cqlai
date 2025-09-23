@@ -11,7 +11,12 @@ import (
 
 // handleKeyboardInput handles keyboard input events
 func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
-	// Check for AI CQL modal first (highest priority)
+	// Check for save modal first (highest priority)
+	if m.saveModalActive {
+		return m.handleSaveModalKeyboard(msg)
+	}
+
+	// Check for AI CQL modal (high priority)
 	if m.aiCQLModal != nil && m.aiCQLModal.Active {
 		switch msg.String() {
 		case "left", "h":

@@ -81,7 +81,7 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	trimmedCommand := strings.TrimSuffix(strings.TrimSpace(command), ";")
 	upperCommand := strings.ToUpper(trimmedCommand)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP", "SAVE"}
 
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s', trimmed: '%s', upper: '%s'", command, trimmedCommand, upperCommand)
 
@@ -203,6 +203,21 @@ func parseMetaCommand(command string, session *db.Session, sessionMgr *session.M
 	// Handle OUTPUT command with simple string parsing
 	if strings.HasPrefix(upperCommand, "OUTPUT") {
 		return handleOutputCommand(command, session)
+	}
+
+	// Handle SAVE command
+	if strings.HasPrefix(upperCommand, "SAVE") {
+		logger.DebugfToFile("parseMetaCommand", "SAVE command detected: '%s', upperCommand: '%s'", command, upperCommand)
+		// Parse the SAVE command (command already has semicolon stripped)
+		cmd, err := ParseSaveCommand(command)
+		if err != nil {
+			logger.DebugfToFile("parseMetaCommand", "SAVE command error: %v", err)
+			return fmt.Sprintf("Error: %v", err)
+		}
+		logger.DebugfToFile("parseMetaCommand", "SAVE command parsed: interactive=%v", cmd.Interactive)
+
+		// Return the parsed command to the UI for execution
+		return cmd
 	}
 
 	// Handle simple meta commands with the meta handler
