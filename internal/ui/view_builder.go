@@ -16,6 +16,7 @@ func (m *MainModel) View() string {
 
 	m.topBar.LastCommand = m.lastCommand
 	if m.session != nil {
+		m.topBar.AutoFetch = m.session.AutoFetch()
 		currentKeyspace := ""
 		if m.sessionManager != nil {
 			currentKeyspace = m.sessionManager.CurrentKeyspace()
@@ -338,6 +339,13 @@ func (m *MainModel) View() string {
 		content := m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
 		// The modal renders as a full overlay, so we return it directly
 		return content
+	}
+
+	// If save modal is showing, add it as a layer
+	if m.saveModalActive {
+		modalContent := m.renderSaveModal(screenWidth, screenHeight)
+		modalLayer := RenderModal(modalContent, screenWidth, screenHeight)
+		layerManager.AddLayer(modalLayer)
 	}
 
 	// Apply all layers to the final view
