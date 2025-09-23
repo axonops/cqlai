@@ -66,42 +66,51 @@ func (lm *LayerManager) Render(base string) string {
 // applyLayer applies a single layer to the view
 func (lm *LayerManager) applyLayer(lines []string, layer Layer) []string {
 	contentLines := strings.Split(layer.Content, "\n")
-	
+
 	for i, contentLine := range contentLines {
 		lineIdx := layer.Y + i
 		if lineIdx >= 0 && lineIdx < len(lines) {
 			bgLine := lines[lineIdx]
-			
+
 			// Calculate the actual visual width of this specific content line
 			contentLineWidth := lipgloss.Width(contentLine)
-			
-			// Simply replace the line with modal content + remaining background
-			// The modal should be self-contained with its own background
-			result := contentLine
-			
-			// Get the visual width of the background line
-			bgWidth := lipgloss.Width(bgLine)
-			
-			// If the background extends beyond the modal, preserve it
-			if layer.X + contentLineWidth < bgWidth {
-				// We need to extract the part of background that's after the modal
-				// This is complex with ANSI codes, so for now we'll pad with spaces
-				remainingWidth := bgWidth - (layer.X + contentLineWidth)
-				if remainingWidth > 0 {
-					// Extract the visual content after the modal position
-					bgPlain := stripAnsi(bgLine)
-					bgRunes := []rune(bgPlain)
-					startPos := layer.X + contentLineWidth
-					if startPos < len(bgRunes) {
-						result += string(bgRunes[startPos:])
-					}
+
+			// Create the new line with proper positioning
+			var result string
+
+			// Add padding before the modal content to position it at layer.X
+			if layer.X > 0 {
+				// Try to preserve background content before the modal
+				bgPlain := stripAnsi(bgLine)
+				bgRunes := []rune(bgPlain)
+				if layer.X < len(bgRunes) {
+					result = string(bgRunes[:layer.X])
+				} else {
+					result = strings.Repeat(" ", layer.X)
 				}
 			}
-			
+
+			// Add the modal content
+			result += contentLine
+
+			// Get the visual width of the background line
+			bgWidth := lipgloss.Width(bgLine)
+
+			// If the background extends beyond the modal, preserve it
+			if layer.X + contentLineWidth < bgWidth {
+				// Extract the part of background that's after the modal
+				bgPlain := stripAnsi(bgLine)
+				bgRunes := []rune(bgPlain)
+				startPos := layer.X + contentLineWidth
+				if startPos < len(bgRunes) {
+					result += string(bgRunes[startPos:])
+				}
+			}
+
 			lines[lineIdx] = result
 		}
 	}
-	
+
 	return lines
 }
 

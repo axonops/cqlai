@@ -13,6 +13,7 @@ type TopBarModel struct {
 	QueryTime    time.Duration
 	RowCount     int
 	HasQueryData bool
+	AutoFetch    bool
 }
 
 // NewTopBarModel creates a new TopBarModel.
@@ -43,6 +44,14 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 		Foreground(lipgloss.Color("#FF87FF")).
 		Bold(true)
 
+	// AutoFetch styles
+	autoFetchOnStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#87FFD7")).
+		Bold(true)
+
+	autoFetchOffStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#5F5F5F"))
+
 	// Start with the mode
 	var modeText string
 	switch viewMode {
@@ -56,6 +65,16 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 		modeText = "CQL"
 	}
 	content := labelStyle.Render("Mode: ") + modeStyle.Render(modeText)
+
+	// Add AutoFetch status
+	autoFetchState := "OFF"
+	autoFetchStyle := autoFetchOffStyle
+	if m.AutoFetch {
+		autoFetchState = "ON"
+		autoFetchStyle = autoFetchOnStyle
+	}
+	content += separatorStyle.Render(" │ ") +
+		labelStyle.Render("AutoFetch: ") + autoFetchStyle.Render(autoFetchState)
 
 	// Add command information if available
 	if m.LastCommand != "" {

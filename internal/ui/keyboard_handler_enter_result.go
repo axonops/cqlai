@@ -50,6 +50,41 @@ func extractTableNameFromQuery(query string) (keyspace, table string) {
 // processCommandResult processes the result from a command execution
 func (m *MainModel) processCommandResult(command string, result interface{}, startTime time.Time) (*MainModel, tea.Cmd) {
 	switch v := result.(type) {
+	case *router.SaveCommand:
+		// Handle SAVE command - check if we have table data
+		if len(m.lastTableData) == 0 {
+			errorMsg := "No query results available to save. Execute a query first."
+			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+errorMsg)
+			m.updateHistoryWrapping()
+			m.historyViewport.GotoBottom()
+			m.input.Reset()
+			return m, nil
+		}
+
+		// Check if interactive mode
+		if v.Interactive {
+			// Open save modal
+			m.saveModalActive = true
+			m.saveModalStep = 0
+			m.saveModalFormat = 0
+			m.saveModalFilename = ""
+			m.input.Reset()
+			return m, nil
+		}
+
+		// Direct save - execute the save command
+		err := router.HandleSaveCommand(*v, m.lastTableData)
+		if err != nil {
+			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+err.Error())
+		} else {
+			rowCount := len(m.lastTableData) - 1 // Exclude header
+			successMsg := fmt.Sprintf("Successfully saved %d rows to %s", rowCount, v.Filename)
+			m.fullHistoryContent += "\n" + m.styles.SuccessText.Render(successMsg)
+		}
+		m.updateHistoryWrapping()
+		m.historyViewport.GotoBottom()
+		m.input.Reset()
+		return m, nil
 	case db.StreamingQueryResult:
 		return m.processStreamingQueryResult(command, v, startTime)
 	case db.QueryResult:
