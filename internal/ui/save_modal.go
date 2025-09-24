@@ -232,6 +232,10 @@ func (m *MainModel) executeSaveFromModal() (*MainModel, tea.Cmd) {
 	// Add default options based on format
 	if format == "JSON" {
 		cmd.Options["pretty"] = true
+		// Check if data is already in JSON format (from OUTPUT JSON mode)
+		if len(m.lastTableData) > 0 && len(m.lastTableData[0]) == 1 && m.lastTableData[0][0] == "[json]" {
+			cmd.Options["already_json"] = true
+		}
 	}
 
 	// Execute save

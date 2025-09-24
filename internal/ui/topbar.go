@@ -14,6 +14,7 @@ type TopBarModel struct {
 	RowCount     int
 	HasQueryData bool
 	AutoFetch    bool
+	HasMoreData  bool  // Indicates if there's more data to fetch
 }
 
 // NewTopBarModel creates a new TopBarModel.
@@ -91,7 +92,14 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 			content += separatorStyle.Render(" │ ") +
 				labelStyle.Render("Query: ") + queryTimeStyle.Render(fmt.Sprintf("%v", m.QueryTime.Round(time.Millisecond))) +
 				separatorStyle.Render(" │ ") +
-				labelStyle.Render("Rows: ") + rowCountStyle.Render(fmt.Sprintf("%d", m.RowCount))
+				labelStyle.Render("Rows: ")
+
+			// Show row count with "+" if more data is available
+			if m.HasMoreData && !m.AutoFetch {
+				content += rowCountStyle.Render(fmt.Sprintf("%d+", m.RowCount))
+			} else {
+				content += rowCountStyle.Render(fmt.Sprintf("%d", m.RowCount))
+			}
 		}
 	}
 

@@ -673,6 +673,18 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			m.completionIndex = -1
 			return m, nil
 		}
+		// If we're in the middle of paging through results, clear the paging state
+		if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+			// Clear the "more data" state and reset input placeholder
+			m.slidingWindow.hasMoreData = false
+			m.slidingWindow.iterator = nil
+			m.input.Placeholder = "Enter CQL command..."
+			// Add a message to history to indicate paging was cancelled
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Paging cancelled. Showing partial results.")
+			m.updateHistoryWrapping()
+			m.historyViewport.GotoBottom()
+			return m, nil
+		}
 		// Cancel any confirmation first
 		if m.confirmExit {
 			m.confirmExit = false

@@ -17,6 +17,11 @@ func (m *MainModel) View() string {
 	m.topBar.LastCommand = m.lastCommand
 	if m.session != nil {
 		m.topBar.AutoFetch = m.session.AutoFetch()
+	}
+	if m.slidingWindow != nil {
+		m.topBar.HasMoreData = m.slidingWindow.hasMoreData
+	}
+	if m.session != nil {
 		currentKeyspace := ""
 		if m.sessionManager != nil {
 			currentKeyspace = m.sessionManager.CurrentKeyspace()
@@ -148,8 +153,12 @@ func (m *MainModel) View() string {
 		case config.OutputFormatASCII:
 			asciiStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
 			scrollInfo += " " + asciiStyle.Render("[ASCII]")
+		case config.OutputFormatJSON:
+			jsonStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
+			scrollInfo += " " + jsonStyle.Render("[JSON]")
 		}
 	}
+
 
 	// Build the input section
 	var inputSection string
@@ -161,8 +170,20 @@ func (m *MainModel) View() string {
 			inputSection = m.aiConversationInput.View()
 		}
 	} else {
-		// Use regular input
-		inputSection = m.input.View()
+		// Update placeholder if there's more data to fetch
+		if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+			if m.session != nil && !m.session.AutoFetch() {
+				// Temporarily change placeholder to show more data hint
+				originalPlaceholder := m.input.Placeholder
+				m.input.Placeholder = "▼ MORE DATA AVAILABLE - Press Space or PgDn to load next page ▼"
+				inputSection = m.input.View()
+				m.input.Placeholder = originalPlaceholder // Restore original
+			} else {
+				inputSection = m.input.View()
+			}
+		} else {
+			inputSection = m.input.View()
+		}
 
 		// If in multi-line mode, show the buffered lines above the input
 		if m.multiLineMode && len(m.multiLineBuffer) > 0 {
