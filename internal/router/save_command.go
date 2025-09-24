@@ -284,6 +284,41 @@ func exportToCSV(filename string, data [][]string, options map[string]interface{
 
 // exportToJSON exports data to JSON format
 func exportToJSON(filename string, data [][]string, options map[string]interface{}) error {
+	// Check if data is already in JSON format (from OUTPUT JSON mode)
+	if alreadyJSON, ok := options["already_json"].(bool); ok && alreadyJSON {
+		// Data is already JSON, just write it directly
+		if len(data) < 2 {
+			// No data rows
+			return os.WriteFile(filename, []byte("[]"), 0600)
+		}
+
+		// Skip the header row (which contains "[json]")
+		rows := data[1:]
+
+		// Combine all JSON rows
+		var jsonBuilder strings.Builder
+		jsonBuilder.WriteString("[")
+		for i, row := range rows {
+			if len(row) > 0 {
+				// The JSON is stored in the first column
+				jsonStr := stripAnsi(row[0])
+				if i > 0 {
+					jsonBuilder.WriteString(",")
+				}
+				jsonBuilder.WriteString("\n  ")
+				jsonBuilder.WriteString(jsonStr)
+			}
+		}
+		if len(rows) > 0 {
+			jsonBuilder.WriteString("\n")
+		}
+		jsonBuilder.WriteString("]")
+
+		// Write the combined JSON
+		return os.WriteFile(filename, []byte(jsonBuilder.String()), 0600)
+	}
+
+	// Regular path: convert table data to JSON
 	if len(data) < 2 {
 		// Just headers, no data
 		if len(data) == 1 {

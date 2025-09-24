@@ -77,7 +77,16 @@ func (m *MainModel) handleSpaceKey(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If no completions, let the space key be handled normally by passing it to the input
+	// Check if we should page down when there's more data
+	if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+		// If input is empty and we're in table view with more data, use Space for paging
+		if m.input.Value() == "" {
+			// Page down (same as PgDn)
+			return m.handlePageDown(msg)
+		}
+	}
+
+	// Otherwise, let the space key be handled normally by passing it to the input
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd

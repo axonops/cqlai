@@ -73,6 +73,14 @@ func (m *MainModel) processCommandResult(command string, result interface{}, sta
 		}
 
 		// Direct save - execute the save command
+		// Check if data is already in JSON format (from OUTPUT JSON mode)
+		if v.Format == "JSON" && len(m.lastTableData) > 0 &&
+			len(m.lastTableData[0]) == 1 && m.lastTableData[0][0] == "[json]" {
+			if v.Options == nil {
+				v.Options = make(map[string]interface{})
+			}
+			v.Options["already_json"] = true
+		}
 		err := router.HandleSaveCommand(*v, m.lastTableData)
 		if err != nil {
 			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+err.Error())
@@ -375,27 +383,91 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 
 // displayASCIIFormat displays results in ASCII table format
 func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (*MainModel, tea.Cmd) {
-	// ASCII format - display in CQL view as text
-	m.hasTable = false  // No table, just text
-	m.viewMode = "history"  // Use history view for text output
+	logger.DebugToFile("HandleEnterKey", "Formatting output as ASCII")
 
-	// Format initial data as ASCII table
-	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	
-	// Format as ASCII table
-	asciiStr := FormatASCIITable(allData)
-	
-	// Add ASCII output to history content
-	if asciiStr != "" {
-		m.fullHistoryContent += "\n" + asciiStr
+	// Store headers and types for table view
+	m.tableHeaders = headers
+	m.columnTypes = columnTypes
+
+	// Check if AutoFetch is ON
+	if m.session != nil && m.session.AutoFetch() && m.slidingWindow.hasMoreData && m.slidingWindow.iterator != nil {
+		logger.DebugToFile("HandleEnterKey", "ASCII format with AutoFetch ON: fetching all remaining pages")
+
+		// Keep loading until we have all data
+		totalFetched := 0
+		for m.slidingWindow.hasMoreData {
+			pageSize := m.session.PageSize()
+			if pageSize == 0 {
+				pageSize = 100 // Default page size
+			}
+			loadedRows := m.slidingWindow.LoadMoreRows(pageSize)
+			if loadedRows == 0 {
+				break
+			}
+			totalFetched += loadedRows
+			logger.DebugfToFile("HandleEnterKey", "ASCII format: fetched %d more rows, total fetched: %d",
+				loadedRows, totalFetched)
+		}
+		logger.DebugfToFile("HandleEnterKey", "ASCII format: finished fetching, total rows: %d",
+			m.slidingWindow.TotalRowsSeen)
+
+		// Update row count in top bar
+		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+
+		// When AutoFetch is ON, display all ASCII in history view
+		m.hasTable = false
+		m.viewMode = "history"
+
+		// Format all data as ASCII table
+		allData := append([][]string{headers}, m.slidingWindow.Rows...)
+		asciiStr := FormatASCIITable(allData)
+
+		// Add to history
+		if asciiStr != "" {
+			m.fullHistoryContent += "\n" + asciiStr
+		} else {
+			m.fullHistoryContent += "\nNo results"
+		}
+		m.updateHistoryWrapping()
+		m.historyViewport.GotoBottom()
 	} else {
-		m.fullHistoryContent += "\nNo results"
+		// AutoFetch is OFF - use table view for progressive loading
+		logger.DebugfToFile("HandleEnterKey", "ASCII format with AutoFetch OFF: using table view for progressive loading")
+
+		m.hasTable = true
+		m.viewMode = "table"
+		m.horizontalOffset = 0
+
+		// Build initial ASCII display
+		allData := append([][]string{headers}, m.slidingWindow.Rows...)
+		m.lastTableData = allData
+
+		// Format as ASCII table
+		asciiStr := FormatASCIITable(allData)
+
+		// Add notice about more data if applicable
+		if m.slidingWindow.hasMoreData {
+			asciiStr += "\n" + m.styles.MutedText.Render(
+				fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
+					len(m.slidingWindow.Rows)))
+		}
+
+		// Set content in table viewport
+		m.tableViewport.SetContent(asciiStr)
+		m.tableViewport.GotoTop()
+
+		// Calculate width for horizontal scrolling
+		lines := strings.Split(asciiStr, "\n")
+		maxWidth := 0
+		for _, line := range lines {
+			if width := len(stripAnsi(line)); width > maxWidth {
+				maxWidth = width
+			}
+		}
+		m.tableWidth = maxWidth
 	}
-	
-	// Update with wrapped content
-	m.updateHistoryWrapping()
-	m.historyViewport.GotoBottom()
-	
+
 	m.input.Reset()
 	return m, nil
 }
@@ -403,52 +475,129 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 // displayJSONFormat displays results in JSON format
 func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, columnNames []string) (*MainModel, tea.Cmd) {
 	logger.DebugToFile("HandleEnterKey", "Formatting output as JSON")
-	
-	// JSON format - display in CQL view as text
-	m.hasTable = false  // No table, just text
-	m.viewMode = "history"  // Use history view for text output
 
-	// Convert table data to JSON format
-	jsonStr := ""
-	// Check if we have a single [json] column from SELECT JSON
-	if len(headers) == 1 && headers[0] == "[json]" {
-		// This is already JSON from SELECT JSON - just extract it
-		for _, row := range m.slidingWindow.Rows {
-			if len(row) > 0 {
-				jsonStr += row[0] + "\n"
+	// Store headers and types for table view
+	m.tableHeaders = headers
+	m.columnTypes = columnTypes
+
+	// Check if AutoFetch is ON
+	if m.session != nil && m.session.AutoFetch() && m.slidingWindow.hasMoreData && m.slidingWindow.iterator != nil {
+		logger.DebugToFile("HandleEnterKey", "JSON format with AutoFetch ON: fetching all remaining pages")
+
+		// Keep loading until we have all data
+		totalFetched := 0
+		for m.slidingWindow.hasMoreData {
+			pageSize := m.session.PageSize()
+			if pageSize == 0 {
+				pageSize = 100 // Default page size
 			}
+			loadedRows := m.slidingWindow.LoadMoreRows(pageSize)
+			if loadedRows == 0 {
+				break
+			}
+			totalFetched += loadedRows
+			logger.DebugfToFile("HandleEnterKey", "JSON format: fetched %d more rows, total fetched: %d",
+				loadedRows, totalFetched)
 		}
-	} else {
-		// Convert regular table data to JSON
-		for _, row := range m.slidingWindow.Rows {
-			jsonMap := make(map[string]interface{})
-			for i, header := range headers {
-				if i < len(row) {
-					jsonMap[header] = row[i]
+		logger.DebugfToFile("HandleEnterKey", "JSON format: finished fetching, total rows: %d",
+			m.slidingWindow.TotalRowsSeen)
+
+		// Update row count in top bar
+		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+
+		// When AutoFetch is ON, display all JSON in history view
+		m.hasTable = false
+		m.viewMode = "history"
+
+		// Convert all data to JSON
+		jsonStr := ""
+		if len(headers) == 1 && headers[0] == "[json]" {
+			for _, row := range m.slidingWindow.Rows {
+				if len(row) > 0 {
+					jsonStr += row[0] + "\n"
 				}
 			}
-			jsonBytes, err := json.Marshal(jsonMap)
-			if err == nil {
-				jsonStr += string(jsonBytes) + "\n"
-			} else {
-				logger.DebugfToFile("HandleEnterKey", "Error marshaling row to JSON: %v", err)
+		} else {
+			for _, row := range m.slidingWindow.Rows {
+				jsonMap := make(map[string]interface{})
+				for i, header := range headers {
+					if i < len(row) {
+						jsonMap[header] = row[i]
+					}
+				}
+				jsonBytes, err := json.Marshal(jsonMap)
+				if err == nil {
+					jsonStr += string(jsonBytes) + "\n"
+				}
 			}
 		}
-	}
-	
-	logger.DebugfToFile("HandleEnterKey", "Generated JSON with %d characters", len(jsonStr))
-	
-	// Add JSON output to history content
-	if jsonStr != "" {
-		m.fullHistoryContent += "\n" + jsonStr
+
+		// Add to history
+		if jsonStr != "" {
+			m.fullHistoryContent += "\n" + jsonStr
+		} else {
+			m.fullHistoryContent += "\nNo results"
+		}
+		m.updateHistoryWrapping()
+		m.historyViewport.GotoBottom()
 	} else {
-		m.fullHistoryContent += "\nNo results"
+		// AutoFetch is OFF - use table view for progressive loading
+		logger.DebugfToFile("HandleEnterKey", "JSON format with AutoFetch OFF: using table view for progressive loading")
+
+		m.hasTable = true
+		m.viewMode = "table"
+		m.horizontalOffset = 0
+
+		// Build initial JSON display
+		allData := append([][]string{headers}, m.slidingWindow.Rows...)
+		m.lastTableData = allData
+
+		// Convert to JSON format
+		jsonStr := ""
+		if len(headers) == 1 && headers[0] == "[json]" {
+			for _, row := range m.slidingWindow.Rows {
+				if len(row) > 0 {
+					jsonStr += row[0] + "\n"
+				}
+			}
+		} else {
+			for _, row := range m.slidingWindow.Rows {
+				jsonMap := make(map[string]interface{})
+				for i, header := range headers {
+					if i < len(row) {
+						jsonMap[header] = row[i]
+					}
+				}
+				jsonBytes, err := json.Marshal(jsonMap)
+				if err == nil {
+					jsonStr += string(jsonBytes) + "\n"
+				}
+			}
+		}
+
+		// Add notice about more data if applicable
+		if m.slidingWindow.hasMoreData {
+			jsonStr += "\n" + m.styles.MutedText.Render(
+				fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
+					len(m.slidingWindow.Rows)))
+		}
+
+		// Set content in table viewport
+		m.tableViewport.SetContent(jsonStr)
+		m.tableViewport.GotoTop()
+
+		// Calculate width for horizontal scrolling
+		lines := strings.Split(jsonStr, "\n")
+		maxWidth := 0
+		for _, line := range lines {
+			if width := len(stripAnsi(line)); width > maxWidth {
+				maxWidth = width
+			}
+		}
+		m.tableWidth = maxWidth
 	}
-	
-	// Update with wrapped content
-	m.updateHistoryWrapping()
-	m.historyViewport.GotoBottom()
-	
+
 	m.input.Reset()
 	return m, nil
 }
