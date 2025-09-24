@@ -86,30 +86,28 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 	versionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#B8B8B8"))
 
-	// Format style
-	formatStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#87AFFF"))
+	// Build the status text with colors in the requested order:
+	// Cassandra version, User, Host, KS, Cons, Pg, Trace
+	statusText := ""
 
-	// Build the status text with colors
-	statusText := labelStyle.Render("KS: ") + keyspaceStyle.Render(keyspaceDisplay) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("User: ") + hostStyle.Render(usernameDisplay) +
+	// Start with version if available
+	if m.Version != "" {
+		statusText = labelStyle.Render("v") + versionStyle.Render(m.Version) +
+			separatorStyle.Render(" │ ")
+	}
+
+	// Then add the rest in order
+	statusText += labelStyle.Render("User: ") + hostStyle.Render(usernameDisplay) +
 		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Host: ") + hostStyle.Render(m.Host) +
 		separatorStyle.Render(" │ ") +
+		labelStyle.Render("KS: ") + keyspaceStyle.Render(keyspaceDisplay) +
+		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Cons: ") + consistencyStyle.Render(m.Consistency) +
 		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Page: ") + pageStyle.Render(fmt.Sprintf("%d", m.PagingSize)) +
+		labelStyle.Render("Pg: ") + pageStyle.Render(fmt.Sprintf("%d", m.PagingSize)) +
 		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Output: ") + formatStyle.Render(m.OutputFormat)
-
-	// Add version if available
-	if m.Version != "" {
-		statusText += separatorStyle.Render(" │ ") +
-			labelStyle.Render("v") + versionStyle.Render(m.Version)
-	}
+		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState)
 
 
 	// Apply style to the entire bar without forced background
