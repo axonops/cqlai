@@ -6,11 +6,10 @@ CQLAI provides comprehensive support for Apache Parquet format, enabling efficie
 
 Parquet is a columnar storage format that provides excellent compression and encoding schemes, making it ideal for storing and processing large datasets. CQLAI's Parquet integration allows you to:
 
-- Export Cassandra table data to Parquet files (local or cloud storage)
-- Import Parquet files into Cassandra tables (local or cloud storage)
+- Export Cassandra table data to Parquet files
+- Import Parquet files into Cassandra tables
 - Handle complex Cassandra data types including collections, UDTs, and vectors
 - Optimize storage with various compression algorithms
-- Seamlessly integrate with cloud storage providers (S3, Azure Blob, Google Cloud Storage)
 
 ## COPY TO Parquet
 
@@ -19,17 +18,8 @@ Export data from Cassandra tables to Parquet format.
 ### Basic Usage
 
 ```sql
--- Export entire table to Parquet (local file)
+-- Export entire table to Parquet
 COPY users TO '/path/to/users.parquet' WITH FORMAT='PARQUET';
-
--- Export to S3
-COPY users TO 's3://my-bucket/data/users.parquet' WITH FORMAT='PARQUET';
-
--- Export to Azure Blob Storage
-COPY users TO 'az://container/data/users.parquet' WITH FORMAT='PARQUET';
-
--- Export to Google Cloud Storage
-COPY users TO 'gs://my-bucket/data/users.parquet' WITH FORMAT='PARQUET';
 
 -- Export specific columns
 COPY users (id, name, email) TO '/path/to/users.parquet' WITH FORMAT='PARQUET';
@@ -103,9 +93,9 @@ CREATE TABLE sensor_data (
 ) WITH CLUSTERING ORDER BY (reading_time DESC);
 
 -- Export with hourly partitions for analysis
-COPY sensor_data TO 's3://bucket/sensor-data/' WITH FORMAT='PARQUET'
+COPY sensor_data TO '/data/sensor-data/' WITH FORMAT='PARQUET'
 AND PARTITION='reading_time.date,reading_time.hour';
--- Creates: s3://bucket/sensor-data/reading_time.date=2024-01-15/reading_time.hour=14/part-00000.parquet
+-- Creates: /data/sensor-data/reading_time.date=2024-01-15/reading_time.hour=14/part-00000.parquet
 ```
 
 Partitioning benefits:
@@ -292,73 +282,9 @@ COPY embeddings TO 'embeddings.parquet' WITH FORMAT='PARQUET';
 -- Compatible with Apache Arrow and pandas
 ```
 
-## Cloud Storage Integration
+## Cloud Storage Support
 
-CQLAI supports direct integration with major cloud storage providers for both COPY and CAPTURE commands.
-
-### Amazon S3
-
-```sql
--- Export to S3
-COPY users TO 's3://my-bucket/data/users.parquet' WITH FORMAT='PARQUET';
-
--- Import from S3
-COPY users FROM 's3://my-bucket/data/users.parquet' WITH FORMAT='PARQUET';
-
--- Capture to S3
-CAPTURE PARQUET 's3://my-bucket/captures/query-results.parquet';
-```
-
-**Configuration:**
-- AWS credentials are loaded from standard locations:
-  - Environment variables: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
-  - AWS credentials file: `~/.aws/credentials`
-  - IAM roles (when running on EC2)
-- For S3-compatible services (MinIO, etc.), set `S3_ENDPOINT` environment variable
-
-### Azure Blob Storage
-
-```sql
--- Export to Azure Blob
-COPY users TO 'az://container/data/users.parquet' WITH FORMAT='PARQUET';
-
--- Import from Azure Blob
-COPY users FROM 'az://container/data/users.parquet' WITH FORMAT='PARQUET';
-```
-
-**Configuration:**
-- Set environment variables:
-  - `AZURE_STORAGE_ACCOUNT_NAME`: Storage account name
-  - `AZURE_STORAGE_ACCOUNT_KEY`: Storage account key
-  - Or use Azure Managed Identity when running on Azure
-
-### Google Cloud Storage
-
-```sql
--- Export to GCS
-COPY users TO 'gs://my-bucket/data/users.parquet' WITH FORMAT='PARQUET';
-
--- Import from GCS
-COPY users FROM 'gs://my-bucket/data/users.parquet' WITH FORMAT='PARQUET';
-```
-
-**Configuration:**
-- Authentication via:
-  - `GOOGLE_APPLICATION_CREDENTIALS`: Path to service account JSON file
-  - Application Default Credentials (when running on GCP)
-
-### Cloud Storage with Partitioning
-
-Partitioned exports work seamlessly with cloud storage:
-
-```sql
--- Partitioned export to S3
-COPY events TO 's3://my-bucket/events/' WITH FORMAT='PARQUET' AND PARTITION='year,month';
-
--- Creates structure like:
--- s3://my-bucket/events/year=2024/month=01/part-00000.parquet
--- s3://my-bucket/events/year=2024/month=02/part-00000.parquet
-```
+For cloud storage integration, mount your cloud storage as a local filesystem using tools like rclone. See [Cloud Storage Documentation](cloud-storage.md) for details.
 
 ## Advanced Features
 
@@ -614,7 +540,7 @@ Export Cassandra data for analysis in Apache Spark, pandas, or other analytics t
 
 ```sql
 -- Export for Spark processing
-COPY events TO 's3://bucket/events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='SNAPPY';
+COPY events TO '/data/events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='SNAPPY';
 
 -- Python pandas can read directly:
 -- df = pd.read_parquet('events.parquet')
@@ -832,15 +758,10 @@ The following features are planned for future releases:
    - Concurrent chunk processing
    - Parallel file writing for partitions
 
-3. **S3/Cloud Storage Integration**
+3. **Mounted Cloud Storage**
    ```sql
-   -- Direct S3 export
-   COPY users TO 's3://bucket/path/users.parquet'
-   WITH FORMAT='PARQUET'
-   AND AWS_PROFILE='default';
-
-   -- Azure Blob Storage
-   COPY users TO 'azure://container/users.parquet'
+   -- Export to mounted cloud storage (via rclone, s3fs, etc.)
+   COPY users TO '/mnt/cloud/users.parquet'
    WITH FORMAT='PARQUET';
    ```
 
