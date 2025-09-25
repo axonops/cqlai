@@ -297,6 +297,13 @@ jobs:
       - name: Build
         run: go build -v ./cmd/cqlai
 
+      - name: Sign windows binary
+        if: matrix.os == "windows-latest"
+        shell: pwsh
+        run: |
+          dotnet tool install --no-cache --global AzureSignTool --version 6.0.1
+          azuresigntool.exe sign --verbose -kvs  "${{ secrets.AZURE_CLIENT_SECRET }}" -kvt ${{ secrets.AZURE_TENANT_ID }} -kvu ${{ secrets.AZURE_KEY_VAULT_URI }} -kvi "${{ secrets.AZURE_CLIENT_ID }}" -kvc ${{ secrets.AZURE_KEYVAULT_CERT_NAME }} -fd sha256 -tr http://timestamp.digicert.com -v "cqlai.exe"
+
       - name: Verify build
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
