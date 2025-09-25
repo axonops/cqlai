@@ -298,7 +298,7 @@ jobs:
         run: go build -v ./cmd/cqlai
 
       - name: Sign windows binary
-        if: matrix.os == "windows-latest"
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           dotnet tool install --no-cache --global AzureSignTool --version 6.0.1
