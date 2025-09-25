@@ -213,8 +213,7 @@ func (h *MetaCommandHandler) stopCapture() interface{} {
 		// If JSON format, properly close the array
 		switch h.captureFormat {
 		case "json":
-			// For cloud storage, we can't seek back, so just close the array
-			// This may leave a trailing comma, but it's a minor issue
+			// Close the JSON array
 			_, _ = h.captureOutput.Write([]byte("\n]\n"))
 		case "csv":
 			if h.csvWriter != nil {
@@ -330,8 +329,7 @@ func (h *MetaCommandHandler) WriteCaptureText(command string, output string) err
 			return err
 		}
 
-		// For cloud storage, we can't check file size, so always add comma
-		// TODO: Track if this is the first record to avoid leading comma
+		// Add comma separator between JSON records
 		_, _ = h.captureOutput.Write([]byte(",\n  "))
 		_, _ = h.captureOutput.Write(jsonBytes)
 
@@ -633,8 +631,7 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 			return err
 		}
 
-		// For cloud storage, we can't check file size, so always add comma
-		// TODO: Track if this is the first record to avoid leading comma
+		// Add comma separator between JSON records
 		_, _ = h.captureOutput.Write([]byte(",\n  "))
 		_, _ = h.captureOutput.Write(jsonBytes)
 

@@ -189,14 +189,14 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 	// Check if output is STDOUT
 	isStdout := strings.ToUpper(filename) == "STDOUT"
 
-	// Open file for writing (unless STDOUT) - supports cloud storage
+	// Open file for writing (unless STDOUT)
 	var writer io.WriteCloser
 	var err error
 
 	if isStdout {
 		writer = nopCloser{os.Stdout}
 	} else {
-		// Use cloud-aware writer creation
+		// Create writer for local file
 		writer, err = parquet.CreateWriter(context.Background(), filename)
 		if err != nil {
 			return fmt.Sprintf("Error creating file: %v", err)

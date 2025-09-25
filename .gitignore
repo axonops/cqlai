@@ -53,6 +53,9 @@ capture_*.json
 capture_*.csv
 output.json
 output.csv
+query_results_*.txt
+query_results_*.json
+'s3:
 
 # Temporary files
 tmp/
