@@ -8,7 +8,6 @@ replace github.com/axonops/cqlai => ./
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.9.1
-	github.com/antlr4-go/antlr/v4 v4.13.1
 	github.com/apache/arrow-go/v18 v18.4.1
 	github.com/apache/cassandra-gocql-driver/v2 v2.0.0-rc1
 	github.com/charmbracelet/bubbles v0.21.0

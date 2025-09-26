@@ -149,3 +149,19 @@ func (s *Session) DBDescribeFunction(sessionMgr *session.Manager, functionName s
 
 	return nil, functions, nil // Manual query result, return FunctionDetails for formatting
 }
+
+// DBDescribeFunctionByName returns raw query results for a function with optional keyspace
+func (s *Session) DBDescribeFunctionByName(functionName string, keyspaceName string) (interface{}, error) {
+	var query string
+
+	if keyspaceName != "" {
+		// Specific keyspace provided
+		query = fmt.Sprintf("SELECT * FROM system_schema.functions WHERE keyspace_name = '%s' AND function_name = '%s'",
+			keyspaceName, functionName)
+	} else {
+		// No keyspace - search all keyspaces
+		query = fmt.Sprintf("SELECT * FROM system_schema.functions WHERE function_name = '%s'", functionName)
+	}
+
+	return s.ExecuteCQLQuery(query), nil
+}

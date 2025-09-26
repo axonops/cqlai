@@ -141,30 +141,3 @@ func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []
 	return []string{}
 }
 
-func (pce *ParserBasedCompletionEngine) getUpdateSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		// After UPDATE, suggest table names or SET
-		return append(pce.getTableNames(), "SET")
-	}
-
-	hasSet := false
-	hasWhere := false
-	for _, t := range tokens {
-		if t == "SET" {
-			hasSet = true
-		}
-		if t == "WHERE" {
-			hasWhere = true
-		}
-	}
-
-	if !hasSet {
-		return SetUsing
-	}
-
-	if hasSet && !hasWhere {
-		return WhereIf
-	}
-
-	return IfAnd
-}

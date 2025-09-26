@@ -9,7 +9,6 @@ import (
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
-	"github.com/axonops/cqlai/internal/storage"
 )
 
 // isNullValue checks if a value from gocql scanning represents a NULL value.
@@ -63,11 +62,11 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 
 	if isStdout {
 		filename = "-"
-	} else if !storage.IsCloudURL(filename) {
+	} else {
 		// Clean the filename to prevent path traversal for local files
 		cleanPath := filepath.Clean(filename)
 
-		// Add .parquet extension if not present and not a cloud URL
+		// Add .parquet extension if not present
 		if !strings.HasSuffix(cleanPath, ".parquet") {
 			cleanPath += ".parquet"
 		}

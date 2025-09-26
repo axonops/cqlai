@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/antlr4-go/antlr/v4"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/axonops/cqlai/internal/parser/grammar"
 	"github.com/axonops/cqlai/internal/session"
 	"github.com/axonops/cqlai/internal/validation"
 )
@@ -234,75 +232,9 @@ func parseMetaCommand(command string, session *db.Session, sessionMgr *session.M
 		return metaHandler.HandleMetaCommand(command)
 	}
 
-	// Special handling for DESCRIBE shortcuts that cqlsh supports
-	if strings.HasPrefix(upperCommand, "DESCRIBE ") || strings.HasPrefix(upperCommand, "DESC ") {
-		// Extract the part after DESCRIBE/DESC
-		parts := strings.Fields(command)
-		if len(parts) == 2 {
-			identifier := parts[1]
-			upperIdentifier := strings.ToUpper(identifier)
-
-			// Check if this is a special DESCRIBE command (KEYSPACES, TABLES, TYPES, etc.)
-			// These should NOT be transformed
-			switch {
-			case upperIdentifier == "KEYSPACES" || upperIdentifier == "TABLES" ||
-				upperIdentifier == "TYPES" || upperIdentifier == "FUNCTIONS" ||
-				upperIdentifier == "AGGREGATES" || upperIdentifier == "CLUSTER":
-				// Keep the command as-is - these are special DESCRIBE commands
-				logger.DebugfToFile("parseMetaCommand", "Keeping '%s' as-is (special DESCRIBE command)", command)
-			case strings.Contains(identifier, "."):
-				// This looks like "DESCRIBE keyspace.table" or "DESC keyspace.table"
-				// Transform it to "DESCRIBE TABLE keyspace.table"
-				transformedCommand := parts[0] + " TABLE " + identifier
-				logger.DebugfToFile("parseMetaCommand", "Transformed '%s' to '%s'", command, transformedCommand)
-				command = transformedCommand
-			default:
-				// Single identifier - could be keyspace or table in current keyspace
-				// For now, assume it's a keyspace (cqlsh behavior)
-				// Transform it to "DESCRIBE KEYSPACE <identifier>"
-				transformedCommand := parts[0] + " KEYSPACE " + identifier
-				logger.DebugfToFile("parseMetaCommand", "Transformed '%s' to '%s' (assuming keyspace)", command, transformedCommand)
-				command = transformedCommand
-			}
-		}
-	}
-
-	// DESCRIBE, LIST, and other complex commands use the ANTLR parser
-	logger.DebugfToFile("parseMetaCommand", "Called with: '%s'", command)
-	is := antlr.NewInputStream(command)
-	lexer := grammar.NewCqlLexer(is)
-	lexer.RemoveErrorListeners()
-	lexerErrors := NewCustomErrorListener()
-	lexer.AddErrorListener(lexerErrors)
-
-	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
-	p := grammar.NewCqlParser(stream)
-	p.RemoveErrorListeners()
-	parserErrors := NewCustomErrorListener()
-	p.AddErrorListener(parserErrors)
-
-	tree := p.Root()
-
-	if len(lexerErrors.Errors) > 0 || len(parserErrors.Errors) > 0 {
-		// Debug: Log parsing errors
-		if len(lexerErrors.Errors) > 0 {
-			logger.DebugfToFile("parseMetaCommand", "Lexer errors: %v", lexerErrors.Errors)
-		}
-		if len(parserErrors.Errors) > 0 {
-			logger.DebugfToFile("parseMetaCommand", "Parser errors: %v", parserErrors.Errors)
-		}
-		logger.DebugToFile("parseMetaCommand", "Parsing failed, falling back to CQL execution")
-		// Fall back to CQL execution if parsing fails
-		return session.ExecuteCQLQuery(command)
-	}
-
-	logger.DebugToFile("parseMetaCommand", "Parsing successful, visiting parse tree")
-	commands := NewCqlCommandVisitorImpl(session)
-	visitor := NewVisitor(commands)
-	result := tree.Accept(visitor)
-
-	logger.DebugfToFile("parseMetaCommand", "Parse tree visit completed, result type: %T", result)
-	return result
+	// Use the new CommandParser for DESCRIBE, LIST, GRANT, REVOKE commands
+	parser := NewCommandParser(session, metaHandler, sessionMgr)
+	return parser.ParseCommand(command)
 }
 
 // handleOutputCommand handles the OUTPUT command with simple string parsing

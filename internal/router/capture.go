@@ -12,7 +12,6 @@ import (
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
-	"github.com/axonops/cqlai/internal/storage"
 )
 
 // handleCapture handles CAPTURE command to save output to file
@@ -142,21 +141,8 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 
 	// For non-partitioned formats, create the file immediately
 	if partitionColumns == "" {
-		var writer io.WriteCloser
-		var err error
-
-		// Use cloud-aware writer creation for all formats
-		if storage.IsCloudURL(filename) {
-			writer, err = parquet.CreateWriter(context.Background(), filename)
-		} else {
-			// For local files, use standard file creation
-			file, err := os.Create(filename) // #nosec G304 - User-provided capture filename
-			if err != nil {
-				return fmt.Sprintf("Error opening capture file: %v", err)
-			}
-			writer = file
-		}
-
+		// Use parquet.CreateWriter which handles both local files and cloud URL error messages
+		writer, err := parquet.CreateWriter(context.Background(), filename)
 		if err != nil {
 			return fmt.Sprintf("Error opening capture file: %v", err)
 		}
