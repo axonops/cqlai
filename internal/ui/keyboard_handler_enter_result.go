@@ -167,7 +167,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 
 	for initialRows < maxInitialRows {
 		// Create scan destinations - use RawBytes for UDT columns
-		scanDest := make([]interface{}, len(v.ColumnNames))
+		scanDest := make([]interface{}, len(cols))
 		for i, col := range cols {
 			if col.TypeInfo.Type() == gocql.TypeUDT {
 				// Use RawBytes for UDT columns to get raw data

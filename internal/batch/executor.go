@@ -193,6 +193,10 @@ func (e *Executor) Execute(cql string) error {
 	case error:
 		return v
 	default:
+		// For any other type, try to print it as a string
+		if v != nil {
+			fmt.Fprintf(e.writer, "%v\n", v)
+		}
 		return nil
 	}
 }

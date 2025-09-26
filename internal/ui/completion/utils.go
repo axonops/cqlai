@@ -259,51 +259,15 @@ func FindCommonPrefix(completions []string) string {
 }
 
 // getTableNames returns table names from the completion engine
-func (pce *ParserBasedCompletionEngine) getTableNames() []string {
-	return pce.CompletionEngine.getTableNames()
-}
 
 // getKeyspaceNames returns keyspace names from the completion engine
-func (pce *ParserBasedCompletionEngine) getKeyspaceNames() []string {
-	return pce.CompletionEngine.getKeyspaceNames()
-}
 
 // getColumnNamesForTable returns column names for a specific table
-func (pce *ParserBasedCompletionEngine) getColumnNamesForTable(tableName string) []string {
-	return pce.CompletionEngine.getColumnNamesForTable(tableName)
-}
 
 // getTableAndKeyspaceNames returns both table names and keyspace names for INSERT/SELECT
-func (pce *ParserBasedCompletionEngine) getTableAndKeyspaceNames() []string {
-	var suggestions []string
-
-	// Add table names from current keyspace
-	suggestions = append(suggestions, pce.getTableNames()...)
-
-	// Add keyspace names (for keyspace.table syntax)
-	keyspaces := pce.getKeyspaceNames()
-	for _, ks := range keyspaces {
-		// Add keyspace name with a dot to indicate it expects a table name after
-		suggestions = append(suggestions, ks+".")
-	}
-
-	return suggestions
-}
 
 // getTablesForKeyspace returns table names for a specific keyspace
-func (pce *ParserBasedCompletionEngine) getTablesForKeyspace(keyspaceName string) []string {
-	// This would typically query Cassandra for tables in the specified keyspace
-	// For now, delegate to the base completion engine which may have this info cached
-	return pce.CompletionEngine.getTablesForKeyspace(keyspaceName)
-}
 
 // isCQLKeyword checks if a token is a CQL keyword
-func (pce *ParserBasedCompletionEngine) isCQLKeyword(token string) bool {
-	// Use the IsCompleteKeyword function which already checks all keywords
-	return IsCompleteKeyword(token)
-}
 
 // getTopLevelKeywords returns all top-level CQL keywords
-func (pce *ParserBasedCompletionEngine) getTopLevelKeywords() []string {
-	return TopLevelKeywords
-}

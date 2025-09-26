@@ -138,3 +138,20 @@ func (s *Session) DBDescribeMaterializedView(sessionMgr *session.Manager, viewNa
 
 	return nil, mvInfo, nil // Manual query result, return MaterializedViewInfo for formatting
 }
+
+// DBDescribeMaterializedViews lists all materialized views
+func (s *Session) DBDescribeMaterializedViews(sessionMgr *session.Manager) (interface{}, error) {
+	currentKeyspace := ""
+	if sessionMgr != nil {
+		currentKeyspace = sessionMgr.CurrentKeyspace()
+	}
+
+	var query string
+	if currentKeyspace != "" {
+		query = fmt.Sprintf("SELECT view_name FROM system_schema.views WHERE keyspace_name = '%s'", currentKeyspace)
+	} else {
+		query = "SELECT keyspace_name, view_name FROM system_schema.views"
+	}
+
+	return s.ExecuteCQLQuery(query), nil
+}

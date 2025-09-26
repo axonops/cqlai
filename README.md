@@ -59,7 +59,6 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - High-performance columnar data format for analytics and machine learning workflows.
     - Export Cassandra tables to Parquet files with `COPY TO` command.
     - Import Parquet files into Cassandra with automatic schema inference.
-    - Cloud storage integration (S3, Azure Blob, Google Cloud Storage).
     - Partitioned datasets with Hive-style directory structures.
     - TimeUUID virtual columns for intelligent time-based partitioning.
     - Support for all Cassandra data types including UDTs, collections, and vectors.
@@ -485,13 +484,32 @@ Meta-commands provide additional functionality beyond standard CQL:
   -- QUOTE = '"'             -- Quote character for strings
   ```
 
-- **CAPTURE** - Capture query output to file
+- **CAPTURE** - Capture query output to file (continuous recording)
   ```sql
   CAPTURE 'output.txt'          -- Start capturing to text file
   CAPTURE JSON 'output.json'    -- Capture as JSON
   CAPTURE CSV 'output.csv'      -- Capture as CSV
   SELECT * FROM users;
   CAPTURE OFF                   -- Stop capturing
+  ```
+
+- **SAVE** - Save displayed query results to file (without re-executing)
+  ```sql
+  -- First run a query
+  SELECT * FROM users WHERE status = 'active';
+
+  -- Then save the displayed results in various formats:
+  SAVE                           -- Interactive dialog (choose format & filename)
+  SAVE 'users.csv'               -- Save to CSV (format auto-detected)
+  SAVE 'users.json'              -- Save to JSON (format auto-detected)
+  SAVE 'users.txt' ASCII         -- Save as ASCII table
+  SAVE 'data.csv' CSV            -- Explicitly specify format
+
+  -- Key differences from CAPTURE:
+  -- - SAVE exports the currently displayed results
+  -- - No need to re-run the query
+  -- - Preserves exact data shown in terminal
+  -- - Works with paginated results (saves only loaded pages)
   ```
 
 #### Information Display
