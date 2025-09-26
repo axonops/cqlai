@@ -394,6 +394,99 @@ jobs:
           
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${DOCKER_TAG}
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
+  
+  update-homebrew:
+    name: Update homebrew repository
+    needs: [build-binaries, build-packages, upload-gcp]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          repository: axonops/homebrew-repository
+          path: homebrew
+          persist-credentials: true
+          fetch-depth: 0
+          ssh-key: ${{ secrets.BREW_SSH_KEY }}
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-darwin-arm64
+          path: ./darwin-arm64
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-darwin-amd64
+          path: ./darwin-amd64
+
+      - name: Get version and calculate SHA256
+        id: brew_info
+        run: |
+          # Get the version from tag or input
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Download the source tarball to calculate SHA256
+          TARBALL_URL="https://github.com/axonops/cqlai/archive/refs/tags/${VERSION}.tar.gz"
+          curl -L -o source.tar.gz "${TARBALL_URL}"
+          SHA256=$(sha256sum source.tar.gz | cut -d' ' -f1)
+          echo "sha256=${SHA256}" >> $GITHUB_OUTPUT
+
+          # Calculate bottle SHA256 for darwin-arm64
+          ARM64_SHA256=$(sha256sum darwin-arm64/cqlai-darwin-arm64.tar.gz | cut -d' ' -f1)
+          echo "arm64_sha256=${ARM64_SHA256}" >> $GITHUB_OUTPUT
+
+          # Calculate bottle SHA256 for darwin-amd64
+          AMD64_SHA256=$(sha256sum darwin-amd64/cqlai-darwin-amd64.tar.gz | cut -d' ' -f1)
+          echo "amd64_sha256=${AMD64_SHA256}" >> $GITHUB_OUTPUT
+
+          echo "Version: ${VERSION}"
+          echo "Source SHA256: ${SHA256}"
+          echo "ARM64 Bottle SHA256: ${ARM64_SHA256}"
+          echo "AMD64 Bottle SHA256: ${AMD64_SHA256}"
+
+      - name: Update Homebrew formula
+        run: |
+          cd homebrew
+
+          VERSION="${{ steps.brew_info.outputs.version }}"
+          SHA256="${{ steps.brew_info.outputs.sha256 }}"
+          ARM64_SHA256="${{ steps.brew_info.outputs.arm64_sha256 }}"
+          AMD64_SHA256="${{ steps.brew_info.outputs.amd64_sha256 }}"
+
+          # Update the URL with new version
+          sed -i "s|archive/refs/tags/v[0-9.]*\.tar\.gz|archive/refs/tags/${VERSION}.tar.gz|g" cqlai.rb
+
+          # Update the main SHA256 hash (the line right after url)
+          sed -i "/url.*archive.*tar\.gz/!b;n;s/sha256.*/  sha256 \"${SHA256}\"/" cqlai.rb
+
+          # Update the bottle SHA256 for arm64
+          sed -i "s/sha256 cellar: :any_skip_relocation, arm64: \"[a-f0-9]*\"/sha256 cellar: :any_skip_relocation, arm64: \"${ARM64_SHA256}\"/" cqlai.rb
+
+          # Update the bottle SHA256 for amd64
+          sed -i "s/sha256 cellar: :any_skip_relocation, amd64: \"[a-f0-9]*\"/sha256 cellar: :any_skip_relocation, amd64: \"${AMD64_SHA256}\"/" cqlai.rb
+
+      - name: Commit and push changes
+        run: |
+          set -x
+          cd homebrew
+
+          VERSION="${{ steps.brew_info.outputs.version }}"
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          git add cqlai.rb
+          git commit -m "Update cqlai to ${VERSION}" || echo "No changes to commit"
+          git push origin main
 
   # Create GitHub Release
   create-release:
