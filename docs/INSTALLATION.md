@@ -20,10 +20,10 @@ Add the CQLAI repository and install:
 
 ```bash
 # Add the repository key
-curl -fsSL https://packages.axonops.com/apt/KEY.gpg | sudo apt-key add -
+curl -fsSL https://packages.axonops.com/apt/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/axonops-archive-keyring.gpg
 
 # Add the repository
-echo "deb https://packages.axonops.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cqlai.list
+echo "deb [signed-by=/usr/share/keyrings/axonops-archive-keyring.gpg] https://packages.axonops.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cqlai.list
 
 # Update package list
 sudo apt update
