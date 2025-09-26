@@ -53,6 +53,10 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		{"", "CAPTURE JSON 'file'", "Capture as JSON format"},
 		{"", "CAPTURE PARQUET 'file'", "Capture as Parquet format"},
 		{"", "CAPTURE OFF", "Stop capturing output"},
+		{"", "SAVE", "Interactive save dialog for last results"},
+		{"", "SAVE 'file.csv'", "Save last results to CSV file"},
+		{"", "SAVE 'file.json'", "Save last results to JSON file"},
+		{"", "SAVE 'file.txt' ASCII", "Save as ASCII table format"},
 
 		// Information
 		{"─────────", "─────────", "─────────────"},
@@ -65,10 +69,6 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		{"Files", "SOURCE 'file'", "Execute CQL from file"},
 		{"", "COPY <table> TO 'file'", "Export table data to CSV/Parquet"},
 		{"", "COPY <table> FROM 'file'", "Import CSV/Parquet to table"},
-		{"", "  TO 's3://bucket/file'", "Export to S3 (AWS/MinIO)"},
-		{"", "  FROM 's3://bucket/file'", "Import from S3"},
-		{"", "  TO 'gs://bucket/file'", "Export to Google Cloud Storage"},
-		{"", "  TO 'az://container/file'", "Export to Azure Blob Storage"},
 		{"", "  WITH FORMAT='parquet'", "Use Apache Parquet format"},
 		{"", "  WITH HEADER=true", "First row has column names"},
 		{"", "  WITH DELIMITER=','", "Field separator (CSV only)"},

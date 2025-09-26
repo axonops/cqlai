@@ -8,25 +8,5 @@ func (ce *CompletionEngine) getShowCompletions(_ []string, wordPos int) []string
 	return []string{}
 }
 
-func (pce *ParserBasedCompletionEngine) getConsistencySuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		return ConsistencyLevels
-	}
-	return []string{}
-}
 
-func (pce *ParserBasedCompletionEngine) getOutputSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		// After OUTPUT, suggest format types
-		return OutputFormats
-	}
-	return []string{}
-}
 
-func (pce *ParserBasedCompletionEngine) getAutoFetchSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		// After AUTOFETCH, suggest ON or OFF
-		return []string{"ON", "OFF"}
-	}
-	return []string{}
-}

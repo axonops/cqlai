@@ -103,25 +103,3 @@ func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []
 	return []string{}
 }
 
-func (pce *ParserBasedCompletionEngine) getDeleteSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		return FromKeyword
-	}
-
-	hasFrom := false
-	hasWhere := false
-	for _, t := range tokens {
-		if t == "FROM" {
-			hasFrom = true
-		}
-		if t == "WHERE" {
-			hasWhere = true
-		}
-	}
-
-	if hasFrom && !hasWhere {
-		return WhereUsingIf
-	}
-
-	return []string{}
-}

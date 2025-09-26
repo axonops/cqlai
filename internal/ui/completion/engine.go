@@ -114,14 +114,14 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 		}
 	}
 
-	// Use the parser-based completion engine
+	// Use the simple completion engine
 	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Using parser-based completion for: '%s'\n", input)
+		fmt.Fprintf(debugFile, "[DEBUG] Using simple completion for: '%s'\n", input)
 		defer debugFile.Close()
 	}
 
-	parserEngine := NewParserBasedCompletionEngine(ce)
-	suggestions := parserEngine.GetTokenCompletions(input)
+	simpleEngine := NewSimpleCompletionEngine(ce)
+	suggestions := simpleEngine.GetTokenCompletions(input)
 
 	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Parser returned %d suggestions\n", len(suggestions))

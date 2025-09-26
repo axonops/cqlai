@@ -170,7 +170,6 @@ var CopyFileSuggestions = []string{
 	"'/data/partitioned/export/'", // For partitioned datasets
 	"'./export.csv'",
 	"'./export.parquet'",
-	"'s3://bucket/path/data.parquet'", // Cloud storage example
 }
 
 // CopyOptions for COPY command WITH clause

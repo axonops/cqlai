@@ -549,7 +549,7 @@ func (h *MetaCommandHandler) Close() {
 	if h.captureOutput != nil {
 		// If JSON format, close the array
 		if h.captureFormat == "json" {
-			// For cloud storage, we can't seek back, so just close the array
+			// Close the JSON array
 			_, _ = h.captureOutput.Write([]byte("\n]\n"))
 		} else if h.captureFormat == "csv" && h.csvWriter != nil {
 			// Flush CSV writer

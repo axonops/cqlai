@@ -12,7 +12,6 @@ import (
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
-	"github.com/axonops/cqlai/internal/storage"
 )
 
 // handleCapture handles CAPTURE command to save output to file
@@ -142,21 +141,8 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 
 	// For non-partitioned formats, create the file immediately
 	if partitionColumns == "" {
-		var writer io.WriteCloser
-		var err error
-
-		// Use cloud-aware writer creation for all formats
-		if storage.IsCloudURL(filename) {
-			writer, err = parquet.CreateWriter(context.Background(), filename)
-		} else {
-			// For local files, use standard file creation
-			file, err := os.Create(filename) // #nosec G304 - User-provided capture filename
-			if err != nil {
-				return fmt.Sprintf("Error opening capture file: %v", err)
-			}
-			writer = file
-		}
-
+		// Use parquet.CreateWriter which handles both local files and cloud URL error messages
+		writer, err := parquet.CreateWriter(context.Background(), filename)
 		if err != nil {
 			return fmt.Sprintf("Error opening capture file: %v", err)
 		}
@@ -213,8 +199,7 @@ func (h *MetaCommandHandler) stopCapture() interface{} {
 		// If JSON format, properly close the array
 		switch h.captureFormat {
 		case "json":
-			// For cloud storage, we can't seek back, so just close the array
-			// This may leave a trailing comma, but it's a minor issue
+			// Close the JSON array
 			_, _ = h.captureOutput.Write([]byte("\n]\n"))
 		case "csv":
 			if h.csvWriter != nil {
@@ -330,8 +315,7 @@ func (h *MetaCommandHandler) WriteCaptureText(command string, output string) err
 			return err
 		}
 
-		// For cloud storage, we can't check file size, so always add comma
-		// TODO: Track if this is the first record to avoid leading comma
+		// Add comma separator between JSON records
 		_, _ = h.captureOutput.Write([]byte(",\n  "))
 		_, _ = h.captureOutput.Write(jsonBytes)
 
@@ -633,8 +617,7 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 			return err
 		}
 
-		// For cloud storage, we can't check file size, so always add comma
-		// TODO: Track if this is the first record to avoid leading comma
+		// Add comma separator between JSON records
 		_, _ = h.captureOutput.Write([]byte(",\n  "))
 		_, _ = h.captureOutput.Write(jsonBytes)
 
