@@ -17,9 +17,10 @@ type IndexInfo struct {
 
 // DescribeIndexQuery executes the query to get index information (for pre-4.0)
 func (s *Session) DescribeIndexQuery(keyspace string, indexName string) (*IndexInfo, error) {
-	query := `SELECT table_name, index_name, kind, options 
-	          FROM system_schema.indexes 
-	          WHERE keyspace_name = ? AND index_name = ?`
+	// Need ALLOW FILTERING since we're not specifying table_name
+	query := `SELECT table_name, index_name, kind, options
+	          FROM system_schema.indexes
+	          WHERE keyspace_name = ? AND index_name = ? ALLOW FILTERING`
 
 	iter := s.Query(query, keyspace, indexName).Iter()
 
@@ -34,6 +35,31 @@ func (s *Session) DescribeIndexQuery(keyspace string, indexName string) (*IndexI
 
 	return &IndexInfo{
 		TableName: tableName,
+		IndexName: idxName,
+		Kind:      kind,
+		Options:   options,
+	}, nil
+}
+
+// DescribeIndexQueryWithTable executes the query to get index information when table is known
+func (s *Session) DescribeIndexQueryWithTable(keyspace string, tableName string, indexName string) (*IndexInfo, error) {
+	query := `SELECT table_name, index_name, kind, options
+	          FROM system_schema.indexes
+	          WHERE keyspace_name = ? AND table_name = ? AND index_name = ?`
+
+	iter := s.Query(query, keyspace, tableName, indexName).Iter()
+
+	var tblName, idxName, kind string
+	var options map[string]string
+
+	if !iter.Scan(&tblName, &idxName, &kind, &options) {
+		_ = iter.Close()
+		return nil, fmt.Errorf("index '%s' not found in keyspace '%s' table '%s'", indexName, keyspace, tableName)
+	}
+	_ = iter.Close()
+
+	return &IndexInfo{
+		TableName: tblName,
 		IndexName: idxName,
 		Kind:      kind,
 		Options:   options,

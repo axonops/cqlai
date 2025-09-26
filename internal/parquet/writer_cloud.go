@@ -2,10 +2,10 @@ package parquet
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
-
-	"github.com/axonops/cqlai/internal/storage"
+	"strings"
 )
 
 // CreateWriter creates an appropriate writer based on the output path
@@ -16,14 +16,13 @@ func CreateWriter(ctx context.Context, output string) (io.WriteCloser, error) {
 		return nopCloser{os.Stdout}, nil
 	}
 
-	// Parse URL to check if it's a cloud URL (will return error for cloud URLs)
-	config, err := storage.ParseURL(output)
-	if err != nil {
-		return nil, err // This will include the helpful error message about cloud URLs
+	// Check if this looks like a cloud URL that we no longer support
+	if looksLikeCloudURL(output) {
+		return nil, fmt.Errorf("cloud storage URLs (s3://, gs://, az://) are no longer supported. Please mount your cloud storage as a local filesystem using rclone or similar tools. See: https://github.com/axonops/cqlai/blob/main/docs/cloud-storage.md")
 	}
 
 	// Create local file writer
-	return os.Create(config.Path) // #nosec G304 - output path is validated by caller
+	return os.Create(output) // #nosec G304 - output path is validated by caller
 }
 
 // nopCloser wraps an io.Writer to add a no-op Close method
@@ -43,12 +42,34 @@ func CreateReader(ctx context.Context, input string) (io.ReadCloser, error) {
 		return io.NopCloser(os.Stdin), nil
 	}
 
-	// Parse URL to check if it's a cloud URL (will return error for cloud URLs)
-	config, err := storage.ParseURL(input)
-	if err != nil {
-		return nil, err // This will include the helpful error message about cloud URLs
+	// Check if this looks like a cloud URL that we no longer support
+	if looksLikeCloudURL(input) {
+		return nil, fmt.Errorf("cloud storage URLs (s3://, gs://, az://) are no longer supported. Please mount your cloud storage as a local filesystem using rclone or similar tools. See: https://github.com/axonops/cqlai/blob/main/docs/cloud-storage.md")
 	}
 
 	// Create local file reader
-	return os.Open(config.Path) // #nosec G304 - input path is validated by caller
+	return os.Open(input) // #nosec G304 - input path is validated by caller
+}
+
+// looksLikeCloudURL checks if a URL appears to be a cloud storage URL
+// Used to provide helpful error messages to users
+func looksLikeCloudURL(rawURL string) bool {
+	if !strings.Contains(rawURL, "://") {
+		return false
+	}
+
+	// Check for common cloud storage URL schemes
+	for _, prefix := range []string{
+		"s3://",
+		"gs://",
+		"gcs://",
+		"az://",
+		"azure://",
+	} {
+		if strings.HasPrefix(rawURL, prefix) {
+			return true
+		}
+	}
+
+	return false
 }

@@ -135,39 +135,5 @@ func (ce *CompletionEngine) getTruncateCompletions(words []string, wordPos int) 
 	return []string{}
 }
 
-func (pce *ParserBasedCompletionEngine) getCreateSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		return CreateObjectTypes
-	}
 
-	if len(tokens) == 2 && tokens[1] == "MATERIALIZED" {
-		return MaterializedKeyword
-	}
 
-	return IfKeyword
-}
-
-func (pce *ParserBasedCompletionEngine) getDropSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		return CreateObjectTypes // DROP supports same objects as CREATE
-	}
-
-	if len(tokens) == 2 && tokens[1] == "MATERIALIZED" {
-		return MaterializedKeyword
-	}
-
-	// After object type, suggest IF EXISTS
-	return IfKeyword
-}
-
-func (pce *ParserBasedCompletionEngine) getAlterSuggestions(tokens []string) []string {
-	if len(tokens) == 1 {
-		return AlterObjectTypes
-	}
-
-	if len(tokens) == 2 && tokens[1] == "MATERIALIZED" {
-		return MaterializedKeyword
-	}
-
-	return []string{}
-}
