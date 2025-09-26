@@ -195,7 +195,7 @@ func (e *Executor) Execute(cql string) error {
 	default:
 		// For any other type, try to print it as a string
 		if v != nil {
-			fmt.Fprintln(e.writer, fmt.Sprintf("%v", v))
+			fmt.Fprintf(e.writer, "%v\n", v)
 		}
 		return nil
 	}

@@ -160,9 +160,6 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 						if err == nil && indexInfo != nil {
 							result.WriteString(formatIndexCreateStatement(ks, indexInfo))
 							result.WriteString("\n\n")
-						} else if err != nil {
-							// Silently skip errors for now - indexes might not be accessible
-							// fmt.Printf("DEBUG: Error describing index %s.%s.%s: %v\n", ks, idx.table, idx.name, err)
 						}
 					}
 				}
