@@ -750,6 +750,10 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				m.input.SetValue("")
 				m.input.Focus()
 			}
+			// Refresh the trace view if we have trace data
+			if m.hasTrace {
+				m.refreshTraceView()
+			}
 		}
 		return m, nil
 
@@ -833,6 +837,9 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 					}
 				}
 
+				// Clear cache and initial widths to force full rebuild with new headers
+				m.cachedTableLines = nil
+				m.initialColumnWidths = nil // Allow column widths to be recalculated
 				// Refresh the table display with the updated data
 				tableStr := m.formatTableForViewport(m.lastTableData)
 				m.tableViewport.SetContent(tableStr)

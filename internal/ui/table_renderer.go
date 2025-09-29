@@ -151,6 +151,9 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 			styledCell := m.styles.AccentText.Bold(true).Render(cell) + "\x1b[0m"
 			plainCell := stripAnsi(cell)
 			padding := colWidths[i] - len([]rune(plainCell))
+			if padding < 0 {
+				padding = 0
+			}
 			headerRow += " " + styledCell + strings.Repeat(" ", padding) + " │"
 		}
 		lines = append(lines, headerRow)
@@ -179,6 +182,9 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 		for j, cell := range row {
 			plainCell := stripAnsi(cell)
 			padding := colWidths[j] - len([]rune(plainCell))
+			if padding < 0 {
+				padding = 0
+			}
 			dataRow += " " + cell + strings.Repeat(" ", padding) + " │"
 		}
 		lines = append(lines, dataRow)
@@ -309,10 +315,14 @@ func (m *MainModel) refreshTraceView() {
 	originalWidth := m.tableWidth
 	originalHeaders := m.tableHeaders
 	originalColWidths := m.columnWidths
+	originalCachedLines := m.cachedTableLines
+	originalInitialWidths := m.initialColumnWidths
 
 	// Set trace data temporarily
 	m.horizontalOffset = m.traceHorizontalOffset
 	m.lastTableData = m.traceData
+	m.cachedTableLines = nil // Force rebuild for trace data
+	m.initialColumnWidths = nil // Reset column widths for trace
 
 	// Format using existing table renderer
 	traceTable := m.formatTableForViewport(m.traceData)
@@ -327,6 +337,8 @@ func (m *MainModel) refreshTraceView() {
 	m.tableWidth = originalWidth
 	m.tableHeaders = originalHeaders
 	m.columnWidths = originalColWidths
+	m.cachedTableLines = originalCachedLines
+	m.initialColumnWidths = originalInitialWidths
 
 	// Prepend summary line to the table
 	finalContent := summaryLine + traceTable

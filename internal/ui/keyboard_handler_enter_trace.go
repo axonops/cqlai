@@ -45,24 +45,30 @@ func (m *MainModel) captureTraceData(command string) {
 			originalWidth := m.tableWidth
 			originalHeaders := m.tableHeaders
 			originalColWidths := m.columnWidths
-			
+			originalCachedLines := m.cachedTableLines
+			originalInitialWidths := m.initialColumnWidths
+
 			// Set trace data temporarily
 			m.horizontalOffset = m.traceHorizontalOffset
 			m.lastTableData = fullTraceData
-			
+			m.cachedTableLines = nil // Force rebuild for trace data
+			m.initialColumnWidths = nil // Reset column widths for trace
+
 			// Format using existing table renderer
 			traceTable := m.formatTableForViewport(fullTraceData)
-			
+
 			// Store trace-specific values
 			m.traceTableWidth = m.tableWidth
 			m.traceColumnWidths = m.columnWidths
-			
+
 			// Restore original table values
 			m.horizontalOffset = originalOffset
 			m.lastTableData = originalData
 			m.tableWidth = originalWidth
 			m.tableHeaders = originalHeaders
 			m.columnWidths = originalColWidths
+			m.cachedTableLines = originalCachedLines
+			m.initialColumnWidths = originalInitialWidths
 			
 			// Prepend summary line to the table
 			finalContent := summaryLine + traceTable
