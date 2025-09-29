@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // formatTableForViewport formats a 2D array of strings as a table for the viewport
@@ -12,63 +14,123 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 		return ""
 	}
 
-	// Calculate column widths (using rune count for proper Unicode handling)
-	colWidths := make([]int, len(data[0]))
-	for _, row := range data {
-		for i, cell := range row {
-			plainCell := stripAnsi(cell)
-			cellWidth := len([]rune(plainCell)) // Count runes, not bytes
-			if cellWidth > colWidths[i] {
-				colWidths[i] = cellWidth
+	// Check if we need to rebuild the table (data changed)
+	needsRebuild := m.cachedTableLines == nil || !m.isSameTableData(data)
+
+	if needsRebuild {
+		// Use initial column widths if available, otherwise calculate them
+		var colWidths []int
+		if m.initialColumnWidths != nil && len(m.initialColumnWidths) == len(data[0]) {
+			// Use preserved initial widths for consistency
+			colWidths = make([]int, len(m.initialColumnWidths))
+			copy(colWidths, m.initialColumnWidths)
+		} else {
+			// Calculate column widths (using rune count for proper Unicode handling)
+			colWidths = make([]int, len(data[0]))
+			for _, row := range data {
+				for i, cell := range row {
+					plainCell := stripAnsi(cell)
+					cellWidth := len([]rune(plainCell)) // Count runes, not bytes
+					if cellWidth > colWidths[i] {
+						colWidths[i] = cellWidth
+					}
+				}
 			}
+
+			// Apply maximum column width cap for multi-line content
+			// This ensures consistent column widths across all pages
+			maxColWidth := 80
+			for i := range colWidths {
+				if colWidths[i] > maxColWidth {
+					colWidths[i] = maxColWidth
+				}
+			}
+
+			// Store as initial widths for consistency across pagination
+			m.initialColumnWidths = make([]int, len(colWidths))
+			copy(m.initialColumnWidths, colWidths)
 		}
-	}
 
-	// Store column widths for sticky header alignment
-	m.columnWidths = colWidths
+		// Store column widths for sticky header alignment
+		m.columnWidths = colWidths
 
-	// Check if any cell has multi-line content
-	hasMultiLine := false
-	for _, row := range data {
-		for _, cell := range row {
-			if strings.Contains(cell, "\n") || len([]rune(stripAnsi(cell))) > 80 {
-				hasMultiLine = true
+		// Check if any cell has multi-line content
+		hasMultiLine := false
+		for _, row := range data {
+			for _, cell := range row {
+				if strings.Contains(cell, "\n") || len([]rune(stripAnsi(cell))) > 80 {
+					hasMultiLine = true
+					break
+				}
+			}
+			if hasMultiLine {
 				break
 			}
 		}
+
+		var fullLines []string
 		if hasMultiLine {
-			break
+			// Use multi-line capable table builder
+			fullLines = m.buildFullTableMultiline(data, colWidths)
+		} else {
+			// Use regular table builder for better performance on simple tables
+			fullLines = m.buildFullTable(data, colWidths)
+		}
+
+		// Cache the rendered lines
+		m.cachedTableLines = fullLines
+
+		// Debug: Log the last few lines to verify bottom border is included
+		if len(fullLines) >= 3 {
+			lastIdx := len(fullLines) - 1
+			logger.DebugfToFile("Table", "Last 3 cached lines: [%d]=%q, [%d]=%q, [%d]=%q",
+				lastIdx-2, stripAnsi(fullLines[lastIdx-2]),
+				lastIdx-1, stripAnsi(fullLines[lastIdx-1]),
+				lastIdx, stripAnsi(fullLines[lastIdx]))
+		}
+
+		// Calculate total table width
+		if len(fullLines) > 0 {
+			m.tableWidth = len(stripAnsi(fullLines[0]))
 		}
 	}
 
-	var fullLines []string
-	if hasMultiLine {
-		// Use multi-line capable table builder
-		fullLines = m.buildFullTableMultiline(data, colWidths)
-	} else {
-		// Use regular table builder for better performance on simple tables
-		fullLines = m.buildFullTable(data, colWidths)
-	}
-
-	// Calculate total table width
-	if len(fullLines) > 0 {
-		m.tableWidth = len(stripAnsi(fullLines[0]))
-	}
-
-	// Apply horizontal scrolling only if offset is > 0
-	// If table is wider but offset is 0, show the leftmost part completely
-	if m.horizontalOffset > 0 {
-		scrolledLines := applyHorizontalScrollWithANSI(fullLines, m.horizontalOffset, m.tableViewport.Width)
+	// Apply horizontal scrolling to cached lines
+	if m.horizontalOffset > 0 && m.cachedTableLines != nil {
+		scrolledLines := applyHorizontalScrollWithANSI(m.cachedTableLines, m.horizontalOffset, m.tableViewport.Width)
 		return strings.Join(scrolledLines, "\n")
 	}
 
-	// Join all lines
-	return strings.Join(fullLines, "\n")
+	// Return cached lines
+	if m.cachedTableLines != nil {
+		return strings.Join(m.cachedTableLines, "\n")
+	}
+
+	return ""
 }
+
+// isSameTableData checks if the table data has changed
+func (m *MainModel) isSameTableData(data [][]string) bool {
+	if m.lastTableData == nil || data == nil {
+		return m.lastTableData == nil && data == nil
+	}
+	if len(m.lastTableData) != len(data) {
+		return false
+	}
+	// For now, just check if it's the same length and first/last elements match
+	// This is a heuristic that works because we typically reuse the same slice
+	if len(m.lastTableData) > 0 && len(data) > 0 {
+		// Check if first and last row are the same (pointer comparison)
+		return &m.lastTableData[0] == &data[0]
+	}
+	return true
+}
+
 
 // buildFullTable builds the complete table with borders and formatting
 func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 	var lines []string
+	m.tableRowBoundaries = []int{} // Reset row boundaries
 
 	// Top border
 	topBorder := "┌"
@@ -110,6 +172,9 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 		if i == 0 {
 			continue // Skip header row, already processed
 		}
+		// Record the starting line of this data row
+		m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines))
+
 		dataRow := "│"
 		for j, cell := range row {
 			plainCell := stripAnsi(cell)
@@ -130,6 +195,9 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 	bottomBorder += "┘"
 	lines = append(lines, bottomBorder)
 
+	// Add the bottom border line as a boundary so it's included when scrolling to bottom
+	m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines)-1)
+
 	return lines
 }
 
@@ -149,6 +217,10 @@ func (m *MainModel) refreshTableView() {
 
 		// Update the table viewport content
 		m.tableViewport.SetContent(tableStr)
+
+		// Debug: Log viewport state
+		logger.DebugfToFile("Table", "refreshTableView: TotalLineCount=%d, Height=%d, YOffset=%d, cachedLines=%d",
+			m.tableViewport.TotalLineCount(), m.tableViewport.Height, currentYOffset, len(m.cachedTableLines))
 
 		// Restore scroll position
 		m.tableViewport.YOffset = currentYOffset

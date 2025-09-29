@@ -56,6 +56,22 @@ func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if newOffset < 0 {
 			newOffset = 0
 		}
+
+		// Snap to row boundary to avoid cutting through multi-line cells
+		if len(m.tableRowBoundaries) > 0 && newOffset > 0 {
+			// Find the closest row boundary that's >= newOffset
+			// When scrolling up, we want to align to the start of a row
+			bestOffset := 0
+			for _, boundary := range m.tableRowBoundaries {
+				if boundary <= newOffset {
+					bestOffset = boundary
+				} else {
+					break
+				}
+			}
+			newOffset = bestOffset
+		}
+
 		m.tableViewport.YOffset = newOffset
 	default:
 		scrollAmount = int(float64(m.historyViewport.Height) * 0.8)
@@ -113,7 +129,11 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height
+		// Calculate max offset - ensure we can see the last line
+		totalLines := m.tableViewport.TotalLineCount()
+		viewportHeight := m.tableViewport.Height
+		// The max offset should allow the last line to be visible at the bottom
+		maxOffset := totalLines - viewportHeight
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
@@ -121,6 +141,46 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
+
+		// Check if we're at the bottom and there's no more data to load
+		atBottom := newOffset >= maxOffset
+		noMoreData := m.slidingWindow == nil || !m.slidingWindow.hasMoreData
+		logger.DebugfToFile("Nav", "PageDown: totalLines=%d, viewportHeight=%d, maxOffset=%d, newOffset=%d, atBottom=%v",
+			totalLines, viewportHeight, maxOffset, newOffset, atBottom)
+
+		// Snap to row boundary to avoid cutting through multi-line cells
+		if len(m.tableRowBoundaries) > 0 {
+			// Special case: if we're at the bottom with no more data,
+			// make sure the last boundary (bottom border) is visible
+			if atBottom && noMoreData && len(m.tableRowBoundaries) > 0 {
+				// The last boundary is the bottom border line
+				lastBoundary := m.tableRowBoundaries[len(m.tableRowBoundaries)-1]
+				// Position the viewport so the bottom border is at the bottom of the screen
+				// This means the offset should be: lastBoundary - viewportHeight + 1
+				// (+1 to include the border line itself)
+				desiredOffset := lastBoundary - viewportHeight + 1
+				if desiredOffset < 0 {
+					desiredOffset = 0
+				}
+				if desiredOffset <= maxOffset {
+					newOffset = desiredOffset
+				} else {
+					newOffset = maxOffset
+				}
+				logger.DebugfToFile("Nav", "PageDown at bottom: lastBoundary=%d, desiredOffset=%d, maxOffset=%d, finalOffset=%d",
+					lastBoundary, desiredOffset, maxOffset, newOffset)
+			} else {
+				// Normal case: find the closest row boundary that's <= newOffset
+				bestOffset := m.tableViewport.YOffset
+				for _, boundary := range m.tableRowBoundaries {
+					if boundary <= newOffset && boundary > bestOffset {
+						bestOffset = boundary
+					}
+				}
+				newOffset = bestOffset
+			}
+		}
+
 		m.tableViewport.YOffset = newOffset
 
 		// Check if we need to load more data
@@ -259,9 +319,25 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				m.traceViewport.YOffset--
 			}
 		case m.viewMode == "table" && m.hasTable:
-			// Scroll table up by one line
+			// Scroll table up to previous row boundary
 			if m.tableViewport.YOffset > 0 {
-				m.tableViewport.YOffset--
+				newOffset := m.tableViewport.YOffset - 1
+
+				// Find the previous row boundary
+				if len(m.tableRowBoundaries) > 0 {
+					for i := len(m.tableRowBoundaries) - 1; i >= 0; i-- {
+						if m.tableRowBoundaries[i] < m.tableViewport.YOffset {
+							newOffset = m.tableRowBoundaries[i]
+							break
+						}
+					}
+					// If we didn't find a boundary, go to top
+					if newOffset == m.tableViewport.YOffset - 1 {
+						newOffset = 0
+					}
+				}
+
+				m.tableViewport.YOffset = newOffset
 			}
 		default:
 			// Scroll history up by one line
@@ -337,13 +413,50 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				m.traceViewport.YOffset++
 			}
 		case m.viewMode == "table" && m.hasTable:
-			// Scroll table down by one line
-			maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height
+			// Scroll table down to next row boundary
+			totalLines := m.tableViewport.TotalLineCount()
+			viewportHeight := m.tableViewport.Height
+			maxOffset := totalLines - viewportHeight
 			if maxOffset < 0 {
 				maxOffset = 0
 			}
+
+			// Check if we're at the end with no more data
+			noMoreData := m.slidingWindow == nil || !m.slidingWindow.hasMoreData
+
 			if m.tableViewport.YOffset < maxOffset {
-				m.tableViewport.YOffset++
+				newOffset := m.tableViewport.YOffset + 1
+
+				// Find the next row boundary
+				if len(m.tableRowBoundaries) > 0 {
+					for _, boundary := range m.tableRowBoundaries {
+						if boundary > m.tableViewport.YOffset {
+							newOffset = boundary
+							break
+						}
+					}
+				}
+
+				// Special handling for the last boundary (bottom border)
+				if noMoreData && len(m.tableRowBoundaries) > 0 {
+					lastBoundary := m.tableRowBoundaries[len(m.tableRowBoundaries)-1]
+					if newOffset >= lastBoundary - viewportHeight {
+						// Position to show the bottom border
+						desiredOffset := lastBoundary - viewportHeight + 1
+						if desiredOffset < 0 {
+							desiredOffset = 0
+						}
+						if desiredOffset <= maxOffset {
+							newOffset = desiredOffset
+						} else {
+							newOffset = maxOffset
+						}
+					}
+				} else if newOffset > maxOffset {
+					newOffset = maxOffset
+				}
+
+				m.tableViewport.YOffset = newOffset
 
 				// Check if we need to load more data
 				if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
