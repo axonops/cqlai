@@ -18,51 +18,6 @@ func (e *Executor) outputTable(data [][]string) error {
 	return nil
 }
 
-// outputStreamingRows outputs rows during streaming
-func (e *Executor) outputStreamingRows(rows [][]string, headers []string) error {
-	if len(rows) == 0 {
-		return nil
-	}
-
-	// For streaming, we just output the row content without headers or borders
-	// since the header was already printed
-	for _, row := range rows {
-		// Format each row with proper spacing
-		fmt.Fprintf(e.writer, "| ")
-		for i, cell := range row {
-			// Calculate column width based on header
-			colWidth := len(headers[i])
-			if colWidth < len(cell) {
-				colWidth = len(cell)
-			}
-			fmt.Fprintf(e.writer, "%-*s | ", colWidth, cell)
-		}
-		fmt.Fprintln(e.writer)
-	}
-
-	return nil
-}
-
-// printTableBottom prints the bottom border of a table
-func (e *Executor) printTableBottom(headers []string) {
-	// Calculate the total width needed
-	totalWidth := 1 // Start with initial '+'
-	for _, header := range headers {
-		totalWidth += len(header) + 3 // +3 for " | " or "-+-"
-	}
-
-	// Print bottom border
-	fmt.Fprint(e.writer, "+")
-	for i, header := range headers {
-		for j := 0; j < len(header)+2; j++ {
-			fmt.Fprint(e.writer, "-")
-		}
-		if i < len(headers)-1 {
-			fmt.Fprint(e.writer, "+")
-		}
-	}
-	fmt.Fprintln(e.writer, "+")
-}
 
 // printTraceData prints tracing information if available
 func (e *Executor) printTraceData() {

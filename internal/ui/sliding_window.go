@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"context"
 	"fmt"
-	"time"
-	
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
+
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 )
 
@@ -25,9 +25,9 @@ type SlidingWindowTable struct {
 	TotalRowsSeen int64 // Total rows processed (may be more than in memory)
 	CurrentMemory int64 // Approximate current memory usage
 	
-	// Iterator state for loading more data
-	iterator     interface{} // Store the gocql iterator if still available
-	hasMoreData  bool       // Whether more data can be fetched
+	// Streaming result for loading more data
+	streamingResult *db.StreamingResult // Store the streaming result if still available
+	hasMoreData     bool                // Whether more data can be fetched
 	
 	// Indicators for UI
 	DataDroppedAtStart bool // True if we've dropped rows from the beginning
@@ -171,62 +171,33 @@ func (swt *SlidingWindowTable) GetStatusInfo() string {
 	return ""
 }
 
-// LoadMoreRows loads more rows from the iterator if available
+// LoadMoreRows loads more rows from the streaming result if available
 func (swt *SlidingWindowTable) LoadMoreRows(maxRows int) int {
-	if swt.iterator == nil || !swt.hasMoreData {
+	if swt.streamingResult == nil || !swt.hasMoreData {
 		return 0
 	}
-	
-	// Cast iterator to *gocql.Iter
-	iter, ok := swt.iterator.(*gocql.Iter)
-	if !ok {
-		logger.DebugToFile("SlidingWindowTable", "Iterator is not *gocql.Iter")
+
+	ctx := context.Background()
+	rows, hasMore, err := swt.streamingResult.LoadMore(ctx, maxRows)
+	if err != nil {
+		logger.DebugfToFile("SlidingWindowTable", "Error loading more rows: %v", err)
+		swt.hasMoreData = false
+		swt.streamingResult = nil
 		return 0
 	}
-	
-	loadedRows := 0
-	for loadedRows < maxRows {
-		rowMap := make(map[string]interface{})
-		if !iter.MapScan(rowMap) {
-			// No more data or error
-			swt.hasMoreData = false
-			if err := iter.Close(); err != nil {
-				logger.DebugfToFile("SlidingWindowTable", "Iterator close error: %v", err)
-			}
-			swt.iterator = nil
-			break
-		}
-		
-		// Convert row to string array using column names
-		row := make([]string, len(swt.ColumnNames))
-		for i, colName := range swt.ColumnNames {
-			if val, ok := rowMap[colName]; ok {
-				if val == nil {
-					row[i] = "null"
-				} else {
-					// Handle different types appropriately
-					switch typed := val.(type) {
-					case gocql.UUID:
-						row[i] = typed.String()
-					case []byte:
-						row[i] = fmt.Sprintf("0x%x", typed)
-					case time.Time:
-						row[i] = typed.Format(time.RFC3339)
-					default:
-						row[i] = fmt.Sprintf("%v", val)
-					}
-				}
-			} else {
-				row[i] = "null"
-			}
-		}
-		
+
+	// Add the loaded rows
+	for _, row := range rows {
 		swt.AddRow(row)
-		loadedRows++
 	}
-	
-	logger.DebugfToFile("SlidingWindowTable", "Loaded %d more rows", loadedRows)
-	return loadedRows
+
+	swt.hasMoreData = hasMore
+	if !hasMore {
+		swt.streamingResult = nil
+	}
+
+	logger.DebugfToFile("SlidingWindowTable", "Loaded %d more rows", len(rows))
+	return len(rows)
 }
 
 // GetUncapturedRows returns rows that haven't been written to capture file yet
@@ -268,7 +239,7 @@ func (swt *SlidingWindowTable) Reset() {
 	swt.CurrentMemory = 0
 	swt.DataDroppedAtStart = false
 	swt.DataAvailableAtEnd = false
-	swt.iterator = nil
+	swt.streamingResult = nil
 	swt.hasMoreData = false
 	swt.LastCapturedRow = 0
 }

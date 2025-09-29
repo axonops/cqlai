@@ -522,9 +522,10 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		cleanHeaders[i] = col.Name
 	}
 
-	// Virtual tables need different handling due to nil TypeInfo
-	if isVirtualTable {
-		// Use MapScan for virtual tables since TypeInfo might be incomplete
+	// Use MapScan for all tables to safely handle NULL values
+	// gocql can panic when scanning NULLs into interface{} with regular Scan()
+	// MapScan handles NULLs gracefully by omitting them from the map
+	if true {  // Always use MapScan for safety
 		virtualResults := make([][]string, 0)
 		for {
 			rowMap := make(map[string]interface{})
@@ -557,17 +558,31 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 			scanDest := make([]interface{}, len(filteredColumns))
 			for i, col := range filteredColumns {
 				// Handle nil TypeInfo (can happen with virtual tables)
-				switch {
-				case col.TypeInfo == nil:
+				if col.TypeInfo == nil {
 					scanDest[i] = new(interface{})
-				case col.TypeInfo.Type() == gocql.TypeUDT:
-					// Use map[string]interface{} for UDT columns
-					// Note: gocql doesn't populate UDTs properly when scanning into interface{}
-					// but it does work when scanning into *map[string]interface{}
-					scanDest[i] = new(map[string]interface{})
-				default:
-					scanDest[i] = new(interface{})
+					continue
 				}
+
+				// Use defer/recover to catch any panic from Type() call
+				// TypeInfo might be non-nil but internally invalid
+				func(idx int) {
+					defer func() {
+						if r := recover(); r != nil {
+							// TypeInfo is invalid, treat as regular column
+							scanDest[idx] = new(interface{})
+						}
+					}()
+
+					switch col.TypeInfo.Type() {
+					case gocql.TypeUDT:
+						// Use map[string]interface{} for UDT columns
+						// Note: gocql doesn't populate UDTs properly when scanning into interface{}
+						// but it does work when scanning into *map[string]interface{}
+						scanDest[idx] = new(map[string]interface{})
+					default:
+						scanDest[idx] = new(interface{})
+					}
+				}(i)
 			}
 
 		// Scan the row

@@ -104,10 +104,13 @@ type MainModel struct {
 	tableWidth               int                 // Width of the full table (before truncation)
 	tableHeaders             []string            // Store column headers for sticky display
 	columnWidths             []int               // Store column widths for proper alignment
+	initialColumnWidths      []int               // Store initial column widths to maintain consistency
 	hasTable                 bool                // Whether we're currently displaying a table
+	cachedTableLines         []string            // Cache rendered table lines for fast scrolling
 	viewMode                 string              // "history", "table", "trace", or "ai_info"
 	showDataTypes            bool                // Whether to show column data types in table headers
 	columnTypes              []string            // Store column data types
+	tableRowBoundaries       []int               // Line numbers where table rows start
 	
 	// AI conversation view
 	aiConversationActive     bool                // Whether AI conversation view is active

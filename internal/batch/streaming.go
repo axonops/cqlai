@@ -3,10 +3,10 @@ package batch
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/ui"
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
 // handleStreamingResult handles streaming query results with automatic pagination
@@ -22,107 +22,11 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	}
 
 	// For ASCII and Table formats, stream with pagination
-	// First, print the table header
-	headerData := [][]string{result.Headers}
-	headerOutput := ui.FormatASCIITableHeader(headerData)
-	fmt.Fprint(e.writer, headerOutput)
-
 	rowCount := 0
 	var rows [][]string
+	isFirstBatch := true
+	var columnWidths []int // Store column widths from first batch
 
-	// Get column information from the iterator
-	cols := result.Iterator.Columns()
-
-	// For tables with tuples, gocql expects us to provide scan destinations
-	// for each tuple field, not just the tuple column itself.
-	// Calculate the total number of scan destinations needed.
-	scanCount := 0
-	tupleColumns := make(map[int]int) // Map column index to number of tuple elements
-
-	for i, col := range cols {
-		switch {
-		case col.TypeInfo == nil:
-			// Handle nil TypeInfo (virtual tables)
-			scanCount++
-		case col.TypeInfo.Type() == gocql.TypeTuple:
-			// Get the tuple element count from TypeInfo - use safe type assertion
-			if tupleInfo, ok := col.TypeInfo.(gocql.TupleTypeInfo); ok {
-				tupleElements := len(tupleInfo.Elems)
-				tupleColumns[i] = tupleElements
-				scanCount += tupleElements
-			} else {
-				// If we can't get tuple info, treat as single column
-				scanCount++
-			}
-		default:
-			scanCount++
-		}
-	}
-
-	// Create scan destinations
-	scanDest := make([]interface{}, scanCount)
-	udtColumns := make(map[int]*db.CQLTypeInfo)
-
-	// Get UDT decoder and registry if we might have UDT columns
-	var decoder *db.BinaryDecoder
-	var registry *db.UDTRegistry
-	if e.session != nil {
-		registry = e.session.GetUDTRegistry()
-		decoder = db.NewBinaryDecoder(registry)
-	}
-
-	// Get the current keyspace for UDT lookups
-	currentKeyspace := result.Keyspace
-	if currentKeyspace == "" && e.sessionManager != nil {
-		currentKeyspace = e.sessionManager.CurrentKeyspace()
-	}
-
-	// Set up scan destinations - handle tuples specially
-	destIdx := 0
-	for i, col := range cols {
-		switch {
-		case tupleColumns[i] > 0:
-			// For tuple columns, create destinations for each element
-			tupleCount := tupleColumns[i]
-			for j := 0; j < tupleCount; j++ {
-				scanDest[destIdx] = new(interface{})
-				destIdx++
-			}
-		case col.TypeInfo == nil:
-			// Handle nil TypeInfo (virtual tables)
-			scanDest[destIdx] = new(interface{})
-			destIdx++
-		case col.TypeInfo.Type() == gocql.TypeUDT:
-			scanDest[destIdx] = new(db.RawBytes)
-			udtColumns[destIdx] = nil
-
-			// Try to get the full type string from column types if available
-			if i < len(result.ColumnTypes) {
-				typeStr := result.ColumnTypes[i]
-				if typeStr != "" && typeStr != "udt" {
-					// Parse the type string to get the UDT info
-					parsedType, err := db.ParseCQLType(typeStr)
-					if err == nil && parsedType != nil {
-						udtColumns[destIdx] = parsedType
-					}
-				} else if typeStr == "udt" || typeStr == "" {
-					// If we just have "udt" without details, try to extract from gocql TypeInfo
-					if udtInfo, ok := col.TypeInfo.(gocql.UDTTypeInfo); ok {
-						// Create a minimal CQLTypeInfo with the UDT name
-						udtColumns[destIdx] = &db.CQLTypeInfo{
-							BaseType: "udt",
-							UDTName:  udtInfo.Name,
-							Keyspace: udtInfo.Keyspace,
-						}
-					}
-				}
-			}
-			destIdx++
-		default:
-			scanDest[destIdx] = new(interface{})
-			destIdx++
-		}
-	}
 
 	for {
 		select {
@@ -130,72 +34,56 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 			fmt.Fprintln(e.writer, "\n\nQuery interrupted by user")
 			return nil
 		default:
-			if !result.Iterator.Scan(scanDest...) {
+			// Use MapScan to handle NULLs properly - gocql can panic on NULL values with Scan()
+			rowMap := make(map[string]interface{})
+			if !result.Iterator.MapScan(rowMap) {
 				// Check for errors
 				if err := result.Iterator.Close(); err != nil {
 					return fmt.Errorf("iterator error: %w", err)
 				}
 
 				// Output final batch if we have rows
-				if len(rows) > 0 {
-					if err := e.outputStreamingRows(rows, result.Headers); err != nil {
-						return err
-					}
+				switch {
+				case len(rows) > 0 && isFirstBatch:
+					// If this is the only batch, include headers
+					allData := append([][]string{result.Headers}, rows...)
+					output := ui.FormatASCIITable(allData)
+					// Remove the row count from FormatASCIITable output as we'll add our own
+					output = strings.TrimSuffix(output, fmt.Sprintf("\n(%d rows)\n", len(rows)))
+					output = strings.TrimSuffix(output, fmt.Sprintf("\n(%d row)\n", len(rows)))
+					fmt.Fprint(e.writer, output)
+				case len(rows) > 0:
+					// For final batch of multi-batch output, just output rows with stored widths
+					allData := append([][]string{result.Headers}, rows...)
+					output := ui.FormatASCIITableRowsOnlyWithWidths(allData, columnWidths)
+					fmt.Fprint(e.writer, output)
+					// Add bottom border using stored widths
+					bottomBorder := ui.FormatASCIITableBottomWithWidths(allData, columnWidths)
+					fmt.Fprint(e.writer, bottomBorder)
+				case isFirstBatch:
+					// No rows at all, just print headers
+					headerData := [][]string{result.Headers}
+					output := ui.FormatASCIITable(headerData)
+					// Remove the row count as we'll add our own
+					output = strings.TrimSuffix(output, "\n(0 rows)\n")
+					fmt.Fprint(e.writer, output)
+				default:
+					// No rows in final batch but had previous batches - just add bottom border with stored widths
+					bottomBorder := ui.FormatASCIITableBottomWithWidths([][]string{result.Headers}, columnWidths)
+					fmt.Fprint(e.writer, bottomBorder)
 				}
 
-				// Print bottom border and row count
-				e.printTableBottom(result.Headers)
 				fmt.Fprintf(e.writer, "\n(%d rows)\n", rowCount)
 				return nil
 			}
 
-			// Convert row to string array
+			// Convert row to string array using MapScan results
 			row := make([]string, len(result.ColumnNames))
-
-			// Process scanned values - reconstruct tuples
-			destIdx := 0
-			for i := range cols {
-				if i >= len(row) {
-					break
-				}
-
-				if tupleCount, isTuple := tupleColumns[i]; isTuple {
-					// Reconstruct tuple from its elements
-					tupleElements := make([]interface{}, tupleCount)
-					for j := 0; j < tupleCount && destIdx < len(scanDest); j++ {
-						if scanDest[destIdx] != nil {
-							tupleElements[j] = *(scanDest[destIdx].(*interface{}))
-						}
-						destIdx++
-					}
-					// Format tuple as (elem1, elem2, ...)
-					row[i] = db.FormatValue(tupleElements)
-				} else if destIdx < len(scanDest) {
-					if udtTypeInfo, hasUDT := udtColumns[destIdx]; hasUDT {
-						// Handle UDT column
-						rawBytes := scanDest[destIdx].(*db.RawBytes)
-						if rawBytes != nil && *rawBytes != nil && decoder != nil {
-							// Determine keyspace
-							keyspace := udtTypeInfo.Keyspace
-							if keyspace == "" {
-								keyspace = currentKeyspace
-							}
-
-							decodedValue, err := decoder.Decode([]byte(*rawBytes), udtTypeInfo, keyspace)
-							if err == nil {
-								row[i] = db.FormatValue(decodedValue)
-							} else {
-								row[i] = db.FormatValue(*rawBytes)
-							}
-						} else {
-							row[i] = "null"
-						}
-					} else {
-						// Regular column
-						val := *(scanDest[destIdx].(*interface{}))
-						row[i] = db.FormatValue(val)
-					}
-					destIdx++
+			for i, colName := range result.ColumnNames {
+				if val, exists := rowMap[colName]; exists {
+					row[i] = db.FormatValue(val)
+				} else {
+					row[i] = "null"
 				}
 			}
 
@@ -208,8 +96,44 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 				batchSize = 100 // Default to 100 if not set
 			}
 			if len(rows) >= batchSize {
-				if err := e.outputStreamingRows(rows, result.Headers); err != nil {
-					return err
+				// For the first batch, include headers and calculate column widths
+				if isFirstBatch {
+					// Combine headers with rows to calculate proper widths
+					allData := append([][]string{result.Headers}, rows...)
+					// Store column widths for subsequent batches
+					columnWidths = ui.CalculateColumnWidths(allData)
+
+					output := ui.FormatASCIITable(allData)
+					// Remove the row count from FormatASCIITable output
+					output = strings.TrimSuffix(output, fmt.Sprintf("\n(%d rows)\n", len(rows)))
+					output = strings.TrimSuffix(output, fmt.Sprintf("\n(%d row)\n", len(rows)))
+
+					// Remove the bottom border - we'll add it at the very end
+					lines := strings.Split(output, "\n")
+					// Find and remove the last border (line starting with +) and any trailing empty lines
+					done := false
+					for i := len(lines) - 1; i >= 0 && !done; i-- {
+						switch {
+						case lines[i] == "":
+							// Remove empty line
+							lines = lines[:i]
+						case strings.HasPrefix(lines[i], "+") && strings.Contains(lines[i], "-"):
+							// Found the bottom border, remove it
+							lines = lines[:i]
+							done = true
+						default:
+							// Found a data line, stop
+							done = true
+						}
+					}
+					output = strings.Join(lines, "\n") + "\n"
+					fmt.Fprint(e.writer, output)
+					isFirstBatch = false
+				} else {
+					// For subsequent batches, use the stored column widths for consistent formatting
+					allData := append([][]string{result.Headers}, rows...)
+					output := ui.FormatASCIITableRowsOnlyWithWidths(allData, columnWidths)
+					fmt.Fprint(e.writer, output)
 				}
 				// Clear rows for next batch
 				rows = [][]string{}

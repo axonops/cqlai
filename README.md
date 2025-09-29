@@ -15,30 +15,34 @@ The original cqlsh command is written in Python which requires Python to be inst
 - macOS arm64
 
 
-It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the beautiful terminal UI, and uses [ANTLR](https://www.antlr.org/) for robust meta-command parsing. A big shout out to the cassandra gocql driver team for implementing the latest Cassandra functionalities [gocql](https://github.com/apache/cassandra-gocql-driver)
+It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss) for the beautiful terminal UI. A big shout out to the cassandra gocql driver team for implementing the latest Cassandra functionalities [gocql](https://github.com/apache/cassandra-gocql-driver)
 
 
 ---
 
 ## Project Status
 
-**CQLAI is currently in active development** but it is highly functional for daily use with Cassandra clusters. While we're still working toward a stable 1.0 release, the tool is already being used successfully in development and testing environments.
+**CQLAI is production-ready** and actively used in development, testing, and production environments with Cassandra clusters. The tool provides a complete, stable alternative to `cqlsh` with enhanced features and performance.
 
-### What Works Well
+### What Works
 - All core CQL operations and queries
-- Meta-commands (`DESCRIBE`, `SHOW`, `CONSISTENCY`, etc.)
+- Complete meta-command support (`DESCRIBE`, `SHOW`, `CONSISTENCY`, etc.)
+- Client-side command parsing (lightweight, no ANTLR dependency)
 - Data import/export with `COPY TO/FROM` (CSV and Parquet formats)
 - AI-powered query generation (OpenAI, Anthropic, Gemini)
 - SSL/TLS connections and authentication
 - User-Defined Types (UDTs) and complex data types
-- Batch mode for scripting
+- Batch mode for scripting and automation
 - Apache Parquet format support for efficient data interchange
+- Tab completion for CQL keywords, tables, columns, and keyspaces
+- Small binary size (~43MB, 53% smaller than previous versions)
 
 ### Coming Soon
 - Enhanced AI context awareness
 - Cassandra MCP service
+- Additional performance optimizations
 
-We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls) to help us reach 1.0.
+We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls).
 
 ---
 
@@ -60,7 +64,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Export Cassandra tables to Parquet files with `COPY TO` command.
     - Import Parquet files into Cassandra with automatic schema inference.
     - Partitioned datasets with Hive-style directory structures.
-    - TimeUUID virtual columns for intelligent time-based partitioning.
+    - TimeUUID / timestamp virtual columns for intelligent time-based partitioning.
     - Support for all Cassandra data types including UDTs, collections, and vectors.
 - **Configuration:**
     - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
@@ -787,7 +791,7 @@ SELECT JSON * FROM users;
 
 ## Development
 
-To work on `cqlai`, you'll need Go (≥ 1.22) and ANTLR v4.
+To work on `cqlai`, you'll need Go (≥ 1.24).
 
 #### Setup
 
@@ -826,17 +830,6 @@ make lint
 make check
 ```
 
-#### ANTLR Grammar
-
-The meta-command grammar is defined in `internal/parser/grammar/`. If you modify the `.g4` files, you must regenerate the Go parser files.
-
-```bash
-# Install the antlr4 tool if you haven't already
-go install github.com/antlr4-go/antlr/v4/cmd/antlr4@latest
-
-# Regenerate grammar files
-make grammar
-```
 
 ## Technology Stack
 
@@ -845,7 +838,6 @@ make grammar
 - **TUI Components:** [Bubbles](https://github.com/charmbracelet/bubbles)
 - **Styling:** [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 - **Cassandra Driver:** [gocql](https://github.com/gocql/gocql)
-- **Parser Generator:** [ANTLR v4](https://www.antlr.org/)
 
 ## License
 
