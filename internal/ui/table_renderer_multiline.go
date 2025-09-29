@@ -75,9 +75,10 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 	if len(data) == 0 {
 		return nil
 	}
-	
+
 	var lines []string
-	
+	m.tableRowBoundaries = []int{} // Reset row boundaries
+
 	// Determine max width for columns with very long content
 	maxColWidth := 80 // Maximum width for any column to prevent excessive wrapping
 	adjustedWidths := make([]int, len(colWidths))
@@ -88,7 +89,7 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 			adjustedWidths[i] = width
 		}
 	}
-	
+
 	// Top border
 	topBorder := "┌"
 	for i, width := range adjustedWidths {
@@ -99,25 +100,31 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 	}
 	topBorder += "┐"
 	lines = append(lines, topBorder)
-	
+
 	// Process each row
 	for rowIdx, row := range data {
+		// Skip header row for boundary tracking (we only care about data rows)
+		if rowIdx > 0 {
+			// Record the starting line of this data row
+			m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines))
+		}
+
 		// Split each cell into lines
 		cellLines := make([][]string, len(row))
 		maxLines := 1
-		
+
 		for colIdx, cell := range row {
 			if colIdx >= len(adjustedWidths) {
 				continue
 			}
-			
+
 			// Split the cell content into lines
 			cellLines[colIdx] = splitCellIntoLines(stripAnsi(cell), adjustedWidths[colIdx])
 			if len(cellLines[colIdx]) > maxLines {
 				maxLines = len(cellLines[colIdx])
 			}
 		}
-		
+
 		// Render each line of the row
 		for lineIdx := 0; lineIdx < maxLines; lineIdx++ {
 			line := "│"
@@ -125,29 +132,29 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 				if colIdx >= len(adjustedWidths) {
 					continue
 				}
-				
+
 				cellContent := ""
 				if lineIdx < len(cellLines[colIdx]) {
 					cellContent = cellLines[colIdx][lineIdx]
 				}
-				
+
 				// Apply styling for headers
 				if rowIdx == 0 {
 					cellContent = m.styles.AccentText.Bold(true).Render(cellContent) + "\x1b[0m"
 				}
-				
+
 				// Calculate padding
 				plainContent := stripAnsi(cellContent)
 				padding := adjustedWidths[colIdx] - len([]rune(plainContent))
 				if padding < 0 {
 					padding = 0
 				}
-				
+
 				line += " " + cellContent + strings.Repeat(" ", padding) + " │"
 			}
 			lines = append(lines, line)
 		}
-		
+
 		// Add separator after header row
 		if rowIdx == 0 && len(data) > 1 {
 			separator := "├"
@@ -161,7 +168,7 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 			lines = append(lines, separator)
 		}
 	}
-	
+
 	// Bottom border
 	bottomBorder := "└"
 	for i, width := range adjustedWidths {
@@ -172,6 +179,9 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 	}
 	bottomBorder += "┘"
 	lines = append(lines, bottomBorder)
-	
+
+	// Add the bottom border line as a boundary so it's included when scrolling to bottom
+	m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines)-1)
+
 	return lines
 }
