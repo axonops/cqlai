@@ -26,6 +26,7 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 		m.tableHeaders = nil
 		m.columnWidths = nil
 		m.hasTable = false
+		m.cachedTableLines = nil // Clear table cache
 		m.viewMode = "history"
 		return m, nil, true
 	}

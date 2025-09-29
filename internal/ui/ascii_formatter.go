@@ -54,25 +54,11 @@ func FormatASCIITable(data [][]string) string {
 		return "No results"
 	}
 
-	const maxColumnWidth = 50
+	// Calculate column widths based on actual content (including multi-line)
+	columnWidths := CalculateColumnWidths(data)
 
-	// Calculate column widths - minimum of actual max width and limit
-	columnWidths := make([]int, len(data[0]))
-	for _, row := range data {
-		for i, cell := range row {
-			cellWidth := len([]rune(cell))
-			// Cap at maxColumnWidth but don't pad unnecessarily
-			if cellWidth > maxColumnWidth {
-				cellWidth = maxColumnWidth
-			}
-			if cellWidth > columnWidths[i] {
-				columnWidths[i] = cellWidth
-			}
-		}
-	}
-	
 	var buf bytes.Buffer
-	
+
 	// Helper function to draw separator line
 	drawSeparator := func(leftChar, midChar, rightChar string) {
 		buf.WriteString(leftChar)
@@ -87,47 +73,140 @@ func FormatASCIITable(data [][]string) string {
 		buf.WriteString(rightChar)
 		buf.WriteString("\n")
 	}
-	
+
 	// Draw top border
 	drawSeparator("+", "+", "+")
-	
+
 	// Draw header
 	buf.WriteString("|")
 	for i, header := range data[0] {
 		buf.WriteString(" ")
-		// Headers might also need truncation
 		headerRunes := []rune(header)
-		if len(headerRunes) > columnWidths[i] {
-			truncated := string(headerRunes[:columnWidths[i]-3]) + "..."
-			buf.WriteString(truncated)
-		} else {
-			buf.WriteString(header)
-			// Add padding
-			for j := len(headerRunes); j < columnWidths[i]; j++ {
-				buf.WriteString(" ")
-			}
+		buf.WriteString(header)
+		// Add padding
+		for j := len(headerRunes); j < columnWidths[i]; j++ {
+			buf.WriteString(" ")
 		}
 		buf.WriteString(" |")
 	}
 	buf.WriteString("\n")
-	
+
 	// Draw separator after header
 	drawSeparator("+", "+", "+")
-	
-	// Draw data rows
+
+	// Draw data rows with multi-line support
+	for _, row := range data[1:] {
+		// First, render the first line of each cell
+		buf.WriteString("|")
+		for i, cell := range row {
+			buf.WriteString(" ")
+			lines := strings.Split(cell, "\n")
+			firstLine := lines[0]
+			buf.WriteString(firstLine)
+			// Add padding (using rune count)
+			cellWidth := len([]rune(firstLine))
+			for j := cellWidth; j < columnWidths[i]; j++ {
+				buf.WriteString(" ")
+			}
+			buf.WriteString(" |")
+		}
+		buf.WriteString("\n")
+
+		// Handle additional lines in multi-line cells
+		hasMoreLines := true
+		lineIndex := 1
+		for hasMoreLines {
+			hasMoreLines = false
+			extraLine := "|"
+			for i, cell := range row {
+				lines := strings.Split(cell, "\n")
+				if lineIndex < len(lines) {
+					hasMoreLines = true
+					extraLine += " "
+					extraLine += lines[lineIndex]
+					cellWidth := len([]rune(lines[lineIndex]))
+					for j := cellWidth; j < columnWidths[i]; j++ {
+						extraLine += " "
+					}
+					extraLine += " |"
+				} else {
+					// Empty cell for this line
+					extraLine += " "
+					for j := 0; j < columnWidths[i]; j++ {
+						extraLine += " "
+					}
+					extraLine += " |"
+				}
+			}
+			if hasMoreLines {
+				buf.WriteString(extraLine)
+				buf.WriteString("\n")
+			}
+			lineIndex++
+		}
+	}
+
+	// Draw bottom border
+	drawSeparator("+", "+", "+")
+
+	// Add row count
+	rowCount := len(data) - 1
+	if rowCount == 1 {
+		buf.WriteString(fmt.Sprintf("\n(%d row)\n", rowCount))
+	} else {
+		buf.WriteString(fmt.Sprintf("\n(%d rows)\n", rowCount))
+	}
+
+	return buf.String()
+}
+
+// FormatASCIITableRowsOnly formats only the data rows (no headers, no borders)
+// Used for streaming subsequent batches
+func FormatASCIITableRowsOnly(data [][]string) string {
+	return FormatASCIITableRowsOnlyWithWidths(data, nil)
+}
+
+// FormatASCIITableRowsOnlyWithWidths formats only the data rows with specified column widths
+func FormatASCIITableRowsOnlyWithWidths(data [][]string, columnWidths []int) string {
+	if len(data) <= 1 {
+		return "" // No data rows to output
+	}
+
+	// If no column widths provided, calculate them
+	if columnWidths == nil {
+		columnWidths = CalculateColumnWidths(data)
+	}
+
+	var buf bytes.Buffer
+
+	// Draw data rows (skip header at index 0)
 	for _, row := range data[1:] {
 		buf.WriteString("|")
 		for i, cell := range row {
 			buf.WriteString(" ")
 
-			// Truncate cell if it exceeds the column width
-			cellRunes := []rune(cell)
-			if len(cellRunes) > columnWidths[i] {
-				// Truncate with ellipsis
-				truncated := string(cellRunes[:columnWidths[i]-3]) + "..."
-				buf.WriteString(truncated)
-				// Padding already accounted for in truncation
+			// Handle multi-line cells
+			lines := strings.Split(cell, "\n")
+			if len(lines) > 1 {
+				// For multi-line cells, format each line separately
+				maxLineWidth := 0
+				for _, line := range lines {
+					lineWidth := len([]rune(line))
+					if lineWidth > maxLineWidth {
+						maxLineWidth = lineWidth
+					}
+				}
+
+				// Use the first line for this row, pad to column width
+				firstLine := lines[0]
+				buf.WriteString(firstLine)
+				cellWidth := len([]rune(firstLine))
+				for j := cellWidth; j < columnWidths[i]; j++ {
+					buf.WriteString(" ")
+				}
 			} else {
+				// Single line cell
+				cellRunes := []rune(cell)
 				buf.WriteString(cell)
 				// Add padding (using rune count)
 				cellWidth := len(cellRunes)
@@ -138,18 +217,95 @@ func FormatASCIITable(data [][]string) string {
 			buf.WriteString(" |")
 		}
 		buf.WriteString("\n")
+
+		// Handle additional lines in multi-line cells
+		hasMoreLines := true
+		lineIndex := 1
+		for hasMoreLines {
+			hasMoreLines = false
+			extraLine := "|"
+			for i, cell := range row {
+				lines := strings.Split(cell, "\n")
+				if lineIndex < len(lines) {
+					hasMoreLines = true
+					extraLine += " "
+					extraLine += lines[lineIndex]
+					cellWidth := len([]rune(lines[lineIndex]))
+					for j := cellWidth; j < columnWidths[i]; j++ {
+						extraLine += " "
+					}
+					extraLine += " |"
+				} else {
+					// Empty cell for this line
+					extraLine += " "
+					for j := 0; j < columnWidths[i]; j++ {
+						extraLine += " "
+					}
+					extraLine += " |"
+				}
+			}
+			if hasMoreLines {
+				buf.WriteString(extraLine)
+				buf.WriteString("\n")
+			}
+			lineIndex++
+		}
 	}
-	
+
+	return buf.String()
+}
+
+// CalculateColumnWidths calculates the maximum width for each column in the data
+func CalculateColumnWidths(data [][]string) []int {
+	if len(data) == 0 {
+		return []int{}
+	}
+
+	columnWidths := make([]int, len(data[0]))
+	for _, row := range data {
+		for i, cell := range row {
+			// For multi-line cells, check each line's width
+			lines := strings.Split(cell, "\n")
+			for _, line := range lines {
+				cellWidth := len([]rune(line))
+				if cellWidth > columnWidths[i] {
+					columnWidths[i] = cellWidth
+				}
+			}
+		}
+	}
+	return columnWidths
+}
+
+// FormatASCIITableBottom draws just the bottom border based on data
+func FormatASCIITableBottom(data [][]string) string {
+	return FormatASCIITableBottomWithWidths(data, nil)
+}
+
+// FormatASCIITableBottomWithWidths draws just the bottom border with specified column widths
+func FormatASCIITableBottomWithWidths(data [][]string, columnWidths []int) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	// If no column widths provided, calculate them
+	if columnWidths == nil {
+		columnWidths = CalculateColumnWidths(data)
+	}
+
+	var buf bytes.Buffer
+
 	// Draw bottom border
-	drawSeparator("+", "+", "+")
-	
-	// Add row count
-	rowCount := len(data) - 1
-	if rowCount == 1 {
-		buf.WriteString(fmt.Sprintf("\n(%d row)\n", rowCount))
-	} else {
-		buf.WriteString(fmt.Sprintf("\n(%d rows)\n", rowCount))
+	buf.WriteString("+")
+	for i, width := range columnWidths {
+		for j := 0; j < width+2; j++ {
+			buf.WriteString("-")
+		}
+		if i < len(columnWidths)-1 {
+			buf.WriteString("+")
+		}
 	}
-	
+	buf.WriteString("+\n")
+
 	return buf.String()
 }
