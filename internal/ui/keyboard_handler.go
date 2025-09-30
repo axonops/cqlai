@@ -364,22 +364,8 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Show history modal if there's history to show
-	if len(m.commandHistory) > 0 && !m.showHistoryModal {
-		m.showHistoryModal = true
-		m.historyModalIndex = len(m.commandHistory) - 1 // Start at most recent (last in array)
-		// Set scroll offset to show the bottom of the list (newest commands)
-		// If we have more than maxShow (10) items, scroll to show the last 10
-		if len(m.commandHistory) > 10 {
-			m.historyModalScrollOffset = len(m.commandHistory) - 10
-		} else {
-			m.historyModalScrollOffset = 0
-		}
-		// Debug log
-		logger.DebugfToFile("History", "Opening history modal: index=%d, scroll=%d, total=%d",
-			m.historyModalIndex, m.historyModalScrollOffset, len(m.commandHistory))
-	}
-	return m, nil
+	// Handle command history navigation up
+	return m.handleCommandHistoryUp()
 }
 
 // handleDownArrow handles Down arrow key press
@@ -562,9 +548,8 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If history modal is not showing, down arrow does nothing special
-	// (Could show history modal here too if desired)
-	return m, nil
+	// Handle command history navigation down
+	return m.handleCommandHistoryDown()
 }
 
 
