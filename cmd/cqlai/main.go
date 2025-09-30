@@ -12,6 +12,9 @@ import (
 	"golang.org/x/term"
 )
 
+// Version is set via ldflags at build time
+var Version = "dev"
+
 func main() {
 	// Parse command-line flags using pflag for POSIX/GNU-style flags
 	var (
@@ -69,7 +72,7 @@ func main() {
 
 	// Handle version flag
 	if version {
-		fmt.Println("cqlai version 0.0.7")
+		fmt.Printf("cqlai version %s\n", Version)
 		os.Exit(0)
 	}
 
@@ -150,7 +153,12 @@ func main() {
 			os.Exit(1)
 		}
 
-		p := tea.NewProgram(m)
+		// Create program with alternate screen buffer (like less) and mouse support
+		// This hides the terminal scrollbar and provides a clean full-screen experience
+		p := tea.NewProgram(m,
+			tea.WithAltScreen(),
+			// Don't use WithMouseCellMotion - we'll enable mouse manually in Init
+		)
 
 		if _, err := p.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)

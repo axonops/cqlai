@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,6 +12,9 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 	upperCommand := strings.ToUpper(command)
 	
 	if upperCommand == "EXIT" || upperCommand == "QUIT" {
+		// Disable mouse tracking on exit
+		fmt.Print("\x1b[?1000l") // Disable basic mouse tracking
+		fmt.Print("\x1b[?1006l") // Disable SGR mouse mode
 		return m, tea.Quit, true
 	}
 

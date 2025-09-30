@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/axonops/cqlai/internal/logger"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -62,9 +63,30 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Toggle navigation mode in table/trace views
-	if (m.viewMode == "table" || m.viewMode == "trace") && (m.hasTable || m.hasTrace) {
+	// Toggle navigation mode in table/trace views - HIGH PRIORITY
+	// Check this early because it's a common operation
+	logger.DebugfToFile("ESC", "ESC key: viewMode=%s, hasTable=%v, hasTrace=%v, navigationMode=%v",
+		m.viewMode, m.hasTable, m.hasTrace, m.navigationMode)
+
+	if (m.viewMode == "table" && m.hasTable) || (m.viewMode == "trace" && m.hasTrace) {
+		// If we're in navigation mode AND have more data to page through, offer to cancel paging
+		if m.navigationMode && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+			logger.DebugfToFile("ESC", "In nav mode with paging - cancelling paging")
+			// Clear the "more data" state and reset to normal nav mode
+			m.slidingWindow.hasMoreData = false
+			m.slidingWindow.streamingResult = nil
+			// Stay in navigation mode but update the placeholder
+			m.input.Placeholder = "[NAV MODE] ↑↓←→=scroll | j/k=line | d/u=½page | g/G=top/bottom | </>=10cols | ESC=exit"
+			// Add a message to history to indicate paging was cancelled
+			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Paging cancelled. Showing partial results.")
+			m.updateHistoryWrapping()
+			m.historyViewport.GotoBottom()
+			return m, nil
+		}
+
+		// Normal navigation mode toggle
 		m.navigationMode = !m.navigationMode
+		logger.DebugfToFile("ESC", "Toggling navigation mode to: %v", m.navigationMode)
 		if m.navigationMode {
 			m.input.Blur()
 			m.input.Placeholder = "[NAV MODE] ↑↓←→=scroll | j/k=line | d/u=½page | g/G=top/bottom | </>=10cols | ESC=exit"
@@ -96,8 +118,14 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If we're in the middle of paging through results, clear the paging state
-	if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+	// MOVED: Navigation mode toggle should be checked BEFORE paging state
+	// because ESC to toggle navigation is more important than canceling paging
+
+	// If we're in the middle of paging through results AND not in navigation mode, offer to clear paging
+	// (Don't do this if we're just trying to toggle navigation mode)
+	if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData && !m.navigationMode {
+		// Only clear paging if we're not toggling navigation
+		logger.DebugfToFile("ESC", "Clearing paging state instead of toggling nav")
 		// Clear the "more data" state and reset input placeholder
 		m.slidingWindow.hasMoreData = false
 		m.slidingWindow.streamingResult = nil

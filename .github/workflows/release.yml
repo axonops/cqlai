@@ -119,7 +119,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
-          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+          go build -trimpath -ldflags="-s -w -buildid= -X main.Version=${{ steps.version.outputs.version }}" \
             -o "${OUTPUT_NAME}" \
             ./cmd/cqlai
           
@@ -184,8 +184,8 @@ jobs:
 
       - name: Build binary
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-            -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags="-s -w -buildid= -X main.Version=${{ steps.version.outputs.version }}" \
             -o cqlai \
             ./cmd/cqlai
 
@@ -299,8 +299,9 @@ jobs:
           RUN go mod download
           
           COPY . .
-          RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-              -ldflags="-s -w" \
+          ARG VERSION=dev
+          RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+              -ldflags="-s -w -buildid= -X main.Version=${VERSION}" \
               -o cqlai \
               ./cmd/cqlai
           
@@ -322,6 +323,7 @@ jobs:
             VERSION=${{ github.event.inputs.tag_name }}
           fi
           DOCKER_TAG="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "docker_tag=${DOCKER_TAG}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
@@ -332,6 +334,8 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.docker_tag }}
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest

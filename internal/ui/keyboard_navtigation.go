@@ -129,10 +129,92 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		// Calculate max offset - ensure we can see the last line
+
+		// First, check if we need to load more data BEFORE calculating limits
+		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+			totalLines := m.tableViewport.TotalLineCount()
+			viewportHeight := m.tableViewport.Height
+			currentOffset := m.tableViewport.YOffset
+
+			// Check if scrolling would take us near the bottom
+			potentialOffset := currentOffset + scrollAmount
+			remainingRows := totalLines - potentialOffset - viewportHeight
+
+			// Load more data if we're getting close to the bottom
+			if remainingRows < 20 {
+				newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
+				logger.DebugfToFile("PageDown", "Pre-loading more rows: requested=%d, got=%d, total=%d",
+					m.session.PageSize(), newRows, len(m.slidingWindow.Rows))
+
+				if newRows > 0 {
+					// Write uncaptured rows to capture file if capturing
+					metaHandler := router.GetMetaHandler()
+					if metaHandler != nil && metaHandler.IsCapturing() {
+						uncapturedRows := m.slidingWindow.GetUncapturedRows()
+						if len(uncapturedRows) > 0 {
+							_ = metaHandler.AppendCaptureRows(uncapturedRows)
+							m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
+						}
+					}
+
+					// Update the table data and refresh the view
+					allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
+					// Clear cache to force rebuild
+					m.cachedTableLines = nil
+
+					// Format based on current output format
+					var contentStr string
+					if m.sessionManager != nil {
+						switch m.sessionManager.GetOutputFormat() {
+						case config.OutputFormatASCII:
+							contentStr = FormatASCIITable(allData)
+						case config.OutputFormatExpand:
+							contentStr = FormatExpandTable(allData, m.styles)
+						case config.OutputFormatJSON:
+							// Check if we have a single [json] column from SELECT JSON
+							if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
+								jsonStr := ""
+								for _, row := range m.slidingWindow.Rows {
+									if len(row) > 0 {
+										jsonStr += row[0] + "\n"
+									}
+								}
+								contentStr = jsonStr
+							} else {
+								// Convert regular table data to JSON
+								jsonStr := ""
+								for _, row := range m.slidingWindow.Rows {
+									jsonMap := make(map[string]interface{})
+									for i, header := range m.slidingWindow.Headers {
+										if i < len(row) {
+											jsonMap[header] = row[i]
+										}
+									}
+									jsonBytes, err := json.Marshal(jsonMap)
+									if err == nil {
+										jsonStr += string(jsonBytes) + "\n"
+									}
+								}
+								contentStr = jsonStr
+							}
+						default:
+							contentStr = m.formatTableForViewport(allData)
+						}
+					} else {
+						contentStr = m.formatTableForViewport(allData)
+					}
+					m.tableViewport.SetContent(contentStr)
+
+					// Update row count
+					m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+					m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+				}
+			}
+		}
+
+		// NOW calculate the limits with potentially updated data
 		totalLines := m.tableViewport.TotalLineCount()
 		viewportHeight := m.tableViewport.Height
-		// The max offset should allow the last line to be visible at the bottom
 		maxOffset := totalLines - viewportHeight
 		if maxOffset < 0 {
 			maxOffset = 0
@@ -183,83 +265,7 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 		m.tableViewport.YOffset = newOffset
 
-		// Check if we need to load more data
-		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
-			// If we're within 10 rows of the bottom, load more
-			remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
-			if remainingRows < 10 {
-				// Load the next page
-				newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
-				logger.DebugfToFile("PageDown", "Loading more rows: requested=%d, got=%d, total=%d",
-					m.session.PageSize(), newRows, len(m.slidingWindow.Rows))
-				if newRows > 0 {
-					// Write uncaptured rows to capture file if capturing
-					metaHandler := router.GetMetaHandler()
-					if metaHandler != nil && metaHandler.IsCapturing() {
-						uncapturedRows := m.slidingWindow.GetUncapturedRows()
-						if len(uncapturedRows) > 0 {
-							// Use AppendCaptureRows for continuation data
-							_ = metaHandler.AppendCaptureRows(uncapturedRows)
-							m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
-						}
-					}
-
-					// Update the table data and refresh the view
-					allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
-					// Clear cache to force rebuild
-					m.cachedTableLines = nil
-					// NOTE: Don't update m.lastTableData - formatTableForViewport handles it
-
-					// Format based on current output format
-					var contentStr string
-					if m.sessionManager != nil {
-						switch m.sessionManager.GetOutputFormat() {
-						case config.OutputFormatASCII:
-							contentStr = FormatASCIITable(allData)
-						case config.OutputFormatExpand:
-							contentStr = FormatExpandTable(allData, m.styles)
-						case config.OutputFormatJSON:
-							// Check if we have a single [json] column from SELECT JSON
-							if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
-								// This is already JSON from SELECT JSON - just extract it
-								jsonStr := ""
-								for _, row := range m.slidingWindow.Rows {
-									if len(row) > 0 {
-										jsonStr += row[0] + "\n"
-									}
-								}
-								contentStr = jsonStr
-							} else {
-								// Convert regular table data to JSON
-								jsonStr := ""
-								for _, row := range m.slidingWindow.Rows {
-									jsonMap := make(map[string]interface{})
-									for i, header := range m.slidingWindow.Headers {
-										if i < len(row) {
-											jsonMap[header] = row[i]
-										}
-									}
-									jsonBytes, err := json.Marshal(jsonMap)
-									if err == nil {
-										jsonStr += string(jsonBytes) + "\n"
-									}
-								}
-								contentStr = jsonStr
-							}
-						default:
-							contentStr = m.formatTableForViewport(allData)
-						}
-					} else {
-						contentStr = m.formatTableForViewport(allData)
-					}
-					m.tableViewport.SetContent(contentStr)
-
-					// Update row count
-					m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
-					m.rowCount = int(m.slidingWindow.TotalRowsSeen)
-				}
-			}
-		}
+		// Data loading is now done BEFORE calculating limits, so no need to load here
 	default:
 		scrollAmount = int(float64(m.historyViewport.Height) * 0.8)
 		if scrollAmount < 1 {
