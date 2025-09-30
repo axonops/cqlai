@@ -18,35 +18,40 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 	needsRebuild := m.cachedTableLines == nil || !m.isSameTableData(data)
 
 	if needsRebuild {
-		// Use initial column widths if available, otherwise calculate them
-		var colWidths []int
+		// Calculate column widths (using rune count for proper Unicode handling)
+		colWidths := make([]int, len(data[0]))
+		for _, row := range data {
+			for i, cell := range row {
+				plainCell := stripAnsi(cell)
+				cellWidth := len([]rune(plainCell)) // Count runes, not bytes
+				if cellWidth > colWidths[i] {
+					colWidths[i] = cellWidth
+				}
+			}
+		}
+
+		// Apply maximum column width cap for readability
+		maxColWidth := 80 // Cap at 80 chars - content wraps if wider
+		for i := range colWidths {
+			if colWidths[i] > maxColWidth {
+				colWidths[i] = maxColWidth
+			}
+		}
+
+		// Handle dynamic width adjustment
 		if m.initialColumnWidths != nil && len(m.initialColumnWidths) == len(data[0]) {
-			// Use preserved initial widths for consistency
-			colWidths = make([]int, len(m.initialColumnWidths))
-			copy(colWidths, m.initialColumnWidths)
-		} else {
-			// Calculate column widths (using rune count for proper Unicode handling)
-			colWidths = make([]int, len(data[0]))
-			for _, row := range data {
-				for i, cell := range row {
-					plainCell := stripAnsi(cell)
-					cellWidth := len([]rune(plainCell)) // Count runes, not bytes
-					if cellWidth > colWidths[i] {
-						colWidths[i] = cellWidth
-					}
-				}
-			}
-
-			// Apply maximum column width cap for multi-line content
-			// This ensures consistent column widths across all pages
-			maxColWidth := 80
+			// We have existing widths - expand them if needed (but never shrink)
 			for i := range colWidths {
-				if colWidths[i] > maxColWidth {
-					colWidths[i] = maxColWidth
+				if colWidths[i] > m.initialColumnWidths[i] {
+					// Column needs to be wider
+					m.initialColumnWidths[i] = colWidths[i]
+				} else {
+					// Use existing width (don't shrink)
+					colWidths[i] = m.initialColumnWidths[i]
 				}
 			}
-
-			// Store as initial widths for consistency across pagination
+		} else {
+			// First time or after F6 reset - store the widths
 			m.initialColumnWidths = make([]int, len(colWidths))
 			copy(m.initialColumnWidths, colWidths)
 		}
@@ -79,6 +84,8 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 
 		// Cache the rendered lines
 		m.cachedTableLines = fullLines
+		// Store the data that was used to build this cache
+		m.lastTableData = data
 
 		// Debug: Log the last few lines to verify bottom border is included
 		if len(fullLines) >= 3 {

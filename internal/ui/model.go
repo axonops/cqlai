@@ -107,6 +107,7 @@ type MainModel struct {
 	initialColumnWidths      []int               // Store initial column widths to maintain consistency
 	hasTable                 bool                // Whether we're currently displaying a table
 	cachedTableLines         []string            // Cache rendered table lines for fast scrolling
+	navigationMode           bool                // Toggle between navigation keys and input mode
 	viewMode                 string              // "history", "table", "trace", or "ai_info"
 	showDataTypes            bool                // Whether to show column data types in table headers
 	columnTypes              []string            // Store column data types
