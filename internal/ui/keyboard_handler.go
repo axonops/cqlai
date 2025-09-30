@@ -1,12 +1,9 @@
 package ui
 
 import (
-	"encoding/json"
 	"strings"
 
-	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/axonops/cqlai/internal/router"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -328,40 +325,7 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// If Alt is held, scroll viewport up by one line
 	if msg.Alt {
-		switch {
-		case m.viewMode == "trace" && m.hasTrace:
-			// Scroll trace up by one line
-			if m.traceViewport.YOffset > 0 {
-				m.traceViewport.YOffset--
-			}
-		case m.viewMode == "table" && m.hasTable:
-			// Scroll table up to previous row boundary
-			if m.tableViewport.YOffset > 0 {
-				newOffset := m.tableViewport.YOffset - 1
-
-				// Find the previous row boundary
-				if len(m.tableRowBoundaries) > 0 {
-					for i := len(m.tableRowBoundaries) - 1; i >= 0; i-- {
-						if m.tableRowBoundaries[i] < m.tableViewport.YOffset {
-							newOffset = m.tableRowBoundaries[i]
-							break
-						}
-					}
-					// If we didn't find a boundary, go to top
-					if newOffset == m.tableViewport.YOffset - 1 {
-						newOffset = 0
-					}
-				}
-
-				m.tableViewport.YOffset = newOffset
-			}
-		default:
-			// Scroll history up by one line
-			if m.historyViewport.YOffset > 0 {
-				m.historyViewport.YOffset--
-			}
-		}
-		return m, nil
+		return m.handleAltScrollUp()
 	}
 
 	// Handle command history navigation up
@@ -404,148 +368,7 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// If Alt is held, scroll viewport down by one line
 	if msg.Alt {
-		switch {
-		case m.viewMode == "trace" && m.hasTrace:
-			// Scroll trace down by one line
-			maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
-			if maxOffset < 0 {
-				maxOffset = 0
-			}
-			if m.traceViewport.YOffset < maxOffset {
-				m.traceViewport.YOffset++
-			}
-		case m.viewMode == "table" && m.hasTable:
-			// Scroll table down to next row boundary
-			totalLines := m.tableViewport.TotalLineCount()
-			viewportHeight := m.tableViewport.Height
-			maxOffset := totalLines - viewportHeight
-			if maxOffset < 0 {
-				maxOffset = 0
-			}
-
-			// Check if we're at the end with no more data
-			noMoreData := m.slidingWindow == nil || !m.slidingWindow.hasMoreData
-
-			if m.tableViewport.YOffset < maxOffset {
-				newOffset := m.tableViewport.YOffset + 1
-
-				// Find the next row boundary
-				if len(m.tableRowBoundaries) > 0 {
-					for _, boundary := range m.tableRowBoundaries {
-						if boundary > m.tableViewport.YOffset {
-							newOffset = boundary
-							break
-						}
-					}
-				}
-
-				// Special handling for the last boundary (bottom border)
-				if noMoreData && len(m.tableRowBoundaries) > 0 {
-					lastBoundary := m.tableRowBoundaries[len(m.tableRowBoundaries)-1]
-					if newOffset >= lastBoundary - viewportHeight {
-						// Position to show the bottom border
-						desiredOffset := lastBoundary - viewportHeight + 1
-						if desiredOffset < 0 {
-							desiredOffset = 0
-						}
-						if desiredOffset <= maxOffset {
-							newOffset = desiredOffset
-						} else {
-							newOffset = maxOffset
-						}
-					}
-				} else if newOffset > maxOffset {
-					newOffset = maxOffset
-				}
-
-				m.tableViewport.YOffset = newOffset
-
-				// Check if we need to load more data
-				if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
-					// If we're within 10 rows of the bottom, load more
-					remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
-					if remainingRows < 10 {
-						// Load the next page
-						newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
-						if newRows > 0 {
-							// Write uncaptured rows to capture file if capturing
-							metaHandler := router.GetMetaHandler()
-							if metaHandler != nil && metaHandler.IsCapturing() {
-								uncapturedRows := m.slidingWindow.GetUncapturedRows()
-								if len(uncapturedRows) > 0 {
-									// Note: WriteCaptureResult expects the command as first param,
-									// but for paged data we use empty string since it's continuation
-									_ = metaHandler.WriteCaptureResult("", m.slidingWindow.Headers, uncapturedRows)
-									m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
-								}
-							}
-
-							// Update the table data and refresh the view
-							allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
-							m.lastTableData = allData
-
-							// Format based on current output format
-							var contentStr string
-							if m.sessionManager != nil {
-								switch m.sessionManager.GetOutputFormat() {
-								case config.OutputFormatASCII:
-									contentStr = FormatASCIITable(allData)
-								case config.OutputFormatExpand:
-									contentStr = FormatExpandTable(allData, m.styles)
-								case config.OutputFormatJSON:
-									// Check if we have a single [json] column from SELECT JSON
-									if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
-										// This is already JSON from SELECT JSON - just extract it
-										jsonStr := ""
-										for _, row := range m.slidingWindow.Rows {
-											if len(row) > 0 {
-												jsonStr += row[0] + "\n"
-											}
-										}
-										contentStr = jsonStr
-									} else {
-										// Convert regular table data to JSON
-										jsonStr := ""
-										for _, row := range m.slidingWindow.Rows {
-											jsonMap := make(map[string]interface{})
-											for i, header := range m.slidingWindow.Headers {
-												if i < len(row) {
-													jsonMap[header] = row[i]
-												}
-											}
-											jsonBytes, err := json.Marshal(jsonMap)
-											if err == nil {
-												jsonStr += string(jsonBytes) + "\n"
-											}
-										}
-										contentStr = jsonStr
-									}
-								default:
-									contentStr = m.formatTableForViewport(allData)
-								}
-							} else {
-								contentStr = m.formatTableForViewport(allData)
-							}
-							m.tableViewport.SetContent(contentStr)
-
-							// Update row count
-							m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
-							m.rowCount = int(m.slidingWindow.TotalRowsSeen)
-						}
-					}
-				}
-			}
-		default:
-			// Scroll history down by one line
-			maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
-			if maxOffset < 0 {
-				maxOffset = 0
-			}
-			if m.historyViewport.YOffset < maxOffset {
-				m.historyViewport.YOffset++
-			}
-		}
-		return m, nil
+		return m.handleAltScrollDown()
 	}
 
 	// Handle command history navigation down

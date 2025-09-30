@@ -6,12 +6,10 @@ MAIN_PATH := cmd/cqlai/main.go
 BUILD_DIR := bin
 INSTALL_DIR := /usr/local/bin
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
-COMMIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Go build flags
-LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.CommitHash=$(COMMIT_HASH)"
-GOFLAGS := -v
+LDFLAGS := -ldflags "-s -w -buildid= -X main.Version=$(VERSION)"
+GOFLAGS := -v -trimpath
 
 # Platform detection
 UNAME_S := $(shell uname -s)

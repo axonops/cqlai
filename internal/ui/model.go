@@ -401,6 +401,11 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 
 // Init initializes the main model.
 func (m *MainModel) Init() tea.Cmd {
+	// Enable ONLY wheel button events (buttons 4 and 5)
+	// This is a special mode that some terminals support
+	// Standard button event mode but we'll try to be more specific
+	fmt.Print("\x1b[?1000h") // Enable basic mouse tracking
+	fmt.Print("\x1b[?1006h") // Use SGR encoding for larger coordinates
 	return textinput.Blink
 }
 
@@ -461,6 +466,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		updatedModel, cmd := m.handleKeyboardInput(msg)
+		return updatedModel, cmd
+
+	case tea.MouseMsg:
+		updatedModel, cmd := m.handleMouseInput(msg)
 		return updatedModel, cmd
 
 	case AICQLResultMsg:

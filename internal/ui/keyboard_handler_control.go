@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -27,7 +29,7 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 		m.historyViewport.GotoBottom()
 		return m, nil
 	}
-	// If there's text in the input, clear it. Otherwise ask for confirmation.
+	// If there's text in the input, clear it. Otherwise check for pagination.
 	if m.input.Value() != "" {
 		m.input.Reset()
 		// Also clear any completions and confirmation
@@ -38,8 +40,30 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 		m.confirmExit = false
 		return m, nil
 	}
+
+	// If we're in the middle of paging, cancel it
+	if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+		// Clear the "more data" state
+		m.slidingWindow.hasMoreData = false
+		m.slidingWindow.streamingResult = nil
+		m.input.Placeholder = "Enter CQL command..."
+		m.input.Focus()
+		// Exit navigation mode if active
+		if m.navigationMode {
+			m.navigationMode = false
+		}
+		// Add a message to history to indicate paging was cancelled
+		m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Paging cancelled. Showing partial results.")
+		m.updateHistoryWrapping()
+		m.historyViewport.GotoBottom()
+		return m, nil
+	}
+
 	// If already confirming, exit. Otherwise show confirmation.
 	if m.confirmExit {
+		// Disable mouse tracking on exit
+		fmt.Print("\x1b[?1000l") // Disable basic mouse tracking
+		fmt.Print("\x1b[?1006l") // Disable SGR mouse mode
 		return m, tea.Quit
 	}
 	m.confirmExit = true
@@ -52,6 +76,9 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleCtrlD() (*MainModel, tea.Cmd) {
 	// If confirming exit, quit. Otherwise show confirmation.
 	if m.confirmExit {
+		// Disable mouse tracking on exit
+		fmt.Print("\x1b[?1000l") // Disable basic mouse tracking
+		fmt.Print("\x1b[?1006l") // Disable SGR mouse mode
 		return m, tea.Quit
 	}
 	m.confirmExit = true

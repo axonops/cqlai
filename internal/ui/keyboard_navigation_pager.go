@@ -487,3 +487,120 @@ func (m *MainModel) loadMoreTableDataHelper() {
 		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 	}
 }
+
+// handleAltScrollUp handles Alt+Up key for scrolling viewports up
+func (m *MainModel) handleAltScrollUp() (*MainModel, tea.Cmd) {
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		// Scroll trace up by one line
+		if m.traceViewport.YOffset > 0 {
+			m.traceViewport.YOffset--
+		}
+	case m.viewMode == "table" && m.hasTable:
+		// Scroll table up to previous row boundary
+		if m.tableViewport.YOffset > 0 {
+			newOffset := m.tableViewport.YOffset - 1
+
+			// Find the previous row boundary
+			if len(m.tableRowBoundaries) > 0 {
+				for i := len(m.tableRowBoundaries) - 1; i >= 0; i-- {
+					if m.tableRowBoundaries[i] < m.tableViewport.YOffset {
+						newOffset = m.tableRowBoundaries[i]
+						break
+					}
+				}
+				// Note: If we didn't find a boundary, keep the newOffset as YOffset - 1
+				// Don't jump to top (0) as that's too aggressive
+			}
+
+			m.tableViewport.YOffset = newOffset
+		}
+	default:
+		// Scroll history up by one line
+		if m.historyViewport.YOffset > 0 {
+			m.historyViewport.YOffset--
+		}
+	}
+	return m, nil
+}
+
+// handleAltScrollDown handles Alt+Down key for scrolling viewports down
+func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		// Scroll trace down by one line
+		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if m.traceViewport.YOffset < maxOffset {
+			m.traceViewport.YOffset++
+		}
+	case m.viewMode == "table" && m.hasTable:
+		// Scroll table down to next row boundary
+		totalLines := m.tableViewport.TotalLineCount()
+		viewportHeight := m.tableViewport.Height
+		maxOffset := totalLines - viewportHeight
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+
+		// Check if we're at the end with no more data
+		noMoreData := m.slidingWindow == nil || !m.slidingWindow.hasMoreData
+
+		if m.tableViewport.YOffset < maxOffset {
+			newOffset := m.tableViewport.YOffset + 1
+
+			// Find the next row boundary
+			if len(m.tableRowBoundaries) > 0 {
+				for _, boundary := range m.tableRowBoundaries {
+					if boundary > m.tableViewport.YOffset {
+						newOffset = boundary
+						break
+					}
+				}
+			}
+
+			// Special handling for the last boundary (bottom border)
+			if noMoreData && len(m.tableRowBoundaries) > 0 {
+				lastBoundary := m.tableRowBoundaries[len(m.tableRowBoundaries)-1]
+				if newOffset >= lastBoundary - viewportHeight {
+					// Position to show the bottom border
+					desiredOffset := lastBoundary - viewportHeight + 1
+					if desiredOffset < 0 {
+						desiredOffset = 0
+					}
+					if desiredOffset <= maxOffset {
+						newOffset = desiredOffset
+					} else {
+						newOffset = maxOffset
+					}
+				}
+			} else if newOffset > maxOffset {
+				newOffset = maxOffset
+			}
+
+			m.tableViewport.YOffset = newOffset
+
+			// Check if we need to load more data
+			if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
+				// If we're within 10 rows of the bottom, load more
+				remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
+				if remainingRows < 10 {
+					// Load more data using the helper function
+					m.loadMoreTableDataHelper()
+				}
+			}
+		}
+	default:
+		// Scroll history down by one line
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if m.historyViewport.YOffset < maxOffset {
+			m.historyViewport.YOffset++
+		}
+	}
+	return m, nil
+}
