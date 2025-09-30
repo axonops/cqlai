@@ -50,8 +50,10 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
 
 - **Interactive CQL Shell:** Execute any CQL query that your Cassandra cluster supports.
 - **Rich Terminal UI:**
-    - A multi-layer, full-screen terminal application.
-    - Virtualized, scrollable table for results, preventing memory overload from large queries.
+    - A multi-layer, full-screen terminal application with alternate screen buffer (preserves terminal history).
+    - Virtualized, scrollable table for results with automatic data loading, preventing memory overload from large queries.
+    - Advanced navigation modes with vim-style keyboard shortcuts.
+    - Full mouse support including wheel scrolling and text selection.
     - Sticky footer/status bar showing connection details, query latency, and session status (consistency, tracing).
     - Modal overlays for history, help, and command completion.
 - **AI-Powered Query Generation:**
@@ -223,11 +225,11 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Ctrl+P`/`Ctrl+N` | Previous/Next in command history | Same |
 | `Alt+N` | Move to next line in history | `Option+N` |
 | `Tab` | Autocomplete commands and table/keyspace names | Same |
-| `Ctrl+C` | Clear input or cancel operation (press twice to exit) | `⌘+C` or `Ctrl+C` |
+| `Ctrl+C` | Clear input / Cancel pagination / Cancel operation (twice to exit) | `⌘+C` or `Ctrl+C` |
 | `Ctrl+D` | Exit application | `⌘+D` or `Ctrl+D` |
 | `Ctrl+R` | Search command history | `⌘+R` or `Ctrl+R` |
-| `Esc` | Close modals/cancel operations | Same |
-| `Enter` | Execute command | Same |
+| `Esc` | Toggle navigation mode / Cancel pagination / Close modals | Same |
+| `Enter` | Execute command / Load next page (during pagination) | Same |
 
 #### Text Editing
 | Shortcut | Action | macOS Alternative |
@@ -251,13 +253,39 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `F5` | Switch to AI conversation view |
 | `F6` | Toggle column data types in table headers |
 
-#### Scrolling
+#### Scrolling & Table Navigation
 | Shortcut | Action | macOS Alternative |
 |----------|--------|-------------------|
-| `PgUp`/`PgDn` | Scroll viewport by page (or page input when typing) | `Fn+↑`/`Fn+↓` |
-| `Alt+↑`/`Alt+↓` | Scroll viewport line by line | `Option+↑`/`Option+↓` |
+| `PgUp`/`PgDn` | Scroll viewport by page / Load more data when available | `Fn+↑`/`Fn+↓` |
+| `Space` | Load next page when more data available | Same |
+| `Enter` (empty input) | Load next page when more data available | Same |
+| `Alt+↑`/`Alt+↓` | Scroll viewport by single row (respects row boundaries) | `Option+↑`/`Option+↓` |
 | `Alt+←`/`Alt+→` | Scroll table horizontally (wide tables) | `Option+←`/`Option+→` |
-| `↑`/`↓` | Navigate table rows (when in table view) | Same |
+| `↑`/`↓` | Navigate table rows (when in navigation mode) | Same |
+
+#### Navigation Mode (Table/Trace Views)
+Press `Esc` to toggle navigation mode when viewing tables or traces.
+
+| Shortcut | Action in Navigation Mode |
+|----------|---------------------------|
+| `j` / `k` | Scroll down/up by single line |
+| `d` / `u` | Scroll down/up by half page |
+| `g` / `G` | Jump to top/bottom of results |
+| `<` / `>` | Scroll left/right by 10 columns |
+| `{` / `}` | Scroll left/right by 50 columns |
+| `0` / `$` | Jump to first/last column |
+| `Esc` | Exit navigation mode / Cancel pagination if active |
+
+#### Mouse Support
+| Action | Function |
+|--------|----------|
+| Mouse Wheel | Scroll vertically with automatic data loading |
+| Alt+Mouse Wheel | Scroll horizontally in tables |
+| Shift+Mouse Wheel | Scroll horizontally (alternative) |
+| Ctrl+Mouse Wheel | Scroll horizontally (alternative) |
+| Shift+Click+Drag | Select text for copying |
+| Ctrl+Shift+C | Copy selected text to clipboard |
+| Middle Click | Paste from selection buffer (Linux/Unix) |
 
 **Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative
