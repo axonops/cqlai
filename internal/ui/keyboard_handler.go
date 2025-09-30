@@ -180,6 +180,41 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			return m, nil
 		}
 
+		// Handle navigation mode keys (when in table/trace view with navigation mode active)
+		if m.navigationMode && (m.viewMode == "table" || m.viewMode == "trace") {
+			switch msg.String() {
+			case "j":
+				// Single line down
+				return m.handleSingleLineDown()
+			case "k":
+				// Single line up
+				return m.handleSingleLineUp()
+			case "d":
+				// Half page down
+				return m.handleHalfPageDown()
+			case "u":
+				// Half page up
+				return m.handleHalfPageUp()
+			case "g":
+				// Go to top
+				return m.handleGoToTop()
+			case "G":
+				// Go to bottom
+				return m.handleGoToBottom()
+			case "<":
+				// Scroll left by 10 columns
+				return m.handlePageLeftScroll()
+			case ">":
+				// Scroll right by 10 columns
+				return m.handlePageRightScroll()
+			case "h":
+				// Scroll left by one column
+				return m.handleHorizontalScrollLeft()
+			case "l":
+				// Scroll right by one column
+				return m.handleHorizontalScrollRight()
+			}
+		}
 
 		// Cancel exit confirmation on any other key
 		if m.confirmExit {
