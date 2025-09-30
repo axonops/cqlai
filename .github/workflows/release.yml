@@ -538,58 +538,11 @@ jobs:
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Create Release Notes
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          cat > release-notes.md << EOF
-          ## CQLAI Release ${VERSION}
-          
-          ### Installation Methods
-          
-          #### Direct Download
-          Download the appropriate binary for your platform from the assets below.
-          
-          #### APT (Debian/Ubuntu)
-          \`\`\`bash
-          # Configure repository
-          echo "deb https://europe-apt.pkg.dev/projects/axonops-public axonops-apt main" | sudo tee /etc/apt/sources.list.d/axonops.list
-          curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-          
-          # Install
-          sudo apt update && sudo apt install cqlai
-          \`\`\`
-          
-          #### YUM (RHEL/CentOS/Fedora)
-          \`\`\`bash
-          # Configure repository
-          cat << 'REPO' | sudo tee /etc/yum.repos.d/axonops.repo
-          [axonops]
-          name=AxonOps Repository
-          baseurl=https://europe-yum.pkg.dev/projects/axonops-public
-          enabled=1
-          gpgcheck=0
-          REPO
-          
-          # Install
-          sudo yum install cqlai
-          \`\`\`
-          
-          #### Docker
-          \`\`\`bash
-          docker pull europe-docker.pkg.dev/axonops-public/axonops-docker/cqlai:latest
-          docker run -it --rm europe-docker.pkg.dev/axonops-public/axonops-docker/cqlai:latest --host cassandra-host
-          \`\`\`
-          
-          ### Checksums
-          Verify your download with the SHA256 checksums in \`SHA256SUMS.txt\`
-          EOF
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: CQLAI ${{ steps.version.outputs.version }}
-          body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version, 'rc') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
           files: release-assets/*
