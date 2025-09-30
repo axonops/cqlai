@@ -172,7 +172,7 @@ func (m *MainModel) handleMouseWheelRight() (*MainModel, tea.Cmd) {
 			m.horizontalOffset = min(maxOffset, m.horizontalOffset+10)
 		} else {
 			// Table fits in viewport, but allow some scrolling anyway
-			m.horizontalOffset = m.horizontalOffset + 10
+			m.horizontalOffset += 10
 		}
 
 		logger.DebugfToFile("Mouse", "Scrolling right: oldOffset=%d, newOffset=%d, tableWidth=%d, viewportWidth=%d",
