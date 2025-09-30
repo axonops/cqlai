@@ -16,6 +16,12 @@ import (
 func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	// AI info request is now handled in handleKeyboardInput at the beginning
 
+	// If we have more data to load and input is empty, load next page (like PgDn)
+	if m.slidingWindow != nil && m.slidingWindow.hasMoreData && m.input.Value() == "" {
+		// Treat Enter as PageDown when there's more data available
+		return m.handlePageDown(tea.KeyMsg{Type: tea.KeyPgDown})
+	}
+
 	// Handle AI selection modal if active
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
 		// Confirm selection (either custom input or selected option)
