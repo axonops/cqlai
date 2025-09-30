@@ -76,7 +76,7 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 			m.slidingWindow.hasMoreData = false
 			m.slidingWindow.streamingResult = nil
 			// Stay in navigation mode but update the placeholder
-			m.input.Placeholder = "[NAV MODE] ↑↓←→=scroll | j/k=line | d/u=½page | g/G=top/bottom | </>=10cols | ESC=exit"
+			m.input.Placeholder = "[NAV MODE] Alt+↑↓←→=scroll | j/k=line | d/u=½page | g/G=top/bottom | </>=10cols | ESC=exit"
 			// Add a message to history to indicate paging was cancelled
 			m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Paging cancelled. Showing partial results.")
 			m.updateHistoryWrapping()
@@ -89,7 +89,7 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 		logger.DebugfToFile("ESC", "Toggling navigation mode to: %v", m.navigationMode)
 		if m.navigationMode {
 			m.input.Blur()
-			m.input.Placeholder = "[NAV MODE] ↑↓←→=scroll | j/k=line | d/u=½page | g/G=top/bottom | </>=10cols | ESC=exit"
+			m.input.Placeholder = "[NAV MODE] Alt+↑↓←→=scroll | j/k=line | d/u=½page | g/G=top/bottom | </>=10cols | ESC=exit"
 		} else {
 			m.input.Focus()
 			m.input.Placeholder = "Enter CQL command (ESC for navigation mode)..."
