@@ -203,6 +203,11 @@ jobs:
 
           # Make binary executable
           chmod +x "cqlai-${PLATFORM}"
+          if command -v codesign > /dev/null; then
+            codesign --force --options runtime \
+              --timestamp \
+              -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
+          fi
 
           # Create PKG using fpm (unsigned)
           fpm -s dir -t osxpkg \
