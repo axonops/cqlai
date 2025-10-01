@@ -138,9 +138,8 @@ jobs:
       - name: Package binary
         run: |
           OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "cqlai-${{ matrix.platform }}.zip" "${OUTPUT_NAME}" README.md LICENSE
-          else
+          # Only create tar.gz for Linux (Windows and macOS installers will be created in separate jobs)
+          if [ "${{ matrix.goos }}" = "linux" ]; then
             tar czf "cqlai-${{ matrix.platform }}.tar.gz" "${OUTPUT_NAME}" README.md LICENSE
           fi
 
@@ -149,9 +148,144 @@ jobs:
         with:
           name: binary-${{ matrix.platform }}
           path: |
+            cqlai-${{ matrix.platform }}${{ matrix.ext }}
             cqlai-${{ matrix.platform }}.tar.gz
-            cqlai-${{ matrix.platform }}.zip
-          if-no-files-found: error
+          if-no-files-found: ignore
+
+  # Build macOS PKG packages
+  build-macos-packages:
+    name: Build macOS PKG Packages
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      matrix:
+        include:
+          - platform: darwin-amd64
+            arch: x86_64
+          - platform: darwin-arm64
+            arch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          # Remove 'v' prefix for package version
+          PACKAGE_VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Install fpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          sudo gem install fpm
+
+      - name: Create PKG package
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+          PLATFORM="${{ matrix.platform }}"
+          ARCH="${{ matrix.arch }}"
+
+          # Make binary executable
+          chmod +x "cqlai-${PLATFORM}"
+
+          # Create PKG using fpm
+          fpm -s dir -t osxpkg \
+            --name cqlai \
+            --version "${VERSION}" \
+            --architecture "${ARCH}" \
+            --license "Apache-2.0" \
+            --vendor "AxonOps" \
+            --maintainer "AxonOps <support@axonops.com>" \
+            --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
+            --url "https://github.com/axonops/cqlai" \
+            --osxpkg-identifier "com.axonops.cqlai" \
+            "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
+
+          # Rename to include architecture
+          mv cqlai-${VERSION}.pkg cqlai-${VERSION}-${ARCH}.pkg
+
+      - name: Upload PKG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg-${{ matrix.platform }}
+          path: "*.pkg"
+
+  # Build Windows MSI packages
+  build-windows-packages:
+    name: Build Windows MSI Package
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-windows-amd64
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          # Remove 'v' prefix for package version
+          PACKAGE_VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Install fpm and wixl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential msitools
+          sudo gem install fpm
+
+      - name: Create MSI package
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+
+          # Create MSI using fpm
+          fpm -s dir -t msi \
+            --name cqlai \
+            --version "${VERSION}" \
+            --architecture x64 \
+            --license "Apache-2.0" \
+            --vendor "AxonOps" \
+            --maintainer "AxonOps <support@axonops.com>" \
+            --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
+            --url "https://github.com/axonops/cqlai" \
+            --msi-upgrade-code "12345678-1234-1234-1234-123456789012" \
+            "cqlai-windows-amd64.exe=cqlai.exe"
+
+          # Rename to include version and architecture
+          mv cqlai-${VERSION}.msi cqlai-${VERSION}-amd64.msi
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi
+          path: "*.msi"
 
   # Build DEB and RPM packages
   build-packages:
@@ -408,7 +542,7 @@ jobs:
   
   update-homebrew:
     name: Update homebrew repository
-    needs: [build-binaries, build-packages, upload-gcp]
+    needs: [build-binaries, build-macos-packages, build-windows-packages, build-packages, upload-gcp]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -502,10 +636,10 @@ jobs:
   # Create GitHub Release
   create-release:
     name: Create GitHub Release
-    needs: [build-binaries, build-packages, upload-gcp]
+    needs: [build-binaries, build-macos-packages, build-windows-packages, build-packages, upload-gcp]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -516,13 +650,14 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          
+
           # Collect all release files
           find . -name "*.tar.gz" -exec mv {} release-assets/ \;
-          find . -name "*.zip" -exec mv {} release-assets/ \;
           find . -name "*.deb" -exec mv {} release-assets/ \;
           find . -name "*.rpm" -exec mv {} release-assets/ \;
-          
+          find . -name "*.pkg" -exec mv {} release-assets/ \;
+          find . -name "*.msi" -exec mv {} release-assets/ \;
+
           # Create checksums
           cd release-assets
           sha256sum * > SHA256SUMS.txt
