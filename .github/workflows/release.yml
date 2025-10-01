@@ -211,7 +211,7 @@ jobs:
             --maintainer "AxonOps <support@axonops.com>" \
             --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
             --url "https://github.com/axonops/cqlai" \
-            --osxpkg-identifier "com.axonops.cqlai" \
+            --osxpkg-identifier-prefix "com.axonops" \
             "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
 
           # Rename unsigned package
