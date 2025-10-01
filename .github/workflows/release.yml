@@ -148,7 +148,7 @@ jobs:
   # Build macOS PKG packages
   build-macos-packages:
     name: Build macOS PKG Packages
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: build-binaries
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -182,10 +182,14 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Setup temporary installer signing keychain
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
+          p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
+
       - name: Install fpm
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential
           sudo gem install fpm
 
       - name: Create PKG package
@@ -197,7 +201,7 @@ jobs:
           # Make binary executable
           chmod +x "cqlai-${PLATFORM}"
 
-          # Create PKG using fpm
+          # Create PKG using fpm (unsigned)
           fpm -s dir -t osxpkg \
             --name cqlai \
             --version "${VERSION}" \
@@ -210,8 +214,32 @@ jobs:
             --osxpkg-identifier "com.axonops.cqlai" \
             "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
 
-          # Rename to include architecture
-          mv cqlai-${VERSION}.pkg cqlai-${VERSION}-${ARCH}.pkg
+          # Rename unsigned package
+          mv cqlai-${VERSION}.pkg Unsigned-cqlai.pkg
+
+      - name: Sign and notarize the Apple pkg
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+          ARCH="${{ matrix.arch }}"
+
+          # Sign the package
+          productsign --sign "Developer ID Installer: AXONOPS Limited (UJ776LUP23)" \
+            Unsigned-cqlai.pkg \
+            cqlai-${VERSION}-${ARCH}.pkg
+
+          # Clean up unsigned package
+          rm -f Unsigned-cqlai.pkg
+
+          # Notarize the package
+          xcrun notarytool submit cqlai-${VERSION}-${ARCH}.pkg \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
