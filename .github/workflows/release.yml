@@ -304,12 +304,12 @@ jobs:
               Language='1033' Codepage='1252' Version='$VERSION' Manufacturer='AxonOps'>
               <Package Id='*' Keywords='Installer' Description='CQLAI Installer'
                 Manufacturer='AxonOps' InstallerVersion='200' Languages='1033'
-                Compressed='yes' SummaryCodepage='1252' />
+                Compressed='yes' SummaryCodepage='1252' Platform='x64' />
               <Media Id='1' Cabinet='cqlai.cab' EmbedCab='yes' />
               <Directory Id='TARGETDIR' Name='SourceDir'>
                 <Directory Id='ProgramFiles64Folder'>
                   <Directory Id='INSTALLDIR' Name='CQLAI'>
-                    <Component Id='MainExecutable' Guid='*'>
+                    <Component Id='MainExecutable' Guid='*' Win64='yes'>
                       <File Id='CqlaiExe' Source='cqlai-windows-amd64.exe' Name='cqlai.exe' KeyPath='yes' />
                       <Environment Id='PATH' Name='PATH' Value='[INSTALLDIR]' Permanent='no' Part='last' Action='set' System='yes' />
                     </Component>
