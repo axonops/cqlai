@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/**'
+      - 'test/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
 
 env:
