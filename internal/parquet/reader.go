@@ -219,3 +219,15 @@ func (r *ParquetReader) Close() error {
 	}
 	return nil
 }
+
+// CreateReader creates an appropriate reader based on the input path
+// It supports local files and stdin
+func CreateReader(ctx context.Context, input string) (io.ReadCloser, error) {
+	// Check for special inputs
+	if input == "" || input == "-" || input == "STDIN" {
+		return io.NopCloser(os.Stdin), nil
+	}
+
+	// Create local file reader
+	return os.Open(input) // #nosec G304 - input path is validated by caller
+}
