@@ -128,13 +128,6 @@ jobs:
             chmod +x "${OUTPUT_NAME}"
           fi
 
-      - name: Sign windows binary
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          dotnet tool install --no-cache --global AzureSignTool --version 6.0.1
-          azuresigntool.exe sign --verbose -kvs  "${{ secrets.AZURE_CLIENT_SECRET }}" -kvt ${{ secrets.AZURE_TENANT_ID }} -kvu ${{ secrets.AZURE_KEY_VAULT_URI }} -kvi "${{ secrets.AZURE_CLIENT_ID }}" -kvc ${{ secrets.AZURE_KEYVAULT_CERT_NAME }} -td sha256 -tr http://timestamp.digicert.com -v "cqlai-${{ matrix.platform }}${{ matrix.ext }}"
-
       - name: Package binary
         run: |
           OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
@@ -229,7 +222,7 @@ jobs:
   # Build Windows MSI packages
   build-windows-packages:
     name: Build Windows MSI Package
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs: build-binaries
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -244,6 +237,7 @@ jobs:
 
       - name: Get version
         id: version
+        shell: bash
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
@@ -255,31 +249,61 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Install fpm and wixl
+      - name: Sign windows binary
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential msitools
-          sudo gem install fpm
+          dotnet tool install --no-cache --global AzureSignTool --version 6.0.1
+          azuresigntool.exe sign --verbose -kvs  "${{ secrets.AZURE_CLIENT_SECRET }}" -kvt ${{ secrets.AZURE_TENANT_ID }} -kvu ${{ secrets.AZURE_KEY_VAULT_URI }} -kvi "${{ secrets.AZURE_CLIENT_ID }}" -kvc ${{ secrets.AZURE_KEYVAULT_CERT_NAME }} -td sha256 -tr http://timestamp.digicert.com -v cqlai-windows-amd64.exe
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          # Download and install WiX Toolset
+          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile wix.zip
+          Expand-Archive -Path wix.zip -DestinationPath wix
+          echo "$PWD\wix" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Create MSI package
+        shell: pwsh
         run: |
-          VERSION="${{ steps.version.outputs.package_version }}"
+          $VERSION = "${{ steps.version.outputs.package_version }}"
 
-          # Create MSI using fpm
-          fpm -s dir -t msi \
-            --name cqlai \
-            --version "${VERSION}" \
-            --architecture x64 \
-            --license "Apache-2.0" \
-            --vendor "AxonOps" \
-            --maintainer "AxonOps <support@axonops.com>" \
-            --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
-            --url "https://github.com/axonops/cqlai" \
-            --msi-upgrade-code "12345678-1234-1234-1234-123456789012" \
-            "cqlai-windows-amd64.exe=cqlai.exe"
+          # Create WiX source file
+          @"
+          <?xml version='1.0' encoding='windows-1252'?>
+          <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+            <Product Name='CQLAI' Id='*' UpgradeCode='12345678-1234-1234-1234-123456789012'
+              Language='1033' Codepage='1252' Version='$VERSION' Manufacturer='AxonOps'>
+              <Package Id='*' Keywords='Installer' Description='CQLAI Installer'
+                Manufacturer='AxonOps' InstallerVersion='200' Languages='1033'
+                Compressed='yes' SummaryCodepage='1252' />
+              <Media Id='1' Cabinet='cqlai.cab' EmbedCab='yes' />
+              <Directory Id='TARGETDIR' Name='SourceDir'>
+                <Directory Id='ProgramFiles64Folder'>
+                  <Directory Id='INSTALLDIR' Name='CQLAI'>
+                    <Component Id='MainExecutable' Guid='*'>
+                      <File Id='CqlaiExe' Source='cqlai-windows-amd64.exe' Name='cqlai.exe' KeyPath='yes' />
+                      <Environment Id='PATH' Name='PATH' Value='[INSTALLDIR]' Permanent='no' Part='last' Action='set' System='yes' />
+                    </Component>
+                  </Directory>
+                </Directory>
+              </Directory>
+              <Feature Id='Complete' Level='1'>
+                <ComponentRef Id='MainExecutable' />
+              </Feature>
+            </Product>
+          </Wix>
+          "@ | Out-File -FilePath cqlai.wxs -Encoding UTF8
 
-          # Rename to include version and architecture
-          mv cqlai-${VERSION}.msi cqlai-${VERSION}-amd64.msi
+          # Compile and link
+          candle.exe cqlai.wxs
+          light.exe -out cqlai-$VERSION-amd64.msi cqlai.wixobj
+
+      - name: Sign MSI package
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.package_version }}"
+          azuresigntool.exe sign --verbose -kvs  "${{ secrets.AZURE_CLIENT_SECRET }}" -kvt ${{ secrets.AZURE_TENANT_ID }} -kvu ${{ secrets.AZURE_KEY_VAULT_URI }} -kvi "${{ secrets.AZURE_CLIENT_ID }}" -kvc ${{ secrets.AZURE_KEYVAULT_CERT_NAME }} -td sha256 -tr http://timestamp.digicert.com -v cqlai-$VERSION-amd64.msi
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
