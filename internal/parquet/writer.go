@@ -386,3 +386,24 @@ func (w *ParquetCaptureWriter) SetCompression(compression string) error {
 func (w *ParquetCaptureWriter) Flush() error {
 	return w.flushChunk()
 }
+
+// CreateWriter creates an appropriate writer based on the output path
+// It supports local files and stdout
+func CreateWriter(ctx context.Context, output string) (io.WriteCloser, error) {
+	// Check for special outputs
+	if output == "" || output == "-" || output == "STDOUT" {
+		return nopCloser{os.Stdout}, nil
+	}
+
+	// Create local file writer
+	return os.Create(output) // #nosec G304 - output path is validated by caller
+}
+
+// nopCloser wraps an io.Writer to add a no-op Close method
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error {
+	return nil
+}
