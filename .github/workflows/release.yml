@@ -350,7 +350,7 @@ jobs:
   # Build DEB and RPM packages
   build-packages:
     name: Build DEB/RPM ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     needs: security-scan  # Only build if security scan passes
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -358,10 +358,12 @@ jobs:
       matrix:
         include:
           - arch: amd64
+            runner: ubuntu-latest
             goarch: amd64
             debarch: amd64
             rpmarch: x86_64
           - arch: arm64
+            runner: ubuntu-24.04-arm64
             goarch: arm64
             debarch: arm64
             rpmarch: aarch64
@@ -454,7 +456,6 @@ jobs:
           License:        Apache-2.0
           URL:            https://github.com/axonops/cqlai
           Source0:        cqlai-${VERSION}.tar.gz
-          BuildArch:      ${ARCH}
 
           %description
           Modern interactive terminal for Apache Cassandra with AI assistance
@@ -474,9 +475,11 @@ jobs:
           - Release ${VERSION}
           EOF
 
-          # Build RPM
-          rpmbuild -ba --target ${ARCH} ~/rpmbuild/SPECS/cqlai.spec
-          cp ~/rpmbuild/RPMS/${ARCH}/cqlai-${VERSION}-1*.rpm ./
+          # Build RPM - architecture is auto-detected from the runner
+          rpmbuild -ba ~/rpmbuild/SPECS/cqlai.spec
+
+          # Copy the built RPM
+          find ~/rpmbuild/RPMS -name "cqlai-${VERSION}-1*.rpm" -exec cp {} ./ \;
 
       - name: Upload packages
         uses: actions/upload-artifact@v4
