@@ -619,6 +619,8 @@ jobs:
           # Update the bottle SHA256 for amd64
           sed -i "s/sha256 cellar: :any_skip_relocation, amd64: \"[a-f0-9]*\"/sha256 cellar: :any_skip_relocation, amd64: \"${AMD64_SHA256}\"/" cqlai.rb
 
+          sed -i "s/-X main.Version=v[0-9]\+\.[0-9]\+\.[0-9]\+/-X main.Version=v${VERSION}/" cqlai.rb
+
       - name: Commit and push changes
         run: |
           set -x
