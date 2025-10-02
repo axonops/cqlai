@@ -350,7 +350,7 @@ jobs:
   # Build DEB and RPM packages
   build-packages:
     name: Build DEB/RPM ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     needs: security-scan  # Only build if security scan passes
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -358,12 +358,10 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
             goarch: amd64
             debarch: amd64
             rpmarch: x86_64
           - arch: arm64
-            runner: ubuntu-24.04-arm64
             goarch: arm64
             debarch: arm64
             rpmarch: aarch64
@@ -447,7 +445,7 @@ jobs:
           cp cqlai README.md LICENSE cqlai-${VERSION}/
           tar czf ~/rpmbuild/SOURCES/cqlai-${VERSION}.tar.gz cqlai-${VERSION}
 
-          # Create spec file
+          # Create spec file (no BuildArch - let --target control it)
           cat > ~/rpmbuild/SPECS/cqlai.spec << EOF
           Name:           cqlai
           Version:        ${VERSION}
@@ -456,6 +454,7 @@ jobs:
           License:        Apache-2.0
           URL:            https://github.com/axonops/cqlai
           Source0:        cqlai-${VERSION}.tar.gz
+          %global debug_package %{nil}
 
           %description
           Modern interactive terminal for Apache Cassandra with AI assistance
@@ -463,9 +462,12 @@ jobs:
           %prep
           %setup -q
 
+          %build
+          # Binary is prebuilt for target architecture
+
           %install
           mkdir -p %{buildroot}/usr/bin
-          install -m 755 cqlai %{buildroot}/usr/bin/cqlai
+          install -m 0755 cqlai %{buildroot}/usr/bin/cqlai
 
           %files
           /usr/bin/cqlai
@@ -475,11 +477,13 @@ jobs:
           - Release ${VERSION}
           EOF
 
-          # Build RPM - architecture is auto-detected from the runner
-          rpmbuild -ba ~/rpmbuild/SPECS/cqlai.spec
+          # Build binary RPM only with target architecture
+          rpmbuild -bb --target ${ARCH} \
+            --define "_topdir $HOME/rpmbuild" \
+            ~/rpmbuild/SPECS/cqlai.spec
 
           # Copy the built RPM
-          find ~/rpmbuild/RPMS -name "cqlai-${VERSION}-1*.rpm" -exec cp {} ./ \;
+          cp ~/rpmbuild/RPMS/${ARCH}/cqlai-${VERSION}-1*.rpm ./
 
       - name: Upload packages
         uses: actions/upload-artifact@v4
