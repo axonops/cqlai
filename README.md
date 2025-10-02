@@ -1,12 +1,14 @@
-# CQLAI - AI-Powered Cassandra CQL TUI
+# CQLAI - Modern Cassandra CQL Shell
 
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
 </div>
 
-**CQLAI** is a fast, portable, and AI-enhanced interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, natural language query generation, client-side command parsing, and enhanced productivity features.
+**CQLAI** is a fast, portable interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, client-side command parsing, and enhanced productivity features.
 
-The original cqlsh command is written in Python which requires Python to be installed on the system. cqlai is compiled to a single execuable binary, requiring no external dependencies. This project provides binaries for the following platforms:
+**AI features are completely optional** - CQLAI works perfectly as a standalone CQL shell without any AI configuration or API keys.
+
+The original cqlsh command is written in Python which requires Python to be installed on the system. cqlai is compiled to a single executable binary, requiring no external dependencies. This project provides binaries for the following platforms:
 
 - Linux x86-64
 - macOS x86-64
@@ -29,13 +31,13 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - Complete meta-command support (`DESCRIBE`, `SHOW`, `CONSISTENCY`, etc.)
 - Client-side command parsing (lightweight, no ANTLR dependency)
 - Data import/export with `COPY TO/FROM` (CSV and Parquet formats)
-- AI-powered query generation (OpenAI, Anthropic, Gemini)
 - SSL/TLS connections and authentication
 - User-Defined Types (UDTs) and complex data types
 - Batch mode for scripting and automation
 - Apache Parquet format support for efficient data interchange
 - Tab completion for CQL keywords, tables, columns, and keyspaces
 - Small binary size (~43MB, 53% smaller than previous versions)
+- **Optional**: AI-powered query generation (OpenAI, Anthropic, Gemini)
 
 ### Coming Soon
 - Enhanced AI context awareness
@@ -56,11 +58,6 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Full mouse support including wheel scrolling and text selection.
     - Sticky footer/status bar showing connection details, query latency, and session status (consistency, tracing).
     - Modal overlays for history, help, and command completion.
-- **AI-Powered Query Generation:**
-    - Natural language to CQL conversion using AI providers (OpenAI, Anthropic, Gemini).
-    - Schema-aware query generation with automatic context.
-    - Safe preview and confirmation before execution.
-    - Support for complex operations including DDL and DML.
 - **Apache Parquet Support:**
     - High-performance columnar data format for analytics and machine learning workflows.
     - Export Cassandra tables to Parquet files with `COPY TO` command.
@@ -68,6 +65,12 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Partitioned datasets with Hive-style directory structures.
     - TimeUUID / timestamp virtual columns for intelligent time-based partitioning.
     - Support for all Cassandra data types including UDTs, collections, and vectors.
+- **Optional AI-Powered Query Generation:**
+    - Natural language to CQL conversion using AI providers (OpenAI, Anthropic, Gemini).
+    - Schema-aware query generation with automatic context.
+    - Safe preview and confirmation before execution.
+    - Support for complex operations including DDL and DML.
+    - **Requires API key configuration** - not needed for core functionality.
 - **Configuration:**
     - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
     - Support for SSL/TLS connections with certificate authentication.
