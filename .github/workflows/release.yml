@@ -571,10 +571,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     
     steps:
-      - name: Download packages
+      - name: Download packages (amd64)
         uses: actions/download-artifact@v4
         with:
-          name: packages
+          name: packages-amd64
+
+      - name: Download packages (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-arm64
 
       - name: Download Docker image
         uses: actions/download-artifact@v4
