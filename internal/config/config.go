@@ -20,11 +20,14 @@ type Config struct {
 	Username            string          `json:"username"`
 	Password            string          `json:"password"`
 	RequireConfirmation bool            `json:"requireConfirmation,omitempty"`
+	Consistency         string          `json:"consistency,omitempty"`         // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	PageSize            int             `json:"pageSize,omitempty"`
 	MaxMemoryMB         int             `json:"maxMemoryMB,omitempty"`         // Max memory for results in MB (default: 10)
 	ConnectTimeout      int             `json:"connectTimeout,omitempty"`      // Connection timeout in seconds
 	RequestTimeout      int             `json:"requestTimeout,omitempty"`      // Request timeout in seconds
 	Debug               bool            `json:"debug,omitempty"`               // Enable debug logging
+	HistoryFile         string          `json:"historyFile,omitempty"`         // Path to CQL command history file
+	AIHistoryFile       string          `json:"aiHistoryFile,omitempty"`       // Path to AI command history file
 	SSL                 *SSLConfig      `json:"ssl,omitempty"`
 	AI                  *AIConfig       `json:"ai,omitempty"`
 	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`

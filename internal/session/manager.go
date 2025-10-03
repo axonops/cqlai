@@ -20,8 +20,13 @@ func NewManager(cfg *config.Config) *Manager {
 	outputFormat := config.OutputFormatTable // Default
 	// Could read from config if we add output format to config
 
+	keyspace := ""
+	if cfg != nil && cfg.Keyspace != "" {
+		keyspace = cfg.Keyspace
+	}
+
 	return &Manager{
-		currentKeyspace:     "",
+		currentKeyspace:     keyspace,
 		requireConfirmation: cfg != nil && cfg.RequireConfirmation,
 		outputFormat:        outputFormat,
 	}

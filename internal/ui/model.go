@@ -322,6 +322,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		Keyspace:       cfg.Keyspace,
 		Username:       cfg.Username,
 		Password:       cfg.Password,
+		Consistency:    cfg.Consistency,
 		SSL:            cfg.SSL,
 		ConnectTimeout: options.ConnectTimeout,
 		RequestTimeout: options.RequestTimeout,
@@ -338,16 +339,26 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 
 	completionEngine := completion.NewCompletionEngine(dbSession, sessionMgr)
 
-	// Initialize history manager
-	historyManager, err := NewHistoryManager()
+	// Initialize history manager with custom path from config if provided
+	var historyManager *HistoryManager
+	if cfg.HistoryFile != "" {
+		historyManager, err = NewHistoryManagerWithPath(cfg.HistoryFile)
+	} else {
+		historyManager, err = NewHistoryManager()
+	}
 	if err != nil {
 		// Log warning but don't fail - history will work in-memory only
 		fmt.Fprintf(os.Stderr, "Warning: could not initialize history manager: %v\n", err)
 		historyManager = &HistoryManager{history: []string{}}
 	}
 
-	// Initialize AI history manager (separate from CQL history)
-	aiHistoryManager, err := NewAIHistoryManager()
+	// Initialize AI history manager (separate from CQL history) with custom path from config if provided
+	var aiHistoryManager *HistoryManager
+	if cfg.AIHistoryFile != "" {
+		aiHistoryManager, err = NewAIHistoryManagerWithPath(cfg.AIHistoryFile)
+	} else {
+		aiHistoryManager, err = NewAIHistoryManager()
+	}
 	if err != nil {
 		// Log warning but don't fail - AI history will work in-memory only
 		fmt.Fprintf(os.Stderr, "Warning: could not initialize AI history manager: %v\n", err)
@@ -360,9 +371,16 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	// Load AI command history from the AI history manager
 	aiCommandHistory := aiHistoryManager.GetHistory()
 
+	// Initialize status bar with actual connection values
+	statusBar := NewStatusBarModel()
+	statusBar.Host = cfg.Host
+	statusBar.Username = cfg.Username
+	statusBar.Keyspace = cfg.Keyspace
+	statusBar.Consistency = dbSession.Consistency()
+
 	return &MainModel{
 		topBar:                    NewTopBarModel(),
-		statusBar:                 NewStatusBarModel(),
+		statusBar:                 statusBar,
 		input:                     ti,
 		session:                   dbSession,
 		sessionManager:            sessionMgr,

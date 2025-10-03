@@ -655,7 +655,10 @@ validate = true
   "username": "cassandra",
   "password": "cassandra",
   "requireConfirmation": true,
+  "consistency": "LOCAL_ONE",
   "pageSize": 100,
+  "historyFile": "~/.cqlai/history",
+  "aiHistoryFile": "~/.cqlai/ai_history",
   "ssl": {
     "enabled": false,
     "certPath": "/path/to/client-cert.pem",
@@ -673,6 +676,25 @@ validate = true
   }
 }
 ```
+
+**設定オプション:**
+
+| オプション | 型 | デフォルト | 説明 |
+|--------|------|---------|-------------|
+| `host` | string | `127.0.0.1` | Cassandraホストアドレス |
+| `port` | number | `9042` | Cassandraポート |
+| `keyspace` | string | `""` | 使用するデフォルトキースペース |
+| `username` | string | `""` | 認証ユーザー名 |
+| `password` | string | `""` | 認証パスワード |
+| `requireConfirmation` | boolean | `true` | 危険なコマンドの確認を要求 |
+| `consistency` | string | `LOCAL_ONE` | デフォルトの一貫性レベル (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
+| `pageSize` | number | `100` | ページあたりの行数 |
+| `maxMemoryMB` | number | `10` | クエリ結果の最大メモリ(MB) |
+| `connectTimeout` | number | `10` | 接続タイムアウト(秒) |
+| `requestTimeout` | number | `10` | リクエストタイムアウト(秒) |
+| `historyFile` | string | `~/.cqlai/history` | CQLコマンド履歴ファイルのパス(`~`展開をサポート) |
+| `aiHistoryFile` | string | `~/.cqlai/ai_history` | AIコマンド履歴ファイルのパス(`~`展開をサポート) |
+| `debug` | boolean | `false` | デバッグログを有効化 |
 
 ### 設定ファイルの場所
 
