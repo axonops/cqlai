@@ -104,6 +104,10 @@ func (p *CommandParser) parseDescribe(command string) interface{} {
 	case "KEYSPACES":
 		return p.describeKeyspaces()
 	case "TABLES":
+		// Check if there's a pattern (e.g., "DESCRIBE TABLES test*")
+		if len(parts) >= 3 {
+			return p.describeTablesPattern(parts[2])
+		}
 		return p.describeTables()
 	case "CLUSTER":
 		return p.describeCluster()
