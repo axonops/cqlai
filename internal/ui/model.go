@@ -360,9 +360,15 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	// Load AI command history from the AI history manager
 	aiCommandHistory := aiHistoryManager.GetHistory()
 
+	// Initialize status bar with actual connection values
+	statusBar := NewStatusBarModel()
+	statusBar.Host = cfg.Host
+	statusBar.Username = cfg.Username
+	statusBar.Keyspace = cfg.Keyspace
+
 	return &MainModel{
 		topBar:                    NewTopBarModel(),
-		statusBar:                 NewStatusBarModel(),
+		statusBar:                 statusBar,
 		input:                     ti,
 		session:                   dbSession,
 		sessionManager:            sessionMgr,
