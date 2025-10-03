@@ -38,6 +38,7 @@ type SessionOptions struct {
 	Keyspace       string
 	Username       string
 	Password       string
+	Consistency    string // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	SSL            *config.SSLConfig
 	BatchMode      bool // Skip schema caching for batch mode
 	ConnectTimeout int  // Connection timeout in seconds (0 = use default)
@@ -194,10 +195,62 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	iter.Scan(&releaseVersion)
 	_ = iter.Close()
 
+	// Determine initial consistency level
+	initialConsistency := gocql.LocalOne
+	if options.Consistency != "" {
+		// Use consistency from options (comes from config)
+		switch strings.ToUpper(options.Consistency) {
+		case "ANY":
+			initialConsistency = gocql.Any
+		case "ONE":
+			initialConsistency = gocql.One
+		case "TWO":
+			initialConsistency = gocql.Two
+		case "THREE":
+			initialConsistency = gocql.Three
+		case "QUORUM":
+			initialConsistency = gocql.Quorum
+		case "ALL":
+			initialConsistency = gocql.All
+		case "LOCAL_QUORUM":
+			initialConsistency = gocql.LocalQuorum
+		case "EACH_QUORUM":
+			initialConsistency = gocql.EachQuorum
+		case "LOCAL_ONE":
+			initialConsistency = gocql.LocalOne
+		default:
+			logger.DebugfToFile("Session", "Invalid consistency level '%s', defaulting to LOCAL_ONE", options.Consistency)
+		}
+	} else if cfg.Consistency != "" {
+		// Use consistency from config
+		switch strings.ToUpper(cfg.Consistency) {
+		case "ANY":
+			initialConsistency = gocql.Any
+		case "ONE":
+			initialConsistency = gocql.One
+		case "TWO":
+			initialConsistency = gocql.Two
+		case "THREE":
+			initialConsistency = gocql.Three
+		case "QUORUM":
+			initialConsistency = gocql.Quorum
+		case "ALL":
+			initialConsistency = gocql.All
+		case "LOCAL_QUORUM":
+			initialConsistency = gocql.LocalQuorum
+		case "EACH_QUORUM":
+			initialConsistency = gocql.EachQuorum
+		case "LOCAL_ONE":
+			initialConsistency = gocql.LocalOne
+		default:
+			logger.DebugfToFile("Session", "Invalid consistency level '%s' in config, defaulting to LOCAL_ONE", cfg.Consistency)
+		}
+	}
+
 	s := &Session{
 		Session:          session,
 		cluster:          cluster,
-		consistency:      gocql.LocalOne,
+		consistency:      initialConsistency,
 		pageSize:         100,
 		tracing:          false,
 		username:         cfg.Username,

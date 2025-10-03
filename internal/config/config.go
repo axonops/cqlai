@@ -20,6 +20,7 @@ type Config struct {
 	Username            string          `json:"username"`
 	Password            string          `json:"password"`
 	RequireConfirmation bool            `json:"requireConfirmation,omitempty"`
+	Consistency         string          `json:"consistency,omitempty"`         // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	PageSize            int             `json:"pageSize,omitempty"`
 	MaxMemoryMB         int             `json:"maxMemoryMB,omitempty"`         // Max memory for results in MB (default: 10)
 	ConnectTimeout      int             `json:"connectTimeout,omitempty"`      // Connection timeout in seconds
