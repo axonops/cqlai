@@ -68,6 +68,11 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 		return ""
 	}
 
+	// Validate command syntax before processing
+	if err := validation.ValidateCommandSyntax(command); err != nil {
+		return err.Error()
+	}
+
 	// Handle AI command - now handled in UI layer
 	// This is kept for backward compatibility but should not be used directly
 	if strings.HasPrefix(strings.ToUpper(command), ".AI") {
