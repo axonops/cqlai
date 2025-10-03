@@ -25,6 +25,8 @@ type Config struct {
 	ConnectTimeout      int             `json:"connectTimeout,omitempty"`      // Connection timeout in seconds
 	RequestTimeout      int             `json:"requestTimeout,omitempty"`      // Request timeout in seconds
 	Debug               bool            `json:"debug,omitempty"`               // Enable debug logging
+	HistoryFile         string          `json:"historyFile,omitempty"`         // Path to CQL command history file
+	AIHistoryFile       string          `json:"aiHistoryFile,omitempty"`       // Path to AI command history file
 	SSL                 *SSLConfig      `json:"ssl,omitempty"`
 	AI                  *AIConfig       `json:"ai,omitempty"`
 	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`
