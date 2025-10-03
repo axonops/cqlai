@@ -655,6 +655,7 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   "username": "cassandra",
   "password": "cassandra",
   "requireConfirmation": true,
+  "consistency": "LOCAL_ONE",
   "pageSize": 100,
   "historyFile": "~/.cqlai/history",
   "aiHistoryFile": "~/.cqlai/ai_history",
@@ -686,6 +687,7 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
 | `username` | string | `""` | Authentication username |
 | `password` | string | `""` | Authentication password |
 | `requireConfirmation` | boolean | `true` | Require confirmation for dangerous commands |
+| `consistency` | string | `LOCAL_ONE` | Default consistency level (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
 | `pageSize` | number | `100` | Number of rows per page |
 | `maxMemoryMB` | number | `10` | Maximum memory for query results in MB |
 | `connectTimeout` | number | `10` | Connection timeout in seconds |

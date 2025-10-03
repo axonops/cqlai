@@ -322,6 +322,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		Keyspace:       cfg.Keyspace,
 		Username:       cfg.Username,
 		Password:       cfg.Password,
+		Consistency:    cfg.Consistency,
 		SSL:            cfg.SSL,
 		ConnectTimeout: options.ConnectTimeout,
 		RequestTimeout: options.RequestTimeout,
@@ -375,6 +376,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	statusBar.Host = cfg.Host
 	statusBar.Username = cfg.Username
 	statusBar.Keyspace = cfg.Keyspace
+	statusBar.Consistency = dbSession.Consistency()
 
 	return &MainModel{
 		topBar:                    NewTopBarModel(),

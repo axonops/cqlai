@@ -655,6 +655,7 @@ validate = true
   "username": "cassandra",
   "password": "cassandra",
   "requireConfirmation": true,
+  "consistency": "LOCAL_ONE",
   "pageSize": 100,
   "historyFile": "~/.cqlai/history",
   "aiHistoryFile": "~/.cqlai/ai_history",
@@ -686,6 +687,7 @@ validate = true
 | `username` | string | `""` | 認証ユーザー名 |
 | `password` | string | `""` | 認証パスワード |
 | `requireConfirmation` | boolean | `true` | 危険なコマンドの確認を要求 |
+| `consistency` | string | `LOCAL_ONE` | デフォルトの一貫性レベル (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
 | `pageSize` | number | `100` | ページあたりの行数 |
 | `maxMemoryMB` | number | `10` | クエリ結果の最大メモリ(MB) |
 | `connectTimeout` | number | `10` | 接続タイムアウト(秒) |
