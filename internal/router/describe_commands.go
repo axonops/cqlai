@@ -111,6 +111,85 @@ func (p *CommandParser) describeTables() interface{} {
 	return results
 }
 
+// describeTablesPattern describes tables matching a pattern (e.g., "test*")
+func (p *CommandParser) describeTablesPattern(pattern string) interface{} {
+	// Get current keyspace
+	currentKeyspace := ""
+	if p.sessionManager != nil {
+		currentKeyspace = p.sessionManager.CurrentKeyspace()
+	}
+
+	if currentKeyspace == "" {
+		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+	}
+
+	serverResult, tables, err := p.session.DBDescribeTables(p.sessionManager)
+	if err != nil {
+		if err.Error() == "no keyspace selected" {
+			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+		}
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Convert wildcard pattern to matching function
+	pattern = strings.ToLower(pattern)
+	matchFunc := func(tableName string) bool {
+		name := strings.ToLower(tableName)
+		// Simple wildcard matching: * matches any sequence
+		switch {
+		case strings.HasSuffix(pattern, "*"):
+			prefix := strings.TrimSuffix(pattern, "*")
+			return strings.HasPrefix(name, prefix)
+		case strings.HasPrefix(pattern, "*"):
+			suffix := strings.TrimPrefix(pattern, "*")
+			return strings.HasSuffix(name, suffix)
+		case strings.Contains(pattern, "*"):
+			parts := strings.Split(pattern, "*")
+			if len(parts) == 2 {
+				return strings.HasPrefix(name, parts[0]) && strings.HasSuffix(name, parts[1])
+			}
+			return false
+		default:
+			return name == pattern
+		}
+	}
+
+	// If we have server result, we can't easily filter it, so use manual filtering
+	_ = serverResult
+
+	// Manual filtering
+	filteredTables := []db.TableListInfo{}
+	for _, t := range tables {
+		if matchFunc(t.Name) {
+			filteredTables = append(filteredTables, t)
+		}
+	}
+
+	if len(filteredTables) == 0 {
+		return fmt.Sprintf("No tables matching pattern '%s' found in keyspace %s", pattern, currentKeyspace)
+	}
+
+	// Build results table
+	results := [][]string{{"Table", "Primary Key", "Compaction", "Compression", "GC Grace"}}
+
+	for _, t := range filteredTables {
+		pkStr := p.formatPrimaryKey(t.PartitionKeys, t.ClusteringKeys)
+		compactionStr := p.formatCompaction(t.Compaction)
+		compressionStr := p.formatCompression(t.Compression)
+		gcGraceStr := p.formatGCGrace(t.GcGrace)
+
+		results = append(results, []string{
+			t.Name,
+			pkStr,
+			compactionStr,
+			compressionStr,
+			gcGraceStr,
+		})
+	}
+
+	return results
+}
+
 // describeTable shows detailed information about a specific table
 func (p *CommandParser) describeTable(tableName string) interface{} {
 	// Remove quotes if present

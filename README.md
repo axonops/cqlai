@@ -655,7 +655,10 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   "username": "cassandra",
   "password": "cassandra",
   "requireConfirmation": true,
+  "consistency": "LOCAL_ONE",
   "pageSize": 100,
+  "historyFile": "~/.cqlai/history",
+  "aiHistoryFile": "~/.cqlai/ai_history",
   "ssl": {
     "enabled": false,
     "certPath": "/path/to/client-cert.pem",
@@ -673,6 +676,25 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   }
 }
 ```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `host` | string | `127.0.0.1` | Cassandra host address |
+| `port` | number | `9042` | Cassandra port |
+| `keyspace` | string | `""` | Default keyspace to use |
+| `username` | string | `""` | Authentication username |
+| `password` | string | `""` | Authentication password |
+| `requireConfirmation` | boolean | `true` | Require confirmation for dangerous commands |
+| `consistency` | string | `LOCAL_ONE` | Default consistency level (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
+| `pageSize` | number | `100` | Number of rows per page |
+| `maxMemoryMB` | number | `10` | Maximum memory for query results in MB |
+| `connectTimeout` | number | `10` | Connection timeout in seconds |
+| `requestTimeout` | number | `10` | Request timeout in seconds |
+| `historyFile` | string | `~/.cqlai/history` | Path to CQL command history file (supports `~` expansion) |
+| `aiHistoryFile` | string | `~/.cqlai/ai_history` | Path to AI command history file (supports `~` expansion) |
+| `debug` | boolean | `false` | Enable debug logging |
 
 ### Configuration File Locations
 
