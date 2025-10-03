@@ -22,20 +22,46 @@ type HistoryManager struct {
 
 // NewHistoryManager creates a new history manager
 func NewHistoryManager() (*HistoryManager, error) {
-	// Get home directory
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %v", err)
+	return NewHistoryManagerWithPath("")
+}
+
+// NewHistoryManagerWithPath creates a new history manager with a custom path
+func NewHistoryManagerWithPath(customPath string) (*HistoryManager, error) {
+	var historyPath string
+
+	if customPath != "" {
+		// Use custom path, expanding ~ if present
+		if strings.HasPrefix(customPath, "~") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get home directory: %v", err)
+			}
+			historyPath = filepath.Join(home, customPath[1:])
+		} else {
+			historyPath = customPath
+		}
+	} else {
+		// Use default path
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %v", err)
+		}
+
+		// Create ~/.cqlai directory if it doesn't exist
+		cqlaiDir := filepath.Join(home, ".cqlai")
+		if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
+			return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
+		}
+
+		historyPath = filepath.Join(cqlaiDir, historyFile)
 	}
 
-	// Create ~/.cqlai directory if it doesn't exist
-	cqlaiDir := filepath.Join(home, ".cqlai")
-	if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
+	// Ensure the directory for the history file exists
+	historyDir := filepath.Dir(historyPath)
+	if err := os.MkdirAll(historyDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create history directory: %v", err)
 	}
 
-	historyPath := filepath.Join(cqlaiDir, historyFile)
-	
 	hm := &HistoryManager{
 		historyPath: historyPath,
 		history:     []string{},
@@ -141,20 +167,46 @@ func (hm *HistoryManager) SearchHistory(query string) []string {
 
 // NewAIHistoryManager creates a new history manager specifically for AI conversations
 func NewAIHistoryManager() (*HistoryManager, error) {
-	// Get home directory
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %v", err)
+	return NewAIHistoryManagerWithPath("")
+}
+
+// NewAIHistoryManagerWithPath creates a new AI history manager with a custom path
+func NewAIHistoryManagerWithPath(customPath string) (*HistoryManager, error) {
+	var historyPath string
+
+	if customPath != "" {
+		// Use custom path, expanding ~ if present
+		if strings.HasPrefix(customPath, "~") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get home directory: %v", err)
+			}
+			historyPath = filepath.Join(home, customPath[1:])
+		} else {
+			historyPath = customPath
+		}
+	} else {
+		// Use default path
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %v", err)
+		}
+
+		// Create ~/.cqlai directory if it doesn't exist
+		cqlaiDir := filepath.Join(home, ".cqlai")
+		if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
+			return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
+		}
+
+		historyPath = filepath.Join(cqlaiDir, aiHistoryFile)
 	}
 
-	// Create ~/.cqlai directory if it doesn't exist
-	cqlaiDir := filepath.Join(home, ".cqlai")
-	if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
+	// Ensure the directory for the history file exists
+	historyDir := filepath.Dir(historyPath)
+	if err := os.MkdirAll(historyDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create history directory: %v", err)
 	}
 
-	historyPath := filepath.Join(cqlaiDir, aiHistoryFile)
-	
 	hm := &HistoryManager{
 		historyPath: historyPath,
 		history:     []string{},
