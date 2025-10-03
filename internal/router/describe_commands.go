@@ -136,19 +136,22 @@ func (p *CommandParser) describeTablesPattern(pattern string) interface{} {
 	matchFunc := func(tableName string) bool {
 		name := strings.ToLower(tableName)
 		// Simple wildcard matching: * matches any sequence
-		if strings.HasSuffix(pattern, "*") {
+		switch {
+		case strings.HasSuffix(pattern, "*"):
 			prefix := strings.TrimSuffix(pattern, "*")
 			return strings.HasPrefix(name, prefix)
-		} else if strings.HasPrefix(pattern, "*") {
+		case strings.HasPrefix(pattern, "*"):
 			suffix := strings.TrimPrefix(pattern, "*")
 			return strings.HasSuffix(name, suffix)
-		} else if strings.Contains(pattern, "*") {
+		case strings.Contains(pattern, "*"):
 			parts := strings.Split(pattern, "*")
 			if len(parts) == 2 {
 				return strings.HasPrefix(name, parts[0]) && strings.HasSuffix(name, parts[1])
 			}
+			return false
+		default:
+			return name == pattern
 		}
-		return name == pattern
 	}
 
 	// If we have server result, we can't easily filter it, so use manual filtering
