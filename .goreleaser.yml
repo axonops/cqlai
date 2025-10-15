@@ -73,7 +73,7 @@ nfpms:
     priority: optional
     contents:
       - src: cqlai.json.example
-        dst: /etc/cqlai/cqlai.json.example
+        dst: /usr/share/doc/cqlai/cqlai.json.example
         type: config
       - src: THIRD-PARTY-LICENSES/
         dst: /usr/share/doc/cqlai/

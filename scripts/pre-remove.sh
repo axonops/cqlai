@@ -5,7 +5,7 @@ set -e
 
 echo "Preparing to remove CQLAI..."
 
-# Optional: Remind user about config files
-if [ -f /etc/cqlai/cqlai.json ]; then
-    echo "Note: Configuration file /etc/cqlai/cqlai.json will be preserved."
+# Remind user about config files
+if [ -f ~/.cqlai.json ]; then
+    echo "Note: User configuration file ~/.cqlai.json will be preserved."
 fi
