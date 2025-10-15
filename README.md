@@ -602,7 +602,6 @@ Configuration sources are loaded in the following order (later sources override 
    - `./cqlai.json` (current directory)
    - `~/.cqlai.json` (user home directory)
    - `~/.config/cqlai/config.json` (XDG config directory)
-   - `/etc/cqlai/config.json` (system-wide)
 
 3. **Environment variables**
    - `CQLAI_HOST`, `CQLAI_PORT`, `CQLAI_KEYSPACE`, etc.
@@ -709,7 +708,6 @@ CQLAI searches for configuration files in the following locations:
 1. `./cqlai.json` (current working directory)
 2. `~/.cqlai.json` (user home directory)
 3. `~/.config/cqlai/config.json` (XDG config directory on Linux/macOS)
-4. `/etc/cqlai/config.json` (system-wide configuration)
 
 ### Environment Variables
 

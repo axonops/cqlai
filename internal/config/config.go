@@ -114,7 +114,6 @@ func LoadConfig() (*Config, error) {
 		"cqlai.json",
 		filepath.Join(os.Getenv("HOME"), ".cqlai.json"),
 		filepath.Join(os.Getenv("HOME"), ".config", "cqlai", "config.json"),
-		"/etc/cqlai/config.json",
 	}
 	
 	logger.DebugfToFile("Config", "Looking for JSON config files in: %v", configPaths)

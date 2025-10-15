@@ -7,7 +7,7 @@ CQLAIは標準のCQLSHRCファイルからの設定読み込みをサポート�
 設定は次の順序でロードされます(後のソースが前のソースを上書きします):
 
 1. **CQLSHRCファイル** - `~/.cassandra/cqlshrc`または`~/.cqlshrc`
-2. **JSON設定ファイル** - `cqlai.json`、`~/.cqlai.json`、`~/.config/cqlai/config.json`、または`/etc/cqlai/config.json`
+2. **JSON設定ファイル** - `cqlai.json`、`~/.cqlai.json`、または`~/.config/cqlai/config.json`
 3. **環境変数** - `CQLAI_*`、`CASSANDRA_*`など
 
 ## サポートされるCQLSHRCセクションとパラメータ
