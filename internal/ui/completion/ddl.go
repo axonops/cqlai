@@ -49,7 +49,7 @@ func (ce *CompletionEngine) getDropCompletions(words []string, wordPos int) []st
 		case "KEYSPACE":
 			return append(IfKeyword, ce.getKeyspaceNames()...) // "IF"
 		case "TABLE":
-			return append(IfKeyword, ce.getTableNames()...) // "IF"
+			return append(IfKeyword, ce.getTableAndKeyspaceNames()...) // "IF"
 		case "INDEX":
 			return append(IfKeyword, ce.getIndexNames()...) // "IF"
 		case "TYPE":
@@ -92,7 +92,7 @@ func (ce *CompletionEngine) getAlterCompletions(words []string, wordPos int) []s
 		case "KEYSPACE":
 			return ce.getKeyspaceNames()
 		case "TABLE":
-			return ce.getTableNames()
+			return ce.getTableAndKeyspaceNames()
 		case "TYPE":
 			return ce.getTypeNames()
 		case "ROLE", "USER":
@@ -124,12 +124,12 @@ func (ce *CompletionEngine) getAlterCompletions(words []string, wordPos int) []s
 func (ce *CompletionEngine) getTruncateCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
 		// After TRUNCATE, can specify TABLE or just table name
-		tables := ce.getTableNames()
+		tables := ce.getTableAndKeyspaceNames()
 		return append(TableKeyword, tables...)
 	}
 
 	if wordPos == 2 && len(words) > 1 && words[1] == "TABLE" {
-		return ce.getTableNames()
+		return ce.getTableAndKeyspaceNames()
 	}
 
 	return []string{}
