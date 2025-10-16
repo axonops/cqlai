@@ -166,7 +166,7 @@ func (sce *SimpleCompletionEngine) getDescribeCompletions(words []string, endsWi
 		case "KEYSPACE":
 			return sce.getKeyspaceNames()
 		case "TABLE":
-			return sce.getTableNames()
+			return sce.getTableAndKeyspaceNames()
 		case "TYPE":
 			return sce.getTypeNames()
 		case "FUNCTION":
@@ -332,7 +332,7 @@ func (sce *SimpleCompletionEngine) getSelectCompletions(words []string, endsWith
 	for i, word := range words {
 		if word == "FROM" && i < len(words)-1 {
 			if (i == len(words)-2 && endsWithSpace) || (i == len(words)-1 && !endsWithSpace) {
-				return sce.getTableNames()
+				return sce.getTableAndKeyspaceNames()
 			}
 		}
 	}
@@ -358,14 +358,14 @@ func (sce *SimpleCompletionEngine) getInsertCompletions(words []string, endsWith
 		return []string{"INTO"}
 	}
 	if len(words) == 2 && strings.ToUpper(words[1]) == "INTO" && endsWithSpace {
-		return sce.getTableNames()
+		return sce.getTableAndKeyspaceNames()
 	}
 	return nil
 }
 
 func (sce *SimpleCompletionEngine) getUpdateCompletions(words []string, endsWithSpace bool) []string {
 	if len(words) == 1 && endsWithSpace {
-		return sce.getTableNames()
+		return sce.getTableAndKeyspaceNames()
 	}
 	return nil
 }
@@ -375,7 +375,7 @@ func (sce *SimpleCompletionEngine) getDeleteCompletions(words []string, endsWith
 		return []string{"FROM"}
 	}
 	if len(words) == 2 && strings.ToUpper(words[1]) == "FROM" && endsWithSpace {
-		return sce.getTableNames()
+		return sce.getTableAndKeyspaceNames()
 	}
 	return nil
 }
