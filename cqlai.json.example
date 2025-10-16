@@ -31,6 +31,10 @@
       "gemini": {
          "apiKey": "",
          "model": "gemini-pro"
+      },
+      "openrouter": {
+         "apiKey": "",
+         "model": "openai/gpt-4-turbo-preview"
       }
    }
 }

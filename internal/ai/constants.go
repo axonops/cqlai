@@ -7,19 +7,21 @@ type Provider string
 
 // AI Provider constants
 const (
-	ProviderOpenAI    Provider = "openai"
-	ProviderAnthropic Provider = "anthropic"
-	ProviderGemini    Provider = "gemini"
-	ProviderOllama    Provider = "ollama"
-	ProviderMock      Provider = "mock"
+	ProviderOpenAI     Provider = "openai"
+	ProviderAnthropic  Provider = "anthropic"
+	ProviderGemini     Provider = "gemini"
+	ProviderOllama     Provider = "ollama"
+	ProviderOpenRouter Provider = "openrouter"
+	ProviderMock       Provider = "mock"
 )
 
 // Default model names for each provider
 const (
-	DefaultOpenAIModel    = "gpt-4-turbo-preview"
-	DefaultAnthropicModel = "claude-3-sonnet-20240229"
-	DefaultGeminiModel    = "gemini-pro"
-	DefaultOllamaModel    = "llama3"
+	DefaultOpenAIModel     = "gpt-4-turbo-preview"
+	DefaultAnthropicModel  = "claude-3-sonnet-20240229"
+	DefaultGeminiModel     = "gemini-pro"
+	DefaultOllamaModel     = "llama3"
+	DefaultOpenRouterModel = "openai/gpt-4-turbo-preview"
 )
 
 // JSON parsing markers
@@ -76,12 +78,13 @@ const (
 
 // Environment variable names
 const (
-	EnvOpenAIKey    = "OPENAI_API_KEY"
-	EnvAnthropicKey = "ANTHROPIC_API_KEY"
-	EnvGeminiKey    = "GEMINI_API_KEY"
-	EnvOllamaHost   = "OLLAMA_HOST"
-	EnvAIProvider   = "AI_PROVIDER"
-	EnvAIModel      = "AI_MODEL"
+	EnvOpenAIKey     = "OPENAI_API_KEY"
+	EnvAnthropicKey  = "ANTHROPIC_API_KEY"
+	EnvGeminiKey     = "GEMINI_API_KEY"
+	EnvOllamaHost    = "OLLAMA_HOST"
+	EnvOpenRouterKey = "OPENROUTER_API_KEY"
+	EnvAIProvider    = "AI_PROVIDER"
+	EnvAIModel       = "AI_MODEL"
 )
 
 // Error messages
