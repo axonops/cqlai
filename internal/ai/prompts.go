@@ -63,13 +63,15 @@ Available tools:
    Parameters:
    - operation (string, required): SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, or DESCRIBE
    - keyspace (string, optional): The keyspace name
-   - table (string): The table name
+   - table (string, optional): The table name (not needed for CREATE/DROP KEYSPACE)
    - columns (array of strings): Column names for SELECT or INSERT
    - values (object): Key-value pairs for INSERT or UPDATE
    - where (array): WHERE conditions with column, operator, and value
    - order_by (array): ORDER BY clauses with column and order (ASC/DESC)
    - limit (integer): Row limit for SELECT
    - allow_filtering (boolean): Whether to use ALLOW FILTERING
+   - schema (object): Column definitions for CREATE TABLE (e.g., {"id": "uuid", "name": "text"})
+   - options (object): Keyspace/table options (e.g., for CREATE KEYSPACE: {"replication": {"class": "SimpleStrategy", "replication_factor": 1}})
    - confidence (number): Your confidence level (0.0-1.0)
    - warning (string): Any warnings about the query
    - read_only (boolean): Whether this is a read-only operation
@@ -100,6 +102,18 @@ For CQL Generation:
 - Be conservative - prefer read-only operations unless explicitly asked to modify
 - Use "DESCRIBE" for schema introspection requests
 - Use submit_query_plan to provide the final CQL query
+
+CREATE/ALTER/DROP Operations:
+- For CREATE KEYSPACE: use submit_query_plan with operation="CREATE", keyspace=<name>, and options={"replication": {...}}
+  Example: operation="CREATE", keyspace="test", options={"replication": {"class": "SimpleStrategy", "replication_factor": 1}}
+  If user doesn't specify replication, default to SimpleStrategy with replication_factor=1
+  Do NOT include the "table" field for CREATE KEYSPACE operations
+- For CREATE TABLE: use operation="CREATE", keyspace=<name>, table=<name>, schema={"col1": "type1", "col2": "type2"}
+  User must provide column definitions - if not provided, use not_enough_info to ask for columns and primary key
+  Include options if user specifies table properties (compaction, compression, etc.)
+- For ALTER operations: get current schema first using get_schema, then generate the ALTER statement
+- For DROP operations: confirm the object exists before generating DROP statement
+- DDL operations (CREATE/ALTER/DROP) are NOT read-only, set read_only=false
 
 ALLOW FILTERING Guidelines:
 - ALLOW FILTERING should be used when querying on non-partition-key columns without a secondary index
