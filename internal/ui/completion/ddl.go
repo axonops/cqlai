@@ -19,7 +19,18 @@ func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []
 		// Check if it's a valid object type (excluding MATERIALIZED which needs VIEW after it)
 		for _, objType := range CreateDropObjectTypesNoMaterialized {
 			if words[1] == objType {
-				// After CREATE <type>, expect a name or IF NOT EXISTS
+				// After CREATE <type>, suggest IF keyword and keyspace names for qualified names
+				// For TABLE, INDEX, and MATERIALIZED VIEW, allow keyspace.object syntax
+				if words[1] == "TABLE" || words[1] == "INDEX" {
+					// Suggest both IF keyword and keyspace names with dots
+					keyspaces := ce.getKeyspaceNames()
+					suggestions := append([]string{}, IfKeyword...)
+					for _, ks := range keyspaces {
+						suggestions = append(suggestions, ks+".")
+					}
+					return suggestions
+				}
+				// For other types, just suggest IF
 				return IfKeyword
 			}
 		}

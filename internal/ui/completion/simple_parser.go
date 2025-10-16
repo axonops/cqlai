@@ -276,6 +276,15 @@ func (sce *SimpleCompletionEngine) getCreateCompletions(words []string, endsWith
 		}
 		return suggestions
 	}
+	// After CREATE TABLE/INDEX, suggest keyspace names for qualified names
+	if len(words) == 2 && endsWithSpace && (words[1] == "TABLE" || words[1] == "INDEX") {
+		keyspaces := sce.getKeyspaceNames()
+		suggestions := []string{"IF"} // Add IF for IF NOT EXISTS
+		for _, ks := range keyspaces {
+			suggestions = append(suggestions, ks+".")
+		}
+		return suggestions
+	}
 	return nil
 }
 
