@@ -417,6 +417,9 @@ jobs:
           chmod 755 cqlai-deb/usr/bin/cqlai
           cp README.md LICENSE cqlai-deb/usr/share/doc/cqlai/
 
+          # Set ownership to root:root
+          sudo chown -R root:root cqlai-deb/usr
+
           # Create control file
           cat > cqlai-deb/DEBIAN/control << EOF
           Package: cqlai
