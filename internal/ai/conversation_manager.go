@@ -55,6 +55,12 @@ func (cm *ConversationManager) StartConversation(provider, model, apiKey, reques
 	case "openai":
 		client := openai.NewClient(openaioption.WithAPIKey(apiKey))
 		conv.openaiClient = &client
+	case "openrouter":
+		client := openai.NewClient(
+			openaioption.WithAPIKey(apiKey),
+			openaioption.WithBaseURL(openRouterBaseURL),
+		)
+		conv.openrouterClient = &client
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", provider)
 	}
@@ -124,6 +130,8 @@ func (conv *AIConversation) Continue(ctx context.Context, userInput string) (*AI
 		return conv.continueAnthropic(ctx, userInput)
 	case "openai":
 		return conv.continueOpenAI(ctx, userInput)
+	case "openrouter":
+		return conv.continueOpenRouter(ctx, userInput)
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider: %s", conv.Provider)
 	}

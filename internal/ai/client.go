@@ -100,6 +100,24 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 		if config.Model == "" {
 			config.Model = DefaultOllamaModel
 		}
+	case ProviderOpenRouter:
+		logger.DebugfToFile("AI", "Processing OpenRouter config")
+		if dbConfig.OpenRouter != nil {
+			logger.DebugfToFile("AI", "OpenRouter config exists: APIKey=%v, Model=%s",
+				dbConfig.OpenRouter.APIKey != "", dbConfig.OpenRouter.Model)
+			if dbConfig.OpenRouter.APIKey != "" {
+				config.APIKey = dbConfig.OpenRouter.APIKey
+				logger.DebugfToFile("AI", "Set OpenRouter API key")
+			}
+			if dbConfig.OpenRouter.Model != "" {
+				config.Model = dbConfig.OpenRouter.Model
+				logger.DebugfToFile("AI", "Set OpenRouter model: %s", config.Model)
+			}
+		}
+		if config.Model == "" {
+			config.Model = DefaultOpenRouterModel
+			logger.DebugfToFile("AI", "Using default OpenRouter model: %s", config.Model)
+		}
 	}
 
 	logger.DebugfToFile("AI", "Final AI config: Provider=%s, HasAPIKey=%v, Model=%s",
@@ -110,7 +128,7 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 
 // AIConfig holds configuration for AI providers
 type AIConfig struct {
-	Provider string // "gemini", "openai", "anthropic", "mock"
+	Provider string // "gemini", "openai", "anthropic", "ollama", "openrouter", "mock"
 	APIKey   string
 	Model    string // Optional model override
 }
@@ -173,6 +191,8 @@ func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClie
 			return nil, fmt.Errorf("ollama configuration is missing from cqlai.json")
 		}
 		return NewOllamaClient(providerConfig.Ollama), nil
+	case ProviderOpenRouter:
+		return NewOpenRouterClient(aiConfig.APIKey, aiConfig.Model), nil
 	default:
 		// Add a mock client for safety, so the app doesn't crash if config is missing
 		if aiConfig.Provider == "mock" {
