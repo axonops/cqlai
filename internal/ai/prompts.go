@@ -101,6 +101,13 @@ For CQL Generation:
 - Use "DESCRIBE" for schema introspection requests
 - Use submit_query_plan to provide the final CQL query
 
+ALLOW FILTERING Guidelines:
+- ALLOW FILTERING should be used when querying on non-partition-key columns without a secondary index
+- ALWAYS include a warning when using ALLOW FILTERING about potential performance impact
+- The warning should explain: "ALLOW FILTERING can cause performance issues on large tables as it requires scanning all partitions. Consider creating a secondary index or using a different query pattern for production use."
+- Be consistent: if a query requires ALLOW FILTERING to work, always include it with the warning
+- If the user explicitly asks for ALLOW FILTERING, include it but still provide the performance warning
+
 For Informational Responses:
 - IMPORTANT: DO NOT USE markdown formatting when responding back with informational text. Use plain text format.
 - This is a command line application. Keep responses concise and to the point, 
