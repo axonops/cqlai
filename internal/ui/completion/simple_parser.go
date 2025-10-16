@@ -350,6 +350,55 @@ func (sce *SimpleCompletionEngine) getCreateCompletions(words []string, endsWith
 		}
 	}
 
+	// Handle CREATE TABLE column type suggestions
+	// Detect if we're inside column definitions (after opening parenthesis)
+	if len(words) > 1 && words[1] == "TABLE" && endsWithSpace {
+		// Look for opening parenthesis in any word
+		openParenIdx := -1
+		for i, word := range words {
+			if strings.Contains(word, "(") {
+				openParenIdx = i
+				break
+			}
+		}
+
+		// If we found an opening paren and we're past it
+		if openParenIdx != -1 {
+			// Count words after the opening paren
+			wordsAfterParen := len(words) - openParenIdx - 1
+
+			// If we're at an even position after the paren (0, 2, 4...), we're likely at a type position
+			// Position pattern: (col1 type1, col2 type2, col3 type3, PRIMARY KEY...)
+			// After paren: 0=col, 1=type, 2=comma, 3=col, 4=type, etc.
+			if wordsAfterParen%2 == 1 {
+				// Odd word count = type position (since we count from 0)
+				// But exclude if the current or previous word is a keyword
+				lastWord := ""
+				if len(words) > 0 {
+					lastWord = words[len(words)-1]
+				}
+				prevWord := ""
+				if len(words) > 1 {
+					prevWord = words[len(words)-2]
+				}
+
+				// Don't suggest types if we're at PRIMARY, KEY, etc.
+				excludedKeywords := []string{"PRIMARY", "KEY", "WITH", "CLUSTERING", "COMPACT"}
+				isExcluded := false
+				for _, kw := range excludedKeywords {
+					if lastWord == kw || prevWord == kw {
+						isExcluded = true
+						break
+					}
+				}
+
+				if !isExcluded {
+					return CQLDataTypes
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

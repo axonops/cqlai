@@ -1,5 +1,7 @@
 package completion
 
+import "strings"
+
 // getCreateCompletions returns completions for CREATE commands
 func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
@@ -92,6 +94,57 @@ func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []
 				return []string{
 					"{'class': 'SimpleStrategy', 'replication_factor': 1}",
 					"{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}",
+				}
+			}
+		}
+	}
+
+	// Handle CREATE TABLE column type suggestions
+	// Detect if we're inside column definitions (after opening parenthesis)
+	if len(words) > 1 && words[1] == "TABLE" {
+		// Look for opening parenthesis in any word
+		openParenIdx := -1
+		for i, word := range words {
+			if strings.Contains(word, "(") {
+				openParenIdx = i
+				break
+			}
+		}
+
+		// If we found an opening paren and we're past it
+		if openParenIdx != -1 && wordPos > openParenIdx {
+			// Check if we're expecting a data type
+			// Simple heuristic: after column name, before comma or PRIMARY KEY
+			// Count words after the opening paren
+			wordsAfterParen := wordPos - openParenIdx
+
+			// If we're at an odd position after the paren, we're likely at a type position
+			// Position pattern: (col1 type1, col2 type2, col3 type3, PRIMARY KEY...)
+			// After paren: 1=col, 2=type, 3=comma, 4=col, 5=type, etc.
+			if wordsAfterParen%2 == 0 {
+				// Even position = type position
+				// But exclude if the current or previous word is a keyword
+				currentWord := ""
+				if wordPos < len(words) {
+					currentWord = words[wordPos]
+				}
+				prevWord := ""
+				if wordPos > 0 && wordPos-1 < len(words) {
+					prevWord = words[wordPos-1]
+				}
+
+				// Don't suggest types if we're at PRIMARY, KEY, etc.
+				excludedKeywords := []string{"PRIMARY", "KEY", "WITH", "CLUSTERING", "COMPACT"}
+				isExcluded := false
+				for _, kw := range excludedKeywords {
+					if currentWord == kw || prevWord == kw {
+						isExcluded = true
+						break
+					}
+				}
+
+				if !isExcluded {
+					return CQLDataTypes
 				}
 			}
 		}
