@@ -677,6 +677,101 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
 }
 ```
 
+### AI Provider Configuration
+
+**Note:** AI features are completely optional. CQLAI works as a full-featured CQL shell without any AI configuration.
+
+To enable AI-powered query generation, configure your preferred provider in the `ai` section of your `cqlai.json` file.
+
+#### OpenAI (GPT-4 & GPT-3.5)
+
+Use OpenAI for high-quality, general-purpose query generation. Requires an OpenAI API key.
+
+- **Get API Key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+- **Recommended Models:**
+  - `gpt-4-turbo-preview` (default, recommended for best results)
+  - `gpt-3.5-turbo` (faster, more cost-effective)
+
+**Configuration:**
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "openai": {
+      "apiKey": "sk-...",
+      "model": "gpt-4-turbo-preview"
+    }
+  }
+}
+```
+
+#### Anthropic (Claude 3)
+
+Use Anthropic for powerful, context-aware models. Ideal for complex queries and reasoning. Requires an Anthropic API key.
+
+- **Get API Key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+- **Recommended Models:**
+  - `claude-3-opus-20240229` (most powerful)
+  - `claude-3-sonnet-20240229` (default, balanced performance)
+  - `claude-3-haiku-20240307` (fastest)
+
+**Configuration:**
+```json
+{
+  "ai": {
+    "provider": "anthropic",
+    "anthropic": {
+      "apiKey": "sk-ant-...",
+      "model": "claude-3-sonnet-20240229"
+    }
+  }
+}
+```
+
+#### Google Gemini
+
+Use Google Gemini for a fast and capable model from Google. Requires a Google AI Studio API key.
+
+- **Get API Key:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+- **Recommended Model:**
+  - `gemini-pro` (default)
+
+**Configuration:**
+```json
+{
+  "ai": {
+    "provider": "gemini",
+    "gemini": {
+      "apiKey": "...",
+      "model": "gemini-pro"
+    }
+  }
+}
+```
+
+#### Mock Provider (for Testing)
+
+The `mock` provider is the default and requires no API key. It's useful for testing the AI workflow or for users who don't need real AI capabilities. It generates simple, predictable queries based on keywords.
+
+**Configuration:**
+```json
+{
+  "ai": {
+    "provider": "mock"
+  }
+}
+```
+
+#### Using Environment Variables for API Keys
+
+For better security, you can provide API keys via environment variables instead of writing them in the configuration file.
+
+- **OpenAI:** `OPENAI_API_KEY`
+- **Anthropic:** `ANTHROPIC_API_KEY`
+- **Google Gemini:** `GEMINI_API_KEY`
+
+If an environment variable is set, it will be used even if an `apiKey` is present in `cqlai.json`.
+
 **Configuration Options:**
 
 | Option | Type | Default | Description |
