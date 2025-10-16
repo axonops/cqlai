@@ -285,6 +285,71 @@ func (sce *SimpleCompletionEngine) getCreateCompletions(words []string, endsWith
 		}
 		return suggestions
 	}
+	// After CREATE <other types>, suggest IF
+	if len(words) == 2 && endsWithSpace {
+		for _, objType := range []string{"KEYSPACE", "TYPE", "TRIGGER", "FUNCTION", "AGGREGATE", "USER", "ROLE"} {
+			if words[1] == objType {
+				return []string{"IF"}
+			}
+		}
+	}
+	// After CREATE <type> IF, suggest NOT
+	if len(words) == 3 && endsWithSpace && words[2] == "IF" {
+		return []string{"NOT"}
+	}
+	// After CREATE <type> IF NOT, suggest EXISTS
+	if len(words) == 4 && endsWithSpace && words[2] == "IF" && words[3] == "NOT" {
+		return []string{"EXISTS"}
+	}
+	// After CREATE TABLE/INDEX IF NOT EXISTS, suggest keyspace names
+	if len(words) == 5 && endsWithSpace && words[2] == "IF" && words[3] == "NOT" && words[4] == "EXISTS" {
+		if words[1] == "TABLE" || words[1] == "INDEX" {
+			keyspaces := sce.getKeyspaceNames()
+			suggestions := make([]string, 0, len(keyspaces))
+			for _, ks := range keyspaces {
+				suggestions = append(suggestions, ks+".")
+			}
+			return suggestions
+		}
+	}
+	// After CREATE KEYSPACE [IF NOT EXISTS] <name>, suggest WITH
+	if len(words) >= 3 && words[1] == "KEYSPACE" && endsWithSpace {
+		// Could be: CREATE KEYSPACE name (3 words)
+		// Or: CREATE KEYSPACE IF NOT EXISTS name (6 words)
+		if (len(words) == 3 && words[2] != "IF") || (len(words) == 6 && words[2] == "IF" && words[3] == "NOT" && words[4] == "EXISTS") {
+			return []string{"WITH"}
+		}
+	}
+	// After CREATE KEYSPACE ... WITH, suggest REPLICATION
+	if len(words) >= 4 && words[1] == "KEYSPACE" && endsWithSpace {
+		for i := 2; i < len(words); i++ {
+			if words[i] == "WITH" && i == len(words)-1 {
+				return []string{"REPLICATION"}
+			}
+		}
+	}
+
+	// After CREATE KEYSPACE ... REPLICATION, suggest "="
+	if len(words) >= 5 && words[1] == "KEYSPACE" && endsWithSpace {
+		for i := 2; i < len(words); i++ {
+			if words[i] == "REPLICATION" && i == len(words)-1 {
+				return []string{"="}
+			}
+		}
+	}
+
+	// After CREATE KEYSPACE ... REPLICATION =, suggest replication map syntax
+	if len(words) >= 6 && words[1] == "KEYSPACE" && endsWithSpace {
+		for i := 2; i < len(words)-1; i++ {
+			if words[i] == "REPLICATION" && words[i+1] == "=" && i+1 == len(words)-1 {
+				return []string{
+					"{'class': 'SimpleStrategy', 'replication_factor': 1}",
+					"{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}",
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -318,6 +383,33 @@ func (sce *SimpleCompletionEngine) getDropCompletions(words []string, endsWithSp
 			}
 		}
 		return suggestions
+	}
+	// After DROP <type>, suggest IF
+	if len(words) == 2 && endsWithSpace {
+		return []string{"IF"}
+	}
+	// After DROP <type> IF, suggest EXISTS
+	if len(words) == 3 && endsWithSpace && words[2] == "IF" {
+		return []string{"EXISTS"}
+	}
+	// After DROP TABLE/INDEX IF EXISTS, suggest keyspace.object names
+	if len(words) == 4 && endsWithSpace && words[2] == "IF" && words[3] == "EXISTS" {
+		if words[1] == "TABLE" || words[1] == "INDEX" {
+			if words[1] == "TABLE" {
+				// For DROP TABLE, suggest keyspace.table names
+				keyspaces := sce.getKeyspaceNames()
+				suggestions := make([]string, 0)
+				for _, ks := range keyspaces {
+					suggestions = append(suggestions, ks+".")
+				}
+				return suggestions
+			} else if words[1] == "INDEX" {
+				// For DROP INDEX, just suggest index names (no keyspace prefix needed)
+				return nil // Let it fall through to get index names from schema
+			}
+		} else if words[1] == "KEYSPACE" {
+			return sce.getKeyspaceNames()
+		}
 	}
 	return nil
 }

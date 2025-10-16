@@ -158,17 +158,37 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 	// Apply filtering if we have a partial word
 	if wordToComplete != "" {
 		upperWord := strings.ToUpper(wordToComplete)
-		var filtered []string
+
+		// Check if any suggestion exactly matches the word being typed
+		// If so, user wants the NEXT word, not to complete the current word
+		exactMatch := false
 		for _, s := range suggestions {
-			if strings.HasPrefix(strings.ToUpper(s), upperWord) {
-				filtered = append(filtered, s)
+			if strings.ToUpper(s) == upperWord {
+				exactMatch = true
+				break
 			}
 		}
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] After filtering for '%s': %d matches: %v\n", wordToComplete, len(filtered), filtered)
-			defer debugFile.Close()
+
+		// If there's an exact match, don't filter - show next word suggestions
+		// Otherwise, filter suggestions that start with the partial word
+		if !exactMatch {
+			var filtered []string
+			for _, s := range suggestions {
+				if strings.HasPrefix(strings.ToUpper(s), upperWord) {
+					filtered = append(filtered, s)
+				}
+			}
+			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+				fmt.Fprintf(debugFile, "[DEBUG] After filtering for '%s': %d matches: %v\n", wordToComplete, len(filtered), filtered)
+				defer debugFile.Close()
+			}
+			suggestions = filtered
+		} else {
+			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+				fmt.Fprintf(debugFile, "[DEBUG] Exact match found for '%s', showing next word suggestions: %v\n", wordToComplete, suggestions)
+				defer debugFile.Close()
+			}
 		}
-		suggestions = filtered
 	}
 
 	// Return just the suggestions (next words only), not full phrases
