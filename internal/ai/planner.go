@@ -106,6 +106,12 @@ func renderSelect(plan *AIResult) (string, error) {
 		sb.WriteString(strings.Join(conditions, " AND "))
 	}
 
+	// GROUP BY clause
+	if len(plan.GroupBy) > 0 {
+		sb.WriteString(" GROUP BY ")
+		sb.WriteString(strings.Join(plan.GroupBy, ", "))
+	}
+
 	// ORDER BY clause
 	if len(plan.OrderBy) > 0 {
 		sb.WriteString(" ORDER BY ")
