@@ -394,20 +394,19 @@ func (sce *SimpleCompletionEngine) getDropCompletions(words []string, endsWithSp
 	}
 	// After DROP TABLE/INDEX IF EXISTS, suggest keyspace.object names
 	if len(words) == 4 && endsWithSpace && words[2] == "IF" && words[3] == "EXISTS" {
-		if words[1] == "TABLE" || words[1] == "INDEX" {
-			if words[1] == "TABLE" {
-				// For DROP TABLE, suggest keyspace.table names
-				keyspaces := sce.getKeyspaceNames()
-				suggestions := make([]string, 0)
-				for _, ks := range keyspaces {
-					suggestions = append(suggestions, ks+".")
-				}
-				return suggestions
-			} else if words[1] == "INDEX" {
-				// For DROP INDEX, just suggest index names (no keyspace prefix needed)
-				return nil // Let it fall through to get index names from schema
+		switch words[1] {
+		case "TABLE":
+			// For DROP TABLE, suggest keyspace.table names
+			keyspaces := sce.getKeyspaceNames()
+			suggestions := make([]string, 0)
+			for _, ks := range keyspaces {
+				suggestions = append(suggestions, ks+".")
 			}
-		} else if words[1] == "KEYSPACE" {
+			return suggestions
+		case "INDEX":
+			// For DROP INDEX, just suggest index names (no keyspace prefix needed)
+			return nil // Let it fall through to get index names from schema
+		case "KEYSPACE":
 			return sce.getKeyspaceNames()
 		}
 	}
