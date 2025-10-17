@@ -18,6 +18,12 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 
 	currentInput := m.input.Value()
 
+	// If in multi-line mode, combine the buffer with current input for completion
+	fullInput := currentInput
+	if m.multiLineMode && len(m.multiLineBuffer) > 0 {
+		fullInput = strings.Join(m.multiLineBuffer, " ") + " " + currentInput
+	}
+
 	// If completions are already showing, cycle through them
 	if m.showCompletions && len(m.completions) > 0 {
 		// Just cycle the selection, don't apply yet
@@ -97,8 +103,8 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 		}
 	}
 
-	// Get completions for current input
-	m.completions = m.completionEngine.Complete(currentInput)
+	// Get completions for current input (use fullInput which includes multi-line buffer if applicable)
+	m.completions = m.completionEngine.Complete(fullInput)
 
 	if len(m.completions) == 0 { //nolint:gocritic // more readable as if
 		// No completions available
