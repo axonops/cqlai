@@ -28,6 +28,7 @@ type copyStats struct {
 	processedRows    int
 	insertErrorCount int
 	skippedRows      int
+	errorMessages    []string // Store first few error messages for user display
 }
 
 // executeCopyFromParquet executes COPY FROM operation for Parquet format
@@ -226,6 +227,12 @@ func (h *MetaCommandHandler) insertRow(table string, columns []string, row map[s
 		stats.insertErrorCount++
 		logger.DebugfToFile("CopyFromParquet", "Insert error: %v", err)
 		logger.DebugfToFile("CopyFromParquet", "Failed query: %s", query)
+
+		// Store first few error messages for user display (limit to 5)
+		if len(stats.errorMessages) < 5 {
+			stats.errorMessages = append(stats.errorMessages, fmt.Sprintf("Row %d: %v", stats.processedRows, err))
+		}
+
 		return err
 	}
 
@@ -550,6 +557,17 @@ func (h *MetaCommandHandler) formatCopyResult(stats *copyStats) string {
 
 	if stats.insertErrorCount > 0 {
 		summary += fmt.Sprintf(" with %d errors", stats.insertErrorCount)
+
+		// Show first few error messages to help user diagnose issues
+		if len(stats.errorMessages) > 0 {
+			summary += "\n\nFirst errors encountered:"
+			for _, errMsg := range stats.errorMessages {
+				summary += "\n  - " + errMsg
+			}
+			if stats.insertErrorCount > len(stats.errorMessages) {
+				summary += fmt.Sprintf("\n  ... and %d more errors", stats.insertErrorCount-len(stats.errorMessages))
+			}
+		}
 	}
 
 	return summary

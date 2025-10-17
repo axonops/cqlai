@@ -3,7 +3,7 @@ package completion
 // getUpdateCompletions returns completions for UPDATE commands
 func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
-		return ce.getTableNames()
+		return ce.getTableAndKeyspaceNames()
 	}
 
 	// Track what we've seen

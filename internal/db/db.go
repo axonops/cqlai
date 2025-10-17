@@ -455,12 +455,15 @@ func (s *Session) GetTraceData() ([][]string, []string, *TraceInfo, error) {
 	}
 
 	// Query the system_traces.events table for trace events
-	query := `SELECT event_id, activity, source, source_elapsed, thread 
-	          FROM system_traces.events 
-	          WHERE session_id = ? 
+	// Note: Always use LOCAL_ONE consistency for system_traces queries
+	// because trace data may not be replicated to all nodes yet
+	query := `SELECT event_id, activity, source, source_elapsed, thread
+	          FROM system_traces.events
+	          WHERE session_id = ?
 	          ORDER BY event_id`
 
-	iter := s.Query(query, s.lastTraceID).Iter()
+	// Use LOCAL_ONE consistency for trace queries regardless of session consistency
+	iter := s.Session.Query(query, s.lastTraceID).Consistency(gocql.LocalOne).Iter()
 	defer iter.Close()
 
 	// Define headers
@@ -488,13 +491,13 @@ func (s *Session) GetTraceData() ([][]string, []string, *TraceInfo, error) {
 		return nil, nil, nil, fmt.Errorf("failed to retrieve trace data: %v", err)
 	}
 
-	// Get session info
+	// Get session info - also use LOCAL_ONE consistency
 	var traceInfo *TraceInfo
 	var coordinator string
 	var duration int
-	sessionIter := s.Query(`SELECT coordinator, duration 
-	                                FROM system_traces.sessions 
-	                                WHERE session_id = ?`, s.lastTraceID).Iter()
+	sessionIter := s.Session.Query(`SELECT coordinator, duration
+	                                FROM system_traces.sessions
+	                                WHERE session_id = ?`, s.lastTraceID).Consistency(gocql.LocalOne).Iter()
 	if sessionIter.Scan(&coordinator, &duration) {
 		traceInfo = &TraceInfo{
 			Coordinator: coordinator,

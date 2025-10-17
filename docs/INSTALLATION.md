@@ -254,8 +254,8 @@ nano cqlai.json
 ### Configuration Locations
 CQLAI looks for configuration in the following order:
 1. `./cqlai.json` (current directory)
-2. `~/.config/cqlai/cqlai.json` (user config)
-3. `/etc/cqlai/cqlai.json` (system-wide)
+2. `~/.cqlai.json` (user home directory)
+3. `~/.config/cqlai/config.json` (XDG config directory)
 
 ### Environment Variables
 Configuration can also be set via environment variables:

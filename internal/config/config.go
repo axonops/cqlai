@@ -115,7 +115,6 @@ func LoadConfig() (*Config, error) {
 		"cqlai.json",
 		filepath.Join(os.Getenv("HOME"), ".cqlai.json"),
 		filepath.Join(os.Getenv("HOME"), ".config", "cqlai", "config.json"),
-		"/etc/cqlai/config.json",
 	}
 	
 	logger.DebugfToFile("Config", "Looking for JSON config files in: %v", configPaths)
@@ -481,7 +480,12 @@ func loadCQLSHRC(path string, config *Config) error {
 			if config.SSL == nil {
 				config.SSL = &SSLConfig{}
 			}
+			// Any key in [ssl] section means SSL should be enabled
+			config.SSL.Enabled = true
 			switch key {
+			case "factory":
+				// Ignore factory setting - we handle SSL ourselves
+				logger.DebugfToFile("CQLSHRC", "SSL enabled (factory specified)")
 			case "certfile":
 				// Expand ~ to home directory
 				if strings.HasPrefix(value, "~") {
@@ -504,7 +508,11 @@ func loadCQLSHRC(path string, config *Config) error {
 			case "validate":
 				if value == "false" || value == "0" {
 					config.SSL.InsecureSkipVerify = true
-					logger.DebugfToFile("CQLSHRC", "Set InsecureSkipVerify to true")
+					config.SSL.HostVerification = false
+					logger.DebugfToFile("CQLSHRC", "Set InsecureSkipVerify to true and HostVerification to false")
+				} else {
+					config.SSL.HostVerification = true
+					logger.DebugfToFile("CQLSHRC", "Set HostVerification to true")
 				}
 			}
 		}

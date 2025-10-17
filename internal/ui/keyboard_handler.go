@@ -271,7 +271,12 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		// If completions are showing, update them based on new input
 		if m.showCompletions {
 			newInput := m.input.Value()
-			m.completions = m.completionEngine.Complete(newInput)
+			// If in multi-line mode, combine buffer with current input
+			fullInput := newInput
+			if m.multiLineMode && len(m.multiLineBuffer) > 0 {
+				fullInput = strings.Join(m.multiLineBuffer, " ") + " " + newInput
+			}
+			m.completions = m.completionEngine.Complete(fullInput)
 
 			// If no completions match, hide the modal
 			if len(m.completions) == 0 {

@@ -106,6 +106,12 @@ func renderSelect(plan *AIResult) (string, error) {
 		sb.WriteString(strings.Join(conditions, " AND "))
 	}
 
+	// GROUP BY clause
+	if len(plan.GroupBy) > 0 {
+		sb.WriteString(" GROUP BY ")
+		sb.WriteString(strings.Join(plan.GroupBy, ", "))
+	}
+
 	// ORDER BY clause
 	if len(plan.OrderBy) > 0 {
 		sb.WriteString(" ORDER BY ")
@@ -230,12 +236,34 @@ func renderDelete(plan *AIResult) (string, error) {
 }
 
 func renderCreate(plan *AIResult) (string, error) {
-	// Simplified CREATE TABLE rendering
-	if plan.Table == "" {
-		return "", fmt.Errorf("table name required for CREATE")
+	var sb strings.Builder
+
+	// Handle CREATE KEYSPACE
+	if plan.Table == "" && plan.Keyspace != "" {
+		sb.WriteString(fmt.Sprintf("CREATE KEYSPACE %s", plan.Keyspace))
+
+		// Add WITH REPLICATION clause if options are provided
+		if plan.Options != nil {
+			if replication, ok := plan.Options["replication"]; ok {
+				sb.WriteString(" WITH REPLICATION = ")
+				// Convert replication object to map syntax
+				if replMap, ok := replication.(map[string]any); ok {
+					sb.WriteString(formatMapValue(replMap))
+				} else {
+					sb.WriteString(fmt.Sprintf("%v", replication))
+				}
+			}
+		}
+
+		sb.WriteString(";")
+		return sb.String(), nil
 	}
 
-	var sb strings.Builder
+	// Handle CREATE TABLE
+	if plan.Table == "" {
+		return "", fmt.Errorf("table or keyspace name required for CREATE")
+	}
+
 	sb.WriteString("CREATE TABLE ")
 
 	if plan.Keyspace != "" {
@@ -330,6 +358,30 @@ func formatValue(v any) string {
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// formatMapValue formats a map as CQL map literal: {'key': 'value', 'key2': value2}
+func formatMapValue(m map[string]any) string {
+	if len(m) == 0 {
+		return "{}"
+	}
+
+	pairs := make([]string, 0, len(m))
+	for k, v := range m {
+		var valueStr string
+		switch val := v.(type) {
+		case string:
+			valueStr = fmt.Sprintf("'%s'", val)
+		case map[string]any:
+			// Nested map
+			valueStr = formatMapValue(val)
+		default:
+			valueStr = fmt.Sprintf("%v", val)
+		}
+		pairs = append(pairs, fmt.Sprintf("'%s': %s", k, valueStr))
+	}
+
+	return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
 }
 
 // ParsePlanFromJSON parses a JSON plan from LLM response

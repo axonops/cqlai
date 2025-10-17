@@ -440,7 +440,21 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		if err != nil {
 			return fmt.Sprintf("Error reading header: %v", err)
 		}
-		headerColumns = headerRow
+		// Clean column names - remove (PK) and (C) suffixes that may be present
+		// from COPY TO exports with HEADER=TRUE
+		headerColumns = make([]string, len(headerRow))
+		for i, col := range headerRow {
+			cleanCol := strings.TrimSpace(col)
+			// Remove (PK) suffix for primary key columns
+			if idx := strings.Index(cleanCol, " (PK)"); idx != -1 {
+				cleanCol = cleanCol[:idx]
+			}
+			// Remove (C) suffix for clustering columns
+			if idx := strings.Index(cleanCol, " (C)"); idx != -1 {
+				cleanCol = cleanCol[:idx]
+			}
+			headerColumns[i] = strings.TrimSpace(cleanCol)
+		}
 	}
 
 	// If no columns specified, try to get them from the table schema or header

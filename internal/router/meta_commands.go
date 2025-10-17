@@ -385,6 +385,17 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 		}
 	}
 
+	// Refresh schema cache after SOURCE command completes
+	// This ensures cache is up-to-date after executing multiple DDL statements
+	logger.DebugfToFile("SOURCE", "SOURCE command completed, refreshing schema cache")
+	if cache := h.session.GetSchemaCache(); cache != nil {
+		if err := cache.Refresh(); err != nil {
+			logger.DebugfToFile("SOURCE", "Failed to refresh schema cache: %v", err)
+		} else {
+			logger.DebugfToFile("SOURCE", "Schema cache refreshed successfully")
+		}
+	}
+
 	summary := fmt.Sprintf("\nExecuted %d statements from %s", successCount+errorCount, filename)
 	if errorCount > 0 {
 		summary += fmt.Sprintf(" (%d successful, %d failed)", successCount, errorCount)

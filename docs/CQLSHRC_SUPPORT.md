@@ -7,7 +7,7 @@ CQLAI now supports reading configuration from standard CQLSHRC files, making it 
 Configuration is loaded in the following order (later sources override earlier ones):
 
 1. **CQLSHRC file** - `~/.cassandra/cqlshrc` or `~/.cqlshrc`
-2. **JSON config file** - `cqlai.json`, `~/.cqlai.json`, `~/.config/cqlai/config.json`, or `/etc/cqlai/config.json`
+2. **JSON config file** - `cqlai.json`, `~/.cqlai.json`, or `~/.config/cqlai/config.json`
 3. **Environment variables** - `CQLAI_*`, `CASSANDRA_*`, etc.
 
 ## Supported CQLSHRC Sections and Parameters

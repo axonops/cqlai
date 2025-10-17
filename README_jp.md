@@ -602,7 +602,6 @@ CQLAIは、既存のCassandraセットアップとの最大限の柔軟性と互
    - `./cqlai.json`(現在のディレクトリ)
    - `~/.cqlai.json`(ユーザーホームディレクトリ)
    - `~/.config/cqlai/config.json`(XDG設定ディレクトリ)
-   - `/etc/cqlai/config.json`(システム全体)
 
 3. **環境変数**
    - `CQLAI_HOST`、`CQLAI_PORT`、`CQLAI_KEYSPACE`など
@@ -709,7 +708,6 @@ CQLAIは次の場所で設定ファイルを検索します:
 1. `./cqlai.json`(現在の作業ディレクトリ)
 2. `~/.cqlai.json`(ユーザーホームディレクトリ)
 3. `~/.config/cqlai/config.json`(Linux/macOSのXDG設定ディレクトリ)
-4. `/etc/cqlai/config.json`(システム全体の設定)
 
 ### 環境変数
 

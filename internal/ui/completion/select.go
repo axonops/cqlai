@@ -158,7 +158,7 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 	if hasFrom && fromIndex >= 0 {
 		// Immediately after FROM
 		if wordPos == fromIndex+1 {
-			return ce.getTableNames()
+			return ce.getTableAndKeyspaceNames()
 		}
 
 		// After table name

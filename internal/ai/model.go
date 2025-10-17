@@ -84,6 +84,7 @@ type AIResult struct {
 	Columns        []string       `json:"columns,omitempty"`
 	Values         map[string]any `json:"values,omitempty"`
 	Where          []WhereClause  `json:"where,omitempty"`
+	GroupBy        []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
 	OrderBy        []OrderClause  `json:"order_by,omitempty"`
 	Limit          int            `json:"limit,omitempty"`
 	AllowFiltering bool           `json:"allow_filtering,omitempty"`

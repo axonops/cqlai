@@ -83,6 +83,7 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 	processedRows := 0
 	insertErrorCount := 0
 	skippedRows := 0
+	errorMessages := make([]string, 0, 5) // Store first few error messages
 
 	batch := make([]string, 0, batchSize)
 
@@ -133,7 +134,7 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 
 			// Execute batch when full
 			if len(batch) >= batchSize {
-				errors := h.executePartitionedBatch(batch)
+				errors := h.executePartitionedBatch(batch, processedRows, &errorMessages)
 				insertErrorCount += errors
 
 				if maxInsertErrors > 0 && insertErrorCount > maxInsertErrors {
@@ -155,7 +156,7 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 done:
 	// Execute remaining batch
 	if len(batch) > 0 {
-		errors := h.executePartitionedBatch(batch)
+		errors := h.executePartitionedBatch(batch, processedRows, &errorMessages)
 		insertErrorCount += errors
 		processedRows += len(batch) - errors
 	}
@@ -167,6 +168,17 @@ done:
 
 	if insertErrorCount > 0 {
 		result += fmt.Sprintf(" with %d errors", insertErrorCount)
+
+		// Show first few error messages to help user diagnose issues
+		if len(errorMessages) > 0 {
+			result += "\n\nFirst errors encountered:"
+			for _, errMsg := range errorMessages {
+				result += "\n  - " + errMsg
+			}
+			if insertErrorCount > len(errorMessages) {
+				result += fmt.Sprintf("\n  ... and %d more errors", insertErrorCount-len(errorMessages))
+			}
+		}
 	}
 
 	if skipRows > 0 {
@@ -255,13 +267,19 @@ func (h *MetaCommandHandler) formatParquetValueForInsert(value interface{}, colu
 }
 
 // executePartitionedBatch executes a batch of INSERT statements for partitioned data
-func (h *MetaCommandHandler) executePartitionedBatch(batch []string) int {
+func (h *MetaCommandHandler) executePartitionedBatch(batch []string, rowIndex int, errorMessages *[]string) int {
 	errorCount := 0
-	for _, query := range batch {
+	for i, query := range batch {
 		result := h.session.ExecuteCQLQuery(query)
 		if err, ok := result.(error); ok {
 			logger.DebugfToFile("CopyFromPartitioned", "Insert error: %v", err)
+			logger.DebugfToFile("CopyFromPartitioned", "Failed query: %s", query)
 			errorCount++
+
+			// Store first few error messages for user display (limit to 5)
+			if len(*errorMessages) < 5 {
+				*errorMessages = append(*errorMessages, fmt.Sprintf("Row %d: %v", rowIndex+i, err))
+			}
 		}
 	}
 	return errorCount
