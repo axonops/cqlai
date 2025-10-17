@@ -51,13 +51,14 @@ type SSLConfig struct {
 
 // AIConfig holds AI provider configuration
 type AIConfig struct {
-	Provider  string            `json:"provider"` // "mock", "openai", "anthropic", "gemini", "ollama"
-	APIKey    string            `json:"apiKey"`   // General API key (overridden by provider-specific)
-	Model     string            `json:"model"`    // General model (overridden by provider-specific)
-	OpenAI    *AIProviderConfig `json:"openai,omitempty"`
-	Anthropic *AIProviderConfig `json:"anthropic,omitempty"`
-	Gemini    *AIProviderConfig `json:"gemini,omitempty"`
-	Ollama    *AIProviderConfig `json:"ollama,omitempty"`
+	Provider   string            `json:"provider"` // "mock", "openai", "anthropic", "gemini", "ollama", "openrouter"
+	APIKey     string            `json:"apiKey"`   // General API key (overridden by provider-specific)
+	Model      string            `json:"model"`    // General model (overridden by provider-specific)
+	OpenAI     *AIProviderConfig `json:"openai,omitempty"`
+	Anthropic  *AIProviderConfig `json:"anthropic,omitempty"`
+	Gemini     *AIProviderConfig `json:"gemini,omitempty"`
+	Ollama     *AIProviderConfig `json:"ollama,omitempty"`
+	OpenRouter *AIProviderConfig `json:"openrouter,omitempty"`
 }
 
 // AIProviderConfig holds provider-specific configuration
@@ -296,6 +297,27 @@ func OverrideWithEnvVars(config *Config) {
 			config.AI.Ollama = &AIProviderConfig{}
 		}
 		config.AI.Ollama.Model = model
+	}
+
+	// OpenRouter settings
+	if apiKey := os.Getenv("OPENROUTER_API_KEY"); apiKey != "" {
+		if config.AI == nil {
+			config.AI = &AIConfig{}
+		}
+		if config.AI.OpenRouter == nil {
+			config.AI.OpenRouter = &AIProviderConfig{}
+		}
+		config.AI.OpenRouter.APIKey = apiKey
+	}
+
+	if model := os.Getenv("OPENROUTER_MODEL"); model != "" {
+		if config.AI == nil {
+			config.AI = &AIConfig{}
+		}
+		if config.AI.OpenRouter == nil {
+			config.AI.OpenRouter = &AIProviderConfig{}
+		}
+		config.AI.OpenRouter.Model = model
 	}
 
 	// General AI settings (fallback for any provider)
