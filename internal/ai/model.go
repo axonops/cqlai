@@ -66,6 +66,7 @@ type AIConversation struct {
 	anthropicClient   *anthropic.Client
 	anthropicMessages []anthropic.MessageParam // Track actual Anthropic message format
 	openaiClient      *openai.Client
+	openrouterClient  *openai.Client // OpenRouter uses OpenAI-compatible client
 }
 
 // ConversationMessage represents a message in the conversation
