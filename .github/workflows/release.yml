@@ -136,7 +136,9 @@ jobs:
           OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
           # Only create tar.gz for Linux (Windows and macOS installers will be created in separate jobs)
           if [ "${{ matrix.goos }}" = "linux" ]; then
-            tar czf "cqlai-${{ matrix.platform }}.tar.gz" "${OUTPUT_NAME}" README.md LICENSE
+            tar czf "cqlai-${{ matrix.platform }}.tar.gz" \
+              --owner=0 --group=0 \
+              "${OUTPUT_NAME}" README.md LICENSE
           fi
 
       - name: Upload artifact
@@ -415,6 +417,9 @@ jobs:
           chmod 755 cqlai-deb/usr/bin/cqlai
           cp README.md LICENSE cqlai-deb/usr/share/doc/cqlai/
 
+          # Set ownership to root:root
+          sudo chown -R root:root cqlai-deb/usr
+
           # Create control file
           cat > cqlai-deb/DEBIAN/control << EOF
           Package: cqlai
@@ -443,7 +448,9 @@ jobs:
           # Create source tarball
           mkdir cqlai-${VERSION}
           cp cqlai README.md LICENSE cqlai-${VERSION}/
-          tar czf ~/rpmbuild/SOURCES/cqlai-${VERSION}.tar.gz cqlai-${VERSION}
+          tar czf ~/rpmbuild/SOURCES/cqlai-${VERSION}.tar.gz \
+            --owner=0 --group=0 \
+            cqlai-${VERSION}
 
           # Create spec file (no BuildArch - let --target control it)
           cat > ~/rpmbuild/SPECS/cqlai.spec << EOF

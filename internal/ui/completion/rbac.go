@@ -52,7 +52,7 @@ func (ce *CompletionEngine) getGrantCompletions(words []string, wordPos int) []s
 			case "KEYSPACE":
 				return ce.getKeyspaceNames()
 			case "TABLE":
-				return ce.getTableNames()
+				return ce.getTableAndKeyspaceNames()
 			case "FUNCTION":
 				return ce.getFunctionNames()
 			case "AGGREGATE":
@@ -136,7 +136,7 @@ func (ce *CompletionEngine) getRevokeCompletions(words []string, wordPos int) []
 			case "KEYSPACE":
 				return ce.getKeyspaceNames()
 			case "TABLE":
-				return ce.getTableNames()
+				return ce.getTableAndKeyspaceNames()
 			case "FUNCTION":
 				return ce.getFunctionNames()
 			case "AGGREGATE":

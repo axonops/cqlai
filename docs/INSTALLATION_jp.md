@@ -254,8 +254,8 @@ nano cqlai.json
 ### 設定場所
 CQLAIは次の順序で設定を探します:
 1. `./cqlai.json`(現在のディレクトリ)
-2. `~/.config/cqlai/cqlai.json`(ユーザー設定)
-3. `/etc/cqlai/cqlai.json`(システム全体)
+2. `~/.cqlai.json`(ユーザーホームディレクトリ)
+3. `~/.config/cqlai/config.json`(XDG設定ディレクトリ)
 
 ### 環境変数
 環境変数を使用して設定することもできます:
