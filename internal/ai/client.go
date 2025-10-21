@@ -37,6 +37,7 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 		Provider: dbConfig.Provider,
 		APIKey:   dbConfig.APIKey,
 		Model:    dbConfig.Model,
+		URL:      dbConfig.URL, // Use top-level URL as base
 	}
 
 	if config.Provider == "" {
@@ -96,10 +97,17 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 			if dbConfig.Ollama.Model != "" {
 				config.Model = dbConfig.Ollama.Model
 			}
+			if dbConfig.Ollama.URL != "" {
+				config.URL = dbConfig.Ollama.URL // Provider-specific URL overrides top-level
+			}
 		}
 		if config.Model == "" {
 			config.Model = DefaultOllamaModel
 		}
+		if config.URL == "" {
+			config.URL = "http://localhost:11434/v1" // Default Ollama URL
+		}
+		logger.DebugfToFile("AI", "Ollama config: URL=%s, Model=%s", config.URL, config.Model)
 	case ProviderOpenRouter:
 		logger.DebugfToFile("AI", "Processing OpenRouter config")
 		if dbConfig.OpenRouter != nil {
@@ -113,15 +121,23 @@ func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
 				config.Model = dbConfig.OpenRouter.Model
 				logger.DebugfToFile("AI", "Set OpenRouter model: %s", config.Model)
 			}
+			if dbConfig.OpenRouter.URL != "" {
+				config.URL = dbConfig.OpenRouter.URL // Provider-specific URL overrides top-level
+				logger.DebugfToFile("AI", "Set OpenRouter URL: %s", config.URL)
+			}
 		}
 		if config.Model == "" {
 			config.Model = DefaultOpenRouterModel
 			logger.DebugfToFile("AI", "Using default OpenRouter model: %s", config.Model)
 		}
+		if config.URL == "" {
+			config.URL = "https://openrouter.ai/api/v1" // Default OpenRouter URL
+			logger.DebugfToFile("AI", "Using default OpenRouter URL: %s", config.URL)
+		}
 	}
 
-	logger.DebugfToFile("AI", "Final AI config: Provider=%s, HasAPIKey=%v, Model=%s",
-		config.Provider, config.APIKey != "", config.Model)
+	logger.DebugfToFile("AI", "Final AI config: Provider=%s, HasAPIKey=%v, Model=%s, URL=%s",
+		config.Provider, config.APIKey != "", config.Model, config.URL)
 
 	return config
 }
@@ -131,6 +147,7 @@ type AIConfig struct {
 	Provider string // "gemini", "openai", "anthropic", "ollama", "openrouter", "mock"
 	APIKey   string
 	Model    string // Optional model override
+	URL      string // For providers that support custom URLs (Ollama, OpenRouter)
 }
 
 // BaseAIClient provides common functionality

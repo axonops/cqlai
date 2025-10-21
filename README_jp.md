@@ -761,6 +761,8 @@ CQLAIには、自然言語をCQLクエリに変換する組み込みのAI機能�
 - **OpenAI**(GPT-4、GPT-3.5)
 - **Anthropic**(Claude 3)
 - **Google Gemini**
+- **Ollama**(ローカルモデルまたはOpenAI互換API)
+- **OpenRouter**(複数のモデルへのアクセス)
 - **Mock**(デフォルト、APIキーなしでのテスト用)
 
 ### 安全機能

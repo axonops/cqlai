@@ -52,6 +52,7 @@ type AIConversation struct {
 	Provider        string
 	Model           string
 	APIKey          string
+	BaseURL         string // For providers that support custom URLs (Ollama, OpenRouter)
 	OriginalRequest string
 	SchemaContext   string
 	CreatedAt       time.Time
@@ -67,6 +68,7 @@ type AIConversation struct {
 	anthropicMessages []anthropic.MessageParam // Track actual Anthropic message format
 	openaiClient      *openai.Client
 	openrouterClient  *openai.Client // OpenRouter uses OpenAI-compatible client
+	ollamaClient      *openai.Client // Ollama uses OpenAI-compatible client
 }
 
 // ConversationMessage represents a message in the conversation
