@@ -166,7 +166,7 @@ func (sce *SimpleCompletionEngine) getDescribeCompletions(words []string, endsWi
 		case "KEYSPACE":
 			return sce.getKeyspaceNames()
 		case "TABLE":
-			return sce.getTableNames()
+			return sce.getTableAndKeyspaceNames()
 		case "TYPE":
 			return sce.getTypeNames()
 		case "FUNCTION":
@@ -276,6 +276,129 @@ func (sce *SimpleCompletionEngine) getCreateCompletions(words []string, endsWith
 		}
 		return suggestions
 	}
+	// After CREATE TABLE/INDEX, suggest keyspace names for qualified names
+	if len(words) == 2 && endsWithSpace && (words[1] == "TABLE" || words[1] == "INDEX") {
+		keyspaces := sce.getKeyspaceNames()
+		suggestions := []string{"IF"} // Add IF for IF NOT EXISTS
+		for _, ks := range keyspaces {
+			suggestions = append(suggestions, ks+".")
+		}
+		return suggestions
+	}
+	// After CREATE <other types>, suggest IF
+	if len(words) == 2 && endsWithSpace {
+		for _, objType := range []string{"KEYSPACE", "TYPE", "TRIGGER", "FUNCTION", "AGGREGATE", "USER", "ROLE"} {
+			if words[1] == objType {
+				return []string{"IF"}
+			}
+		}
+	}
+	// After CREATE <type> IF, suggest NOT
+	if len(words) == 3 && endsWithSpace && words[2] == "IF" {
+		return []string{"NOT"}
+	}
+	// After CREATE <type> IF NOT, suggest EXISTS
+	if len(words) == 4 && endsWithSpace && words[2] == "IF" && words[3] == "NOT" {
+		return []string{"EXISTS"}
+	}
+	// After CREATE TABLE/INDEX IF NOT EXISTS, suggest keyspace names
+	if len(words) == 5 && endsWithSpace && words[2] == "IF" && words[3] == "NOT" && words[4] == "EXISTS" {
+		if words[1] == "TABLE" || words[1] == "INDEX" {
+			keyspaces := sce.getKeyspaceNames()
+			suggestions := make([]string, 0, len(keyspaces))
+			for _, ks := range keyspaces {
+				suggestions = append(suggestions, ks+".")
+			}
+			return suggestions
+		}
+	}
+	// After CREATE KEYSPACE [IF NOT EXISTS] <name>, suggest WITH
+	if len(words) >= 3 && words[1] == "KEYSPACE" && endsWithSpace {
+		// Could be: CREATE KEYSPACE name (3 words)
+		// Or: CREATE KEYSPACE IF NOT EXISTS name (6 words)
+		if (len(words) == 3 && words[2] != "IF") || (len(words) == 6 && words[2] == "IF" && words[3] == "NOT" && words[4] == "EXISTS") {
+			return []string{"WITH"}
+		}
+	}
+	// After CREATE KEYSPACE ... WITH, suggest REPLICATION
+	if len(words) >= 4 && words[1] == "KEYSPACE" && endsWithSpace {
+		for i := 2; i < len(words); i++ {
+			if words[i] == "WITH" && i == len(words)-1 {
+				return []string{"REPLICATION"}
+			}
+		}
+	}
+
+	// After CREATE KEYSPACE ... REPLICATION, suggest "="
+	if len(words) >= 5 && words[1] == "KEYSPACE" && endsWithSpace {
+		for i := 2; i < len(words); i++ {
+			if words[i] == "REPLICATION" && i == len(words)-1 {
+				return []string{"="}
+			}
+		}
+	}
+
+	// After CREATE KEYSPACE ... REPLICATION =, suggest replication map syntax
+	if len(words) >= 6 && words[1] == "KEYSPACE" && endsWithSpace {
+		for i := 2; i < len(words)-1; i++ {
+			if words[i] == "REPLICATION" && words[i+1] == "=" && i+1 == len(words)-1 {
+				return []string{
+					"{'class': 'SimpleStrategy', 'replication_factor': 1}",
+					"{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}",
+				}
+			}
+		}
+	}
+
+	// Handle CREATE TABLE column type suggestions
+	// Detect if we're inside column definitions (after opening parenthesis)
+	if len(words) > 1 && words[1] == "TABLE" && endsWithSpace {
+		// Look for opening parenthesis in any word
+		openParenIdx := -1
+		for i, word := range words {
+			if strings.Contains(word, "(") {
+				openParenIdx = i
+				break
+			}
+		}
+
+		// If we found an opening paren and we're past it
+		if openParenIdx != -1 {
+			// Count words after the opening paren
+			wordsAfterParen := len(words) - openParenIdx - 1
+
+			// If we're at an even position after the paren (0, 2, 4...), we're likely at a type position
+			// Position pattern: (col1 type1, col2 type2, col3 type3, PRIMARY KEY...)
+			// After paren: 0=col, 1=type, 2=comma, 3=col, 4=type, etc.
+			if wordsAfterParen%2 == 1 {
+				// Odd word count = type position (since we count from 0)
+				// But exclude if the current or previous word is a keyword
+				lastWord := ""
+				if len(words) > 0 {
+					lastWord = words[len(words)-1]
+				}
+				prevWord := ""
+				if len(words) > 1 {
+					prevWord = words[len(words)-2]
+				}
+
+				// Don't suggest types if we're at PRIMARY, KEY, etc.
+				excludedKeywords := []string{"PRIMARY", "KEY", "WITH", "CLUSTERING", "COMPACT"}
+				isExcluded := false
+				for _, kw := range excludedKeywords {
+					if lastWord == kw || prevWord == kw {
+						isExcluded = true
+						break
+					}
+				}
+
+				if !isExcluded {
+					return CQLDataTypes
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -310,6 +433,32 @@ func (sce *SimpleCompletionEngine) getDropCompletions(words []string, endsWithSp
 		}
 		return suggestions
 	}
+	// After DROP <type>, suggest IF
+	if len(words) == 2 && endsWithSpace {
+		return []string{"IF"}
+	}
+	// After DROP <type> IF, suggest EXISTS
+	if len(words) == 3 && endsWithSpace && words[2] == "IF" {
+		return []string{"EXISTS"}
+	}
+	// After DROP TABLE/INDEX IF EXISTS, suggest keyspace.object names
+	if len(words) == 4 && endsWithSpace && words[2] == "IF" && words[3] == "EXISTS" {
+		switch words[1] {
+		case "TABLE":
+			// For DROP TABLE, suggest keyspace.table names
+			keyspaces := sce.getKeyspaceNames()
+			suggestions := make([]string, 0)
+			for _, ks := range keyspaces {
+				suggestions = append(suggestions, ks+".")
+			}
+			return suggestions
+		case "INDEX":
+			// For DROP INDEX, just suggest index names (no keyspace prefix needed)
+			return nil // Let it fall through to get index names from schema
+		case "KEYSPACE":
+			return sce.getKeyspaceNames()
+		}
+	}
 	return nil
 }
 
@@ -332,7 +481,7 @@ func (sce *SimpleCompletionEngine) getSelectCompletions(words []string, endsWith
 	for i, word := range words {
 		if word == "FROM" && i < len(words)-1 {
 			if (i == len(words)-2 && endsWithSpace) || (i == len(words)-1 && !endsWithSpace) {
-				return sce.getTableNames()
+				return sce.getTableAndKeyspaceNames()
 			}
 		}
 	}
@@ -358,14 +507,14 @@ func (sce *SimpleCompletionEngine) getInsertCompletions(words []string, endsWith
 		return []string{"INTO"}
 	}
 	if len(words) == 2 && strings.ToUpper(words[1]) == "INTO" && endsWithSpace {
-		return sce.getTableNames()
+		return sce.getTableAndKeyspaceNames()
 	}
 	return nil
 }
 
 func (sce *SimpleCompletionEngine) getUpdateCompletions(words []string, endsWithSpace bool) []string {
 	if len(words) == 1 && endsWithSpace {
-		return sce.getTableNames()
+		return sce.getTableAndKeyspaceNames()
 	}
 	return nil
 }
@@ -375,7 +524,7 @@ func (sce *SimpleCompletionEngine) getDeleteCompletions(words []string, endsWith
 		return []string{"FROM"}
 	}
 	if len(words) == 2 && strings.ToUpper(words[1]) == "FROM" && endsWithSpace {
-		return sce.getTableNames()
+		return sce.getTableAndKeyspaceNames()
 	}
 	return nil
 }
