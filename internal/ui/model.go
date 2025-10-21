@@ -28,9 +28,10 @@ type ConnectionOptions struct {
 	Username            string
 	Password            string
 	RequireConfirmation bool
-	ConnectTimeout      int  // Connection timeout in seconds
-	RequestTimeout      int  // Request timeout in seconds
-	Debug               bool // Enable debug logging
+	ConnectTimeout      int    // Connection timeout in seconds
+	RequestTimeout      int    // Request timeout in seconds
+	Debug               bool   // Enable debug logging
+	ConfigFile          string // Path to custom config file
 }
 
 // AIMessage represents a single message in the AI conversation
@@ -276,7 +277,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	infoReplyInput.Width = 50
 
 	// Load configuration from file and environment
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig(options.ConfigFile)
 	if err != nil {
 		// Use defaults if config file not found
 		cfg = &config.Config{
@@ -326,6 +327,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		SSL:            cfg.SSL,
 		ConnectTimeout: options.ConnectTimeout,
 		RequestTimeout: options.RequestTimeout,
+		ConfigFile:     options.ConfigFile,
 	})
 	if err != nil {
 		return nil, err
