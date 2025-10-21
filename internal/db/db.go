@@ -40,9 +40,10 @@ type SessionOptions struct {
 	Password       string
 	Consistency    string // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	SSL            *config.SSLConfig
-	BatchMode      bool // Skip schema caching for batch mode
-	ConnectTimeout int  // Connection timeout in seconds (0 = use default)
-	RequestTimeout int  // Request timeout in seconds (0 = use default)
+	BatchMode      bool   // Skip schema caching for batch mode
+	ConnectTimeout int    // Connection timeout in seconds (0 = use default)
+	RequestTimeout int    // Request timeout in seconds (0 = use default)
+	ConfigFile     string // Path to custom config file
 }
 
 // NewSession creates a new Cassandra session.
@@ -64,7 +65,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	log.SetOutput(io.Discard)
 
 	// Load configuration
-	cfg, err := loadConfig()
+	cfg, err := loadConfig(options.ConfigFile)
 	if err != nil {
 		logger.DebugfToFile("Session", "loadConfig() failed: %v", err)
 		// Use defaults if config file not found
@@ -274,9 +275,9 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 }
 
 // loadConfig loads the configuration from cqlshrc and cqlai.json files
-func loadConfig() (*config.Config, error) {
+func loadConfig(customConfigPath string) (*config.Config, error) {
 	// Use the proper config.LoadConfig() which handles cqlshrc files
-	conf, err := config.LoadConfig()
+	conf, err := config.LoadConfig(customConfigPath)
 	if err != nil {
 		return nil, err
 	}
