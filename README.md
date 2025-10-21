@@ -172,6 +172,7 @@ cqlai [options]
 #### General Options
 | Option | Short | Description |
 |--------|-------|-------------|
+| `--config-file <path>` | | Path to config file (overrides default locations) |
 | `--help` | `-h` | Show help message |
 | `--version` | `-v` | Print version and exit |
 
