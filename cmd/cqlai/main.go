@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/batch"
@@ -33,6 +34,7 @@ func main() {
 		noHeader       bool
 		fieldSep       string
 		pageSize       int
+		configFile     string
 		version        bool
 		help           bool
 	)
@@ -47,6 +49,7 @@ func main() {
 	pflag.IntVar(&connectTimeout, "connect-timeout", 10, "Connection timeout in seconds")
 	pflag.IntVar(&requestTimeout, "request-timeout", 10, "Request timeout in seconds")
 	pflag.BoolVar(&debug, "debug", false, "Enable debug logging")
+	pflag.StringVar(&configFile, "config-file", "", "Path to config file (overrides default locations)")
 
 	// Batch mode flags (compatible with cqlsh)
 	pflag.StringVarP(&execute, "execute", "e", "", "Execute CQL statement and exit")
@@ -74,6 +77,93 @@ func main() {
 	if version {
 		fmt.Printf("cqlai version %s\n", Version)
 		os.Exit(0)
+	}
+
+	// Override with environment variables if command-line flags not set
+	// This allows users to set CQLAI_* env vars as an alternative to flags
+	if configFile == "" {
+		if envConfigFile := os.Getenv("CQLAI_CONFIG_FILE"); envConfigFile != "" {
+			configFile = envConfigFile
+		}
+	}
+	if host == "" {
+		if envHost := os.Getenv("CQLAI_HOST"); envHost != "" {
+			host = envHost
+		}
+	}
+	if port == 0 {
+		if envPort := os.Getenv("CQLAI_PORT"); envPort != "" {
+			if p, err := strconv.Atoi(envPort); err == nil {
+				port = p
+			}
+		}
+	}
+	if keyspace == "" {
+		if envKeyspace := os.Getenv("CQLAI_KEYSPACE"); envKeyspace != "" {
+			keyspace = envKeyspace
+		}
+	}
+	if username == "" {
+		if envUsername := os.Getenv("CQLAI_USERNAME"); envUsername != "" {
+			username = envUsername
+		}
+	}
+	if !debug {
+		if envDebug := os.Getenv("CQLAI_DEBUG"); envDebug != "" {
+			debug = envDebug == "true" || envDebug == "1"
+		}
+	}
+	if connectTimeout == 10 { // Check if still at default
+		if envTimeout := os.Getenv("CQLAI_CONNECT_TIMEOUT"); envTimeout != "" {
+			if t, err := strconv.Atoi(envTimeout); err == nil {
+				connectTimeout = t
+			}
+		}
+	}
+	if requestTimeout == 10 { // Check if still at default
+		if envTimeout := os.Getenv("CQLAI_REQUEST_TIMEOUT"); envTimeout != "" {
+			if t, err := strconv.Atoi(envTimeout); err == nil {
+				requestTimeout = t
+			}
+		}
+	}
+	if !noConfirm {
+		if envNoConfirm := os.Getenv("CQLAI_NO_CONFIRM"); envNoConfirm != "" {
+			noConfirm = envNoConfirm == "true" || envNoConfirm == "1"
+		}
+	}
+	// Batch mode environment variables
+	if execute == "" {
+		if envExecute := os.Getenv("CQLAI_EXECUTE"); envExecute != "" {
+			execute = envExecute
+		}
+	}
+	if executeFile == "" {
+		if envFile := os.Getenv("CQLAI_FILE"); envFile != "" {
+			executeFile = envFile
+		}
+	}
+	if format == "ascii" { // Check if still at default
+		if envFormat := os.Getenv("CQLAI_FORMAT"); envFormat != "" {
+			format = envFormat
+		}
+	}
+	if !noHeader {
+		if envNoHeader := os.Getenv("CQLAI_NO_HEADER"); envNoHeader != "" {
+			noHeader = envNoHeader == "true" || envNoHeader == "1"
+		}
+	}
+	if fieldSep == "," { // Check if still at default
+		if envFieldSep := os.Getenv("CQLAI_FIELD_SEPARATOR"); envFieldSep != "" {
+			fieldSep = envFieldSep
+		}
+	}
+	if pageSize == 100 { // Check if still at default
+		if envPageSize := os.Getenv("CQLAI_PAGE_SIZE"); envPageSize != "" {
+			if ps, err := strconv.Atoi(envPageSize); err == nil {
+				pageSize = ps
+			}
+		}
 	}
 
 	// Handle password prompting if username provided without password
@@ -106,6 +196,7 @@ func main() {
 		ConnectTimeout:      connectTimeout,
 		RequestTimeout:      requestTimeout,
 		Debug:               debug,
+		ConfigFile:          configFile,
 	}
 
 	// Check if we're in batch mode

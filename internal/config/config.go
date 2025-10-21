@@ -79,15 +79,16 @@ const (
 )
 
 // LoadConfig loads configuration from file and environment variables
-func LoadConfig() (*Config, error) {
+// If customConfigPath is provided and not empty, it will be used instead of default locations
+func LoadConfig(customConfigPath ...string) (*Config, error) {
 	logger.DebugfToFile("Config", "Starting LoadConfig")
-	
+
 	config := &Config{
 		Host:        "localhost",
 		Port:        9042,
 		MaxMemoryMB: 10, // Default to 10MB if not specified
 	}
-	
+
 	logger.DebugfToFile("Config", "Default config initialized: host=%s, port=%d", config.Host, config.Port)
 
 	// First, try to load CQLSHRC file
@@ -95,14 +96,14 @@ func LoadConfig() (*Config, error) {
 		filepath.Join(os.Getenv("HOME"), ".cassandra", "cqlshrc"),
 		filepath.Join(os.Getenv("HOME"), ".cqlshrc"),
 	}
-	
+
 	logger.DebugfToFile("Config", "Looking for cqlshrc files in: %v", cqlshrcPaths)
 
 	for _, path := range cqlshrcPaths {
 		logger.DebugfToFile("Config", "Attempting to load cqlshrc from: %s", path)
 		if err := loadCQLSHRC(path, config); err == nil {
 			logger.DebugfToFile("Config", "Successfully loaded cqlshrc from: %s", path)
-			logger.DebugfToFile("Config", "Config after cqlshrc: host=%s, port=%d, username=%s, keyspace=%s", 
+			logger.DebugfToFile("Config", "Config after cqlshrc: host=%s, port=%d, username=%s, keyspace=%s",
 				config.Host, config.Port, config.Username, config.Keyspace)
 			break
 		} else {
@@ -111,13 +112,21 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Then check JSON config file locations (these will override CQLSHRC settings)
-	configPaths := []string{
-		"cqlai.json",
-		filepath.Join(os.Getenv("HOME"), ".cqlai.json"),
-		filepath.Join(os.Getenv("HOME"), ".config", "cqlai", "config.json"),
+	var configPaths []string
+
+	// If a custom config path is provided, use only that path
+	if len(customConfigPath) > 0 && customConfigPath[0] != "" {
+		configPaths = []string{customConfigPath[0]}
+		logger.DebugfToFile("Config", "Using custom config path: %s", customConfigPath[0])
+	} else {
+		// Use default locations
+		configPaths = []string{
+			"cqlai.json",
+			filepath.Join(os.Getenv("HOME"), ".cqlai.json"),
+			filepath.Join(os.Getenv("HOME"), ".config", "cqlai", "config.json"),
+		}
+		logger.DebugfToFile("Config", "Looking for JSON config files in: %v", configPaths)
 	}
-	
-	logger.DebugfToFile("Config", "Looking for JSON config files in: %v", configPaths)
 
 	var configData []byte
 	var err error
@@ -135,20 +144,25 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// If custom config path was provided but not found, return an error
+	if len(customConfigPath) > 0 && customConfigPath[0] != "" && foundPath == "" {
+		return nil, fmt.Errorf("config file not found: %s", customConfigPath[0])
+	}
+
 	if foundPath != "" {
 		if err := json.Unmarshal(configData, config); err != nil {
 			logger.DebugfToFile("Config", "Failed to parse JSON config %s: %v", foundPath, err)
 			return nil, fmt.Errorf("error parsing config file %s: %w", foundPath, err)
 		}
-		logger.DebugfToFile("Config", "Config after JSON: host=%s, port=%d, username=%s, keyspace=%s", 
+		logger.DebugfToFile("Config", "Config after JSON: host=%s, port=%d, username=%s, keyspace=%s",
 			config.Host, config.Port, config.Username, config.Keyspace)
 	}
 
 	// Override with environment variables
 	logger.DebugfToFile("Config", "Applying environment variable overrides")
 	OverrideWithEnvVars(config)
-	
-	logger.DebugfToFile("Config", "Final config: host=%s, port=%d, username=%s, keyspace=%s, hasPassword=%v", 
+
+	logger.DebugfToFile("Config", "Final config: host=%s, port=%d, username=%s, keyspace=%s, hasPassword=%v",
 		config.Host, config.Port, config.Username, config.Keyspace, config.Password != "")
 
 	return config, nil

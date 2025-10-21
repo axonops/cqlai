@@ -52,7 +52,7 @@ type Executor struct {
 // NewExecutor creates a new batch executor
 func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 	// Create database session
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig(options.ConnOptions.ConfigFile)
 	if err != nil {
 		cfg = &config.Config{
 			Host: "127.0.0.1",
@@ -101,6 +101,7 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		BatchMode:      true, // Disable schema caching in batch mode
 		ConnectTimeout: options.ConnOptions.ConnectTimeout,
 		RequestTimeout: options.ConnOptions.RequestTimeout,
+		ConfigFile:     options.ConnOptions.ConfigFile,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)
