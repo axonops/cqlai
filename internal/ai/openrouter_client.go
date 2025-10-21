@@ -16,10 +16,6 @@ import (
 	"github.com/openai/openai-go/shared/constant"
 )
 
-const (
-	openRouterBaseURL = "https://openrouter.ai/api/v1"
-)
-
 // OpenRouterClient implements the AIClient interface for OpenRouter using the OpenAI SDK
 type OpenRouterClient struct {
 	BaseAIClient

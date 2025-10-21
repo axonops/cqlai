@@ -54,6 +54,7 @@ type AIConfig struct {
 	Provider   string            `json:"provider"` // "mock", "openai", "anthropic", "gemini", "ollama", "openrouter"
 	APIKey     string            `json:"apiKey"`   // General API key (overridden by provider-specific)
 	Model      string            `json:"model"`    // General model (overridden by provider-specific)
+	URL        string            `json:"url,omitempty"` // General URL (overridden by provider-specific)
 	OpenAI     *AIProviderConfig `json:"openai,omitempty"`
 	Anthropic  *AIProviderConfig `json:"anthropic,omitempty"`
 	Gemini     *AIProviderConfig `json:"gemini,omitempty"`
@@ -331,6 +332,16 @@ func OverrideWithEnvVars(config *Config) {
 			config.AI.OpenRouter = &AIProviderConfig{}
 		}
 		config.AI.OpenRouter.Model = model
+	}
+
+	if url := os.Getenv("OPENROUTER_URL"); url != "" {
+		if config.AI == nil {
+			config.AI = &AIConfig{}
+		}
+		if config.AI.OpenRouter == nil {
+			config.AI.OpenRouter = &AIProviderConfig{}
+		}
+		config.AI.OpenRouter.URL = url
 	}
 
 	// General AI settings (fallback for any provider)

@@ -52,6 +52,7 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 			string(localConfig.Provider),
 			localConfig.Model,
 			localConfig.APIKey,
+			localConfig.URL,
 			userRequest,
 			schemaContext,
 		)

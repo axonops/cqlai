@@ -11,7 +11,7 @@ func TestConversationManager(t *testing.T) {
 	cm := GetConversationManager()
 	
 	// Test starting a conversation with anthropic provider
-	conv, err := cm.StartConversation("anthropic", "claude-3-sonnet-20240229", "test-key", "test request", "test schema")
+	conv, err := cm.StartConversation("anthropic", "claude-3-sonnet-20240229", "test-key", "", "test request", "test schema")
 	if err != nil {
 		t.Fatalf("Failed to start conversation: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestConversationCleanup(t *testing.T) {
 	cm := GetConversationManager()
 	
 	// Create a conversation
-	conv, err := cm.StartConversation("anthropic", "claude-3-sonnet-20240229", "test-key", "cleanup test", "test schema")
+	conv, err := cm.StartConversation("anthropic", "claude-3-sonnet-20240229", "test-key", "", "cleanup test", "test schema")
 	if err != nil {
 		t.Fatalf("Failed to start conversation: %v", err)
 	}
