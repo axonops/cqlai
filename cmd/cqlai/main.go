@@ -108,7 +108,7 @@ func main() {
 			username = envUsername
 		}
 	}
-	if debug == false {
+	if !debug {
 		if envDebug := os.Getenv("CQLAI_DEBUG"); envDebug != "" {
 			debug = envDebug == "true" || envDebug == "1"
 		}
@@ -127,7 +127,7 @@ func main() {
 			}
 		}
 	}
-	if noConfirm == false {
+	if !noConfirm {
 		if envNoConfirm := os.Getenv("CQLAI_NO_CONFIRM"); envNoConfirm != "" {
 			noConfirm = envNoConfirm == "true" || envNoConfirm == "1"
 		}
@@ -148,7 +148,7 @@ func main() {
 			format = envFormat
 		}
 	}
-	if noHeader == false {
+	if !noHeader {
 		if envNoHeader := os.Getenv("CQLAI_NO_HEADER"); envNoHeader != "" {
 			noHeader = envNoHeader == "true" || envNoHeader == "1"
 		}
