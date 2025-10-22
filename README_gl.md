@@ -93,7 +93,6 @@ Está construído con [Bubble Tea](https://github.com/charmbracelet/bubbletea), 
 - Modo batch para scripting e automatización
 - Soporte de formato Apache Parquet para intercambio eficiente de datos
 - Autocompletado con tabulador para palabras clave CQL, táboas, columnas e keyspaces
-- Tamaño de binario pequeno (~43MB, 53% máis pequeno que versións anteriores)
 - **Opcional**: Xeración de consultas potenciada por IA ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/))
 
 ### Próximamente

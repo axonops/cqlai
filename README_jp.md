@@ -85,7 +85,6 @@
 - スクリプトと自動化のためのバッチモード
 - 効率的なデータ交換のためのApache Parquet形式サポート
 - CQLキーワード、テーブル、カラム、キースペースのタブ補完
-- 小さなバイナリサイズ(約43MB、以前のバージョンより53%小型化)
 - **オプション**: AI駆動のクエリ生成([OpenAI](https://openai.com/)、[Anthropic](https://www.anthropic.com/)、[Google Gemini](https://ai.google.dev/)、[Synthetic](https://synthetic.new/))
 
 ### 近日公開予定
