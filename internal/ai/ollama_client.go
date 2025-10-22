@@ -141,6 +141,11 @@ func (c *OllamaClient) ProcessRequestWithTools(ctx context.Context, prompt strin
 		}
 		req.Header.Set("Content-Type", "application/json")
 
+		// Add Authorization header if API key is provided
+		if c.config.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		}
+
 		client := &http.Client{Timeout: 300 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -240,4 +245,245 @@ func (c *OllamaClient) ProcessRequestWithTools(ctx context.Context, prompt strin
 // SetAPIKey is a placeholder to satisfy the AIClient interface.
 func (c *OllamaClient) SetAPIKey(key string) {
 	// Ollama client doesn't typically use an API key in the same way as cloud providers.
+}
+
+// continueOllama continues an Ollama conversation
+func (conv *AIConversation) continueOllama(ctx context.Context, userInput string) (*AIResult, *InteractionRequest, error) {
+	// Build messages array from conversation history
+	var messages []ollamaMessage
+
+	// On first call, add system prompt and the original request
+	if len(conv.Messages) == 0 {
+		// Add system prompt only on first call
+		messages = append(messages, ollamaMessage{
+			Role:    "system",
+			Content: SystemPrompt,
+		})
+		conv.Messages = append(conv.Messages, ConversationMessage{Role: "system", Content: SystemPrompt})
+
+		// Add the original request
+		userPrompt := UserPrompt(conv.OriginalRequest, conv.SchemaContext)
+		messages = append(messages, ollamaMessage{
+			Role:    "user",
+			Content: userPrompt,
+		})
+		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userPrompt})
+	} else {
+		// Build message history (which already includes system prompt from first call)
+		for _, msg := range conv.Messages {
+			messages = append(messages, ollamaMessage{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
+		}
+
+		// Add new user input if provided
+		if userInput != "" {
+			// For follow-up questions, make it clear this is a follow-up
+			followUpMessage := userInput
+			if len(conv.Messages) > 0 {
+				// This is a follow-up in an existing conversation
+				followUpMessage = "Follow-up question (answer only this, don't repeat previous response): " + userInput
+			}
+			messages = append(messages, ollamaMessage{
+				Role:    "user",
+				Content: followUpMessage,
+			})
+			conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: userInput}) // Store original for history
+		}
+	}
+
+	// Get tool definitions for continued conversation
+	tools := getOllamaTools()
+
+	// Make API call using Ollama's chat endpoint
+	logger.DebugfToFile("AIConversation", "[%s] Calling Ollama API with %d messages and %d tools", conv.ID, len(messages), len(tools))
+
+	// Use configured BaseURL or fall back to default
+	baseURL := conv.BaseURL
+	if baseURL == "" {
+		baseURL = ollamaBaseURL
+	}
+	apiURL := baseURL + "/chat/completions"
+
+	reqPayload := ollamaRequest{
+		Model:    conv.Model,
+		Messages: messages,
+		Tools:    tools,
+		Stream:   false,
+	}
+
+	payloadBytes, err := json.Marshal(reqPayload)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add Authorization header if API key is provided
+	if conv.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+conv.APIKey)
+	}
+
+	client := &http.Client{Timeout: 300 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to send request to Ollama: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, nil, fmt.Errorf("ollama API error %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var ollamaResp ollamaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Check if the model wants to call functions
+	if len(ollamaResp.Message.ToolCalls) > 0 {
+		logger.DebugfToFile("AIConversation", "[%s] Model requested %d tool calls", conv.ID, len(ollamaResp.Message.ToolCalls))
+
+		// Process the first tool call (subsequent calls handled via recursive Continue)
+		toolCall := ollamaResp.Message.ToolCalls[0]
+		logger.DebugfToFile("AIConversation", "[%s] Processing tool call: %s", conv.ID, toolCall.Function.Name)
+
+		// Execute the tool
+		result := ExecuteToolCall(toolCall.Function.Name, toolCall.Function.Arguments)
+
+		// Check if this is a submit_query_plan tool and it succeeded
+		if toolCall.Function.Name == ToolSubmitQueryPlan.String() && result.Success && result.QueryPlan != nil {
+			logger.DebugfToFile("AIConversation", "[%s] Query plan submitted via tool", conv.ID)
+			return result.QueryPlan, nil, nil
+		}
+
+		// Check if this is an info tool
+		if toolCall.Function.Name == ToolInfo.String() && result.Success && result.InfoResponse != nil {
+			logger.DebugfToFile("AIConversation", "[%s] Info response submitted via tool", conv.ID)
+			// Return a QueryPlan that represents an informational response
+			return &AIResult{
+				Operation:   "INFO",
+				Confidence:  result.InfoResponse.Confidence,
+				ReadOnly:    true,
+				InfoContent: result.InfoResponse.Content,
+				InfoTitle:   result.InfoResponse.Title,
+			}, nil, nil
+		}
+
+		// Check if user interaction is needed
+		if result.NeedsUserSelection {
+			return nil, &InteractionRequest{
+				Type:             "selection",
+				SelectionType:    result.SelectionType,
+				SelectionOptions: result.SelectionOptions,
+				ConversationID:   conv.ID,
+			}, nil
+		}
+
+		if result.NeedsMoreInfo {
+			return nil, &InteractionRequest{
+				Type:           "info",
+				InfoMessage:    result.InfoMessage,
+				ConversationID: conv.ID,
+			}, nil
+		}
+
+		if result.NotRelevant {
+			return nil, &InteractionRequest{
+				Type:           "not_relevant",
+				InfoMessage:    result.InfoMessage,
+				ConversationID: conv.ID,
+			}, nil
+		}
+
+		// If we have a result, we need to continue the conversation with the tool result
+		responseContent := result.Data
+		if result.Error != nil {
+			responseContent = fmt.Sprintf("Error: %v", result.Error)
+		}
+
+		// Add the tool result and continue
+		conv.Messages = append(conv.Messages, ConversationMessage{
+			Role:    "assistant",
+			Content: fmt.Sprintf("Tool %s result: %s", toolCall.Function.Name, responseContent),
+		})
+
+		// Continue the conversation (which will handle any subsequent tool calls)
+		return conv.Continue(ctx, "")
+	}
+
+	// Handle text response
+	responseText := ollamaResp.Message.Content
+	logger.DebugfToFile("AIConversation", "[%s] Response: %s", conv.ID, responseText)
+
+	// Add assistant response to conversation history
+	conv.Messages = append(conv.Messages, ConversationMessage{Role: "assistant", Content: responseText})
+
+	// Check if the response contains a command
+	if cmd, arg, found := ParseCommand(responseText); found {
+		logger.DebugfToFile("AIConversation", "[%s] Executing command: %s with arg: %s", conv.ID, cmd, arg)
+
+		result := ExecuteCommand(cmd, arg)
+
+		// Check if user interaction is needed
+		if result.NeedsUserSelection {
+			logger.DebugfToFile("AIConversation", "[%s] User selection needed for %s", conv.ID, result.SelectionType)
+			return nil, &InteractionRequest{
+				Type:             "selection",
+				SelectionType:    result.SelectionType,
+				SelectionOptions: result.SelectionOptions,
+				ConversationID:   conv.ID,
+			}, nil
+		}
+
+		if result.NeedsMoreInfo {
+			logger.DebugfToFile("AIConversation", "[%s] More info needed: %s", conv.ID, result.InfoMessage)
+			return nil, &InteractionRequest{
+				Type:           "info",
+				InfoMessage:    result.InfoMessage,
+				ConversationID: conv.ID,
+			}, nil
+		}
+
+		// Handle command result
+		var resultMessage string
+		if result.Error != nil {
+			resultMessage = fmt.Sprintf("Error: %v\nNow generate the QueryPlan JSON for the original request.", result.Error)
+		} else {
+			resultMessage = result.Data + "\nNow generate the QueryPlan JSON for the original request."
+		}
+
+		// Add result to conversation and continue
+		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: resultMessage})
+
+		// Recursively continue
+		return conv.Continue(ctx, "")
+	}
+
+	// Try to parse as QueryPlan JSON
+	jsonStr := extractJSON(responseText)
+	if jsonStr == "" {
+		jsonStr = responseText
+	}
+
+	var plan AIResult
+	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
+		logger.DebugfToFile("AIConversation", "[%s] Failed to parse JSON: %v", conv.ID, err)
+
+		// Ask for clarification
+		clarification := "Please respond with ONLY the QueryPlan JSON object, no other text."
+		conv.Messages = append(conv.Messages, ConversationMessage{Role: "user", Content: clarification, SystemGenerated: true})
+
+		// Try again
+		return conv.Continue(ctx, "")
+	}
+
+	logger.DebugfToFile("AIConversation", "[%s] Successfully parsed QueryPlan", conv.ID)
+	return &plan, nil, nil
 }

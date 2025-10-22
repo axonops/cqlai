@@ -13,6 +13,12 @@ import (
 	openaioption "github.com/openai/openai-go/option"
 )
 
+const (
+	openAiBaseURL     = "https://api.openai.com/v1"
+	openRouterBaseURL = "https://openrouter.ai/api/v1"
+	ollamaBaseURL     = "http://localhost:11434/v1"
+)
+
 // ConversationManager manages ongoing AI conversations
 type ConversationManager struct {
 	mu            sync.RWMutex
@@ -29,7 +35,7 @@ func GetConversationManager() *ConversationManager {
 }
 
 // StartConversation starts a new AI conversation
-func (cm *ConversationManager) StartConversation(provider, model, apiKey, request, schemaContext string) (*AIConversation, error) {
+func (cm *ConversationManager) StartConversation(provider, model, apiKey, baseURL, request, schemaContext string) (*AIConversation, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -38,6 +44,7 @@ func (cm *ConversationManager) StartConversation(provider, model, apiKey, reques
 		Provider:        provider,
 		Model:           model,
 		APIKey:          apiKey,
+		BaseURL:         baseURL,
 		OriginalRequest: request,
 		SchemaContext:   schemaContext,
 		CreatedAt:       time.Now(),
@@ -53,14 +60,35 @@ func (cm *ConversationManager) StartConversation(provider, model, apiKey, reques
 		client := anthropic.NewClient(anthropicoption.WithAPIKey(apiKey))
 		conv.anthropicClient = &client
 	case "openai":
-		client := openai.NewClient(openaioption.WithAPIKey(apiKey))
-		conv.openaiClient = &client
-	case "openrouter":
+		url := baseURL
+		if url == "" {
+			url = openAiBaseURL
+		}
 		client := openai.NewClient(
 			openaioption.WithAPIKey(apiKey),
-			openaioption.WithBaseURL(openRouterBaseURL),
+			openaioption.WithBaseURL(url),
+		)
+		conv.ollamaClient = &client
+	case "openrouter":
+		url := baseURL
+		if url == "" {
+			url = openRouterBaseURL
+		}
+		client := openai.NewClient(
+			openaioption.WithAPIKey(apiKey),
+			openaioption.WithBaseURL(url),
 		)
 		conv.openrouterClient = &client
+	case "ollama":
+		url := baseURL
+		if url == "" {
+			url = ollamaBaseURL
+		}
+		client := openai.NewClient(
+			openaioption.WithAPIKey(apiKey),
+			openaioption.WithBaseURL(url),
+		)
+		conv.ollamaClient = &client
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", provider)
 	}
@@ -132,6 +160,8 @@ func (conv *AIConversation) Continue(ctx context.Context, userInput string) (*AI
 		return conv.continueOpenAI(ctx, userInput)
 	case "openrouter":
 		return conv.continueOpenRouter(ctx, userInput)
+	case "ollama":
+		return conv.continueOllama(ctx, userInput)
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider: %s", conv.Provider)
 	}

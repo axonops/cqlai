@@ -749,6 +749,77 @@ Usa Google Gemini para un modelo rápido y capaz de Google. Requiere una clave A
 }
 ```
 
+#### Ollama (Modelos Locales)
+
+Usa Ollama para ejecutar modelos de IA localmente o conectarte a APIs compatibles con OpenAI. Ollama te permite ejecutar modelos de lenguaje potentes en tu propio hardware sin enviar datos a servicios externos.
+
+- **Comenzar:** [ollama.ai](https://ollama.ai)
+- **Modelos Recomendados:**
+  - `llama3.2` (Llama 3.2 de Meta)
+  - `codellama` (Llama especializado en código)
+  - `mistral` (Modelo de Mistral AI)
+  - `qwen2.5-coder` (Modelo de código de Alibaba)
+
+**Configuración para Ollama Local:**
+```json
+{
+  "ai": {
+    "provider": "ollama",
+    "ollama": {
+      "model": "llama3.2",
+      "url": "http://localhost:11434/v1"
+    }
+  }
+}
+```
+
+**Configuración para APIs Compatibles con OpenAI:**
+```json
+{
+  "ai": {
+    "provider": "ollama",
+    "apiKey": "tu-clave-api",
+    "url": "https://api.example.com/v1",
+    "model": "gpt-4o-mini"
+  }
+}
+```
+
+**Variables de Entorno:**
+- `OLLAMA_URL` - URL del servidor Ollama personalizado (predeterminado: `http://localhost:11434/v1`)
+- `OLLAMA_MODEL` - Modelo a usar
+
+**Notas:**
+- No se requiere clave API para instalaciones locales de Ollama
+- Soporta URLs personalizadas para servidores Ollama remotos o endpoints compatibles con OpenAI
+- El campo `url` puede establecerse a nivel superior (`ai.url`) o específico del proveedor (`ai.ollama.url`)
+
+#### OpenRouter (Múltiples Modelos)
+
+Usa OpenRouter para acceder a múltiples modelos de IA a través de una sola API.
+
+- **Obtener Clave API:** [openrouter.ai/keys](https://openrouter.ai/keys)
+- **Modelos Disponibles:** Ver [openrouter.ai/models](https://openrouter.ai/models)
+
+**Configuración:**
+```json
+{
+  "ai": {
+    "provider": "openrouter",
+    "openrouter": {
+      "apiKey": "sk-or-...",
+      "model": "anthropic/claude-3-sonnet",
+      "url": "https://openrouter.ai/api/v1"
+    }
+  }
+}
+```
+
+**Variables de Entorno:**
+- `OPENROUTER_API_KEY` - Clave API de OpenRouter
+- `OPENROUTER_MODEL` - Modelo a usar
+- `OPENROUTER_URL` - URL personalizada de OpenRouter (predeterminado: `https://openrouter.ai/api/v1`)
+
 #### Proveedor Mock (para Pruebas)
 
 El proveedor `mock` es el predeterminado y no requiere clave API. Es útil para probar el flujo de trabajo de IA o para usuarios que no necesitan capacidades de IA reales. Genera consultas simples y predecibles basadas en palabras clave.
@@ -762,15 +833,21 @@ El proveedor `mock` es el predeterminado y no requiere clave API. Es útil para 
 }
 ```
 
-#### Usar Variables de Entorno para Claves API
+#### Usar Variables de Entorno para Claves API y URLs
 
-Para mejor seguridad, puedes proporcionar claves API mediante variables de entorno en lugar de escribirlas en el archivo de configuración.
+Para mejor seguridad, puedes proporcionar claves API y URLs personalizadas mediante variables de entorno en lugar de escribirlas en el archivo de configuración.
 
+**Claves API:**
 - **OpenAI:** `OPENAI_API_KEY`
 - **Anthropic:** `ANTHROPIC_API_KEY`
 - **Google Gemini:** `GEMINI_API_KEY`
+- **OpenRouter:** `OPENROUTER_API_KEY`
 
-Si se establece una variable de entorno, se utilizará incluso si hay una `apiKey` presente en `cqlai.json`.
+**URLs Personalizadas:**
+- **Ollama:** `OLLAMA_URL` (predeterminado: `http://localhost:11434/v1`)
+- **OpenRouter:** `OPENROUTER_URL` (predeterminado: `https://openrouter.ai/api/v1`)
+
+Si se establece una variable de entorno, se utilizará incluso si hay un valor presente en `cqlai.json`.
 
 **Opciones de Configuración:**
 
@@ -857,6 +934,8 @@ Configura tu proveedor de IA preferido en `cqlai.json`:
 - **OpenAI** (GPT-4, GPT-3.5)
 - **Anthropic** (Claude 3)
 - **Google Gemini**
+- **Ollama** (Modelos locales o APIs compatibles con OpenAI)
+- **OpenRouter** (Acceso a múltiples modelos)
 - **Mock** (predeterminado, para pruebas sin claves API)
 
 ### Características de Seguridad
