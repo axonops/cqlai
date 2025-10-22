@@ -318,6 +318,8 @@ func (conv *AIConversation) continueOllama(ctx context.Context, userInput string
 		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	logger.DebugfToFile("AIConversation", "[%s] Payload: %s", conv.ID, string(payloadBytes))
+
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)

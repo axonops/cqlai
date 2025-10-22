@@ -5,9 +5,14 @@
    "username": "cassandra",
    "password": "cassandra",
    "requireConfirmation": true,
+   "consistency": "LOCAL_ONE",
+   "pageSize": 100,
+   "maxMemoryMB": 10,
    "connectTimeout": 10,
    "requestTimeout": 10,
    "debug": false,
+   "historyFile": "~/.cqlai/history",
+   "aiHistoryFile": "~/.cqlai/ai_history",
    "ssl": {
       "enabled": false,
       "certPath": "/path/to/client-cert.pem",
@@ -20,6 +25,7 @@
       "provider": "mock",
       "apiKey": "",
       "model": "",
+      "url": "",
       "openai": {
          "apiKey": "",
          "model": "gpt-4-turbo-preview"
@@ -32,9 +38,15 @@
          "apiKey": "",
          "model": "gemini-pro"
       },
+      "ollama": {
+         "apiKey": "",
+         "model": "llama3.2",
+         "url": "http://localhost:11434/v1"
+      },
       "openrouter": {
          "apiKey": "",
-         "model": "openai/gpt-4-turbo-preview"
+         "model": "anthropic/claude-3-sonnet",
+         "url": "https://openrouter.ai/api/v1"
       }
    }
 }

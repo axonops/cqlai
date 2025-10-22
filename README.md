@@ -657,6 +657,10 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   "requireConfirmation": true,
   "consistency": "LOCAL_ONE",
   "pageSize": 100,
+  "maxMemoryMB": 10,
+  "connectTimeout": 10,
+  "requestTimeout": 10,
+  "debug": false,
   "historyFile": "~/.cqlai/history",
   "aiHistoryFile": "~/.cqlai/ai_history",
   "ssl": {
@@ -669,10 +673,20 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   },
   "ai": {
     "provider": "openai",
-    "openai": {
-      "apiKey": "sk-...",
-      "model": "gpt-4-turbo-preview"
-    }
+    "apiKey": "sk-...",
+    "model": "gpt-4-turbo-preview"
+  }
+}
+```
+
+**Note:** You can also use the `url` field to override the API endpoint for OpenAI-compatible APIs:
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "apiKey": "your-api-key",
+    "url": "https://api.synthetic.new/openai/v1",
+    "model": "hf:Qwen/Qwen2.5-Coder-32B-Instruct"
   }
 }
 ```
@@ -697,10 +711,8 @@ Use OpenAI for high-quality, general-purpose query generation. Requires an OpenA
 {
   "ai": {
     "provider": "openai",
-    "openai": {
-      "apiKey": "sk-...",
-      "model": "gpt-4-turbo-preview"
-    }
+    "apiKey": "sk-...",
+    "model": "gpt-4-turbo-preview"
   }
 }
 ```
@@ -720,10 +732,8 @@ Use Anthropic for powerful, context-aware models. Ideal for complex queries and 
 {
   "ai": {
     "provider": "anthropic",
-    "anthropic": {
-      "apiKey": "sk-ant-...",
-      "model": "claude-3-sonnet-20240229"
-    }
+    "apiKey": "sk-ant-...",
+    "model": "claude-3-sonnet-20240229"
   }
 }
 ```
@@ -741,10 +751,8 @@ Use Google Gemini for a fast and capable model from Google. Requires a Google AI
 {
   "ai": {
     "provider": "gemini",
-    "gemini": {
-      "apiKey": "...",
-      "model": "gemini-pro"
-    }
+    "apiKey": "...",
+    "model": "gemini-pro"
   }
 }
 ```
@@ -760,30 +768,13 @@ Use Ollama for running AI models locally or connecting to OpenAI-compatible APIs
   - `mistral` (Mistral AI's model)
   - `qwen2.5-coder` (Alibaba's code model)
 
-**Configuration for Local Ollama:**
+**Configuration:**
 ```json
 {
   "ai": {
     "provider": "ollama",
-    "ollama": {
-      "model": "llama3.2",
-      "url": "http://localhost:11434/v1"
-    }
-  }
-}
-```
-
-**Configuration for OpenAI-Compatible APIs:**
-
-You can also use the Ollama provider to connect to any OpenAI-compatible API endpoint:
-
-```json
-{
-  "ai": {
-    "provider": "ollama",
-    "apiKey": "your-api-key",
-    "url": "https://api.example.com/v1",
-    "model": "gpt-4o-mini"
+    "model": "llama3.2",
+    "url": "http://localhost:11434/v1"
   }
 }
 ```
@@ -809,11 +800,9 @@ Use OpenRouter to access multiple AI models through a single API. OpenRouter pro
 {
   "ai": {
     "provider": "openrouter",
-    "openrouter": {
-      "apiKey": "sk-or-...",
-      "model": "anthropic/claude-3-sonnet",
-      "url": "https://openrouter.ai/api/v1"
-    }
+    "apiKey": "sk-or-...",
+    "model": "anthropic/claude-3-sonnet",
+    "url": "https://openrouter.ai/api/v1"
   }
 }
 ```
