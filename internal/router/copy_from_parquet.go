@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -391,12 +392,12 @@ func (h *MetaCommandHandler) formatMapString(value string) string {
 
 // formatJSONUDTString formats a JSON-like UDT string
 func (h *MetaCommandHandler) formatJSONUDTString(value string) string {
-	udtValue := value
-	// Remove quotes from field names
-	udtValue = strings.ReplaceAll(udtValue, "\"street\":", "street:")
-	udtValue = strings.ReplaceAll(udtValue, "\"city\":", "city:")
-	udtValue = strings.ReplaceAll(udtValue, "\"zip\":", "zip:")
-	// Replace double quotes with single quotes for string values
+	// Remove quotes from all field names using regex (generic approach)
+	// Matches patterns like: "field_name": and replaces with: field_name:
+	re := regexp.MustCompile(`"([a-zA-Z_][a-zA-Z0-9_]*)" *:`)
+	udtValue := re.ReplaceAllString(value, "$1:")
+
+	// Replace remaining double quotes with single quotes for string values
 	udtValue = strings.ReplaceAll(udtValue, "\"", "'")
 	return udtValue
 }
