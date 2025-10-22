@@ -1,9 +1,10 @@
-# CQLAI - Modern Cassandra® CQL Shell
-
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
 
+  # CQLAI - Modern Cassandra® CQL Shell
+
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![Go Version](https://img.shields.io/github/go-mod/go-version/axonops/cqlai)](https://golang.org/)
   [![GitHub Issues](https://img.shields.io/github/issues/axonops/cqlai)](https://github.com/axonops/cqlai/issues)
   [![GitHub Discussions](https://img.shields.io/github/discussions/axonops/cqlai)](https://github.com/axonops/cqlai/discussions)
   [![GitHub Stars](https://img.shields.io/github/stars/axonops/cqlai)](https://github.com/axonops/cqlai/stargazers)
