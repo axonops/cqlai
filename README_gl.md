@@ -14,6 +14,8 @@
 
 **As funcións de IA son completamente opcionais** - CQLAI funciona perfectamente como un shell CQL independente sen ningunha configuración de IA ou claves API.
 
+https://github.com/user-attachments/assets/cqlai_2x.mp4
+
 <div align="center">
 
 ### 🎁 100% Gratuíto e de Código Aberto

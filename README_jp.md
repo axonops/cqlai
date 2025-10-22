@@ -14,6 +14,8 @@
 
 **AI機能は完全にオプションです** - CQLAIはAI設定やAPIキーなしでも、スタンドアロンのCQLシェルとして完璧に動作します。
 
+https://github.com/user-attachments/assets/cqlai_2x.mp4
+
 <div align="center">
 
 ### 🎁 100% 無料 & オープンソース

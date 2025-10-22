@@ -14,6 +14,8 @@
 
 **AI features are completely optional** - CQLAI works perfectly as a standalone CQL shell without any AI configuration or API keys.
 
+https://github.com/user-attachments/assets/cqlai_2x.mp4
+
 <div align="center">
 
 ### 🎁 100% Free & Open Source
