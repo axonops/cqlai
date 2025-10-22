@@ -1,14 +1,29 @@
-# CQLAI - モダンなCassandra CQLシェル
-
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
+
+  # CQLAI - モダンなCassandra® CQLシェル
+
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![Go Version](https://img.shields.io/github/go-mod/go-version/axonops/cqlai)](https://golang.org/)
+  [![GitHub Issues](https://img.shields.io/github/issues/axonops/cqlai)](https://github.com/axonops/cqlai/issues)
+  [![GitHub Discussions](https://img.shields.io/github/discussions/axonops/cqlai)](https://github.com/axonops/cqlai/discussions)
+  [![GitHub Stars](https://img.shields.io/github/stars/axonops/cqlai)](https://github.com/axonops/cqlai/stargazers)
 </div>
 
 **CQLAI**は、Goで構築された高速でポータブルなCassandra(CQL)対話型ターミナルです。高度なターミナルUI、クライアント側コマンドパース、生産性向上機能を備えた、`cqlsh`の最新で使いやすい代替ツールを提供します。
 
 **AI機能は完全にオプションです** - CQLAIはAI設定やAPIキーなしでも、スタンドアロンのCQLシェルとして完璧に動作します。
 
-元々のcqlshコマンドはPythonで書かれており、システムにPythonのインストールが必要です。cqlaiは単一の実行可能バイナリにコンパイルされ、外部依存関係を必要としません。このプロジェクトは以下のプラットフォーム向けのバイナリを提供しています:
+<div align="center">
+
+### 🎁 100% 無料 & オープンソース
+**隠れたコストなし • プレミアム層なし • ライセンスキー不要**
+
+完全な透明性を持つコミュニティ主導の開発
+
+</div>
+
+元々のcqlshコマンドは[Apache Cassandra](https://cassandra.apache.org/)プロジェクトでPythonで書かれており、システムにPythonのインストールが必要です。cqlaiは単一の実行可能バイナリにコンパイルされ、外部依存関係を必要としません。このプロジェクトは以下のプラットフォーム向けのバイナリを提供しています:
 
 - Linux x86-64
 - macOS x86-64
@@ -19,10 +34,38 @@
 
 美しいターミナルUIには[Bubble Tea](https://github.com/charmbracelet/bubbletea)、[Bubbles](https://github.com/charmbracelet/bubbles)、[Lip Gloss](https://github.com/charmbracelet/lipgloss)が使用されています。最新のCassandra機能を実装しているcassandra gocqlドライバーチーム[gocql](https://github.com/apache/cassandra-gocql-driver)に感謝します。
 
+## 📑 目次
+
+- [📊 プロジェクトの状況](#-プロジェクトの状況)
+- [✨ 機能](#-機能)
+- [🔧 インストール](#-インストール)
+- [📚 使用方法](#-使用方法)
+- [⚙️ 利用可能なコマンド](#️-利用可能なコマンド)
+- [🛠️ 設定](#️-設定)
+  - [設定の優先順位](#設定の優先順位)
+  - [CQLSHRC互換性](#cqlshrc互換性)
+  - [CQLAI JSON設定](#cqlai-json設定)
+  - [AIプロバイダー設定](#aiプロバイダー設定)
+    - [OpenAI](#openai-gpt-4-gpt-35)
+    - [Anthropic](#anthropic-claude-3)
+    - [Google Gemini](#google-gemini)
+    - [Synthetic](#synthetic-複数のオープンソースモデル)
+    - [Ollama](#ollama-ローカルモデル)
+    - [OpenRouter](#openrouter-複数のモデル)
+    - [Mockプロバイダー](#mockプロバイダーテスト用)
+- [🤖 AI駆動のクエリ生成](#-ai駆動のクエリ生成)
+- [📦 Apache Parquetサポート](#-apache-parquetサポート)
+- [⚠️ 既知の制限事項](#️-既知の制限事項)
+- [🔨 開発](#-開発)
+- [🏗️ 技術スタック](#️-技術スタック)
+- [🙏 謝辞](#-謝辞)
+- [💬 コミュニティ & サポート](#-コミュニティ--サポート)
+- [📝 ライセンス](#-ライセンス)
+- [⚖️ 法的通知](#️-法的通知)
 
 ---
 
-## プロジェクトの状況
+## 📊 プロジェクトの状況
 
 **CQLAIは本番環境対応**であり、Cassandraクラスタを使用した開発、テスト、本番環境で活発に使用されています。このツールは、拡張機能とパフォーマンスを備えた`cqlsh`の完全で安定した代替品を提供します。
 
@@ -37,7 +80,7 @@
 - 効率的なデータ交換のためのApache Parquet形式サポート
 - CQLキーワード、テーブル、カラム、キースペースのタブ補完
 - 小さなバイナリサイズ(約43MB、以前のバージョンより53%小型化)
-- **オプション**: AI駆動のクエリ生成(OpenAI、Anthropic、Gemini)
+- **オプション**: AI駆動のクエリ生成([OpenAI](https://openai.com/)、[Anthropic](https://www.anthropic.com/)、[Google Gemini](https://ai.google.dev/)、[Synthetic](https://synthetic.new/))
 
 ### 近日公開予定
 - AI コンテキスト認識の強化
@@ -48,7 +91,7 @@
 
 ---
 
-## 機能
+## ✨ 機能
 
 - **対話型CQLシェル:** Cassandraクラスタがサポートする任意のCQLクエリを実行できます。
 - **リッチターミナルUI:**
@@ -66,7 +109,7 @@
     - インテリジェントな時間ベースパーティショニングのためのTimeUUID / timestamp仮想カラム。
     - UDT、コレクション、ベクトルを含むすべてのCassandraデータ型のサポート。
 - **オプションのAI駆動クエリ生成:**
-    - AIプロバイダー(OpenAI、Anthropic、Gemini)を使用した自然言語からCQLへの変換。
+    - AIプロバイダー([OpenAI](https://openai.com/)、[Anthropic](https://www.anthropic.com/)、[Google Gemini](https://ai.google.dev/)、[Synthetic](https://synthetic.new/))を使用した自然言語からCQLへの変換。
     - 自動コンテキスト付きのスキーマ認識クエリ生成。
     - 実行前の安全なプレビューと確認。
     - DDLおよびDMLを含む複雑な操作のサポート。
@@ -76,7 +119,7 @@
     - 証明書認証付きSSL/TLS接続のサポート。
 - **単一バイナリ:** 外部依存関係なしの単一静的バイナリとして配布。高速起動と小さなフットプリント。
 
-## インストール
+## 🔧 インストール
 
 `cqlai`はいくつかの方法でインストールできます。パッケージマネージャー(APT、YUM)やDockerを含む詳細な手順については、[インストールガイド](docs/INSTALLATION_jp.md)を参照してください。
 
@@ -109,7 +152,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 ```
 
-## 使用方法
+## 📚 使用方法
 
 ### 対話モード
 
@@ -386,7 +429,7 @@ SELECT * FROM <Tab>
 4. **ファイルパス:** ファイルパス補完には引用符を含めることを忘れないでください
 5. **補完のナビゲート:** 矢印キーを使用して複数のオプションから選択します
 
-## 利用可能なコマンド
+## ⚙️ 利用可能なコマンド
 
 CQLAIは、拡張機能のための追加のメタコマンドに加えて、すべての標準CQLコマンドをサポートしています。
 
@@ -585,7 +628,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   .ai find orders placed in the last 30 days
   ```
 
-## 設定
+## 🛠️ 設定
 
 CQLAIは、既存のCassandraセットアップとの最大限の柔軟性と互換性のために、複数の設定方法をサポートしています。
 
@@ -738,7 +781,7 @@ CQLAIは次の場所で設定ファイルを検索します:
 
 `cqlsh`から移行する場合、CQLAIは既存の`~/.cassandra/cqlshrc`ファイルを自動的に読み取ります。既存のCassandra設定でCQLAIの使用を開始するための変更は必要ありません。
 
-## AI駆動のクエリ生成
+## 🤖 AI駆動のクエリ生成
 
 CQLAIには、自然言語をCQLクエリに変換する組み込みのAI機能が含まれています。リクエストの前に`.ai`を付けるだけです:
 
@@ -772,12 +815,46 @@ CQLAIには、自然言語をCQLクエリに変換する組み込みのAI機能�
 
 `cqlai.json`で優先するAIプロバイダーを設定:
 
-- **OpenAI**(GPT-4、GPT-3.5)
-- **Anthropic**(Claude 3)
-- **Google Gemini**
-- **Ollama**(ローカルモデルまたはOpenAI互換API)
-- **OpenRouter**(複数のモデルへのアクセス)
-- **Mock**(デフォルト、APIキーなしでのテスト用)
+- **[OpenAI](https://openai.com/)** (GPT-4、GPT-3.5)
+- **[Anthropic](https://www.anthropic.com/)** (Claude 3)
+- **[Google Gemini](https://ai.google.dev/)**
+- **[Synthetic](https://synthetic.new/)** (複数のオープンソースモデル)
+- **[Ollama](https://ollama.ai/)** (ローカルモデルまたはOpenAI互換API)
+- **[OpenRouter](https://openrouter.ai/)** (複数のモデルへのアクセス)
+- **Mock** (デフォルト、APIキーなしでのテスト用)
+
+#### Synthetic (複数のオープンソースモデル)
+
+Syntheticを使用して、非常に合理的な価格で多数のオープンソースAIモデルにアクセスできます。SyntheticはOpenAI互換APIを提供し、さまざまなオープンソースモデルとの作業を容易にします。
+
+- **開始:** [synthetic.new](https://synthetic.new/)
+- **APIドキュメント:** [dev.synthetic.new/docs](https://dev.synthetic.new/docs)
+- **推奨モデル:**
+  - `hf:Qwen/Qwen3-235B-A22B-Instruct-2507` (推奨、ただしすべてのモデルを広範にテストしたわけではありません)
+- **利用可能なモデル:** [Always-On Models](https://dev.synthetic.new/docs/api/models#always-on-models)を参照
+
+**設定:**
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "apiKey": "your-synthetic-api-key",
+    "url": "https://api.synthetic.new/openai/v1",
+    "model": "hf:Qwen/Qwen3-235B-A22B-Instruct-2507"
+  }
+}
+```
+
+**主な利点:**
+- さまざまなオープンソースモデルへのアクセス
+- 費用対効果の高い価格設定
+- 簡単な統合のためのOpenAI互換API
+- ベンダーロックインなし
+
+**注意:**
+- Syntheticは OpenAI 互換インターフェースを提供するため、設定では `openai` プロバイダーを使用します
+- `url` フィールドはデフォルトのOpenAIエンドポイントをSyntheticに向けるように上書きします
+- APIキーが必要です - [synthetic.new](https://synthetic.new/)から取得してください
 
 ### 安全機能
 
@@ -786,7 +863,7 @@ CQLAIには、自然言語をCQLクエリに変換する組み込みのAI機能�
 - **確認が必要**: 破壊的な操作には追加の確認が必要
 - **スキーマ検証**: クエリは現在のスキーマに対して検証されます
 
-## Apache Parquetサポート
+## 📦 Apache Parquetサポート
 
 CQLAIは、Apache Parquet形式の包括的なサポートを提供し、モダンなデータエコシステムとの統合に最適です。
 
@@ -827,7 +904,7 @@ CAPTURE OFF;
 
 詳細なドキュメントについては、[Parquetサポートガイド](docs/PARQUET_jp.md)を参照してください。
 
-## 既知の制限事項
+## ⚠️ 既知の制限事項
 
 ### JSON出力(CAPTURE JSONと--format json)
 
@@ -856,7 +933,7 @@ SELECT JSON * FROM users;
 
 **注意**: 複雑な型(list、set、map、vector)はJSON出力で適切に保持されます。
 
-## 開発
+## 🔨 開発
 
 `cqlai`で作業するには、Go(≥ 1.24)が必要です。
 
@@ -898,7 +975,7 @@ make check
 ```
 
 
-## 技術スタック
+## 🏗️ 技術スタック
 
 - **言語:** Go
 - **TUIフレームワーク:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -906,16 +983,50 @@ make check
 - **スタイリング:** [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 - **Cassandraドライバー:** [gocql](https://github.com/gocql/gocql)
 
-## ライセンス
+## 🙏 謝辞
 
-このプロジェクトはApache 2.0ライセンスの下でライセンスされています。詳細についてはLICENSEファイルを参照してください。
+CQLAIは、特にApache Cassandraをはじめとする複数のオープンソースプロジェクトの基盤の上に構築されています。分散データベースの分野への優れた仕事と貢献に対して、Apache Cassandraコミュニティに心から感謝いたします。
+
+Apache Cassandraは、無料でオープンソースの分散型ワイドカラムストアNoSQLデータベース管理システムで、多数の汎用サーバー上で大量のデータを処理するように設計されており、単一障害点のない高可用性を提供します。
+
+### Apache Cassandraリソース
+
+- **公式ウェブサイト**: [cassandra.apache.org](https://cassandra.apache.org/)
+- **ソースコード**: [GitHub](https://github.com/apache/cassandra)またはApache Gitリポジトリ（`gitbox.apache.org/repos/asf/cassandra.git`）で利用可能
+- **ドキュメント**: [Apache Cassandraウェブサイト](https://cassandra.apache.org/)で包括的なガイドとリファレンスが利用可能
+
+CQLAIは、さまざまなCassandraツールとユーティリティの機能を組み込み拡張し、CassandraデベロッパーとDBAに最新で効率的なターミナル体験を提供するために強化しています。
+
+ユーザーには、メインのApache Cassandraプロジェクトを探索して貢献することをお勧めします。また、[GitHubディスカッション](https://github.com/axonops/cqlai/discussions)や[Issues](https://github.com/axonops/cqlai/issues)ページを通じて、CQLAIへのフィードバックや提案をお寄せください。
+
+## 💬 コミュニティ & サポート
+
+### 参加する
+- 💡 **アイデアを共有**: [GitHubディスカッション](https://github.com/axonops/cqlai/discussions)で新機能を提案してください
+- 🐛 **問題を報告**: バグを見つけましたか？ [Issueを開く](https://github.com/axonops/cqlai/issues/new/choose)
+- 🤝 **貢献**: プルリクエストを歓迎します！ガイドラインについては[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください
+- ⭐ **スターをつける**: CQLAIが役に立つと思ったら、リポジトリにスターをつけてください！
+
+### つながりを保つ
+- 🌐 **ウェブサイト**: [axonops.com](https://axonops.com)
+- 📧 **お問い合わせ**: サポートオプションについては当社のウェブサイトをご覧ください
+
+## 📝 ライセンス
+
+このプロジェクトはApache 2.0ライセンスの下でライセンスされています。詳細については[LICENSE](LICENSE)ファイルを参照してください。
 
 サードパーティの依存関係ライセンスは、[THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/)ディレクトリで入手できます。ライセンス帰属を再生成するには、`make licenses`を実行してください。
+
+## ⚖️ 法的通知
+
+*このプロジェクトには、プロジェクト、製品、またはサービスの商標またはロゴが含まれている場合があります。第三者の商標またはロゴの使用は、それらの第三者のポリシーに従います。*
+
+- **AxonOps**はAxonOps Limitedの登録商標です。
+- **Apache**、**Apache Cassandra**、**Cassandra**、**Apache Spark**、**Spark**、**Apache TinkerPop**、**TinkerPop**、**Apache Kafka**、**Kafka**は、Apache Software Foundationまたはその子会社のカナダ、米国および/またはその他の国における登録商標または商標です。
+- **DataStax**は、DataStax, Inc.およびその子会社の米国および/またはその他の国における登録商標です。
 
 ---
 
 <div align="center">
-  <br>
-  <p>Developed by</p>
-  <img src="./assets/AxonOps-RGB-transparent-small.png" alt="AxonOps" width="200">
+  <p><a href="https://axonops.com">AxonOps</a>チームが❤️を込めて作成</p>
 </div>
