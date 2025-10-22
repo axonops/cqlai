@@ -657,6 +657,10 @@ Para características avanzadas e configuración de IA, CQLAI usa o seu propio f
   "requireConfirmation": true,
   "consistency": "LOCAL_ONE",
   "pageSize": 100,
+  "maxMemoryMB": 10,
+  "connectTimeout": 10,
+  "requestTimeout": 10,
+  "debug": false,
   "historyFile": "~/.cqlai/history",
   "aiHistoryFile": "~/.cqlai/ai_history",
   "ssl": {
@@ -669,10 +673,20 @@ Para características avanzadas e configuración de IA, CQLAI usa o seu propio f
   },
   "ai": {
     "provider": "openai",
-    "openai": {
-      "apiKey": "sk-...",
-      "model": "gpt-4-turbo-preview"
-    }
+    "apiKey": "sk-...",
+    "model": "gpt-4-turbo-preview"
+  }
+}
+```
+
+**Nota:** Tamén podes usar o campo `url` para sobrescribir o endpoint da API para APIs compatibles con OpenAI:
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "apiKey": "a-túa-clave-api",
+    "url": "https://api.synthetic.new/openai/v1",
+    "model": "hf:Qwen/Qwen2.5-Coder-32B-Instruct"
   }
 }
 ```
@@ -697,10 +711,8 @@ Usa OpenAI para xeración de consultas de alta calidade e propósito xeral. Requ
 {
   "ai": {
     "provider": "openai",
-    "openai": {
-      "apiKey": "sk-...",
-      "model": "gpt-4-turbo-preview"
-    }
+    "apiKey": "sk-...",
+    "model": "gpt-4-turbo-preview"
   }
 }
 ```
@@ -720,10 +732,8 @@ Usa Anthropic para modelos potentes e conscientes do contexto. Ideal para consul
 {
   "ai": {
     "provider": "anthropic",
-    "anthropic": {
-      "apiKey": "sk-ant-...",
-      "model": "claude-3-sonnet-20240229"
-    }
+    "apiKey": "sk-ant-...",
+    "model": "claude-3-sonnet-20240229"
   }
 }
 ```
@@ -741,10 +751,8 @@ Usa Google Gemini para un modelo rápido e capaz de Google. Require unha clave A
 {
   "ai": {
     "provider": "gemini",
-    "gemini": {
-      "apiKey": "...",
-      "model": "gemini-pro"
-    }
+    "apiKey": "...",
+    "model": "gemini-pro"
   }
 }
 ```
@@ -760,27 +768,13 @@ Usa Ollama para executar modelos de IA localmente ou conectarte a APIs compatibl
   - `mistral` (Modelo de Mistral AI)
   - `qwen2.5-coder` (Modelo de código de Alibaba)
 
-**Configuración para Ollama Local:**
+**Configuración:**
 ```json
 {
   "ai": {
     "provider": "ollama",
-    "ollama": {
-      "model": "llama3.2",
-      "url": "http://localhost:11434/v1"
-    }
-  }
-}
-```
-
-**Configuración para APIs Compatibles con OpenAI:**
-```json
-{
-  "ai": {
-    "provider": "ollama",
-    "apiKey": "a-túa-clave-api",
-    "url": "https://api.example.com/v1",
-    "model": "gpt-4o-mini"
+    "model": "llama3.2",
+    "url": "http://localhost:11434/v1"
   }
 }
 ```
@@ -806,11 +800,9 @@ Usa OpenRouter para acceder a múltiples modelos de IA a través dunha soa API.
 {
   "ai": {
     "provider": "openrouter",
-    "openrouter": {
-      "apiKey": "sk-or-...",
-      "model": "anthropic/claude-3-sonnet",
-      "url": "https://openrouter.ai/api/v1"
-    }
+    "apiKey": "sk-or-...",
+    "model": "anthropic/claude-3-sonnet",
+    "url": "https://openrouter.ai/api/v1"
   }
 }
 ```
