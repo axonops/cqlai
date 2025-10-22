@@ -1,14 +1,29 @@
-# CQLAI - Shell Moderno de Cassandra CQL
-
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
+
+  # CQLAI - Shell Moderno de Cassandra® CQL
+
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![Go Version](https://img.shields.io/github/go-mod/go-version/axonops/cqlai)](https://golang.org/)
+  [![GitHub Issues](https://img.shields.io/github/issues/axonops/cqlai)](https://github.com/axonops/cqlai/issues)
+  [![GitHub Discussions](https://img.shields.io/github/discussions/axonops/cqlai)](https://github.com/axonops/cqlai/discussions)
+  [![GitHub Stars](https://img.shields.io/github/stars/axonops/cqlai)](https://github.com/axonops/cqlai/stargazers)
 </div>
 
 **CQLAI** é un terminal interactivo rápido e portátil para Cassandra (CQL), construído en Go. Proporciona unha alternativa moderna e fácil de usar a `cqlsh` cunha interface de terminal avanzada, análise de comandos do lado do cliente e funcións de produtividade melloradas.
 
 **As funcións de IA son completamente opcionais** - CQLAI funciona perfectamente como un shell CQL independente sen ningunha configuración de IA ou claves API.
 
-O comando cqlsh orixinal está escrito en Python, o que require que Python estea instalado no sistema. cqlai está compilado nun único binario executable, sen requirir dependencias externas. Este proxecto proporciona binarios para as seguintes plataformas:
+<div align="center">
+
+### 🎁 100% Gratuíto e de Código Aberto
+**Sen custos ocultos • Sen niveis premium • Sen claves de licenza**
+
+Desenvolvemento impulsado pola comunidade con total transparencia
+
+</div>
+
+O comando cqlsh orixinal no proxecto [Apache Cassandra](https://cassandra.apache.org/) está escrito en Python, o que require que Python estea instalado no sistema. cqlai está compilado nun único binario executable, sen requirir dependencias externas. Este proxecto proporciona binarios para as seguintes plataformas:
 
 - Linux x86-64
 - macOS x86-64
@@ -19,10 +34,46 @@ O comando cqlsh orixinal está escrito en Python, o que require que Python estea
 
 Está construído con [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), e [Lip Gloss](https://github.com/charmbracelet/lipgloss) para a fermosa interface de terminal. Un gran recoñecemento ao equipo do driver gocql de Cassandra por implementar as últimas funcionalidades de Cassandra [gocql](https://github.com/apache/cassandra-gocql-driver)
 
+---
+
+## 📑 Táboa de Contidos
+
+- [📊 Estado do Proxecto](#-estado-do-proxecto)
+- [✨ Características](#-características)
+- [🔧 Instalación](#-instalación)
+- [📚 Uso](#-uso)
+  - [Modo Interactivo](#modo-interactivo)
+  - [Opcións de Liña de Comandos](#opcións-de-liña-de-comandos)
+  - [Exemplos de Modo Batch](#exemplos-de-modo-batch)
+  - [Comandos Básicos](#comandos-básicos)
+  - [Atallos de Teclado](#atallos-de-teclado)
+  - [Autocompletado con Tabulador](#autocompletado-con-tabulador)
+- [⚙️ Comandos Dispoñibles](#️-comandos-dispoñibles)
+- [🛠️ Configuración](#️-configuración)
+  - [Precedencia de Configuración](#precedencia-de-configuración)
+  - [Compatibilidade con CQLSHRC](#compatibilidade-con-cqlshrc)
+  - [Configuración JSON de CQLAI](#configuración-json-de-cqlai)
+  - [Configuración de Provedor de IA](#configuración-de-provedor-de-ia)
+    - [OpenAI](#openai-gpt-4-e-gpt-35)
+    - [Anthropic](#anthropic-claude-3)
+    - [Google Gemini](#google-gemini)
+    - [Synthetic](#synthetic-múltiples-modelos-de-código-aberto)
+    - [Ollama](#ollama-modelos-locais)
+    - [OpenRouter](#openrouter-múltiples-modelos)
+    - [Provedor Mock](#provedor-mock-para-probas)
+- [🤖 Xeración de Consultas Potenciada por IA](#-xeración-de-consultas-potenciada-por-ia)
+- [📦 Soporte de Apache Parquet](#-soporte-de-apache-parquet)
+- [⚠️ Limitacións Coñecidas](#️-limitacións-coñecidas)
+- [🔨 Desenvolvemento](#-desenvolvemento)
+- [🏗️ Stack Tecnolóxico](#️-stack-tecnolóxico)
+- [🙏 Agradecementos](#-agradecementos)
+- [💬 Comunidade e Soporte](#-comunidade-e-soporte)
+- [📝 Licenza](#-licenza)
+- [⚖️ Avisos Legais](#️-avisos-legais)
 
 ---
 
-## Estado do Proxecto
+## 📊 Estado do Proxecto
 
 **CQLAI está listo para produción** e utilízase activamente en contornas de desenvolvemento, probas e produción con clústeres de Cassandra. A ferramenta proporciona unha alternativa completa e estable a `cqlsh` con características e rendemento mellorados.
 
@@ -37,7 +88,7 @@ Está construído con [Bubble Tea](https://github.com/charmbracelet/bubbletea), 
 - Soporte de formato Apache Parquet para intercambio eficiente de datos
 - Autocompletado con tabulador para palabras clave CQL, táboas, columnas e keyspaces
 - Tamaño de binario pequeno (~43MB, 53% máis pequeno que versións anteriores)
-- **Opcional**: Xeración de consultas potenciada por IA (OpenAI, Anthropic, Gemini)
+- **Opcional**: Xeración de consultas potenciada por IA ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/))
 
 ### Próximamente
 - Conciencia de contexto de IA mellorada
@@ -48,7 +99,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
 
 ---
 
-## Características
+## ✨ Características
 
 - **Shell CQL Interactivo:** Executa calquera consulta CQL que o teu clúster de Cassandra soporte.
 - **Interface de Terminal Enriquecida:**
@@ -66,7 +117,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
     - Columnas virtuais TimeUUID / timestamp para particionamento intelixente baseado en tempo.
     - Soporte para todos os tipos de datos de Cassandra incluíndo UDTs, coleccións e vectores.
 - **Xeración de Consultas Potenciada por IA (Opcional):**
-    - Conversión de linguaxe natural a CQL usando provedores de IA (OpenAI, Anthropic, Gemini).
+    - Conversión de linguaxe natural a CQL usando provedores de IA ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/)).
     - Xeración de consultas con conciencia de esquema e contexto automático.
     - Vista previa segura e confirmación antes da execución.
     - Soporte para operacións complexas incluíndo DDL e DML.
@@ -76,7 +127,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
     - Soporte para conexións SSL/TLS con autenticación por certificado.
 - **Binario Único:** Distribuído como un único binario estático sen dependencias externas. Inicio rápido e pegada pequena.
 
-## Instalación
+## 🔧 Instalación
 
 Podes instalar `cqlai` de varias maneiras. Para instrucións detalladas incluíndo xestores de paquetes (APT, YUM) e Docker, consulta a [Guía de Instalación](docs/INSTALLATION.md).
 
@@ -109,7 +160,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host o-teu-host-cassandra
 ```
 
-## Uso
+## 📚 Uso
 
 ### Modo Interactivo
 
@@ -387,7 +438,7 @@ SELECT * FROM <Tab>
 4. **Rutas de arquivo:** Lembra incluír comiñas para autocompletado de rutas de arquivo
 5. **Navega autocompletados:** Usa as teclas de frecha para seleccionar entre múltiples opcións
 
-## Comandos Dispoñibles
+## ⚙️ Comandos Dispoñibles
 
 CQLAI soporta todos os comandos CQL estándar ademais de meta-comandos adicionais para funcionalidade mellorada.
 
@@ -586,7 +637,7 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   .ai atopar pedidos realizados nos últimos 30 días
   ```
 
-## Configuración
+## 🛠️ Configuración
 
 CQLAI soporta múltiples métodos de configuración para máxima flexibilidade e compatibilidade con configuracións existentes de Cassandra.
 
@@ -757,6 +808,39 @@ Usa Google Gemini para un modelo rápido e capaz de Google. Require unha clave A
 }
 ```
 
+#### Synthetic (Múltiples Modelos de Código Aberto)
+
+Usa Synthetic para acceder a unha ampla selección de modelos de IA de código aberto a prezos moi razoables. Synthetic proporciona unha API compatible con OpenAI que facilita traballar con varios modelos de código aberto.
+
+- **Comezar:** [synthetic.new](https://synthetic.new/)
+- **Documentación de API:** [dev.synthetic.new/docs](https://dev.synthetic.new/docs)
+- **Modelo Recomendado:**
+  - `hf:Qwen/Qwen3-235B-A22B-Instruct-2507` (recomendado, aínda que non probamos exhaustivamente todos os modelos)
+- **Modelos Dispoñibles:** Ver [Always-On Models](https://dev.synthetic.new/docs/api/models#always-on-models)
+
+**Configuración:**
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "apiKey": "a-túa-clave-api-synthetic",
+    "url": "https://api.synthetic.new/openai/v1",
+    "model": "hf:Qwen/Qwen3-235B-A22B-Instruct-2507"
+  }
+}
+```
+
+**Beneficios Clave:**
+- Acceso a unha ampla variedade de modelos de código aberto
+- Prezos rendibles
+- API compatible con OpenAI para fácil integración
+- Sen dependencia de provedor
+
+**Notas:**
+- Synthetic presenta unha interface compatible con OpenAI, polo que usas o provedor `openai` na túa configuración
+- O campo `url` sobrescribe o endpoint de OpenAI predeterminado para apuntar a Synthetic
+- Requírese unha clave API - obtena de [synthetic.new](https://synthetic.new/)
+
 #### Ollama (Modelos Locais)
 
 Usa Ollama para executar modelos de IA localmente ou conectarte a APIs compatibles con OpenAI. Ollama permíteche executar modelos de linguaxe potentes no teu propio hardware sen enviar datos a servizos externos.
@@ -889,7 +973,7 @@ Variables de contorno comúns:
 
 Se estás a migrar desde `cqlsh`, CQLAI lerá automaticamente o teu arquivo existente `~/.cassandra/cqlshrc`. Non se necesitan cambios para comezar a usar CQLAI coa túa configuración existente de Cassandra.
 
-## Xeración de Consultas Potenciada por IA
+## 🤖 Xeración de Consultas Potenciada por IA
 
 CQLAI inclúe capacidades de IA integradas para converter linguaxe natural en consultas CQL. Simplemente prefixa a túa solicitude con `.ai`:
 
@@ -923,11 +1007,12 @@ CQLAI inclúe capacidades de IA integradas para converter linguaxe natural en co
 
 Configura o teu provedor de IA preferido en `cqlai.json`:
 
-- **OpenAI** (GPT-4, GPT-3.5)
-- **Anthropic** (Claude 3)
-- **Google Gemini**
-- **Ollama** (Modelos locais ou APIs compatibles con OpenAI)
-- **OpenRouter** (Acceso a múltiples modelos)
+- **[OpenAI](https://openai.com/)** (GPT-4, GPT-3.5)
+- **[Anthropic](https://www.anthropic.com/)** (Claude 3)
+- **[Google Gemini](https://ai.google.dev/)**
+- **[Synthetic](https://synthetic.new/)** (Múltiples modelos de código aberto)
+- **[Ollama](https://ollama.ai/)** (Modelos locais ou APIs compatibles con OpenAI)
+- **[OpenRouter](https://openrouter.ai/)** (Acceso a múltiples modelos)
 - **Mock** (predeterminado, para probas sen claves API)
 
 ### Características de Seguridade
@@ -937,7 +1022,7 @@ Configura o teu provedor de IA preferido en `cqlai.json`:
 - **Confirmación requirida**: Operacións destrutivas requiren confirmación adicional
 - **Validación de esquema**: As consultas valídanse contra o teu esquema actual
 
-## Soporte de Apache Parquet
+## 📦 Soporte de Apache Parquet
 
 CQLAI proporciona soporte integral para o formato Apache Parquet, facéndoo ideal para fluxos de traballo de análise de datos e integración con ecosistemas de datos modernos.
 
@@ -978,7 +1063,7 @@ CAPTURE OFF;
 
 Para documentación detallada, consulta [Guía de Soporte de Parquet](docs/PARQUET.md).
 
-## Limitacións Coñecidas
+## ⚠️ Limitacións Coñecidas
 
 ### Saída JSON (CAPTURE JSON e --format json)
 
@@ -1007,7 +1092,7 @@ SELECT JSON * FROM users;
 
 **Nota**: Os tipos complexos (lists, sets, maps, vectors) presérvanse apropiadamente na saída JSON.
 
-## Desenvolvemento
+## 🔨 Desenvolvemento
 
 Para traballar en `cqlai`, necesitarás Go (≥ 1.24).
 
@@ -1049,7 +1134,7 @@ make check
 ```
 
 
-## Stack Tecnolóxico
+## 🏗️ Stack Tecnolóxico
 
 - **Linguaxe:** Go
 - **Framework TUI:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -1057,16 +1142,50 @@ make check
 - **Estilos:** [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 - **Driver de Cassandra:** [gocql](https://github.com/gocql/gocql)
 
-## Licenza
+## 🙏 Agradecementos
 
-Este proxecto está licenciado baixo a licenza Apache 2.0. Consulta o arquivo LICENSE para máis detalles.
+CQLAI baséase na fundación establecida por varios proxectos de código aberto, particularmente Apache Cassandra. Estendemos o noso sincero agradecemento á comunidade de Apache Cassandra polo seu excelente traballo e contribucións ao campo das bases de datos distribuídas.
+
+Apache Cassandra é un sistema de xestión de bases de datos NoSQL de código aberto e gratuíto, distribuído, de almacén de columnas anchas, deseñado para manexar grandes cantidades de datos en moitos servidores commodity, proporcionando alta dispoñibilidade sen ningún punto único de falla.
+
+### Recursos de Apache Cassandra
+
+- **Sitio Web Oficial**: [cassandra.apache.org](https://cassandra.apache.org/)
+- **Código Fonte**: Dispoñible en [GitHub](https://github.com/apache/cassandra) ou no repositorio Git de Apache en `gitbox.apache.org/repos/asf/cassandra.git`
+- **Documentación**: Guías e referencias completas dispoñibles no [sitio web de Apache Cassandra](https://cassandra.apache.org/)
+
+CQLAI incorpora e estende funcionalidades de varias ferramentas e utilidades de Cassandra, mellorándoas para proporcionar unha experiencia de terminal moderna e eficiente para desenvolvedores e DBAs de Cassandra.
+
+Animamos aos usuarios a explorar e contribuír ao proxecto principal de Apache Cassandra, así como a proporcionar comentarios e suxestións para CQLAI a través das nosas páxinas de [discusións de GitHub](https://github.com/axonops/cqlai/discussions) e [problemas](https://github.com/axonops/cqlai/issues).
+
+## 💬 Comunidade e Soporte
+
+### Participa
+- 💡 **Comparte Ideas**: Visita as nosas [Discusións de GitHub](https://github.com/axonops/cqlai/discussions) para propoñer novas funcións
+- 🐛 **Reporta Problemas**: Atopaches un erro? [Abre un problema](https://github.com/axonops/cqlai/issues/new/choose)
+- 🤝 **Contribúe**: Damos a benvida a pull requests! Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para as pautas
+- ⭐ **Danos unha Estrela**: Se atopas útil CQLAI, por favor dálle unha estrela ao noso repositorio!
+
+### Mantente Conectado
+- 🌐 **Sitio Web**: [axonops.com](https://axonops.com)
+- 📧 **Contacto**: Visita o noso sitio web para opcións de soporte
+
+## 📝 Licenza
+
+Este proxecto está licenciado baixo a licenza Apache 2.0. Consulta o arquivo [LICENSE](LICENSE) para máis detalles.
 
 As licenzas de dependencias de terceiros están dispoñibles no directorio [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/). Para rexenerar as atribucións de licenza, executa `make licenses`.
+
+## ⚖️ Avisos Legais
+
+*Este proxecto pode conter marcas rexistradas ou logotipos de proxectos, produtos ou servizos. O uso de marcas rexistradas ou logotipos de terceiros está suxeito ás políticas de ditos terceiros.*
+
+- **AxonOps** é unha marca rexistrada de AxonOps Limited.
+- **Apache**, **Apache Cassandra**, **Cassandra**, **Apache Spark**, **Spark**, **Apache TinkerPop**, **TinkerPop**, **Apache Kafka** e **Kafka** son marcas rexistradas ou marcas comerciais de Apache Software Foundation ou as súas subsidiarias en Canadá, Estados Unidos e/ou outros países.
+- **DataStax** é unha marca rexistrada de DataStax, Inc. e as súas subsidiarias en Estados Unidos e/ou outros países.
 
 ---
 
 <div align="center">
-  <br>
-  <p>Desenvolvido por</p>
-  <img src="./assets/AxonOps-RGB-transparent-small.png" alt="AxonOps" width="200">
+  <p>Feito con ❤️ polo equipo de <a href="https://axonops.com">AxonOps</a></p>
 </div>
