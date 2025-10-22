@@ -1,5 +1,10 @@
 package completion
 
+import (
+	"fmt"
+	"os"
+)
+
 // getSelectCompletions returns completions for SELECT commands
 func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []string {
 	// Track what we've seen in the SELECT statement
@@ -75,7 +80,16 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 		return ce.getTableAndKeyspaceNames()
 	case "WHERE":
 		// After WHERE, suggest column names if we know the table
-		return ce.getColumnNamesForCurrentTable(words, fromIndex)
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] select.go: lastWord=WHERE, calling getColumnNamesForCurrentTable with fromIndex=%d\n", fromIndex)
+			defer debugFile.Close()
+		}
+		columns := ce.getColumnNamesForCurrentTable(words, fromIndex)
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] select.go: getColumnNamesForCurrentTable returned %d columns\n", len(columns))
+			defer debugFile.Close()
+		}
+		return columns
 	case "ORDER":
 		return ByKeyword
 	case "BY":
@@ -163,28 +177,33 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 
 		// After table name
 		if wordPos > fromIndex+1 {
-			var suggestions []string
+			// Don't suggest clauses if we're inside a WHERE clause
+			if hasWhere && whereIndex >= 0 && wordPos > whereIndex {
+				// We're inside WHERE clause, let later logic handle it
+			} else {
+				var suggestions []string
 
-			if !hasWhere {
-				suggestions = append(suggestions, "WHERE")
-			}
-			if !hasGroupBy && hasWhere {
-				suggestions = append(suggestions, "GROUP")
-			}
-			if !hasOrderBy && (hasWhere || !hasWhere) {
-				suggestions = append(suggestions, "ORDER")
-			}
-			if !hasLimit && (hasWhere || hasOrderBy || !hasWhere) {
-				suggestions = append(suggestions, "LIMIT")
-			}
-			if !hasPerPartitionLimit && hasOrderBy {
-				suggestions = append(suggestions, "PER")
-			}
-			if !hasAllowFiltering && hasWhere {
-				suggestions = append(suggestions, "ALLOW")
-			}
+				if !hasWhere {
+					suggestions = append(suggestions, "WHERE")
+				}
+				if !hasGroupBy && hasWhere {
+					suggestions = append(suggestions, "GROUP")
+				}
+				if !hasOrderBy && (hasWhere || !hasWhere) {
+					suggestions = append(suggestions, "ORDER")
+				}
+				if !hasLimit && (hasWhere || hasOrderBy || !hasWhere) {
+					suggestions = append(suggestions, "LIMIT")
+				}
+				if !hasPerPartitionLimit && hasOrderBy {
+					suggestions = append(suggestions, "PER")
+				}
+				if !hasAllowFiltering && hasWhere {
+					suggestions = append(suggestions, "ALLOW")
+				}
 
-			return suggestions
+				return suggestions
+			}
 		}
 	}
 
