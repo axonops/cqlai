@@ -192,6 +192,18 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 						_ = metaHandler.WriteCaptureResultWithRawData(command, v.Headers, rows, rawRows)
 					}
 				}
+
+				// Convert streaming result to regular QueryResult so it can be displayed
+				// Build data with headers as first row
+				data := [][]string{v.Headers}
+				data = append(data, rows...)
+				logger.DebugfToFile("ProcessCommand", "Converting StreamingQueryResult to QueryResult: headers=%d, data rows=%d, total data=%d", len(v.Headers), len(rows), len(data))
+				result = db.QueryResult{
+					Data:        data,
+					ColumnTypes: v.ColumnTypes,
+					RawData:     rawRows,
+				}
+				logger.DebugfToFile("ProcessCommand", "Converted result type: %T, Data length: %d", result, len(result.(db.QueryResult).Data))
 			}
 		}
 
