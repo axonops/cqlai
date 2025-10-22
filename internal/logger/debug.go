@@ -31,10 +31,13 @@ func DebugToFile(context string, message string) {
 	if !IsDebugEnabled() {
 		return
 	}
-	
-	cwd, _ := os.Getwd()
-	logPath := cwd + "/cqlai_debug.log"
 
+	var logPath string
+	logPath = os.Getenv("CQLAI_DEBUG_LOG_PATH")
+	if logPath == "" {
+		cwd, _ := os.Getwd()
+		logPath = cwd + "/cqlai_debug.log"
+	}
 	// Check if file exists to print message only once
 	_, statErr := os.Stat(logPath)
 	isNewFile := os.IsNotExist(statErr)

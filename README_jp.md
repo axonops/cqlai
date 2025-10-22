@@ -656,6 +656,10 @@ validate = true
   "requireConfirmation": true,
   "consistency": "LOCAL_ONE",
   "pageSize": 100,
+  "maxMemoryMB": 10,
+  "connectTimeout": 10,
+  "requestTimeout": 10,
+  "debug": false,
   "historyFile": "~/.cqlai/history",
   "aiHistoryFile": "~/.cqlai/ai_history",
   "ssl": {
@@ -668,10 +672,20 @@ validate = true
   },
   "ai": {
     "provider": "openai",
-    "openai": {
-      "apiKey": "sk-...",
-      "model": "gpt-4-turbo-preview"
-    }
+    "apiKey": "sk-...",
+    "model": "gpt-4-turbo-preview"
+  }
+}
+```
+
+**注意:** `url`フィールドを使用してOpenAI互換APIのAPIエンドポイントを上書きできます:
+```json
+{
+  "ai": {
+    "provider": "openai",
+    "apiKey": "your-api-key",
+    "url": "https://api.synthetic.new/openai/v1",
+    "model": "hf:Qwen/Qwen2.5-Coder-32B-Instruct"
   }
 }
 ```

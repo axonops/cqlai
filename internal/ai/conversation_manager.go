@@ -68,7 +68,7 @@ func (cm *ConversationManager) StartConversation(provider, model, apiKey, baseUR
 			openaioption.WithAPIKey(apiKey),
 			openaioption.WithBaseURL(url),
 		)
-		conv.ollamaClient = &client
+		conv.openaiClient = &client
 	case "openrouter":
 		url := baseURL
 		if url == "" {

@@ -26,9 +26,10 @@ AI providers are configured in the `cqlai.json` configuration file. Copy `cqlai.
   "port": 9042,
   ...
   "ai": {
-    "provider": "mock",  // Options: mock, openai, anthropic, gemini
+    "provider": "mock",  // Options: mock, openai, anthropic, gemini, ollama, openrouter
     "apiKey": "",        // General API key (overridden by provider-specific)
-    "model": ""          // General model (overridden by provider-specific)
+    "model": "",         // General model (overridden by provider-specific)
+    "url": ""            // General URL (overridden by provider-specific, for Ollama/OpenRouter)
   }
 }
 ```
@@ -62,6 +63,29 @@ AI providers are configured in the `cqlai.json` configuration file. Copy `cqlai.
   "gemini": {
     "apiKey": "your-gemini-api-key-here",
     "model": "gemini-pro"  // Optional, defaults to gemini-pro
+  }
+}
+```
+
+### Ollama Configuration
+```json
+"ai": {
+  "provider": "ollama",
+  "ollama": {
+    "model": "llama3.2",  // Optional, model to use
+    "url": "http://localhost:11434/v1"  // Optional, defaults to http://localhost:11434/v1
+  }
+}
+```
+
+### OpenRouter Configuration
+```json
+"ai": {
+  "provider": "openrouter",
+  "openrouter": {
+    "apiKey": "your-openrouter-api-key-here",
+    "model": "anthropic/claude-3-sonnet",  // Optional
+    "url": "https://openrouter.ai/api/v1"  // Optional, defaults to https://openrouter.ai/api/v1
   }
 }
 ```
@@ -105,14 +129,18 @@ When the AI generates a query, you can:
 
 Currently implemented:
 - ✅ Mock provider for testing
+- ✅ OpenAI API integration (GPT-4, GPT-3.5)
+- ✅ Anthropic API integration (Claude 3)
+- ✅ Google Gemini API integration
+- ✅ Ollama support (local models and OpenAI-compatible APIs)
+- ✅ OpenRouter integration (multiple model access)
 - ✅ Query plan generation and validation
 - ✅ CQL rendering from plans
 - ✅ UI modal for preview and confirmation
 - ✅ Schema context extraction
 
-TODO:
-- ⏳ Real OpenAI API integration
-- ⏳ Real Anthropic API integration
-- ⏳ Real Google Gemini API integration
+Future enhancements:
 - ⏳ Query optimization suggestions
 - ⏳ Natural language explanations of existing queries
+- ⏳ Enhanced context awareness with table statistics
+- ⏳ Multi-turn conversation support
