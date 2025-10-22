@@ -686,7 +686,7 @@ Para características avanzadas e configuración de IA, CQLAI usa o seu propio f
     "provider": "openai",
     "apiKey": "a-túa-clave-api",
     "url": "https://api.synthetic.new/openai/v1",
-    "model": "hf:Qwen/Qwen2.5-Coder-32B-Instruct"
+    "model": "hf:Qwen/Qwen3-235B-A22B-Instruct-2507"
   }
 }
 ```
