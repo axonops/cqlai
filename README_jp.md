@@ -685,7 +685,7 @@ validate = true
     "provider": "openai",
     "apiKey": "your-api-key",
     "url": "https://api.synthetic.new/openai/v1",
-    "model": "hf:Qwen/Qwen2.5-Coder-32B-Instruct"
+    "model": "hf:Qwen/Qwen3-235B-A22B-Instruct-2507"
   }
 }
 ```
