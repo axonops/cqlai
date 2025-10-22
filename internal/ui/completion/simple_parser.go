@@ -1,6 +1,8 @@
 package completion
 
 import (
+	"fmt"
+	"os"
 	"strings"
 )
 
@@ -86,7 +88,13 @@ func (sce *SimpleCompletionEngine) GetTokenCompletions(input string) []string {
 	case "REVOKE":
 		return sce.getRevokeCompletions(words, endsWithSpace)
 	case "SELECT":
-		return sce.getSelectCompletions(words, endsWithSpace)
+		result := sce.getSelectCompletions(words, endsWithSpace)
+		// Debug logging
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] SimpleParser.getSelectCompletions returned %d suggestions: %v\n", len(result), result)
+			defer debugFile.Close()
+		}
+		return result
 	case "INSERT":
 		return sce.getInsertCompletions(words, endsWithSpace)
 	case "UPDATE":
@@ -477,26 +485,118 @@ func (sce *SimpleCompletionEngine) getRevokeCompletions(words []string, endsWith
 }
 
 func (sce *SimpleCompletionEngine) getSelectCompletions(words []string, endsWithSpace bool) []string {
-	// For SELECT, we can suggest FROM after fields
+	// Find clause positions
+	fromIndex := -1
+	whereIndex := -1
+	groupByIndex := -1
+	orderByIndex := -1
+	limitIndex := -1
+	perPartitionLimitIndex := -1
+	allowFilteringIndex := -1
+
 	for i, word := range words {
-		if word == "FROM" && i < len(words)-1 {
-			if (i == len(words)-2 && endsWithSpace) || (i == len(words)-1 && !endsWithSpace) {
-				return sce.getTableAndKeyspaceNames()
+		switch word {
+		case "FROM":
+			fromIndex = i
+		case "WHERE":
+			whereIndex = i
+		case "GROUP":
+			if i+1 < len(words) && words[i+1] == "BY" {
+				groupByIndex = i
+			}
+		case "ORDER":
+			if i+1 < len(words) && words[i+1] == "BY" {
+				orderByIndex = i
+			}
+		case "LIMIT":
+			// Check if it's PER PARTITION LIMIT
+			if i >= 2 && words[i-2] == "PER" && words[i-1] == "PARTITION" {
+				perPartitionLimitIndex = i
+			} else {
+				limitIndex = i
+			}
+		case "ALLOW":
+			if i+1 < len(words) && words[i+1] == "FILTERING" {
+				allowFilteringIndex = i
 			}
 		}
 	}
 
-	// Look for SELECT without FROM yet
-	hasFrom := false
-	for _, word := range words {
-		if word == "FROM" {
-			hasFrom = true
-			break
-		}
+	// If we don't have FROM yet, suggest it
+	if fromIndex == -1 && endsWithSpace && len(words) > 1 {
+		return []string{"FROM"}
 	}
 
-	if !hasFrom && endsWithSpace && len(words) > 1 {
-		return []string{"FROM"}
+	// If FROM just appeared, suggest table/keyspace names
+	if fromIndex >= 0 && fromIndex == len(words)-1 && endsWithSpace {
+		return sce.getTableAndKeyspaceNames()
+	}
+
+	// After table name, suggest clauses in grammar order
+	if fromIndex >= 0 && fromIndex < len(words)-1 && endsWithSpace {
+		// Check if we're inside a clause that needs column/value completion
+		// If so, defer to the main CompletionEngine
+		lastWord := words[len(words)-1]
+		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] SimpleParser SELECT: lastWord=%s, checking if should defer to main engine\n", lastWord)
+			defer debugFile.Close()
+		}
+
+		// If we have a WHERE clause, always defer to main engine for proper AND/OR handling
+		if whereIndex >= 0 {
+			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+				fmt.Fprintf(debugFile, "[DEBUG] SimpleParser SELECT: whereIndex=%d, deferring to main engine for WHERE handling\n", whereIndex)
+				defer debugFile.Close()
+			}
+			return nil
+		}
+
+		// Check for clause keywords that need specialized handling
+		clauseKeywords := []string{"GROUP", "BY", "ORDER", "SET", "USING"}
+		for _, kw := range clauseKeywords {
+			if lastWord == kw {
+				// Inside a clause, let main engine handle column name completion
+				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+					fmt.Fprintf(debugFile, "[DEBUG] SimpleParser SELECT: lastWord=%s matches %s, returning nil to defer\n", lastWord, kw)
+					defer debugFile.Close()
+				}
+				return nil
+			}
+		}
+
+		var suggestions []string
+
+		// WHERE comes first
+		if whereIndex == -1 {
+			suggestions = append(suggestions, "WHERE")
+		}
+
+		// GROUP BY after WHERE (optional)
+		if groupByIndex == -1 && whereIndex >= 0 {
+			suggestions = append(suggestions, "GROUP BY")
+		}
+
+		// ORDER BY can come after WHERE or GROUP BY
+		if orderByIndex == -1 && (whereIndex >= 0 || groupByIndex >= 0) {
+			suggestions = append(suggestions, "ORDER BY")
+		}
+
+		// PER PARTITION LIMIT can come after WHERE
+		if perPartitionLimitIndex == -1 && whereIndex >= 0 {
+			suggestions = append(suggestions, "PER PARTITION LIMIT")
+		}
+
+		// LIMIT can come after WHERE or ORDER BY
+		if limitIndex == -1 {
+			suggestions = append(suggestions, "LIMIT")
+		}
+
+		// ALLOW FILTERING can come at the end
+		if allowFilteringIndex == -1 {
+			suggestions = append(suggestions, "ALLOW FILTERING")
+		}
+
+		return suggestions
 	}
 
 	return nil

@@ -167,30 +167,32 @@ func (ce *CompletionEngine) getColumnNamesForCurrentTable(words []string, fromIn
 	if fromIndex < 0 || fromIndex+1 >= len(words) {
 		return []string{}
 	}
-	
+
 	tableName := words[fromIndex+1]
 	currentKeyspace := ""
 	if ce.sessionManager != nil {
 		currentKeyspace = ce.sessionManager.CurrentKeyspace()
 	}
-	
+
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
 		parts := strings.Split(tableName, ".")
-		currentKeyspace = parts[0]
-		tableName = parts[1]
+		currentKeyspace = strings.ToLower(parts[0])  // Lowercase for case-insensitive lookup
+		tableName = strings.ToLower(parts[1])
+	} else {
+		tableName = strings.ToLower(tableName)  // Lowercase for case-insensitive lookup
 	}
-	
+
 	if currentKeyspace == "" {
 		return []string{}
 	}
-	
+
 	// Get cached columns or fetch them
 	cacheKey := currentKeyspace + "." + tableName
 	if columns, ok := ce.cache.columns[cacheKey]; ok {
 		return columns
 	}
-	
+
 	// Fetch columns from database
 	ce.refreshColumnCache(currentKeyspace, tableName)
 	return ce.cache.columns[cacheKey]
@@ -202,14 +204,16 @@ func (ce *CompletionEngine) getColumnNamesForTable(tableName string) []string {
 	if ce.sessionManager != nil {
 		currentKeyspace = ce.sessionManager.CurrentKeyspace()
 	}
-	
+
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
 		parts := strings.Split(tableName, ".")
-		currentKeyspace = parts[0]
-		tableName = parts[1]
+		currentKeyspace = strings.ToLower(parts[0])  // Lowercase for case-insensitive lookup
+		tableName = strings.ToLower(parts[1])
+	} else {
+		tableName = strings.ToLower(tableName)  // Lowercase for case-insensitive lookup
 	}
-	
+
 	if currentKeyspace == "" {
 		return []string{}
 	}
