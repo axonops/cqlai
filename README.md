@@ -1,7 +1,12 @@
-# CQLAI - Modern Cassandra CQL Shell
+# CQLAI - Modern Cassandra® CQL Shell
 
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
+
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![GitHub Issues](https://img.shields.io/github/issues/axonops/cqlai)](https://github.com/axonops/cqlai/issues)
+  [![GitHub Discussions](https://img.shields.io/github/discussions/axonops/cqlai)](https://github.com/axonops/cqlai/discussions)
+  [![GitHub Stars](https://img.shields.io/github/stars/axonops/cqlai)](https://github.com/axonops/cqlai/stargazers)
 </div>
 
 **CQLAI** is a fast, portable interactive terminal for Cassandra (CQL), built in Go. It provides a modern, user-friendly alternative to `cqlsh` with an advanced terminal UI, client-side command parsing, and enhanced productivity features.
@@ -17,7 +22,7 @@ Community-driven development with full transparency
 
 </div>
 
-The original cqlsh command is written in Python which requires Python to be installed on the system. cqlai is compiled to a single executable binary, requiring no external dependencies. This project provides binaries for the following platforms:
+The original cqlsh command in the [Apache Cassandra](https://cassandra.apache.org/) project is written in Python which requires Python to be installed on the system. cqlai is compiled to a single executable binary, requiring no external dependencies. This project provides binaries for the following platforms:
 
 - Linux x86-64
 - macOS x86-64
@@ -32,38 +37,45 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 
 ## 📑 Table of Contents
 
-- [Project Status](#project-status)
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
+- [📊 Project Status](#-project-status)
+- [✨ Features](#-features)
+- [🔧 Installation](#-installation)
+- [📚 Usage](#-usage)
   - [Interactive Mode](#interactive-mode)
   - [Command-Line Options](#command-line-options)
   - [Batch Mode Examples](#batch-mode-examples)
   - [Basic Commands](#basic-commands)
   - [Keyboard Shortcuts](#keyboard-shortcuts)
   - [Tab Completion](#tab-completion)
-- [Available Commands](#available-commands)
+- [⚙️ Available Commands](#️-available-commands)
   - [CQL Commands](#cql-commands)
   - [Meta-Commands](#meta-commands)
   - [AI Commands](#ai-commands)
-- [Configuration](#configuration)
+- [🛠️ Configuration](#️-configuration)
   - [Configuration Precedence](#configuration-precedence)
   - [CQLSHRC Compatibility](#cqlshrc-compatibility)
   - [CQLAI JSON Configuration](#cqlai-json-configuration)
   - [AI Provider Configuration](#ai-provider-configuration)
-- [AI-Powered Query Generation](#ai-powered-query-generation)
-- [Apache Parquet Support](#apache-parquet-support)
-- [Known Limitations](#known-limitations)
-- [Development](#development)
-- [Technology Stack](#technology-stack)
-- [Acknowledgements](#acknowledgements)
-- [Community & Support](#community--support)
-- [License](#license)
-- [Legal Notices](#legal-notices)
+    - [OpenAI](#openai-gpt-4--gpt-35)
+    - [Anthropic](#anthropic-claude-3)
+    - [Google Gemini](#google-gemini)
+    - [Synthetic](#synthetic-multiple-open-source-models)
+    - [Ollama](#ollama-local-models)
+    - [OpenRouter](#openrouter-multiple-models)
+    - [Mock Provider](#mock-provider-for-testing)
+- [🤖 AI-Powered Query Generation](#-ai-powered-query-generation)
+- [📦 Apache Parquet Support](#-apache-parquet-support)
+- [⚠️ Known Limitations](#️-known-limitations)
+- [🔨 Development](#-development)
+- [🏗️ Technology Stack](#️-technology-stack)
+- [🙏 Acknowledgements](#-acknowledgements)
+- [💬 Community & Support](#-community--support)
+- [📝 License](#-license)
+- [⚖️ Legal Notices](#️-legal-notices)
 
 ---
 
-## Project Status
+## 📊 Project Status
 
 **CQLAI is production-ready** and actively used in development, testing, and production environments with Cassandra clusters. The tool provides a complete, stable alternative to `cqlsh` with enhanced features and performance.
 
@@ -89,7 +101,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
 
 ---
 
-## Features
+## ✨ Features
 
 - **Interactive CQL Shell:** Execute any CQL query that your Cassandra cluster supports.
 - **Rich Terminal UI:**
@@ -117,7 +129,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Support for SSL/TLS connections with certificate authentication.
 - **Single Binary:** Distributed as a single, static binary with no external dependencies. Fast startup and small footprint.
 
-## Installation
+## 🔧 Installation
 
 You can install `cqlai` in several ways. For detailed instructions including package managers (APT, YUM) and Docker, see the [Installation Guide](docs/INSTALLATION.md).
 
@@ -150,7 +162,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 ```
 
-## Usage
+## 📚 Usage
 
 ### Interactive Mode
 
@@ -428,7 +440,7 @@ SELECT * FROM <Tab>
 4. **File paths:** Remember to include quotes for file path completion
 5. **Navigate completions:** Use arrow keys to select from multiple options
 
-## Available Commands
+## ⚙️ Available Commands
 
 CQLAI supports all standard CQL commands plus additional meta-commands for enhanced functionality.
 
@@ -627,7 +639,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   .ai find orders placed in the last 30 days
   ```
 
-## Configuration
+## 🛠️ Configuration
 
 CQLAI supports multiple configuration methods for maximum flexibility and compatibility with existing Cassandra setups.
 
@@ -963,7 +975,7 @@ Common environment variables:
 
 If you're migrating from `cqlsh`, CQLAI will automatically read your existing `~/.cassandra/cqlshrc` file. No changes are needed to start using CQLAI with your existing Cassandra configuration.
 
-## AI-Powered Query Generation
+## 🤖 AI-Powered Query Generation
 
 CQLAI includes built-in AI capabilities to convert natural language into CQL queries. Simply prefix your request with `.ai`:
 
@@ -1012,7 +1024,7 @@ Configure your preferred AI provider in `cqlai.json`:
 - **Confirmation required**: Destructive operations require additional confirmation
 - **Schema validation**: Queries are validated against your current schema
 
-## Apache Parquet Support
+## 📦 Apache Parquet Support
 
 CQLAI provides comprehensive support for Apache Parquet format, making it ideal for data analytics workflows and integration with modern data ecosystems.
 
@@ -1053,7 +1065,7 @@ CAPTURE OFF;
 
 For detailed documentation, see [Parquet Support Guide](docs/PARQUET.md).
 
-## Known Limitations
+## ⚠️ Known Limitations
 
 ### JSON Output (CAPTURE JSON and --format json)
 
@@ -1082,7 +1094,7 @@ SELECT JSON * FROM users;
 
 **Note**: Complex types (lists, sets, maps, vectors) are properly preserved in JSON output.
 
-## Development
+## 🔨 Development
 
 To work on `cqlai`, you'll need Go (≥ 1.24).
 
@@ -1124,7 +1136,7 @@ make check
 ```
 
 
-## Technology Stack
+## 🏗️ Technology Stack
 
 - **Language:** Go
 - **TUI Framework:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -1160,13 +1172,13 @@ We encourage users to explore and contribute to the main Apache Cassandra projec
 - 🌐 **Website**: [axonops.com](https://axonops.com)
 - 📧 **Contact**: Visit our website for support options
 
-## License
+## 📝 License
 
-This project is licensed under the Apache 2.0 license. See the LICENSE file for details.
+This project is licensed under the Apache 2.0 license. See the [LICENSE](LICENSE) file for details.
 
 Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/) directory. To regenerate license attributions, run `make licenses`.
 
-## 📄 Legal Notices
+## ⚖️ Legal Notices
 
 *This project may contain trademarks or logos for projects, products, or services. Any use of third-party trademarks or logos are subject to those third-party's policies.*
 
@@ -1177,7 +1189,5 @@ Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIR
 ---
 
 <div align="center">
-  <br>
   <p>Made with ❤️ by the <a href="https://axonops.com">AxonOps</a> Team</p>
-  <a href="https://axonops.com"><img src="./assets/AxonOps-RGB-transparent-small.png" alt="AxonOps" width="200"></a>
 </div>

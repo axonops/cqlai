@@ -1,7 +1,12 @@
-# CQLAI - Shell Moderno de Cassandra CQL
+# CQLAI - Shell Moderno de Cassandra® CQL
 
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
+
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![GitHub Issues](https://img.shields.io/github/issues/axonops/cqlai)](https://github.com/axonops/cqlai/issues)
+  [![GitHub Discussions](https://img.shields.io/github/discussions/axonops/cqlai)](https://github.com/axonops/cqlai/discussions)
+  [![GitHub Stars](https://img.shields.io/github/stars/axonops/cqlai)](https://github.com/axonops/cqlai/stargazers)
 </div>
 
 **CQLAI** é un terminal interactivo rápido e portátil para Cassandra (CQL), construído en Go. Proporciona unha alternativa moderna e fácil de usar a `cqlsh` cunha interface de terminal avanzada, análise de comandos do lado do cliente e funcións de produtividade melloradas.
@@ -17,7 +22,7 @@ Desenvolvemento impulsado pola comunidade con total transparencia
 
 </div>
 
-O comando cqlsh orixinal está escrito en Python, o que require que Python estea instalado no sistema. cqlai está compilado nun único binario executable, sen requirir dependencias externas. Este proxecto proporciona binarios para as seguintes plataformas:
+O comando cqlsh orixinal no proxecto [Apache Cassandra](https://cassandra.apache.org/) está escrito en Python, o que require que Python estea instalado no sistema. cqlai está compilado nun único binario executable, sen requirir dependencias externas. Este proxecto proporciona binarios para as seguintes plataformas:
 
 - Linux x86-64
 - macOS x86-64
@@ -32,31 +37,42 @@ Está construído con [Bubble Tea](https://github.com/charmbracelet/bubbletea), 
 
 ## 📑 Táboa de Contidos
 
-- [Estado do Proxecto](#estado-do-proxecto)
-- [Características](#características)
-- [Instalación](#instalación)
-- [Uso](#uso)
+- [📊 Estado do Proxecto](#-estado-do-proxecto)
+- [✨ Características](#-características)
+- [🔧 Instalación](#-instalación)
+- [📚 Uso](#-uso)
   - [Modo Interactivo](#modo-interactivo)
   - [Opcións de Liña de Comandos](#opcións-de-liña-de-comandos)
   - [Exemplos de Modo Batch](#exemplos-de-modo-batch)
   - [Comandos Básicos](#comandos-básicos)
   - [Atallos de Teclado](#atallos-de-teclado)
   - [Autocompletado con Tabulador](#autocompletado-con-tabulador)
-- [Comandos Dispoñibles](#comandos-dispoñibles)
-- [Configuración](#configuración)
+- [⚙️ Comandos Dispoñibles](#️-comandos-dispoñibles)
+- [🛠️ Configuración](#️-configuración)
+  - [Precedencia de Configuración](#precedencia-de-configuración)
+  - [Compatibilidade con CQLSHRC](#compatibilidade-con-cqlshrc)
+  - [Configuración JSON de CQLAI](#configuración-json-de-cqlai)
   - [Configuración de Provedor de IA](#configuración-de-provedor-de-ia)
-- [Xeración de Consultas Potenciada por IA](#xeración-de-consultas-potenciada-por-ia)
-- [Soporte de Apache Parquet](#soporte-de-apache-parquet)
-- [Limitacións Coñecidas](#limitacións-coñecidas)
-- [Desenvolvemento](#desenvolvemento)
-- [Stack Tecnolóxico](#stack-tecnolóxico)
-- [Agradecementos](#agradecementos)
-- [Comunidade e Soporte](#comunidade-e-soporte)
-- [Licenza](#licenza)
+    - [OpenAI](#openai-gpt-4-e-gpt-35)
+    - [Anthropic](#anthropic-claude-3)
+    - [Google Gemini](#google-gemini)
+    - [Synthetic](#synthetic-múltiples-modelos-de-código-aberto)
+    - [Ollama](#ollama-modelos-locais)
+    - [OpenRouter](#openrouter-múltiples-modelos)
+    - [Provedor Mock](#provedor-mock-para-probas)
+- [🤖 Xeración de Consultas Potenciada por IA](#-xeración-de-consultas-potenciada-por-ia)
+- [📦 Soporte de Apache Parquet](#-soporte-de-apache-parquet)
+- [⚠️ Limitacións Coñecidas](#️-limitacións-coñecidas)
+- [🔨 Desenvolvemento](#-desenvolvemento)
+- [🏗️ Stack Tecnolóxico](#️-stack-tecnolóxico)
+- [🙏 Agradecementos](#-agradecementos)
+- [💬 Comunidade e Soporte](#-comunidade-e-soporte)
+- [📝 Licenza](#-licenza)
+- [⚖️ Avisos Legais](#️-avisos-legais)
 
 ---
 
-## Estado do Proxecto
+## 📊 Estado do Proxecto
 
 **CQLAI está listo para produción** e utilízase activamente en contornas de desenvolvemento, probas e produción con clústeres de Cassandra. A ferramenta proporciona unha alternativa completa e estable a `cqlsh` con características e rendemento mellorados.
 
@@ -82,7 +98,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
 
 ---
 
-## Características
+## ✨ Características
 
 - **Shell CQL Interactivo:** Executa calquera consulta CQL que o teu clúster de Cassandra soporte.
 - **Interface de Terminal Enriquecida:**
@@ -110,7 +126,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
     - Soporte para conexións SSL/TLS con autenticación por certificado.
 - **Binario Único:** Distribuído como un único binario estático sen dependencias externas. Inicio rápido e pegada pequena.
 
-## Instalación
+## 🔧 Instalación
 
 Podes instalar `cqlai` de varias maneiras. Para instrucións detalladas incluíndo xestores de paquetes (APT, YUM) e Docker, consulta a [Guía de Instalación](docs/INSTALLATION.md).
 
@@ -143,7 +159,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host o-teu-host-cassandra
 ```
 
-## Uso
+## 📚 Uso
 
 ### Modo Interactivo
 
@@ -421,7 +437,7 @@ SELECT * FROM <Tab>
 4. **Rutas de arquivo:** Lembra incluír comiñas para autocompletado de rutas de arquivo
 5. **Navega autocompletados:** Usa as teclas de frecha para seleccionar entre múltiples opcións
 
-## Comandos Dispoñibles
+## ⚙️ Comandos Dispoñibles
 
 CQLAI soporta todos os comandos CQL estándar ademais de meta-comandos adicionais para funcionalidade mellorada.
 
@@ -620,7 +636,7 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   .ai atopar pedidos realizados nos últimos 30 días
   ```
 
-## Configuración
+## 🛠️ Configuración
 
 CQLAI soporta múltiples métodos de configuración para máxima flexibilidade e compatibilidade con configuracións existentes de Cassandra.
 
@@ -956,7 +972,7 @@ Variables de contorno comúns:
 
 Se estás a migrar desde `cqlsh`, CQLAI lerá automaticamente o teu arquivo existente `~/.cassandra/cqlshrc`. Non se necesitan cambios para comezar a usar CQLAI coa túa configuración existente de Cassandra.
 
-## Xeración de Consultas Potenciada por IA
+## 🤖 Xeración de Consultas Potenciada por IA
 
 CQLAI inclúe capacidades de IA integradas para converter linguaxe natural en consultas CQL. Simplemente prefixa a túa solicitude con `.ai`:
 
@@ -1005,7 +1021,7 @@ Configura o teu provedor de IA preferido en `cqlai.json`:
 - **Confirmación requirida**: Operacións destrutivas requiren confirmación adicional
 - **Validación de esquema**: As consultas valídanse contra o teu esquema actual
 
-## Soporte de Apache Parquet
+## 📦 Soporte de Apache Parquet
 
 CQLAI proporciona soporte integral para o formato Apache Parquet, facéndoo ideal para fluxos de traballo de análise de datos e integración con ecosistemas de datos modernos.
 
@@ -1046,7 +1062,7 @@ CAPTURE OFF;
 
 Para documentación detallada, consulta [Guía de Soporte de Parquet](docs/PARQUET.md).
 
-## Limitacións Coñecidas
+## ⚠️ Limitacións Coñecidas
 
 ### Saída JSON (CAPTURE JSON e --format json)
 
@@ -1075,7 +1091,7 @@ SELECT JSON * FROM users;
 
 **Nota**: Os tipos complexos (lists, sets, maps, vectors) presérvanse apropiadamente na saída JSON.
 
-## Desenvolvemento
+## 🔨 Desenvolvemento
 
 Para traballar en `cqlai`, necesitarás Go (≥ 1.24).
 
@@ -1117,7 +1133,7 @@ make check
 ```
 
 
-## Stack Tecnolóxico
+## 🏗️ Stack Tecnolóxico
 
 - **Linguaxe:** Go
 - **Framework TUI:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -1153,13 +1169,13 @@ Animamos aos usuarios a explorar e contribuír ao proxecto principal de Apache C
 - 🌐 **Sitio Web**: [axonops.com](https://axonops.com)
 - 📧 **Contacto**: Visita o noso sitio web para opcións de soporte
 
-## Licenza
+## 📝 Licenza
 
-Este proxecto está licenciado baixo a licenza Apache 2.0. Consulta o arquivo LICENSE para máis detalles.
+Este proxecto está licenciado baixo a licenza Apache 2.0. Consulta o arquivo [LICENSE](LICENSE) para máis detalles.
 
 As licenzas de dependencias de terceiros están dispoñibles no directorio [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/). Para rexenerar as atribucións de licenza, executa `make licenses`.
 
-## 📄 Avisos Legais
+## ⚖️ Avisos Legais
 
 *Este proxecto pode conter marcas rexistradas ou logotipos de proxectos, produtos ou servizos. O uso de marcas rexistradas ou logotipos de terceiros está suxeito ás políticas de ditos terceiros.*
 
@@ -1170,7 +1186,5 @@ As licenzas de dependencias de terceiros están dispoñibles no directorio [THIR
 ---
 
 <div align="center">
-  <br>
   <p>Feito con ❤️ polo equipo de <a href="https://axonops.com">AxonOps</a></p>
-  <a href="https://axonops.com"><img src="./assets/AxonOps-RGB-transparent-small.png" alt="AxonOps" width="200"></a>
 </div>

@@ -1,7 +1,12 @@
-# CQLAI - モダンなCassandra CQLシェル
+# CQLAI - モダンなCassandra® CQLシェル
 
 <div align="center">
   <img src="./assets/cqlai-logo.svg" alt="CQLAI Logo" width="400">
+
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![GitHub Issues](https://img.shields.io/github/issues/axonops/cqlai)](https://github.com/axonops/cqlai/issues)
+  [![GitHub Discussions](https://img.shields.io/github/discussions/axonops/cqlai)](https://github.com/axonops/cqlai/discussions)
+  [![GitHub Stars](https://img.shields.io/github/stars/axonops/cqlai)](https://github.com/axonops/cqlai/stargazers)
 </div>
 
 **CQLAI**は、Goで構築された高速でポータブルなCassandra(CQL)対話型ターミナルです。高度なターミナルUI、クライアント側コマンドパース、生産性向上機能を備えた、`cqlsh`の最新で使いやすい代替ツールを提供します。
@@ -17,7 +22,7 @@
 
 </div>
 
-元々のcqlshコマンドはPythonで書かれており、システムにPythonのインストールが必要です。cqlaiは単一の実行可能バイナリにコンパイルされ、外部依存関係を必要としません。このプロジェクトは以下のプラットフォーム向けのバイナリを提供しています:
+元々のcqlshコマンドは[Apache Cassandra](https://cassandra.apache.org/)プロジェクトでPythonで書かれており、システムにPythonのインストールが必要です。cqlaiは単一の実行可能バイナリにコンパイルされ、外部依存関係を必要としません。このプロジェクトは以下のプラットフォーム向けのバイナリを提供しています:
 
 - Linux x86-64
 - macOS x86-64
@@ -28,27 +33,38 @@
 
 美しいターミナルUIには[Bubble Tea](https://github.com/charmbracelet/bubbletea)、[Bubbles](https://github.com/charmbracelet/bubbles)、[Lip Gloss](https://github.com/charmbracelet/lipgloss)が使用されています。最新のCassandra機能を実装しているcassandra gocqlドライバーチーム[gocql](https://github.com/apache/cassandra-gocql-driver)に感謝します。
 
-## 目次
+## 📑 目次
 
-- [プロジェクトの状況](#プロジェクトの状況)
-- [機能](#機能)
-- [インストール](#インストール)
-- [使用方法](#使用方法)
-- [利用可能なコマンド](#利用可能なコマンド)
-- [設定](#設定)
-- [AI駆動のクエリ生成](#ai駆動のクエリ生成)
-- [Apache Parquetサポート](#apache-parquetサポート)
-- [既知の制限事項](#既知の制限事項)
-- [開発](#開発)
-- [技術スタック](#技術スタック)
-- [謝辞](#謝辞)
-- [コミュニティ & サポート](#コミュニティ--サポート)
-- [ライセンス](#ライセンス)
-- [法的通知](#法的通知)
+- [📊 プロジェクトの状況](#-プロジェクトの状況)
+- [✨ 機能](#-機能)
+- [🔧 インストール](#-インストール)
+- [📚 使用方法](#-使用方法)
+- [⚙️ 利用可能なコマンド](#️-利用可能なコマンド)
+- [🛠️ 設定](#️-設定)
+  - [設定の優先順位](#設定の優先順位)
+  - [CQLSHRC互換性](#cqlshrc互換性)
+  - [CQLAI JSON設定](#cqlai-json設定)
+  - [AIプロバイダー設定](#aiプロバイダー設定)
+    - [OpenAI](#openai-gpt-4-gpt-35)
+    - [Anthropic](#anthropic-claude-3)
+    - [Google Gemini](#google-gemini)
+    - [Synthetic](#synthetic-複数のオープンソースモデル)
+    - [Ollama](#ollama-ローカルモデル)
+    - [OpenRouter](#openrouter-複数のモデル)
+    - [Mockプロバイダー](#mockプロバイダーテスト用)
+- [🤖 AI駆動のクエリ生成](#-ai駆動のクエリ生成)
+- [📦 Apache Parquetサポート](#-apache-parquetサポート)
+- [⚠️ 既知の制限事項](#️-既知の制限事項)
+- [🔨 開発](#-開発)
+- [🏗️ 技術スタック](#️-技術スタック)
+- [🙏 謝辞](#-謝辞)
+- [💬 コミュニティ & サポート](#-コミュニティ--サポート)
+- [📝 ライセンス](#-ライセンス)
+- [⚖️ 法的通知](#️-法的通知)
 
 ---
 
-## プロジェクトの状況
+## 📊 プロジェクトの状況
 
 **CQLAIは本番環境対応**であり、Cassandraクラスタを使用した開発、テスト、本番環境で活発に使用されています。このツールは、拡張機能とパフォーマンスを備えた`cqlsh`の完全で安定した代替品を提供します。
 
@@ -74,7 +90,7 @@
 
 ---
 
-## 機能
+## ✨ 機能
 
 - **対話型CQLシェル:** Cassandraクラスタがサポートする任意のCQLクエリを実行できます。
 - **リッチターミナルUI:**
@@ -102,7 +118,7 @@
     - 証明書認証付きSSL/TLS接続のサポート。
 - **単一バイナリ:** 外部依存関係なしの単一静的バイナリとして配布。高速起動と小さなフットプリント。
 
-## インストール
+## 🔧 インストール
 
 `cqlai`はいくつかの方法でインストールできます。パッケージマネージャー(APT、YUM)やDockerを含む詳細な手順については、[インストールガイド](docs/INSTALLATION_jp.md)を参照してください。
 
@@ -135,7 +151,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 ```
 
-## 使用方法
+## 📚 使用方法
 
 ### 対話モード
 
@@ -412,7 +428,7 @@ SELECT * FROM <Tab>
 4. **ファイルパス:** ファイルパス補完には引用符を含めることを忘れないでください
 5. **補完のナビゲート:** 矢印キーを使用して複数のオプションから選択します
 
-## 利用可能なコマンド
+## ⚙️ 利用可能なコマンド
 
 CQLAIは、拡張機能のための追加のメタコマンドに加えて、すべての標準CQLコマンドをサポートしています。
 
@@ -611,7 +627,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   .ai find orders placed in the last 30 days
   ```
 
-## 設定
+## 🛠️ 設定
 
 CQLAIは、既存のCassandraセットアップとの最大限の柔軟性と互換性のために、複数の設定方法をサポートしています。
 
@@ -764,7 +780,7 @@ CQLAIは次の場所で設定ファイルを検索します:
 
 `cqlsh`から移行する場合、CQLAIは既存の`~/.cassandra/cqlshrc`ファイルを自動的に読み取ります。既存のCassandra設定でCQLAIの使用を開始するための変更は必要ありません。
 
-## AI駆動のクエリ生成
+## 🤖 AI駆動のクエリ生成
 
 CQLAIには、自然言語をCQLクエリに変換する組み込みのAI機能が含まれています。リクエストの前に`.ai`を付けるだけです:
 
@@ -846,7 +862,7 @@ Syntheticを使用して、非常に合理的な価格で多数のオープン�
 - **確認が必要**: 破壊的な操作には追加の確認が必要
 - **スキーマ検証**: クエリは現在のスキーマに対して検証されます
 
-## Apache Parquetサポート
+## 📦 Apache Parquetサポート
 
 CQLAIは、Apache Parquet形式の包括的なサポートを提供し、モダンなデータエコシステムとの統合に最適です。
 
@@ -887,7 +903,7 @@ CAPTURE OFF;
 
 詳細なドキュメントについては、[Parquetサポートガイド](docs/PARQUET_jp.md)を参照してください。
 
-## 既知の制限事項
+## ⚠️ 既知の制限事項
 
 ### JSON出力(CAPTURE JSONと--format json)
 
@@ -916,7 +932,7 @@ SELECT JSON * FROM users;
 
 **注意**: 複雑な型(list、set、map、vector)はJSON出力で適切に保持されます。
 
-## 開発
+## 🔨 開発
 
 `cqlai`で作業するには、Go(≥ 1.24)が必要です。
 
@@ -958,7 +974,7 @@ make check
 ```
 
 
-## 技術スタック
+## 🏗️ 技術スタック
 
 - **言語:** Go
 - **TUIフレームワーク:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -994,13 +1010,13 @@ CQLAIは、さまざまなCassandraツールとユーティリティの機能を
 - 🌐 **ウェブサイト**: [axonops.com](https://axonops.com)
 - 📧 **お問い合わせ**: サポートオプションについては当社のウェブサイトをご覧ください
 
-## ライセンス
+## 📝 ライセンス
 
-このプロジェクトはApache 2.0ライセンスの下でライセンスされています。詳細についてはLICENSEファイルを参照してください。
+このプロジェクトはApache 2.0ライセンスの下でライセンスされています。詳細については[LICENSE](LICENSE)ファイルを参照してください。
 
 サードパーティの依存関係ライセンスは、[THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/)ディレクトリで入手できます。ライセンス帰属を再生成するには、`make licenses`を実行してください。
 
-## 📄 法的通知
+## ⚖️ 法的通知
 
 *このプロジェクトには、プロジェクト、製品、またはサービスの商標またはロゴが含まれている場合があります。第三者の商標またはロゴの使用は、それらの第三者のポリシーに従います。*
 
@@ -1011,7 +1027,5 @@ CQLAIは、さまざまなCassandraツールとユーティリティの機能を
 ---
 
 <div align="center">
-  <br>
   <p><a href="https://axonops.com">AxonOps</a>チームが❤️を込めて作成</p>
-  <a href="https://axonops.com"><img src="./assets/AxonOps-RGB-transparent-small.png" alt="AxonOps" width="200"></a>
 </div>
