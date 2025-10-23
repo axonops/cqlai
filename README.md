@@ -279,6 +279,9 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
   .ai delete orders older than 1 year from the orders table
   ```
 
+<img width="1617" height="1012" alt="ai_cql" src="https://github.com/user-attachments/assets/1e40c76a-f8e1-4efc-8938-e7b8ff8b5f5e" />
+
+
 ### Keyboard Shortcuts
 
 #### Navigation & Control
