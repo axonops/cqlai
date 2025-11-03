@@ -158,7 +158,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 
 	// Configure SSL if enabled
 	if cfg.SSL != nil && cfg.SSL.Enabled {
-		tlsConfig, err := createTLSConfig(cfg.SSL)
+		tlsConfig, err := createTLSConfig(cfg.SSL, cfg.Host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create TLS configuration: %v", err)
 		}
@@ -560,9 +560,19 @@ func (s *Session) SetKeyspace(keyspace string) error {
 }
 
 // createTLSConfig creates a TLS configuration based on the SSL settings
-func createTLSConfig(sslConfig *config.SSLConfig) (*tls.Config, error) {
+func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: sslConfig.InsecureSkipVerify, // #nosec G402 - Configurable TLS verification
+	}
+
+	// Set ServerName for hostname verification
+	// This is critical when connecting via IP but need to verify against hostname in certificate
+	if sslConfig.HostVerification && hostname != "" {
+		// Strip port if present (hostname might be "host:port")
+		if colonIdx := strings.LastIndex(hostname, ":"); colonIdx > 0 {
+			hostname = hostname[:colonIdx]
+		}
+		tlsConfig.ServerName = hostname
 	}
 
 	// Load client certificate if provided
