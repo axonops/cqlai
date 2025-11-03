@@ -47,6 +47,7 @@ type SSLConfig struct {
 	CAPath             string `json:"caPath,omitempty"`             // Path to CA certificate
 	HostVerification   bool   `json:"hostVerification,omitempty"`   // Enable hostname verification
 	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"` // Skip certificate verification (not recommended for production)
+	AllowLegacyCN      bool   `json:"allowLegacyCN,omitempty"`      // Allow legacy Common Name field (certificates without SANs)
 }
 
 // AIConfig holds AI provider configuration
@@ -537,7 +538,8 @@ func loadCQLSHRC(path string, config *Config) error {
 					logger.DebugfToFile("CQLSHRC", "Set InsecureSkipVerify to true and HostVerification to false")
 				} else {
 					config.SSL.HostVerification = true
-					logger.DebugfToFile("CQLSHRC", "Set HostVerification to true")
+					config.SSL.AllowLegacyCN = true // Enable legacy CN support for cqlshrc compatibility
+					logger.DebugfToFile("CQLSHRC", "Set HostVerification to true and AllowLegacyCN to true")
 				}
 			}
 		}

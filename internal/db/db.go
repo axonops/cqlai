@@ -561,18 +561,26 @@ func (s *Session) SetKeyspace(keyspace string) error {
 
 // createTLSConfig creates a TLS configuration based on the SSL settings
 func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: sslConfig.InsecureSkipVerify, // #nosec G402 - Configurable TLS verification
-	}
-
-	// Set ServerName for hostname verification
-	// This is critical when connecting via IP but need to verify against hostname in certificate
-	if sslConfig.HostVerification && hostname != "" {
+	// Determine server name for hostname verification
+	serverName := hostname
+	if hostname != "" {
 		// Strip port if present (hostname might be "host:port")
 		if colonIdx := strings.LastIndex(hostname, ":"); colonIdx > 0 {
-			hostname = hostname[:colonIdx]
+			serverName = hostname[:colonIdx]
 		}
-		tlsConfig.ServerName = hostname
+	}
+
+	// When AllowLegacyCN is enabled, we need to bypass standard verification
+	// and do manual verification in VerifyConnection
+	skipVerify := sslConfig.InsecureSkipVerify || (sslConfig.AllowLegacyCN && sslConfig.HostVerification)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: skipVerify, // #nosec G402 - Configurable TLS verification
+	}
+
+	// Set ServerName for hostname verification (only when not using legacy CN verification)
+	if sslConfig.HostVerification && !sslConfig.AllowLegacyCN && serverName != "" {
+		tlsConfig.ServerName = serverName
 	}
 
 	// Load client certificate if provided
@@ -598,9 +606,56 @@ func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config,
 		tlsConfig.RootCAs = caCertPool
 	}
 
-	// Configure hostname verification
-	if !sslConfig.HostVerification {
-		tlsConfig.InsecureSkipVerify = true
+	// Manual verification for legacy CN certificates
+	// We skip standard verification and manually check the certificate
+	if sslConfig.AllowLegacyCN && sslConfig.HostVerification {
+		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return fmt.Errorf("no peer certificates")
+			}
+
+			// Build intermediates pool
+			intermediates := x509.NewCertPool()
+			for _, cert := range cs.PeerCertificates[1:] {
+				intermediates.AddCert(cert)
+			}
+
+			// First try standard verification with SANs
+			opts := x509.VerifyOptions{
+				DNSName:       serverName,
+				Intermediates: intermediates,
+			}
+			if tlsConfig.RootCAs != nil {
+				opts.Roots = tlsConfig.RootCAs
+			}
+
+			_, err := cs.PeerCertificates[0].Verify(opts)
+			if err == nil {
+				return nil // Standard verification with SANs passed
+			}
+
+			// If standard verification failed, try legacy CN verification
+			// First verify the certificate chain without hostname check
+			optsNoHostname := x509.VerifyOptions{
+				Intermediates: intermediates,
+			}
+			if tlsConfig.RootCAs != nil {
+				optsNoHostname.Roots = tlsConfig.RootCAs
+			}
+
+			_, err = cs.PeerCertificates[0].Verify(optsNoHostname)
+			if err != nil {
+				return fmt.Errorf("certificate verification failed: %v", err)
+			}
+
+			// Chain is valid, now check CN
+			cert := cs.PeerCertificates[0]
+			if cert.Subject.CommonName == serverName {
+				return nil // Legacy CN matches
+			}
+
+			return fmt.Errorf("certificate CN %q doesn't match expected hostname %q", cert.Subject.CommonName, serverName)
+		}
 	}
 
 	return tlsConfig, nil
