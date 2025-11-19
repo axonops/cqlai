@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/ui/completion"
@@ -94,17 +96,27 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 				}
 
 				if shouldAddSpace {
-					// Add a space and get next completions
+					// Add a space and return - don't get completions yet
+					// Let the user press tab again to see next completions
 					currentInput += " "
 					m.input.SetValue(currentInput)
 					m.input.SetCursor(len(currentInput))
+					return m, nil
 				}
 			}
 		}
 	}
 
 	// Get completions for current input (use fullInput which includes multi-line buffer if applicable)
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] Tab pressed: currentInput='%s', fullInput='%s'\n", currentInput, fullInput)
+		defer debugFile.Close()
+	}
 	m.completions = m.completionEngine.Complete(fullInput)
+	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] Got %d completions: %v\n", len(m.completions), m.completions)
+		defer debugFile.Close()
+	}
 
 	if len(m.completions) == 0 { //nolint:gocritic // more readable as if
 		// No completions available
@@ -133,10 +145,16 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 
 				// Check for keyspace.table pattern
 				if strings.Contains(lastWord, ".") { //nolint:gocritic // more readable as if
-					// For keyspace.table patterns, always replace the part after the dot
-					// The completion engine returns just the table name
-					dotIndex := strings.LastIndex(currentInput, ".")
-					newValue = currentInput[:dotIndex+1] + selectedCompletion
+					// If the completion starts with "(" it's column list for INSERT, not a table name
+					if strings.HasPrefix(selectedCompletion, "(") {
+						// Append column list after table name
+						newValue = currentInput + " " + selectedCompletion
+					} else {
+						// For keyspace.table patterns, replace the part after the dot
+						// The completion engine returns just the table name
+						dotIndex := strings.LastIndex(currentInput, ".")
+						newValue = currentInput[:dotIndex+1] + selectedCompletion
+					}
 				} else if lastWord == "*" || strings.HasSuffix(lastWord, ")") {
 					// Don't replace, just append
 					newValue = currentInput + " " + selectedCompletion

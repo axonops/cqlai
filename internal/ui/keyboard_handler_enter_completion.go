@@ -74,10 +74,17 @@ func (m *MainModel) handleCompletionSelection() (*MainModel, tea.Cmd) {
 				// This is a complete assignment, don't replace, just append with space
 				newValue = currentInput + " " + selectedCompletion
 			case strings.Contains(lastWord, "."):
-				// For keyspace.table patterns, always replace the part after the dot
-				// The completion engine returns just the table name
-				dotIndex := strings.LastIndex(currentInput, ".")
-				newValue = currentInput[:dotIndex+1] + selectedCompletion
+				// Check if this is completing a table name or completing after table name
+				// If the completion starts with "(" it's column list for INSERT, not a table name
+				if strings.HasPrefix(selectedCompletion, "(") {
+					// Append column list after table name
+					newValue = currentInput + " " + selectedCompletion
+				} else {
+					// For keyspace.table patterns, replace the part after the dot
+					// The completion engine returns just the table name
+					dotIndex := strings.LastIndex(currentInput, ".")
+					newValue = currentInput[:dotIndex+1] + selectedCompletion
+				}
 			case lastWord == "*" || strings.HasSuffix(lastWord, ")"):
 				// Don't replace, just append
 				newValue = currentInput + " " + selectedCompletion
