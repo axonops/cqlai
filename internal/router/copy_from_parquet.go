@@ -405,7 +405,7 @@ func (h *MetaCommandHandler) formatJSONUDTString(value string) string {
 // formatListValue formats a list/array value
 func (h *MetaCommandHandler) formatListValue(v []interface{}, columnName string) string {
 	if len(v) == 0 {
-		return "[]"
+		return h.getEmptyCollectionSyntax(columnName)
 	}
 
 	quotedParts := make([]string, len(v))
@@ -413,6 +413,10 @@ func (h *MetaCommandHandler) formatListValue(v []interface{}, columnName string)
 		quotedParts[i] = h.formatListItem(item)
 	}
 
+	// Use curly braces for sets, square brackets for lists
+	if h.isSetColumn(columnName) {
+		return "{" + strings.Join(quotedParts, ", ") + "}"
+	}
 	return "[" + strings.Join(quotedParts, ", ") + "]"
 }
 
@@ -505,9 +509,18 @@ func (h *MetaCommandHandler) formatMapValue2(val interface{}) string {
 
 // isSetColumn determines if a column is a set type based on naming conventions
 func (h *MetaCommandHandler) isSetColumn(columnName string) bool {
-	return strings.Contains(columnName, "unique") ||
+	// Check common naming patterns for sets
+	namePatterns := strings.Contains(columnName, "unique") ||
 		strings.HasSuffix(columnName, "_set") ||
-		strings.HasSuffix(columnName, "_nums")
+		strings.HasSuffix(columnName, "_nums") ||
+		strings.ToLower(columnName) == "tags" // Common set column name
+
+	if namePatterns {
+		return true
+	}
+
+	// TODO: Query Cassandra schema to get actual type for more reliable detection
+	return false
 }
 
 // getEmptyCollectionSyntax returns the appropriate empty collection syntax

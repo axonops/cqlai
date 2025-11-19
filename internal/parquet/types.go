@@ -611,6 +611,18 @@ func (tm *TypeMapper) toList(value interface{}, listType *arrow.ListType) ([]int
 			result[i] = f
 		}
 		return result, nil
+	case string:
+		// Handle vector string representation like "[0.12, 0.45, 0.78]"
+		// This happens when gocql scans vector types into interface{}
+		if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
+			// Parse the string as a list of floats
+			result, err := tm.parseVectorString(v, listType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse vector string: %v", err)
+			}
+			return result, nil
+		}
+		return nil, fmt.Errorf("cannot convert string %q to list", v)
 	default:
 		return nil, fmt.Errorf("cannot convert %T to list", value)
 	}
@@ -641,6 +653,54 @@ func (tm *TypeMapper) toMap(value interface{}, mapType *arrow.MapType) (map[inte
 	default:
 		return nil, fmt.Errorf("cannot convert %T to map", value)
 	}
+}
+
+// parseVectorString parses a vector string representation like "[0.12, 0.45, 0.78]" into a list
+func (tm *TypeMapper) parseVectorString(vectorStr string, listType *arrow.ListType) ([]interface{}, error) {
+	// Remove brackets
+	vectorStr = strings.TrimPrefix(vectorStr, "[")
+	vectorStr = strings.TrimSuffix(vectorStr, "]")
+	vectorStr = strings.TrimSpace(vectorStr)
+
+	if vectorStr == "" {
+		return []interface{}{}, nil
+	}
+
+	// Split by whitespace (Cassandra vectors use space-separated values)
+	parts := strings.Fields(vectorStr)
+	result := make([]interface{}, len(parts))
+
+	// Check the element type to determine parsing
+	elemType := listType.Elem()
+	switch elemType.ID() {
+	case arrow.FLOAT32:
+		for i, part := range parts {
+			// Parse as float32
+			var f float32
+			_, err := fmt.Sscanf(part, "%f", &f)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse float at index %d: %v", i, err)
+			}
+			result[i] = f
+		}
+	case arrow.FLOAT64:
+		for i, part := range parts {
+			// Parse as float64
+			var f float64
+			_, err := fmt.Sscanf(part, "%f", &f)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse float at index %d: %v", i, err)
+			}
+			result[i] = f
+		}
+	default:
+		// For other types, keep as strings
+		for i, part := range parts {
+			result[i] = part
+		}
+	}
+
+	return result, nil
 }
 
 // Helper functions
