@@ -12,7 +12,7 @@ on:
         default: 'v0.1.0'
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.25'
   GCP_PROJECT: axonops-public
   GCP_REGION: europe
   APT_REPO: axonops-apt
@@ -515,7 +515,7 @@ jobs:
         run: |
           if [ ! -f Dockerfile ]; then
             cat > Dockerfile << 'EOF'
-          FROM golang:1.24-alpine AS builder
+          FROM golang:1.25-alpine AS builder
           
           WORKDIR /app
           COPY go.mod go.sum ./
