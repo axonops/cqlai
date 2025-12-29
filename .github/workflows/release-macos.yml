@@ -84,11 +84,16 @@ jobs:
           PLATFORM="${{ matrix.platform }}"
           ARCH="${{ matrix.pkg_arch }}"
 
-          # Code sign the binary
+          # Code sign the binary (optional - may not have Application cert)
           if command -v codesign > /dev/null; then
-            codesign --force --options runtime \
-              --timestamp \
-              -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
+            if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
+              codesign --force --options runtime \
+                --timestamp \
+                -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
+              echo "Binary code signed successfully"
+            else
+              echo "Developer ID Application certificate not found, skipping binary code signing"
+            fi
           fi
 
           # Create PKG using fpm (unsigned)
