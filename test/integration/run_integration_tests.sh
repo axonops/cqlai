@@ -42,12 +42,52 @@ echo
 echo "Running integration tests..."
 echo "-----------------------------------------"
 
-# Run integration tests
+# Run MCP integration tests first
+echo
+echo "=== MCP Integration Tests ==="
+if ./test/integration/mcp/run_mcp_tests.sh; then
+    echo -e "${GREEN}✓ MCP tests passed${NC}"
+    MCP_PASSED=true
+else
+    echo -e "${RED}✗ MCP tests failed${NC}"
+    MCP_PASSED=false
+fi
+
+# Run other integration tests
+echo
+echo "=== COPY TO/FROM Tests ==="
 if go test -v -timeout 120s ./test/integration/... 2>&1 | tee /tmp/integration_test_output.log; then
+    echo -e "${GREEN}✓ COPY tests passed${NC}"
+    COPY_PASSED=true
+else
+    echo -e "${RED}✗ COPY tests failed${NC}"
+    echo "Check /tmp/integration_test_output.log for details"
+    COPY_PASSED=false
+fi
+
+echo
+echo "========================================="
+echo "Integration Test Summary"
+echo "========================================="
+if [ "$MCP_PASSED" = true ]; then
+    echo -e "${GREEN}✓ MCP Integration Tests: PASSED${NC}"
+else
+    echo -e "${RED}✗ MCP Integration Tests: FAILED${NC}"
+fi
+
+if [ "$COPY_PASSED" = true ]; then
+    echo -e "${GREEN}✓ COPY TO/FROM Tests: PASSED${NC}"
+else
+    echo -e "${RED}✗ COPY TO/FROM Tests: FAILED${NC}"
+fi
+
+# Exit with failure if any test suite failed
+if [ "$MCP_PASSED" = true ] && [ "$COPY_PASSED" = true ]; then
+    echo
     echo -e "${GREEN}All integration tests passed!${NC}"
     exit 0
 else
+    echo
     echo -e "${RED}Some integration tests failed!${NC}"
-    echo "Check /tmp/integration_test_output.log for details"
     exit 1
 fi

@@ -292,6 +292,57 @@ func loadConfig(customConfigPath string) (*config.Config, error) {
 	return conf, nil
 }
 
+// NewSessionFromCluster creates a new independent session from an existing cluster configuration.
+// This allows creating multiple sessions that share the same connection parameters (host, auth, SSL)
+// but operate independently with separate connection pools and schema caches.
+// The username parameter is used to track the authenticated user for the new session.
+func NewSessionFromCluster(cluster *gocql.ClusterConfig, username string, batchMode bool) (*Session, error) {
+	if cluster == nil {
+		return nil, fmt.Errorf("cluster config cannot be nil")
+	}
+
+	// Create a new session from the cluster config
+	session, err := cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session from cluster: %w", err)
+	}
+
+	// Get Cassandra version
+	var releaseVersion string
+	iter := session.Query("SELECT release_version FROM system.local").Iter()
+	iter.Scan(&releaseVersion)
+	_ = iter.Close()
+
+	// Use the cluster's configured consistency level
+	consistency := cluster.Consistency
+	if consistency == 0 {
+		consistency = gocql.LocalOne
+	}
+
+	s := &Session{
+		Session:          session,
+		cluster:          cluster,
+		consistency:      consistency,
+		pageSize:         100,
+		tracing:          false,
+		username:         username,
+		cassandraVersion: releaseVersion,
+	}
+
+	// Initialize schema cache unless in batch mode
+	if !batchMode {
+		s.schemaCache = NewSchemaCache(s)
+		if err := s.schemaCache.Refresh(); err != nil {
+			logger.DebugfToFile("Session", "Failed to initialize schema cache for new session: %v", err)
+		} else {
+			logger.DebugfToFile("Session", "Schema cache initialized for new session with %d keyspaces", len(s.schemaCache.Keyspaces))
+		}
+	} else {
+		logger.DebugfToFile("Session", "Skipping schema cache initialization for new session (batch mode)")
+	}
+
+	return s, nil
+}
 
 // Consistency returns the current consistency level
 func (s *Session) Consistency() string {
@@ -381,6 +432,12 @@ func (s *Session) SetAutoFetch(enabled bool) {
 // Username returns the current connection username
 func (s *Session) Username() string {
 	return s.username
+}
+
+// GetCluster returns the cluster configuration used by this session.
+// This is useful for creating additional independent sessions with the same configuration.
+func (s *Session) GetCluster() *gocql.ClusterConfig {
+	return s.cluster
 }
 
 // Query creates a new query with session defaults applied

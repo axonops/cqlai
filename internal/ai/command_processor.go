@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 )
 
@@ -172,64 +173,74 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 	case ToolFuzzySearch:
 		logger.DebugfToFile("CommandProcessor", "Executing fuzzy search for: %s", arg)
 
-		if globalAI.resolver != nil {
-			candidates := globalAI.resolver.FindTablesWithFuzzy(arg, 10)
-			logger.DebugfToFile("CommandProcessor", "Fuzzy search returned %d candidates", len(candidates))
-
-			if len(candidates) > 0 {
-				var sb strings.Builder
-				sb.WriteString(fmt.Sprintf("Found %d tables matching '%s':\n", len(candidates), arg))
-				for _, c := range candidates {
-					sb.WriteString(fmt.Sprintf("- %s.%s (score: %.2f, columns: %v)\n",
-						c.Keyspace, c.Table, c.Score, c.Columns))
-				}
-				return &CommandResult{Success: true, Data: sb.String()}
-			}
-
-			// No direct matches, show available keyspaces
-			if len(globalAI.cache.Keyspaces) > 0 {
-				var sb strings.Builder
-				sb.WriteString(fmt.Sprintf("No tables found matching '%s'. Available keyspaces: %s\n",
-					arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", ")))
-				sb.WriteString("\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace.")
-				return &CommandResult{Success: true, Data: sb.String()}
-			}
-
-			return &CommandResult{
-				Success: true,
-				Data:    fmt.Sprintf("No tables found matching '%s' and no keyspaces available.", arg),
-			}
+		// Get data using shared function
+		data, err := getToolData(globalAI.resolver, globalAI.cache, ToolFuzzySearch, arg)
+		if err != nil {
+			return &CommandResult{Success: false, Error: err}
 		}
+
+		candidates := data.([]TableCandidate)
+		logger.DebugfToFile("CommandProcessor", "Fuzzy search returned %d candidates", len(candidates))
+
+		// Format for terminal display
+		if len(candidates) > 0 {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("Found %d tables matching '%s':\n", len(candidates), arg))
+			for _, c := range candidates {
+				sb.WriteString(fmt.Sprintf("- %s.%s (score: %.2f, columns: %v)\n",
+					c.Keyspace, c.Table, c.Score, c.Columns))
+			}
+			return &CommandResult{Success: true, Data: sb.String()}
+		}
+
+		// No direct matches, show available keyspaces
+		if len(globalAI.cache.Keyspaces) > 0 {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("No tables found matching '%s'. Available keyspaces: %s\n",
+				arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", ")))
+			sb.WriteString("\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace.")
+			return &CommandResult{Success: true, Data: sb.String()}
+		}
+
 		return &CommandResult{
-			Success: false,
-			Error:   fmt.Errorf("resolver not available"),
+			Success: true,
+			Data:    fmt.Sprintf("No tables found matching '%s' and no keyspaces available.", arg),
 		}
 
 	case ToolGetSchema:
-		parts := strings.Split(arg, ".")
-		if len(parts) != 2 {
-			return &CommandResult{
-				Success: false,
-				Error:   fmt.Errorf("invalid table reference: %s (expected keyspace.table)", arg),
-			}
-		}
-
 		logger.DebugfToFile("CommandProcessor", "Getting schema for: %s", arg)
-		schemaInfo, err := globalAI.cache.GetTableSchema(parts[0], parts[1])
+
+		// Get data using shared function
+		data, err := getToolData(globalAI.resolver, globalAI.cache, ToolGetSchema, arg)
 		if err != nil {
+			// Preserve old behavior: return Success=true with error message in Data field
+			// This is how AI clients expect "not found" errors
 			return &CommandResult{Success: true, Data: "Schema not found"}
 		}
 
+		schema := data.(*db.TableSchema)
+		parts := strings.Split(arg, ".")
+
+		// Format for terminal display
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("Table %s.%s schema:\n", parts[0], parts[1]))
-		sb.WriteString(fmt.Sprintf("Partition Keys: %v\n", schemaInfo.PartitionKeys))
-		sb.WriteString(fmt.Sprintf("Clustering Keys: %v\n", schemaInfo.ClusteringKeys))
-		sb.WriteString(fmt.Sprintf("Columns: %v", schemaInfo.Columns))
+		sb.WriteString(fmt.Sprintf("Partition Keys: %v\n", schema.PartitionKeys))
+		sb.WriteString(fmt.Sprintf("Clustering Keys: %v\n", schema.ClusteringKeys))
+		sb.WriteString(fmt.Sprintf("Columns: %v", schema.Columns))
 		return &CommandResult{Success: true, Data: sb.String()}
 
 	case ToolListKeyspaces:
 		logger.DebugfToFile("CommandProcessor", "Listing keyspaces")
-		keyspaces := globalAI.cache.Keyspaces
+
+		// Get data using shared function
+		data, err := getToolData(globalAI.resolver, globalAI.cache, ToolListKeyspaces, arg)
+		if err != nil {
+			return &CommandResult{Success: false, Error: err}
+		}
+
+		keyspaces := data.([]string)
+
+		// Format for terminal display
 		return &CommandResult{
 			Success: true,
 			Data:    fmt.Sprintf("Keyspaces: %s", strings.Join(keyspaces, ", ")),
@@ -237,11 +248,22 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 
 	case ToolListTables:
 		logger.DebugfToFile("CommandProcessor", "Listing tables for keyspace: %s", arg)
-		tables := globalAI.cache.Tables[arg]
+
+		// Get data using shared function
+		data, err := getToolData(globalAI.resolver, globalAI.cache, ToolListTables, arg)
+		if err != nil {
+			return &CommandResult{Success: false, Error: err}
+		}
+
+		tables := data.([]db.CachedTableInfo)
+
+		// Extract table names for terminal display
 		tableNames := []string{}
 		for _, t := range tables {
 			tableNames = append(tableNames, t.TableName)
 		}
+
+		// Format for terminal display
 		return &CommandResult{
 			Success: true,
 			Data:    fmt.Sprintf("Tables in %s: %s", arg, strings.Join(tableNames, ", ")),
