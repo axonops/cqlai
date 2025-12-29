@@ -1,0 +1,170 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release (e.g., v1.0.0)'
+        required: true
+        default: 'v0.1.0'
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  # Build macOS binaries natively
+  build-macos-binaries:
+    name: Build macOS ${{ matrix.arch }}
+    runs-on: macos-13
+
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            goarch: amd64
+            platform: darwin-amd64
+            pkg_arch: x86_64
+          - arch: arm64
+            goarch: arm64
+            platform: darwin-arm64
+            pkg_arch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ -n "${{ github.event.inputs.tag_name }}" ]]; then
+            VERSION=${{ github.event.inputs.tag_name }}
+          else
+            VERSION="dev-${GITHUB_SHA::8}"
+          fi
+          # Remove 'v' prefix for package version
+          PACKAGE_VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          OUTPUT_NAME="cqlai-${{ matrix.platform }}"
+          go build -trimpath -ldflags="-s -w -buildid= -X main.Version=${{ steps.version.outputs.version }}" \
+            -o "${OUTPUT_NAME}" \
+            ./cmd/cqlai
+          chmod +x "${OUTPUT_NAME}"
+
+      - name: Setup temporary installer signing keychain
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
+          p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
+
+      - name: Install fpm
+        run: |
+          sudo gem install fpm
+
+      - name: Create PKG package
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+          PLATFORM="${{ matrix.platform }}"
+          ARCH="${{ matrix.pkg_arch }}"
+
+          # Code sign the binary
+          if command -v codesign > /dev/null; then
+            codesign --force --options runtime \
+              --timestamp \
+              -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
+          fi
+
+          # Create PKG using fpm (unsigned)
+          fpm -s dir -t osxpkg \
+            --name cqlai \
+            --version "${VERSION}" \
+            --architecture "${ARCH}" \
+            --license "Apache-2.0" \
+            --vendor "AxonOps" \
+            --maintainer "AxonOps <support@axonops.com>" \
+            --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
+            --url "https://github.com/axonops/cqlai" \
+            --osxpkg-identifier-prefix "com.axonops" \
+            "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
+
+          # Rename unsigned package
+          mv cqlai-${VERSION}.pkg Unsigned-cqlai.pkg
+
+      - name: Sign and notarize the Apple pkg
+        run: |
+          VERSION="${{ steps.version.outputs.package_version }}"
+          ARCH="${{ matrix.pkg_arch }}"
+
+          # Sign the package
+          productsign --sign "Developer ID Installer: AXONOPS Limited (UJ776LUP23)" \
+            Unsigned-cqlai.pkg \
+            cqlai-${VERSION}-${ARCH}.pkg
+
+          # Clean up unsigned package
+          rm -f Unsigned-cqlai.pkg
+
+          # Notarize the package
+          xcrun notarytool submit cqlai-${VERSION}-${ARCH}.pkg \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload PKG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg-${{ matrix.platform }}
+          path: "*.pkg"
+
+  # Upload to GitHub Release
+  upload-to-release:
+    name: Upload to GitHub Release
+    needs: build-macos-binaries
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Download all PKG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-pkg-*
+          merge-multiple: true
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.tag_name }}
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          files: "*.pkg"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
