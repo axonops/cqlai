@@ -1,4 +1,4 @@
-name: Release
+name: Release Linux/Windows
 
 on:
   push:
@@ -83,12 +83,6 @@ jobs:
           - platform: linux-arm64
             goos: linux
             goarch: arm64
-          - platform: darwin-amd64
-            goos: darwin
-            goarch: amd64
-          - platform: darwin-arm64
-            goos: darwin
-            goarch: arm64
           - platform: windows-amd64
             goos: windows
             goarch: amd64
@@ -149,113 +143,6 @@ jobs:
             cqlai-${{ matrix.platform }}${{ matrix.ext }}
             cqlai-${{ matrix.platform }}.tar.gz
           if-no-files-found: ignore
-
-  # Build macOS PKG packages
-  build-macos-packages:
-    name: Build macOS PKG Packages
-    runs-on: macos-13
-    needs: build-binaries
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-
-    strategy:
-      matrix:
-        include:
-          - platform: darwin-amd64
-            arch: x86_64
-          - platform: darwin-arm64
-            arch: arm64
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download binary artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: binary-${{ matrix.platform }}
-
-      - name: Get version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          else
-            VERSION=${{ github.event.inputs.tag_name }}
-          fi
-          # Remove 'v' prefix for package version
-          PACKAGE_VERSION="${VERSION#v}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Setup temporary installer signing keychain
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
-          p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
-
-      - name: Install fpm
-        run: |
-          sudo gem install fpm
-
-      - name: Create PKG package
-        run: |
-          VERSION="${{ steps.version.outputs.package_version }}"
-          PLATFORM="${{ matrix.platform }}"
-          ARCH="${{ matrix.arch }}"
-
-          # Make binary executable
-          chmod +x "cqlai-${PLATFORM}"
-          if command -v codesign > /dev/null; then
-            codesign --force --options runtime \
-              --timestamp \
-              -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
-          fi
-
-          # Create PKG using fpm (unsigned)
-          fpm -s dir -t osxpkg \
-            --name cqlai \
-            --version "${VERSION}" \
-            --architecture "${ARCH}" \
-            --license "Apache-2.0" \
-            --vendor "AxonOps" \
-            --maintainer "AxonOps <support@axonops.com>" \
-            --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
-            --url "https://github.com/axonops/cqlai" \
-            --osxpkg-identifier-prefix "com.axonops" \
-            "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
-
-          # Rename unsigned package
-          mv cqlai-${VERSION}.pkg Unsigned-cqlai.pkg
-
-      - name: Sign and notarize the Apple pkg
-        run: |
-          VERSION="${{ steps.version.outputs.package_version }}"
-          ARCH="${{ matrix.arch }}"
-
-          # Sign the package
-          productsign --sign "Developer ID Installer: AXONOPS Limited (UJ776LUP23)" \
-            Unsigned-cqlai.pkg \
-            cqlai-${VERSION}-${ARCH}.pkg
-
-          # Clean up unsigned package
-          rm -f Unsigned-cqlai.pkg
-
-          # Notarize the package
-          xcrun notarytool submit cqlai-${VERSION}-${ARCH}.pkg \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --wait
-        env:
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Upload PKG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-pkg-${{ matrix.platform }}
-          path: "*.pkg"
 
   # Build Windows MSI packages
   build-windows-packages:
@@ -636,7 +523,7 @@ jobs:
   
   update-homebrew:
     name: Update homebrew repository
-    needs: [build-binaries, build-macos-packages, build-windows-packages, build-packages, upload-gcp]
+    needs: [build-binaries, build-windows-packages, build-packages, upload-gcp]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -703,7 +590,7 @@ jobs:
   # Create GitHub Release
   create-release:
     name: Create GitHub Release
-    needs: [build-binaries, build-macos-packages, build-windows-packages, build-packages, upload-gcp]
+    needs: [build-binaries, build-windows-packages, build-packages, upload-gcp]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -718,11 +605,10 @@ jobs:
         run: |
           mkdir -p release-assets
 
-          # Collect all release files
+          # Collect all release files (macOS PKG files are handled by release-macos.yml)
           find . -name "*.tar.gz" -exec mv {} release-assets/ \;
           find . -name "*.deb" -exec mv {} release-assets/ \;
           find . -name "*.rpm" -exec mv {} release-assets/ \;
-          find . -name "*.pkg" -exec mv {} release-assets/ \;
           find . -name "*.msi" -exec mv {} release-assets/ \;
 
           # Create checksums
