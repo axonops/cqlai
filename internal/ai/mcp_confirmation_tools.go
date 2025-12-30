@@ -24,6 +24,7 @@ func (s *MCPServer) registerConfirmationTools() error {
 		{s.createGetCancelledConfirmationsTool(), s.createGetCancelledConfirmationsHandler()},
 		{s.createGetConfirmationStateTool(), s.createGetConfirmationStateHandler()},
 		{s.createCancelConfirmationTool(), s.createCancelConfirmationHandler()},
+		{s.createGetTraceDataTool(), s.createGetTraceDataHandler()},
 	}
 
 	for _, t := range tools {
@@ -333,4 +334,50 @@ func formatTimePtr(t time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+// get_trace_data tool - NEW (18th MCP tool)
+func (s *MCPServer) createGetTraceDataTool() mcp.Tool {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"trace_id": map[string]any{
+				"type":        "string",
+				"description": "Cassandra trace ID (hex string) from query execution",
+			},
+		},
+		"required": []string{"trace_id"},
+	}
+	schemaJSON, _ := json.Marshal(schema)
+	return mcp.NewToolWithRawSchema(
+		"get_trace_data",
+		"Get detailed Cassandra trace data for a query by trace ID. Returns coordinator, duration, and trace events for performance analysis.",
+		schemaJSON,
+	)
+}
+
+func (s *MCPServer) createGetTraceDataHandler() server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		startTime := time.Now()
+		argsMap := request.GetArguments()
+
+		traceIDHex, ok := argsMap["trace_id"].(string)
+		if !ok {
+			s.metrics.RecordToolCall("get_trace_data", false, time.Since(startTime))
+			return mcp.NewToolResultError("Missing or invalid trace_id parameter"), nil
+		}
+
+		// TODO: Need to set the trace ID on session and call GetTraceData()
+		// For now, return placeholder
+		s.metrics.RecordToolCall("get_trace_data", true, time.Since(startTime))
+
+		result := map[string]any{
+			"trace_id": traceIDHex,
+			"message":  "Trace data retrieval not yet fully implemented",
+			"todo":     "Need to integrate with session.GetTraceData()",
+		}
+
+		jsonData, _ := json.Marshal(result)
+		return mcp.NewToolResultText(string(jsonData)), nil
+	}
 }

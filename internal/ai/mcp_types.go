@@ -17,10 +17,18 @@ type ConfirmationRequest struct {
 	Classification  QueryClassification   // Danger level, operation type
 	Tool            string                // Which tool requested
 	ToolOperation   string                // Specific operation (if applicable)
-	Status          string                // PENDING, CONFIRMED, DENIED, TIMEOUT
+	Status          string                // PENDING, CONFIRMED, DENIED, CANCELLED, TIMEOUT
 	UserConfirmed   bool
 	ConfirmedBy     string                // Username who confirmed
 	ConfirmedAt     time.Time
+
+	// Execution metadata (set after query executes)
+	Executed        bool          // Whether query was actually executed
+	ExecutionTime   time.Duration // How long execution took
+	TraceID         []byte        // Cassandra trace ID (if tracing enabled)
+	ExecutedAt      time.Time     // When execution happened
+	ExecutionError  string        // Error message if execution failed
+	RowsAffected    int           // Rows affected (for DML) or returned (for SELECT)
 }
 
 // ConfirmationResponse represents user's response to a confirmation request

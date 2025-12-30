@@ -627,13 +627,47 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		logger.DebugfToFile("MCP", "Query confirmed by user, proceeding")
 	}
 
-	// Query approved or no confirmation needed
-	duration := time.Since(startTime)
-	s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), true, duration)
-	s.mcpLog.LogToolExecution(string(ToolSubmitQueryPlan), argsMap, query, nil, duration)
+	// Query approved or no confirmation needed - EXECUTE IT
+	logger.DebugfToFile("MCP", "Executing approved query: %s", query)
 
-	// Return success (in real implementation, this would execute the query)
-	return mcp.NewToolResultText(fmt.Sprintf("Query plan approved: %s", query)), nil
+	// Execute with metadata (trace ID, duration)
+	execResult := s.session.ExecuteWithMetadata(query)
+
+	// Check if execution failed
+	if err, isErr := execResult.Result.(error); isErr {
+		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %v", err)), nil
+	}
+
+	// Success - format response with execution metadata
+	response := map[string]any{
+		"status":            "executed",
+		"query":             query,
+		"execution_time_ms": execResult.Duration.Milliseconds(),
+	}
+
+	// Add trace ID if available
+	if execResult.TraceID != nil {
+		response["trace_id"] = fmt.Sprintf("%x", execResult.TraceID)
+		response["trace_hint"] = "Use get_trace_data tool to analyze query performance"
+	}
+
+	// Format result based on type
+	switch r := execResult.Result.(type) {
+	case string:
+		response["message"] = r
+	case db.QueryResult:
+		response["rows_returned"] = r.RowCount
+	default:
+		response["result"] = fmt.Sprintf("%v", r)
+	}
+
+	s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), true, time.Since(startTime))
+	s.mcpLog.LogToolExecution(string(ToolSubmitQueryPlan), argsMap, response, nil, time.Since(startTime))
+
+	// Return as JSON
+	jsonData, _ := json.Marshal(response)
+	return mcp.NewToolResultText(string(jsonData)), nil
 }
 
 // buildCQLFromParams builds a CQL query string from submit_query_plan parameters
@@ -823,6 +857,40 @@ func (s *MCPServer) CancelRequest(requestID, cancelledBy, reason string) error {
 		return fmt.Errorf("confirmation queue not initialized")
 	}
 	return s.confirmationQueue.CancelRequest(requestID, cancelledBy, reason)
+}
+
+// ExecuteConfirmedQuery executes a confirmed request's query and updates request metadata
+func (s *MCPServer) ExecuteConfirmedQuery(requestID string) error {
+	req, err := s.GetConfirmationRequest(requestID)
+	if err != nil {
+		return err
+	}
+
+	if req.Status != "CONFIRMED" {
+		return fmt.Errorf("request %s is not confirmed (status: %s)", requestID, req.Status)
+	}
+
+	// Execute with metadata
+	execResult := s.session.ExecuteWithMetadata(req.Query)
+
+	// Update request with execution metadata
+	req.Executed = true
+	req.ExecutedAt = time.Now()
+	req.ExecutionTime = execResult.Duration
+	req.TraceID = execResult.TraceID
+
+	// Check for errors
+	if err, isErr := execResult.Result.(error); isErr {
+		req.ExecutionError = err.Error()
+		return err
+	}
+
+	// Get row count if available
+	if qr, ok := execResult.Result.(db.QueryResult); ok {
+		req.RowsAffected = qr.RowCount
+	}
+
+	return nil
 }
 
 // GetApprovedConfirmations returns all approved confirmation requests

@@ -285,6 +285,100 @@ func (t *captureTracer) Trace(traceID []byte) {
 	t.traceID = traceID
 }
 
+// ExecuteWithMetadata executes a query and returns result + metadata (trace ID, duration)
+// This method is thread-safe for concurrent execution - each call gets its own trace ID
+// It does NOT use the shared s.lastTraceID to avoid race conditions
+func (s *Session) ExecuteWithMetadata(query string) QueryExecutionResult {
+	start := time.Now()
+
+	logger.DebugfToFile("ExecuteWithMetadata", "Executing: %s", query)
+
+	if s == nil || s.Session == nil {
+		return QueryExecutionResult{
+			Result:   fmt.Errorf("not connected to database"),
+			Duration: time.Since(start),
+		}
+	}
+
+	// Create local tracer for THIS execution only (thread-safe)
+	var tracer *captureTracer
+	if s.tracing {
+		tracer = &captureTracer{}
+	}
+
+	// Execute based on query type
+	upperQuery := strings.ToUpper(strings.TrimSpace(query))
+
+	var result interface{}
+
+	switch {
+	case strings.HasPrefix(upperQuery, "SELECT") || strings.HasPrefix(upperQuery, "DESCRIBE") || strings.HasPrefix(upperQuery, "LIST"):
+		// SELECT query - execute with local tracer
+		q := s.Query(query)
+		if tracer != nil {
+			q = q.Trace(tracer)
+		}
+
+		iter := q.Iter()
+		columns := iter.Columns()
+
+		if len(columns) == 0 {
+			iter.Close()
+			result = "No results"
+		} else {
+			// Use existing select query logic (simplified here)
+			// For now, just get row count
+			rowCount := 0
+			for iter.Scan() {
+				rowCount++
+			}
+
+			if err := iter.Close(); err != nil {
+				result = fmt.Errorf("query failed: %v", err)
+			} else {
+				result = fmt.Sprintf("Query returned %d rows", rowCount)
+			}
+		}
+
+	case strings.HasPrefix(upperQuery, "USE "):
+		// Handle USE statement
+		parts := strings.Fields(query)
+		if len(parts) >= 2 {
+			keyspace := strings.Trim(strings.Trim(parts[1], ";"), "\"")
+			result = fmt.Sprintf("Now using keyspace %s", keyspace)
+		} else {
+			result = "Invalid USE statement"
+		}
+
+	default:
+		// Non-SELECT query (INSERT/UPDATE/DELETE/CREATE/etc)
+		q := s.Query(query)
+		if tracer != nil {
+			q = q.Trace(tracer)
+		}
+
+		if err := q.Exec(); err != nil {
+			result = fmt.Errorf("query failed: %v", err)
+		} else {
+			result = "Query executed successfully"
+		}
+	}
+
+	duration := time.Since(start)
+
+	// Get trace ID from LOCAL tracer (thread-safe - no shared state)
+	var traceID []byte
+	if tracer != nil && tracer.traceID != nil {
+		traceID = tracer.traceID // Direct access to local variable
+	}
+
+	return QueryExecutionResult{
+		Result:   result,
+		TraceID:  traceID,
+		Duration: duration,
+	}
+}
+
 // ExecuteCQLQuery executes a regular CQL query
 func (s *Session) ExecuteCQLQuery(query string) interface{} {
 	logger.DebugfToFile("ExecuteCQLQuery", "Called with query: %s", query)

@@ -134,3 +134,11 @@ func TypeToString(t gocql.Type) string {
 		return "unknown"
 	}
 }
+
+// QueryExecutionResult contains the result of query execution plus metadata
+// This is thread-safe - each execution gets its own trace ID
+type QueryExecutionResult struct {
+	Result   interface{}   // QueryResult, StreamingQueryResult, string, or error
+	TraceID  []byte        // Cassandra trace ID (nil if tracing disabled)
+	Duration time.Duration // Query execution time
+}

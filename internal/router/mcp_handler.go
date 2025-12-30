@@ -398,11 +398,31 @@ func (h *MCPHandler) handleConfirm(requestID string) string {
 		return fmt.Sprintf("Failed to confirm request: %v", err)
 	}
 
+	// Execute the confirmed query
+	err = h.mcpServer.ExecuteConfirmedQuery(requestID)
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("✅ Confirmed request %s\n\n", requestID))
 	sb.WriteString(fmt.Sprintf("Query: %s\n", req.Query))
 	sb.WriteString(fmt.Sprintf("Operation: %s (%s)\n", req.Classification.Operation, req.Classification.Severity))
-	sb.WriteString("\nThe operation will now proceed.")
+
+	if err != nil {
+		sb.WriteString(fmt.Sprintf("\n❌ Execution failed: %v\n", err))
+	} else {
+		sb.WriteString("\n✅ Query executed successfully\n")
+
+		// Get updated request with execution metadata
+		updatedReq, _ := h.mcpServer.GetConfirmationRequest(requestID)
+		if updatedReq != nil && updatedReq.Executed {
+			sb.WriteString(fmt.Sprintf("Execution time: %v\n", updatedReq.ExecutionTime))
+			if updatedReq.RowsAffected > 0 {
+				sb.WriteString(fmt.Sprintf("Rows affected: %d\n", updatedReq.RowsAffected))
+			}
+			if updatedReq.TraceID != nil {
+				sb.WriteString(fmt.Sprintf("Trace ID: %x\n", updatedReq.TraceID))
+			}
+		}
+	}
 
 	return sb.String()
 }
