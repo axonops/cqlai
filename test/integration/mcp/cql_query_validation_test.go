@@ -23,6 +23,8 @@ func TestQueryExecution_HappyPath(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/dba.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// Create a direct DB session for validation
 	sess, err := db.NewSessionWithOptions(db.SessionOptions{
 		Host:     "127.0.0.1",
@@ -67,6 +69,8 @@ func TestQueryValidation_PermissionEnforcement(t *testing.T) {
 	// Start in readonly mode
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// Create validation session
 	sess, err := db.NewSessionWithOptions(db.SessionOptions{
@@ -119,6 +123,8 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 	// Start in readwrite mode
 	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// Create validation session
 	sess, err := db.NewSessionWithOptions(db.SessionOptions{
@@ -233,6 +239,8 @@ func TestQueryValidation_DDLOperations(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/dba.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// CREATE TABLE should be allowed
 	t.Run("CREATE_TABLE_allowed", func(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
@@ -295,6 +303,8 @@ func TestQueryValidation_DCLOperations(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/dba.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// GRANT should be allowed
 	t.Run("GRANT_allowed", func(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
@@ -328,6 +338,8 @@ func TestQueryValidation_ConnectionState(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// Verify status shows connected
 	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})

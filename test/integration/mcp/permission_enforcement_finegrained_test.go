@@ -13,6 +13,8 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// DQL should skip confirmation
 	t.Run("SELECT_no_confirmation", func(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
@@ -63,6 +65,8 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql_dml.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// DQL and DML should work
 	t.Run("SELECT_works", func(t *testing.T) {
@@ -143,6 +147,8 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql_dml_ddl.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// DQL, DML, DDL should all work
 	t.Run("SELECT_works", func(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
@@ -204,6 +210,8 @@ func TestFineGrained_SkipALL(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_all.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// Everything should work without confirmation
 	t.Run("SELECT_works", func(t *testing.T) {
@@ -289,6 +297,8 @@ func TestFineGrained_SkipNone(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_none.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// Everything should require confirmation (except SESSION)
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {

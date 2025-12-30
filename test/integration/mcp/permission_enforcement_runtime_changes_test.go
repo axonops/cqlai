@@ -15,7 +15,9 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Verify INSERT blocked
 	t.Run("step1_INSERT_blocked", func(t *testing.T) {
@@ -79,7 +81,9 @@ func TestRuntimeChanges_ReadwriteToDBA(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Verify CREATE blocked
 	t.Run("CREATE_blocked_in_readwrite", func(t *testing.T) {
@@ -130,7 +134,9 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/dba.json") // DBA without confirmations
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Initially no confirmations
 	t.Run("GRANT_works_initially", func(t *testing.T) {
@@ -178,7 +184,9 @@ func TestRuntimeChanges_DisableConfirmations(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json") // Starts with ALL
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Initially requires confirmation
 	t.Run("SELECT_requires_confirmation_initially", func(t *testing.T) {
@@ -218,7 +226,9 @@ func TestRuntimeChanges_PresetToFineGrained(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly.json") // Preset mode
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Verify preset mode
 	t.Run("verify_preset_mode", func(t *testing.T) {
@@ -269,7 +279,9 @@ func TestRuntimeChanges_UserConfirmedRequired(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Without user_confirmed should fail
 	t.Run("without_user_confirmed", func(t *testing.T) {

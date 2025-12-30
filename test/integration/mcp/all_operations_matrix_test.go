@@ -240,6 +240,8 @@ func TestComplete76Operations_ReadonlyMode(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
@@ -269,6 +271,8 @@ func TestComplete76Operations_ReadwriteMode(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
@@ -294,6 +298,8 @@ func TestComplete76Operations_DBAMode(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/dba.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// In DBA mode, ALL operations should be allowed
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
@@ -313,6 +319,8 @@ func TestComplete76Operations_ConfirmALL(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
@@ -339,6 +347,8 @@ func TestComplete76Operations_SkipALL(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_all.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	// With skip ALL, everything should work without confirmation
 	for _, op := range complete76Operations {

@@ -19,8 +19,10 @@ func TestAutomated_ReadonlyMode_AllOperations(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// Wait for MCP server to be ready
-	
+
 
 	// Test DQL operations (should be allowed)
 	dqlOps := []string{"SELECT"}
@@ -157,7 +159,9 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 	// Start in readonly mode
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Verify INSERT blocked initially
 	t.Run("step1_INSERT_blocked_in_readonly", func(t *testing.T) {
@@ -306,7 +310,9 @@ func TestUserConfirmedEnforcement(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Try to change mode WITHOUT user_confirmed
 	t.Run("without_user_confirmed", func(t *testing.T) {
@@ -337,7 +343,9 @@ func TestPermissionLockdownEnforcement(t *testing.T) {
 	// Start with lockdown enabled
 	ctx := startMCPFromConfig(t, "testdata/dba_locked.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Verify status shows lockdown
 	t.Run("status_shows_disabled", func(t *testing.T) {
@@ -406,7 +414,9 @@ func TestReadonlyMode_AllOperations(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	for _, op := range allOperationsMatrix {
 		t.Run(op.operation, func(t *testing.T) {
@@ -433,7 +443,9 @@ func TestReadwriteMode_AllOperations(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	for _, op := range allOperationsMatrix {
 		t.Run(op.operation, func(t *testing.T) {
@@ -461,7 +473,9 @@ func TestConfirmationLifecycle(t *testing.T) {
 	// Start in dba mode with confirmations on DML
 	ctx := startMCPFromConfig(t, "testdata/dba_locked.json") // Has confirm_queries: ["dcl"]
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Submit a DCL operation (should create confirmation request)
 	t.Run("create_confirmation_request", func(t *testing.T) {
@@ -527,7 +541,9 @@ func TestFineGrainedMode(t *testing.T) {
 	t.Run("skip_ALL", func(t *testing.T) {
 		ctx := startMCPFromConfig(t, "testdata/finegrained_skip_all.json")
 		defer stopMCP(ctx)
-		
+
+		ensureTestDataExists(t, ctx.Session)
+
 
 		// All operations should be allowed without confirmation
 		for _, op := range allOperationsMatrix {
@@ -543,7 +559,9 @@ func TestFineGrainedMode(t *testing.T) {
 	t.Run("skip_none", func(t *testing.T) {
 		ctx := startMCPFromConfig(t, "testdata/finegrained_skip_none.json")
 		defer stopMCP(ctx)
-		
+
+		ensureTestDataExists(t, ctx.Session)
+
 
 		// All operations should require confirmation (except SESSION)
 		for _, op := range allOperationsMatrix {

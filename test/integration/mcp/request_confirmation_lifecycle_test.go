@@ -16,7 +16,9 @@ func TestConfirmationLifecycle_CreateAndPending(t *testing.T) {
 	// Start with DBA mode + confirm on DCL
 	ctx := startMCPFromConfig(t, "testdata/dba_locked.json") // Has confirm_queries: ["dcl"]
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Submit DCL operation (should create confirmation request)
 	t.Run("create_request", func(t *testing.T) {
@@ -64,7 +66,9 @@ func TestConfirmationLifecycle_GetConfirmationState(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json") // Confirm ALL
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Create a request
 	resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
@@ -114,7 +118,9 @@ func TestConfirmationLifecycle_CancelRequest(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Create a request
 	resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
@@ -182,7 +188,9 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/dba_confirm_dml_ddl.json") // Confirm DML + DDL
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// Create multiple requests
 	t.Run("INSERT_request", func(t *testing.T) {
@@ -268,7 +276,9 @@ func TestConfirmationLifecycle_EmptyLists(t *testing.T) {
 	// Start fresh server
 	ctx := startMCPFromConfig(t, "testdata/readonly.json")
 	defer stopMCP(ctx)
-	
+
+	ensureTestDataExists(t, ctx.Session)
+
 
 	// All lists should be empty
 	tools := []string{

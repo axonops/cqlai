@@ -16,6 +16,8 @@ func TestLockdown_ReadonlyMode(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/readonly_locked.json")
 	defer stopMCP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	// Verify status shows lockdown
 	t.Run("status_shows_disabled", func(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
@@ -90,6 +92,8 @@ func TestLockdown_AllModes(t *testing.T) {
 			ctx := startMCPFromConfig(t, cfg.file)
 			defer stopMCP(ctx)
 
+			ensureTestDataExists(t, ctx.Session)
+
 			// Verify lockdown in status
 			resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
 			if resp != nil {
@@ -119,6 +123,8 @@ func TestLockdown_ErrorMessage(t *testing.T) {
 
 	ctx := startMCPFromConfig(t, "testdata/readonly_locked.json")
 	defer stopMCP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
 
 	resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
 		"mode":           "dba",
