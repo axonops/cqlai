@@ -410,8 +410,41 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 }
 
 
-// executeBatch executes a batch of INSERT queries using native Cassandra batching
+// batchEntry holds a prepared statement template and its bound values
+type batchEntry struct {
+	query  string
+	values []interface{}
+}
+
+// executeBatchWithValues executes a batch of INSERT queries using prepared statements
 // and returns the number of errors
+func (h *MetaCommandHandler) executeBatchWithValues(entries []batchEntry) int {
+	if len(entries) == 0 {
+		return 0
+	}
+
+	// Use UNLOGGED batch for better performance (like cqlsh COPY)
+	batch := h.session.CreateBatch(gocql.UnloggedBatch)
+	for _, entry := range entries {
+		batch.Query(entry.query, entry.values...)
+	}
+
+	err := h.session.ExecuteBatch(batch)
+	if err != nil {
+		// If batch fails, try individual queries to count actual errors
+		errors := 0
+		for _, entry := range entries {
+			if execErr := h.session.Query(entry.query, entry.values...).Exec(); execErr != nil {
+				errors++
+			}
+		}
+		return errors
+	}
+	return 0
+}
+
+// executeBatch executes a batch of INSERT queries using native Cassandra batching
+// and returns the number of errors (legacy - for string queries)
 func (h *MetaCommandHandler) executeBatch(queries []string) int {
 	if len(queries) == 0 {
 		return 0
@@ -515,6 +548,36 @@ func (h *MetaCommandHandler) formatValueForInsert(value string, _ string, _ stri
 	// String value - escape single quotes and wrap in quotes
 	escaped := strings.ReplaceAll(value, "'", "''")
 	return fmt.Sprintf("'%s'", escaped)
+}
+
+// parseValueForBinding converts a CSV string value to the appropriate Go type
+// for gocql prepared statement binding
+func (h *MetaCommandHandler) parseValueForBinding(value string, _ string, _ string) interface{} {
+	// Handle empty string as empty string, not null
+	if value == "" {
+		return ""
+	}
+
+	// Try to parse as integer
+	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return i
+	}
+
+	// Try to parse as float
+	if f, err := strconv.ParseFloat(value, 64); err == nil {
+		return f
+	}
+
+	// Try to parse as boolean
+	if value == "true" {
+		return true
+	}
+	if value == "false" {
+		return false
+	}
+
+	// Return as string (gocql will handle UUIDs, timestamps, etc.)
+	return value
 }
 
 // IsExpandMode returns whether expand mode is on
