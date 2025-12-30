@@ -174,6 +174,11 @@ func TestGetMCPStatus_Metrics(t *testing.T) {
 		"operation": "INSERT",
 		"keyspace":  "test_mcp",
 		"table":     "users",
+		"values": map[string]any{
+			"id":    "00000000-0000-0000-0000-000000000010",
+			"name":  "Metrics Test",
+			"email": "metrics@example.com",
+		},
 	})
 
 	// Check metrics

@@ -36,31 +36,98 @@ func TestAutomated_ReadonlyMode_AllOperations(t *testing.T) {
 	}
 
 	// Test DML operations (should be blocked)
-	dmlOps := []string{"INSERT", "UPDATE", "DELETE"}
-	for _, op := range dmlOps {
-		t.Run("DML_"+op, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
-			assertIsError(t, resp, op+" should be blocked in readonly")
-			assertContains(t, resp, "not allowed")
+	t.Run("DML_INSERT", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "INSERT",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000021",
+				"name":  "Test User",
+				"email": "test@example.com",
+			},
 		})
-	}
+		assertIsError(t, resp, "INSERT should be blocked in readonly")
+		assertContains(t, resp, "not allowed")
+	})
+	t.Run("DML_UPDATE", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "UPDATE",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{"name": "Updated Name"},
+			"where": []any{
+				map[string]any{
+					"column":   "id",
+					"operator": "=",
+					"value":    "00000000-0000-0000-0000-000000000021",
+				},
+			},
+		})
+		assertIsError(t, resp, "UPDATE should be blocked in readonly")
+		assertContains(t, resp, "not allowed")
+	})
+	t.Run("DML_DELETE", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "DELETE",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"where": []any{
+				map[string]any{
+					"column":   "id",
+					"operator": "=",
+					"value":    "00000000-0000-0000-0000-000000000021",
+				},
+			},
+		})
+		assertIsError(t, resp, "DELETE should be blocked in readonly")
+		assertContains(t, resp, "not allowed")
+	})
 
 	// Test DDL operations (should be blocked)
-	ddlOps := []string{"CREATE", "ALTER", "DROP", "TRUNCATE"}
-	for _, op := range ddlOps {
-		t.Run("DDL_"+op, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
-			assertIsError(t, resp, op+" should be blocked in readonly")
+	t.Run("DDL_CREATE", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "CREATE",
+			"keyspace":  "test_mcp",
+			"table":     "test_logs",
+			"schema": map[string]any{
+				"id":        "uuid PRIMARY KEY",
+				"timestamp": "timestamp",
+				"message":   "text",
+			},
 		})
-	}
+		assertIsError(t, resp, "CREATE should be blocked in readonly")
+	})
+	t.Run("DDL_ALTER", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "ALTER",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"options": map[string]any{
+				"object_type": "TABLE",
+				"action":      "ADD",
+				"column_name": "age",
+				"column_type": "int",
+			},
+		})
+		assertIsError(t, resp, "ALTER should be blocked in readonly")
+	})
+	t.Run("DDL_DROP", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "DROP",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+		})
+		assertIsError(t, resp, "DROP should be blocked in readonly")
+	})
+	t.Run("DDL_TRUNCATE", func(t *testing.T) {
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "TRUNCATE",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+		})
+		assertIsError(t, resp, "TRUNCATE should be blocked in readonly")
+	})
 
 	// Test get_mcp_status
 	t.Run("get_mcp_status", func(t *testing.T) {

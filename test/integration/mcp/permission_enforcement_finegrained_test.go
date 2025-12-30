@@ -30,7 +30,7 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 			"keyspace":  "test_mcp",
 			"table":     "users",
 			"values": map[string]any{
-				"id":    "00000000-0000-0000-0000-000000000001",
+				"id":    "00000000-0000-0000-0000-000000000030",
 				"name":  "Test User",
 				"email": "test@example.com",
 			},
@@ -44,7 +44,7 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "logs",
+			"table":     "test_logs_skipdql",
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",
@@ -109,7 +109,7 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "logs",
+			"table":     "test_logs_dqlml",
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",
@@ -171,7 +171,7 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "logs",
+			"table":     "test_logs_dmlddl",
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",
@@ -249,7 +249,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "test_table",
+			"table":     "test_table_skipall",
 			"schema": map[string]any{
 				"id":   "uuid PRIMARY KEY",
 				"data": "text",
@@ -262,7 +262,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
-			"table":     "test_table",
+			"table":     "test_table_skipall",
 		})
 		assertNotError(t, resp, "DROP should work with skip ALL")
 	})
@@ -337,7 +337,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "test_table",
+			"table":     "test_table_skipnone",
 			"schema": map[string]any{
 				"id":   "uuid PRIMARY KEY",
 				"data": "text",
@@ -351,7 +351,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
-			"table":     "test_table",
+			"table":     "test_table_skipnone",
 		})
 		assertIsError(t, resp, "DROP should require confirmation with skip none")
 		assertContains(t, resp, "requires")

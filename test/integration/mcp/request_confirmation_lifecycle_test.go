@@ -24,6 +24,10 @@ func TestConfirmationLifecycle_CreateAndPending(t *testing.T) {
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"options": map[string]any{
+				"permission": "SELECT",
+				"role":       "app_readonly",
+			},
 		})
 		assertIsError(t, resp, "Should require confirmation")
 		text := extractText(t, resp)
@@ -67,6 +71,13 @@ func TestConfirmationLifecycle_GetConfirmationState(t *testing.T) {
 		"operation": "DELETE",
 		"keyspace":  "test_mcp",
 		"table":     "users",
+		"where": []any{
+			map[string]any{
+				"column":   "id",
+				"operator": "=",
+				"value":    "00000000-0000-0000-0000-000000000050",
+			},
+		},
 	})
 
 	text := extractText(t, resp)
@@ -174,14 +185,66 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 	
 
 	// Create multiple requests
-	operations := []string{"INSERT", "UPDATE", "DELETE", "CREATE", "DROP"}
-	for _, op := range operations {
+	t.Run("INSERT_request", func(t *testing.T) {
 		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-			"operation": op,
+			"operation": "INSERT",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000051",
+				"name":  "Test User",
+				"email": "test@example.com",
+			},
+		})
+	})
+	t.Run("UPDATE_request", func(t *testing.T) {
+		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "UPDATE",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{"name": "Updated Name"},
+			"where": []any{
+				map[string]any{
+					"column":   "id",
+					"operator": "=",
+					"value":    "00000000-0000-0000-0000-000000000051",
+				},
+			},
+		})
+	})
+	t.Run("DELETE_request", func(t *testing.T) {
+		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "DELETE",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"where": []any{
+				map[string]any{
+					"column":   "id",
+					"operator": "=",
+					"value":    "00000000-0000-0000-0000-000000000051",
+				},
+			},
+		})
+	})
+	t.Run("CREATE_request", func(t *testing.T) {
+		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "CREATE",
+			"keyspace":  "test_mcp",
+			"table":     "test_logs_lifecycle",
+			"schema": map[string]any{
+				"id":        "uuid PRIMARY KEY",
+				"timestamp": "timestamp",
+				"message":   "text",
+			},
+		})
+	})
+	t.Run("DROP_request", func(t *testing.T) {
+		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-	}
+	})
 
 	// Get pending - should have all 5
 	t.Run("multiple_pending", func(t *testing.T) {

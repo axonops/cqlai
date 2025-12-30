@@ -165,7 +165,7 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 			"keyspace":  "test_mcp",
 			"table":     "users",
 			"values": map[string]any{
-				"id":    "00000000-0000-0000-0000-000000000002",
+				"id":    "00000000-0000-0000-0000-000000000010",
 				"name":  "Test User 2",
 				"email": "test2@example.com",
 			},
@@ -193,6 +193,14 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 			"operation": "UPDATE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"values": map[string]any{"name": "Updated Name"},
+			"where": []any{
+				map[string]any{
+					"column":   "id",
+					"operator": "=",
+					"value":    "00000000-0000-0000-0000-000000000010",
+				},
+			},
 		})
 		assertNotError(t, resp, "UPDATE should be allowed in readwrite")
 	})
@@ -207,7 +215,7 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 				map[string]any{
 					"column":   "id",
 					"operator": "=",
-					"value":    "00000000-0000-0000-0000-000000000002",
+					"value":    "00000000-0000-0000-0000-000000000010",
 				},
 			},
 		})
@@ -246,6 +254,12 @@ func TestQueryValidation_DDLOperations(t *testing.T) {
 			"operation": "ALTER",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"options": map[string]any{
+				"object_type": "TABLE",
+				"action":      "ADD",
+				"column_name": "age",
+				"column_type": "int",
+			},
 		})
 		assertNotError(t, resp, "ALTER TABLE should be allowed in DBA")
 	})

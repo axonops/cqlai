@@ -1,8 +1,123 @@
 package mcp
 
 import (
+	"strings"
 	"testing"
 )
+
+// Helper function to build parameters for each operation type
+func buildOperationParams(operation, keyspace, table string) map[string]any {
+	// Parse compound operations like "LIST ROLES" -> operation="LIST", options={"object_type":"ROLES"}
+	parts := strings.Fields(operation)
+	mainOp := parts[0]
+
+	params := map[string]any{
+		"operation": mainOp,
+		"keyspace":  keyspace,
+		"table":     table,
+	}
+
+	// Handle compound operations (LIST ROLES, SHOW VERSION, etc.)
+	if len(parts) > 1 {
+		subType := strings.Join(parts[1:], " ")
+
+		switch strings.ToUpper(mainOp) {
+		case "LIST":
+			params["options"] = map[string]any{
+				"object_type": subType,
+			}
+			return params
+		case "SHOW":
+			params["options"] = map[string]any{
+				"show_type": subType,
+			}
+			return params
+		case "DESCRIBE", "DESC":
+			// Keep operation as DESCRIBE and use existing renderDescribe logic
+			params["operation"] = "DESCRIBE"
+			// Set table to the describe target for specific describes
+			if strings.Contains(subType, "TABLE") && !strings.Contains(subType, "TABLES") {
+				params["table"] = table
+			} else if strings.Contains(subType, "TYPE") && !strings.Contains(subType, "TYPES") {
+				params["table"] = "TYPE"
+			} else {
+				params["table"] = subType
+			}
+			return params
+		case "CREATE", "DROP", "ALTER":
+			// Handle CREATE/DROP/ALTER with specific types (INDEX, TYPE, FUNCTION, etc.)
+			params["options"] = map[string]any{
+				"object_type": subType,
+			}
+			// Fall through to add type-specific parameters below
+		case "GRANT", "REVOKE":
+			// GRANT ROLE vs GRANT permission
+			if strings.Contains(subType, "ROLE") {
+				params["options"] = map[string]any{
+					"grant_type": "ROLE",
+					"role":       "developer",
+					"to_role":    "app_admin",
+				}
+				return params
+			}
+			// Fall through for regular permission grants
+		}
+	}
+
+	// Add required parameters based on operation
+	switch mainOp {
+	case "INSERT":
+		params["values"] = map[string]any{
+			"id":    "00000000-0000-0000-0000-000000000060",
+			"name":  "Test User",
+			"email": "test@example.com",
+		}
+	case "UPDATE":
+		params["values"] = map[string]any{"name": "Updated Name"}
+		params["where"] = []any{
+			map[string]any{
+				"column":   "id",
+				"operator": "=",
+				"value":    "00000000-0000-0000-0000-000000000060",
+			},
+		}
+	case "DELETE":
+		params["where"] = []any{
+			map[string]any{
+				"column":   "id",
+				"operator": "=",
+				"value":    "00000000-0000-0000-0000-000000000060",
+			},
+		}
+	case "CREATE TABLE", "CREATE COLUMNFAMILY", "CREATE", "CREATE KEYSPACE", "CREATE INDEX", "CREATE CUSTOM INDEX",
+		"CREATE MATERIALIZED VIEW", "CREATE TYPE", "CREATE FUNCTION", "CREATE OR REPLACE FUNCTION",
+		"CREATE AGGREGATE", "CREATE OR REPLACE AGGREGATE", "CREATE TRIGGER", "CREATE ROLE", "CREATE USER":
+		params["schema"] = map[string]any{
+			"id":   "uuid PRIMARY KEY",
+			"name": "text",
+		}
+	case "ALTER TABLE", "ALTER COLUMNFAMILY", "ALTER", "ALTER KEYSPACE", "ALTER MATERIALIZED VIEW",
+		"ALTER TYPE", "ALTER ROLE", "ALTER USER":
+		params["options"] = map[string]any{
+			"object_type": "TABLE",
+			"action":      "ADD",
+			"column_name": "age",
+			"column_type": "int",
+		}
+	case "GRANT", "REVOKE", "GRANT ROLE", "REVOKE ROLE":
+		params["options"] = map[string]any{
+			"permission": "SELECT",
+			"role":       "app_readonly",
+		}
+	case "ADD IDENTITY", "DROP IDENTITY":
+		params["options"] = map[string]any{
+			"identity": "user@REALM",
+			"role":     "app_role",
+		}
+	}
+
+	return params
+}
 
 // Complete matrix of ALL 76 operations to test
 var complete76Operations = []struct {
@@ -127,11 +242,8 @@ func TestComplete76Operations_ReadonlyMode(t *testing.T) {
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
+			params := buildOperationParams(op.operation, "test_mcp", "users")
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 
 			// Only DQL and SESSION should be allowed in readonly
 			if op.category == "DQL" || op.category == "SESSION" {
@@ -159,11 +271,8 @@ func TestComplete76Operations_ReadwriteMode(t *testing.T) {
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
+			params := buildOperationParams(op.operation, "test_mcp", "users")
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 
 			// DQL, SESSION, DML, FILE should be allowed
 			if op.category == "DQL" || op.category == "SESSION" || op.category == "DML" || op.category == "FILE" {
@@ -188,11 +297,8 @@ func TestComplete76Operations_DBAMode(t *testing.T) {
 	// In DBA mode, ALL operations should be allowed
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
+			params := buildOperationParams(op.operation, "test_mcp", "users")
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 
 			assertNotError(t, resp, op.operation+" should be allowed in DBA mode")
 		})
@@ -210,11 +316,8 @@ func TestComplete76Operations_ConfirmALL(t *testing.T) {
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
+			params := buildOperationParams(op.operation, "test_mcp", "users")
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 
 			// SESSION never requires confirmation
 			if op.category == "SESSION" {
@@ -240,11 +343,8 @@ func TestComplete76Operations_SkipALL(t *testing.T) {
 	// With skip ALL, everything should work without confirmation
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			})
+			params := buildOperationParams(op.operation, "test_mcp", "users")
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 
 			assertNotError(t, resp, op.operation+" should work with skip ALL")
 		})

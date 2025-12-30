@@ -77,12 +77,19 @@ func RenderCQL(plan *AIResult) (string, error) {
 		return renderAlter(plan)
 	case "LIST":
 		return renderList(plan)
-	case "SHOW":
-		return renderShow(plan)
 	case "USE":
 		return renderUse(plan)
 	case "BATCH":
 		return renderBatch(plan)
+	case "DESC":
+		// DESC is an alias for DESCRIBE
+		return renderDescribe(plan)
+	case "SHOW", "CONSISTENCY", "PAGING", "TRACING", "EXPAND", "OUTPUT", "CAPTURE", "SAVE", "AUTOFETCH":
+		// SHOW and SESSION operations - these are cqlsh shell commands, not valid CQL
+		return "", fmt.Errorf("%s is a shell command, not CQL - cannot be executed via query builder", plan.Operation)
+	case "COPY", "SOURCE":
+		// FILE operations - special handling required
+		return "", fmt.Errorf("%s requires special handling - cannot be executed via query builder", plan.Operation)
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}

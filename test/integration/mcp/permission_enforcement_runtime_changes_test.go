@@ -23,6 +23,11 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000040",
+				"name":  "Test User",
+				"email": "test@example.com",
+			},
 		})
 		assertIsError(t, resp, "INSERT should be blocked")
 		assertContains(t, resp, "readwrite") // Should suggest upgrade
@@ -43,6 +48,11 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000041",
+				"name":  "Test User 2",
+				"email": "test2@example.com",
+			},
 		})
 		assertNotError(t, resp, "INSERT should work after upgrade")
 	})
@@ -76,7 +86,12 @@ func TestRuntimeChanges_ReadwriteToDBA(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "logs",
+			"table":     "test_logs_runtime",
+			"schema": map[string]any{
+				"id":        "uuid PRIMARY KEY",
+				"timestamp": "timestamp",
+				"message":   "text",
+			},
 		})
 		assertIsError(t, resp, "CREATE should be blocked")
 		assertContains(t, resp, "dba") // Should suggest DBA
@@ -96,7 +111,12 @@ func TestRuntimeChanges_ReadwriteToDBA(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
-			"table":     "logs",
+			"table":     "test_logs_runtime",
+			"schema": map[string]any{
+				"id":        "uuid PRIMARY KEY",
+				"timestamp": "timestamp",
+				"message":   "text",
+			},
 		})
 		assertNotError(t, resp, "CREATE should work in DBA")
 	})
@@ -118,6 +138,10 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"options": map[string]any{
+				"permission": "SELECT",
+				"role":       "app_readonly",
+			},
 		})
 		assertNotError(t, resp, "GRANT should work without confirmation initially")
 	})
@@ -133,10 +157,14 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 
 	// Now GRANT requires confirmation
 	t.Run("GRANT_now_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"options": map[string]any{
+				"permission": "SELECT",
+				"role":       "app_readonly",
+			},
 		})
 		assertIsError(t, resp, "GRANT should require confirmation")
 	})
