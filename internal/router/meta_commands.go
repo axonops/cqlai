@@ -443,34 +443,6 @@ func (h *MetaCommandHandler) executeBatchWithValues(entries []batchEntry) int {
 	return 0
 }
 
-// executeBatch executes a batch of INSERT queries using native Cassandra batching
-// and returns the number of errors (legacy - for string queries)
-func (h *MetaCommandHandler) executeBatch(queries []string) int {
-	if len(queries) == 0 {
-		return 0
-	}
-
-	// Use UNLOGGED batch for better performance (like cqlsh COPY)
-	batch := h.session.CreateBatch(gocql.UnloggedBatch)
-	for _, query := range queries {
-		h.session.AddToBatch(batch, query)
-	}
-
-	err := h.session.ExecuteBatch(batch)
-	if err != nil {
-		// If batch fails, try individual queries to count actual errors
-		errors := 0
-		for _, query := range queries {
-			result := h.session.ExecuteCQLQuery(query)
-			if _, ok := result.(error); ok {
-				errors++
-			}
-		}
-		return errors
-	}
-	return 0
-}
-
 // getTableColumns retrieves column names for a table
 func (h *MetaCommandHandler) getTableColumns(table string) []string {
 	// Parse table name (could be keyspace.table)
@@ -508,46 +480,6 @@ func (h *MetaCommandHandler) getTableColumns(table string) []string {
 	default:
 		return []string{}
 	}
-}
-
-// formatValueForInsert formats a value for use in a CQL INSERT statement
-// The column and table parameters are included for future type-aware formatting
-func (h *MetaCommandHandler) formatValueForInsert(value string, _ string, _ string) string {
-	// Handle common cases
-	if value == "" {
-		return "NULL"
-	}
-
-	// Try to parse as number (including decimals)
-	if strings.Contains(value, ".") {
-		if _, err := strconv.ParseFloat(value, 64); err == nil {
-			return value // Numbers don't need quotes
-		}
-	} else {
-		if _, err := strconv.ParseInt(value, 10, 64); err == nil {
-			return value // Numbers don't need quotes
-		}
-	}
-
-	// Try to parse as boolean
-	if value == "true" || value == "false" {
-		return value // Booleans don't need quotes
-	}
-
-	// Handle hex values (for BLOBs)
-	if strings.HasPrefix(value, "0x") {
-		return value // Hex values don't need quotes
-	}
-
-	// Handle UUIDs (basic check)
-	if len(value) == 36 && strings.Count(value, "-") == 4 {
-		// Looks like a UUID - return as-is without quotes
-		return value
-	}
-
-	// String value - escape single quotes and wrap in quotes
-	escaped := strings.ReplaceAll(value, "'", "''")
-	return fmt.Sprintf("'%s'", escaped)
 }
 
 // parseValueForBinding converts a CSV string value to the appropriate Go type
