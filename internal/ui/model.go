@@ -32,6 +32,8 @@ type ConnectionOptions struct {
 	RequestTimeout      int    // Request timeout in seconds
 	Debug               bool   // Enable debug logging
 	ConfigFile          string // Path to custom config file
+	MCPAutoStart        bool   // Automatically start MCP server after connection
+	MCPConfigFile       string // Path to MCP configuration JSON file
 }
 
 // AIMessage represents a single message in the AI conversation
@@ -269,6 +271,41 @@ func NewMainModelWithOptions(noConfirm bool) (*MainModel, error) {
 	return NewMainModelWithConnectionOptions(options)
 }
 
+// autoStartMCPServer automatically starts the MCP server using configuration from file
+func autoStartMCPServer(configFilePath string) error {
+	// Load MCP config from file if provided
+	var mcpConfig *MCPStartConfig
+	var err error
+
+	if configFilePath != "" {
+		mcpConfig, err = LoadMCPConfig(configFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to load MCP config from %s: %w", configFilePath, err)
+		}
+	} else {
+		// Use defaults
+		mcpConfig = DefaultMCPStartConfig()
+	}
+
+	// Build command string for MCP handler
+	cmd := buildMCPStartCommand(mcpConfig)
+
+	// Get MCP handler and start server
+	mcpHandler := router.GetMCPHandler()
+	if mcpHandler == nil {
+		return fmt.Errorf("MCP handler not initialized")
+	}
+
+	result := mcpHandler.HandleMCPCommand(cmd)
+
+	// Check if start was successful
+	if strings.Contains(result, "started successfully") {
+		return nil
+	}
+
+	return fmt.Errorf("MCP start failed: %s", result)
+}
+
 // NewMainModelWithConnectionOptions creates a new MainModel with connection options.
 func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, error) {
 	ti := textinput.New()
@@ -353,6 +390,15 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	if err := router.InitMCPHandler(dbSession); err != nil {
 		// Log warning but don't fail - MCP features just won't be available
 		fmt.Fprintf(os.Stderr, "Warning: could not initialize MCP handler: %v\n", err)
+	}
+
+	// Auto-start MCP server if requested
+	if options.MCPAutoStart {
+		if err := autoStartMCPServer(options.MCPConfigFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: MCP auto-start failed: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "MCP server auto-started successfully\n")
+		}
 	}
 
 	completionEngine := completion.NewCompletionEngine(dbSession, sessionMgr)

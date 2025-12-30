@@ -35,6 +35,8 @@ func main() {
 		fieldSep       string
 		pageSize       int
 		configFile     string
+		mcpStart       bool
+		mcpConfigFile  string
 		version        bool
 		help           bool
 	)
@@ -58,6 +60,10 @@ func main() {
 	pflag.BoolVar(&noHeader, "no-header", false, "Don't output column headers (CSV format)")
 	pflag.StringVar(&fieldSep, "field-separator", ",", "Field separator for CSV output")
 	pflag.IntVar(&pageSize, "page-size", 100, "Pagination size for batch mode")
+
+	// MCP server flags
+	pflag.BoolVar(&mcpStart, "mcpstart", false, "Automatically start MCP server after connection")
+	pflag.StringVar(&mcpConfigFile, "mcpconfig", "", "Path to MCP configuration JSON file")
 
 	// Version and help flags
 	pflag.BoolVarP(&version, "version", "v", false, "Print version and exit")
@@ -197,6 +203,8 @@ func main() {
 		RequestTimeout:      requestTimeout,
 		Debug:               debug,
 		ConfigFile:          configFile,
+		MCPAutoStart:        mcpStart,
+		MCPConfigFile:       mcpConfigFile,
 	}
 
 	// Check if we're in batch mode

@@ -1,0 +1,8 @@
+{
+  "socket_path": "/tmp/cqlai-mcp-test.sock",
+  "log_level": "debug",
+  "log_file": "/tmp/cqlai-mcp-test.log",
+  "mode": "dba",
+  "confirm_queries": ["dcl"],
+  "disable_runtime_permission_changes": true
+}

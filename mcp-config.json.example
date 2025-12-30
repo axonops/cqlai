@@ -1,0 +1,10 @@
+{
+  "socket_path": "/tmp/cqlai-mcp.sock",
+  "log_level": "info",
+  "log_file": "/tmp/cqlai-mcp.log",
+  "mode": "readonly",
+  "confirm_queries": [],
+  "skip_confirmation": [],
+  "disable_runtime_permission_changes": false,
+  "confirmation_timeout_seconds": 300
+}

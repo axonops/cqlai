@@ -108,7 +108,7 @@ func TestSocket_PermissionDenied_ReadonlyMode(t *testing.T) {
 	}
 
 	// These operations should be blocked in readonly mode
-	blockedOps := []struct{
+	blockedOps := []struct {
 		operation string
 		keyspace  string
 		table     string
