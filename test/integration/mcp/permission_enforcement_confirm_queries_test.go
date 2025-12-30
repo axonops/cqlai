@@ -102,6 +102,9 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 	ctx := startMCPFromConfig(t, "testdata/dba_confirm_ddl.json")
 	defer stopMCP(ctx)
 
+	// Ensure test data exists (in case previous tests dropped tables)
+	ensureTestDataExists(t, ctx.Session)
+
 	// DML should work without confirmation
 	t.Run("INSERT_no_confirmation", func(t *testing.T) {
 		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{

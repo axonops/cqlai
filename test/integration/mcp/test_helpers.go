@@ -157,6 +157,23 @@ func buildStartCommandFromConfig(config map[string]any, socketPath string) strin
 	return cmd
 }
 
+// ensureTestDataExists verifies test_mcp keyspace and users table exist
+// Call this at start of test functions that need the test data
+func ensureTestDataExists(t *testing.T, session *db.Session) {
+	// Check if users table exists
+	var tableName string
+	iter := session.Query("SELECT table_name FROM system_schema.tables WHERE keyspace_name = 'test_mcp' AND table_name = 'users'").Iter()
+	if !iter.Scan(&tableName) {
+		// Table doesn't exist - recreate it
+		t.Logf("Recreating test_mcp.users table")
+		session.Query("CREATE TABLE IF NOT EXISTS test_mcp.users (id uuid PRIMARY KEY, email text, name text, created_at timestamp, role text, is_active boolean)").Exec()
+
+		// Insert sample data
+		session.Query("INSERT INTO test_mcp.users (id, email, name, role, is_active) VALUES (11111111-1111-1111-1111-111111111111, 'alice@example.com', 'Alice Admin', 'admin', true)").Exec()
+	}
+	iter.Close()
+}
+
 // stopMCP stops MCP and cleans up
 func stopMCP(ctx *MCPTestContext) {
 	if ctx == nil {
