@@ -1,5 +1,19 @@
 package mcp
 
+// DEPRECATED: This file is superseded by the focused test files:
+// - permission_enforcement_preset_modes_test.go
+// - permission_enforcement_confirm_queries_test.go
+// - permission_enforcement_finegrained_test.go
+// - permission_enforcement_lockdown_test.go
+// - permission_enforcement_runtime_changes_test.go
+// - status_test.go
+// - request_confirmation_lifecycle_test.go
+// - all_operations_matrix_test.go
+// - cql_query_validation_test.go
+//
+// These tests don't use auto-start and were written before the complete redesign.
+// They are kept for reference but should eventually be removed.
+
 import (
 	"encoding/json"
 	"fmt"
