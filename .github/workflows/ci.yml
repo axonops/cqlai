@@ -271,6 +271,11 @@ jobs:
 
           echo "✅ All COPY command tests passed"
 
+      - name: Run COPY FROM benchmark (issue #63)
+        run: |
+          echo "Running COPY FROM benchmark with 100k rows (use ROWS=1000000 for full test)..."
+          chmod +x ./test/benchmark_copy_from.sh
+          CQLAI=./cqlai ROWS=100000 ./test/benchmark_copy_from.sh
 
       - name: Run version-specific tests (if exists)
         run: |

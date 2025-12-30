@@ -507,8 +507,16 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		skippedRows++
 	}
 
+	// Create prepared statement template with placeholders
+	placeholders := make([]string, len(columns))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	insertTemplate := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		table, columnList, strings.Join(placeholders, ", "))
+
 	// Create batch channel and wait group for concurrent execution
-	batchChan := make(chan []string, maxRequests*2)
+	batchChan := make(chan []batchEntry, maxRequests*2)
 	var wg sync.WaitGroup
 
 	// Start worker goroutines for concurrent batch execution
@@ -517,7 +525,7 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		go func() {
 			defer wg.Done()
 			for batch := range batchChan {
-				errors := h.executeBatch(batch)
+				errors := h.executeBatchWithValues(batch)
 				atomic.AddInt64(&insertErrorCount, int64(errors))
 				atomic.AddInt64(&rowCount, int64(len(batch)-errors))
 			}
@@ -525,7 +533,7 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 	}
 
 	// Prepare batch for inserts
-	batch := make([]string, 0, maxBatchSize)
+	batch := make([]batchEntry, 0, maxBatchSize)
 	lastProgress := int64(0)
 
 	for {
@@ -560,23 +568,19 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 			continue
 		}
 
-		// Convert values and build INSERT query
-		valueStrings := make([]string, len(record))
+		// Convert values for prepared statement binding
+		values := make([]interface{}, len(record))
 		for i, val := range record {
 			// Handle NULL values
 			if val == nullVal {
-				valueStrings[i] = "NULL"
+				values[i] = nil
 			} else {
-				valueStrings[i] = h.formatValueForInsert(val, columns[i], table)
+				values[i] = h.parseValueForBinding(val, columns[i], table)
 			}
 		}
 
-		// Build INSERT query
-		insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-			table, columnList, strings.Join(valueStrings, ", "))
-
-		// Add to batch
-		batch = append(batch, insertQuery)
+		// Add to batch with prepared statement template
+		batch = append(batch, batchEntry{query: insertTemplate, values: values})
 
 		// Send batch to workers if it reaches maxBatchSize
 		if len(batch) >= maxBatchSize {
@@ -587,7 +591,7 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 				return fmt.Sprintf("Too many insert errors. Imported %d rows, failed after %d insert errors", atomic.LoadInt64(&rowCount), atomic.LoadInt64(&insertErrorCount))
 			}
 			// Send batch to workers (make a copy since we reuse the slice)
-			batchCopy := make([]string, len(batch))
+			batchCopy := make([]batchEntry, len(batch))
 			copy(batchCopy, batch)
 			batchChan <- batchCopy
 			batch = batch[:0] // Clear batch
@@ -603,7 +607,7 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 
 	// Send any remaining batch
 	if len(batch) > 0 {
-		batchCopy := make([]string, len(batch))
+		batchCopy := make([]batchEntry, len(batch))
 		copy(batchCopy, batch)
 		batchChan <- batchCopy
 	}
