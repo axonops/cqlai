@@ -409,7 +409,12 @@ func renderWhereClause(w WhereClause) string {
 func formatValue(v any) string {
 	switch val := v.(type) {
 	case string:
-		// Escape single quotes in strings
+		// Check if this looks like a UUID (8-4-4-4-12 hex format)
+		if len(val) == 36 && val[8] == '-' && val[13] == '-' && val[18] == '-' && val[23] == '-' {
+			// UUID format - don't quote
+			return val
+		}
+		// Regular string - escape single quotes and quote
 		escaped := strings.ReplaceAll(val, "'", "''")
 		return fmt.Sprintf("'%s'", escaped)
 	case []any:
