@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,8 +31,8 @@ type MCPServer struct {
 	socketPath string
 
 	// Confirmation system for dangerous queries
-	confirmQueue  chan *ConfirmationRequest
-	responseQueue chan *ConfirmationResponse
+	confirmationQueue *ConfirmationQueue
+	config            *MCPServerConfig
 
 	// Observability
 	metrics *MetricsCollector
@@ -50,7 +51,7 @@ type MCPServer struct {
 // MCPServerConfig holds configuration for starting the MCP server
 type MCPServerConfig struct {
 	SocketPath         string
-	ConfirmationMode   string // "dangerous_only", "all", "none", "interactive"
+	ConfirmationMode   string // "readonly", "read_write", "dangerous_only", "all", "none"
 	ConfirmationTimeout time.Duration
 	LogLevel           string // "debug", "info", "warning", "error"
 	LogFile            string
@@ -64,6 +65,24 @@ func DefaultMCPConfig() *MCPServerConfig {
 		ConfirmationTimeout: 5 * time.Minute,
 		LogLevel:            "info",
 		LogFile:             "/tmp/cqlai-mcp.log",
+	}
+}
+
+// GetConfirmationModeDescription returns a human-readable description of a confirmation mode
+func GetConfirmationModeDescription(mode string) string {
+	switch mode {
+	case "readonly":
+		return "Only SELECT and DESCRIBE queries allowed (safest)"
+	case "read_write":
+		return "SELECT, INSERT, UPDATE, DELETE allowed; DROP/TRUNCATE require confirmation"
+	case "dangerous_only":
+		return "Dangerous queries (DELETE/DROP/TRUNCATE/ALTER/GRANT) require confirmation (default)"
+	case "all":
+		return "All queries require confirmation (most restrictive)"
+	case "none":
+		return "No confirmations required (NOT RECOMMENDED - dangerous!)"
+	default:
+		return "Unknown mode"
 	}
 }
 
@@ -111,22 +130,21 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 		return nil, fmt.Errorf("failed to create MCP logger: %w", err)
 	}
 
-	// Create confirmation channels
-	confirmQueue := make(chan *ConfirmationRequest, 10)
-	responseQueue := make(chan *ConfirmationResponse, 10)
+	// Create confirmation queue
+	confirmationQueue := NewConfirmationQueue()
 
 	s := &MCPServer{
-		session:       mcpSession,
-		cache:         cache,
-		resolver:      resolver,
-		socketPath:    config.SocketPath,
-		confirmQueue:  confirmQueue,
-		responseQueue: responseQueue,
-		metrics:       metrics,
-		mcpLog:        mcpLog,
-		ctx:           ctx,
-		cancel:        cancel,
-		running:       false,
+		session:           mcpSession,
+		cache:             cache,
+		resolver:          resolver,
+		socketPath:        config.SocketPath,
+		confirmationQueue: confirmationQueue,
+		config:            config,
+		metrics:           metrics,
+		mcpLog:            mcpLog,
+		ctx:               ctx,
+		cancel:            cancel,
+		running:           false,
 	}
 
 	logger.DebugfToFile("MCP", "MCP server created (not started yet)")
@@ -205,10 +223,6 @@ func (s *MCPServer) Stop() error {
 		s.session.Close()
 	}
 
-	// Close confirmation channels
-	close(s.confirmQueue)
-	close(s.responseQueue)
-
 	// Log server stop
 	uptime := time.Since(s.startedAt)
 	s.mcpLog.LogServerStop(uptime, s.metrics)
@@ -238,6 +252,27 @@ func (s *MCPServer) IsRunning() bool {
 // GetMetrics returns the current metrics
 func (s *MCPServer) GetMetrics() *MetricsSnapshot {
 	return s.metrics.GetSnapshot()
+}
+
+// GetConfig returns the server configuration
+func (s *MCPServer) GetConfig() *MCPServerConfig {
+	return s.config
+}
+
+// ConnectionInfo holds information about the Cassandra connection
+type ConnectionInfo struct {
+	ClusterName  string
+	ContactPoint string
+	Username     string
+}
+
+// GetConnectionInfo returns details about the Cassandra connection
+func (s *MCPServer) GetConnectionInfo() ConnectionInfo {
+	return ConnectionInfo{
+		Username:     s.session.Username(),
+		ContactPoint: s.session.GetContactPoint(),
+		ClusterName:  "", // Not easily accessible from gocql, would need system.local query
+	}
 }
 
 // acceptConnections accepts connections from Claude Desktop
@@ -360,6 +395,11 @@ func (s *MCPServer) createToolHandler(toolName ToolName) server.ToolHandlerFunc 
 
 		logger.DebugfToFile("MCP", "Tool call: %s with params: %v", toolName, argsMap)
 
+		// Special handling for submit_query_plan tool
+		if toolName == ToolSubmitQueryPlan {
+			return s.handleSubmitQueryPlan(ctx, argsMap, startTime)
+		}
+
 		// Extract argument based on tool type
 		arg, err := extractToolArg(toolName, argsMap)
 		if err != nil {
@@ -383,6 +423,169 @@ func (s *MCPServer) createToolHandler(toolName ToolName) server.ToolHandlerFunc 
 
 		// Return data as JSON (mcp.NewToolResultText will JSON-encode it)
 		return mcp.NewToolResultText(fmt.Sprintf("%v", data)), nil
+	}
+}
+
+// handleSubmitQueryPlan handles submit_query_plan tool with dangerous query detection
+func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[string]any, startTime time.Time) (*mcp.CallToolResult, error) {
+	// Extract query parameters
+	operation, _ := argsMap["operation"].(string)
+	table, _ := argsMap["table"].(string)
+
+	// Build CQL query from parameters (simplified - actual query builder would be more complex)
+	query := buildCQLFromParams(argsMap)
+
+	logger.DebugfToFile("MCP", "submit_query_plan: operation=%s, table=%s, query=%s", operation, table, query)
+
+	// Classify the query for danger level
+	classification := ClassifyQuery(query)
+
+	logger.DebugfToFile("MCP", "Query classification: dangerous=%v, severity=%s",
+		classification.IsDangerous, classification.Severity)
+
+	// Check if query is allowed based on confirmation mode
+	allowed, needsConfirmation := s.isQueryAllowed(operation, classification)
+
+	if !allowed {
+		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+		return mcp.NewToolResultError(fmt.Sprintf("Query not allowed in %s mode: %s", s.config.ConfirmationMode, operation)), nil
+	}
+
+	if needsConfirmation {
+		// Create confirmation request
+		req := s.confirmationQueue.NewConfirmationRequest(
+			query,
+			classification,
+			string(ToolSubmitQueryPlan),
+			operation,
+			s.config.ConfirmationTimeout,
+		)
+
+		logger.DebugfToFile("MCP", "Created confirmation request %s for query", req.ID)
+
+		// Wait for confirmation (with timeout)
+		confirmed, err := s.confirmationQueue.WaitForConfirmation(req.ID, time.Second)
+		if err != nil {
+			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Query requires confirmation: %v", err)), nil
+		}
+
+		if !confirmed {
+			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+			return mcp.NewToolResultError("Query was denied by user"), nil
+		}
+
+		logger.DebugfToFile("MCP", "Query confirmed by user, proceeding")
+	}
+
+	// Query approved or no confirmation needed
+	duration := time.Since(startTime)
+	s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), true, duration)
+	s.mcpLog.LogToolExecution(string(ToolSubmitQueryPlan), argsMap, query, nil, duration)
+
+	// Return success (in real implementation, this would execute the query)
+	return mcp.NewToolResultText(fmt.Sprintf("Query plan approved: %s", query)), nil
+}
+
+// isQueryAllowed determines if a query is allowed and if it needs confirmation based on the mode
+func (s *MCPServer) isQueryAllowed(operation string, classification QueryClassification) (allowed bool, needsConfirmation bool) {
+	op := strings.ToUpper(operation)
+
+	switch s.config.ConfirmationMode {
+	case "readonly":
+		// Only SELECT and DESCRIBE allowed, no confirmation needed
+		if op == "SELECT" || op == "DESCRIBE" {
+			return true, false
+		}
+		return false, false
+
+	case "read_write":
+		// SELECT, INSERT, UPDATE, DELETE allowed without confirmation
+		// DROP, TRUNCATE require confirmation
+		// Other dangerous operations (CREATE, ALTER, GRANT) not allowed
+		if op == "SELECT" || op == "DESCRIBE" || op == "INSERT" || op == "UPDATE" || op == "DELETE" {
+			return true, false
+		}
+		if op == "DROP" || op == "TRUNCATE" {
+			return true, true // Allowed but needs confirmation
+		}
+		return false, false // CREATE, ALTER, GRANT, etc. not allowed
+
+	case "dangerous_only":
+		// All queries allowed, dangerous ones need confirmation
+		if classification.IsDangerous {
+			return true, true
+		}
+		return true, false
+
+	case "all":
+		// All queries allowed but all need confirmation
+		return true, true
+
+	case "none":
+		// All queries allowed, no confirmation needed
+		return true, false
+
+	default:
+		// Unknown mode, treat as dangerous_only for safety
+		logger.DebugfToFile("MCP", "Unknown confirmation mode %s, defaulting to dangerous_only", s.config.ConfirmationMode)
+		if classification.IsDangerous {
+			return true, true
+		}
+		return true, false
+	}
+}
+
+// buildCQLFromParams builds a CQL query string from submit_query_plan parameters
+func buildCQLFromParams(args map[string]any) string {
+	operation, _ := args["operation"].(string)
+	keyspace, _ := args["keyspace"].(string)
+	table, _ := args["table"].(string)
+
+	// Simplified query building - real implementation would be more sophisticated
+	switch strings.ToUpper(operation) {
+	case "SELECT":
+		columns, _ := args["columns"].([]interface{})
+		colStr := "*"
+		if len(columns) > 0 {
+			colNames := make([]string, len(columns))
+			for i, col := range columns {
+				if colName, ok := col.(string); ok {
+					colNames[i] = colName
+				}
+			}
+			if len(colNames) > 0 {
+				colStr = strings.Join(colNames, ", ")
+			}
+		}
+		return fmt.Sprintf("SELECT %s FROM %s.%s", colStr, keyspace, table)
+
+	case "DELETE":
+		return fmt.Sprintf("DELETE FROM %s.%s", keyspace, table)
+
+	case "UPDATE":
+		return fmt.Sprintf("UPDATE %s.%s", keyspace, table)
+
+	case "INSERT":
+		return fmt.Sprintf("INSERT INTO %s.%s", keyspace, table)
+
+	case "DROP":
+		if table != "" {
+			return fmt.Sprintf("DROP TABLE %s.%s", keyspace, table)
+		}
+		return fmt.Sprintf("DROP KEYSPACE %s", keyspace)
+
+	case "TRUNCATE":
+		return fmt.Sprintf("TRUNCATE %s.%s", keyspace, table)
+
+	case "CREATE":
+		if table != "" {
+			return fmt.Sprintf("CREATE TABLE %s.%s", keyspace, table)
+		}
+		return fmt.Sprintf("CREATE KEYSPACE %s", keyspace)
+
+	default:
+		return fmt.Sprintf("%s %s.%s", operation, keyspace, table)
 	}
 }
 
@@ -480,4 +683,36 @@ func removeFile(path string) error {
 		}
 	}
 	return nil
+}
+
+// GetPendingConfirmations returns all pending confirmation requests
+func (s *MCPServer) GetPendingConfirmations() []*ConfirmationRequest {
+	if s.confirmationQueue == nil {
+		return nil
+	}
+	return s.confirmationQueue.GetPendingConfirmations()
+}
+
+// ConfirmRequest confirms a pending dangerous query request
+func (s *MCPServer) ConfirmRequest(requestID, confirmedBy string) error {
+	if s.confirmationQueue == nil {
+		return fmt.Errorf("confirmation queue not initialized")
+	}
+	return s.confirmationQueue.ConfirmRequest(requestID, confirmedBy)
+}
+
+// DenyRequest denies a pending dangerous query request
+func (s *MCPServer) DenyRequest(requestID, deniedBy, reason string) error {
+	if s.confirmationQueue == nil {
+		return fmt.Errorf("confirmation queue not initialized")
+	}
+	return s.confirmationQueue.DenyRequest(requestID, deniedBy, reason)
+}
+
+// GetConfirmationRequest retrieves a specific confirmation request by ID
+func (s *MCPServer) GetConfirmationRequest(requestID string) (*ConfirmationRequest, error) {
+	if s.confirmationQueue == nil {
+		return nil, fmt.Errorf("confirmation queue not initialized")
+	}
+	return s.confirmationQueue.GetRequest(requestID)
 }

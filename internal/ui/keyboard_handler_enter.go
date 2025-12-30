@@ -64,6 +64,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		return m.handleAICommand(command)
 	}
 
+	// Handle MCP command
+	if strings.HasPrefix(strings.ToUpper(command), ".MCP") {
+		return m.handleMCPCommand(command)
+	}
+
 	// If completions are showing, accept the selected one
 	if m.showCompletions && len(m.completions) > 0 && m.completionIndex >= 0 {
 		return m.handleCompletionSelection()

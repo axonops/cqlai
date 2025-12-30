@@ -45,6 +45,7 @@ __debug_bin
 # Configuration files with sensitive data
 cqlai.json
 !cqlai.json.example
+.mcp.json
 
 # Capture output files
 *.capture

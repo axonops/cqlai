@@ -66,6 +66,16 @@ type AIInfoResponseMsg struct {
 	Cancelled bool
 }
 
+// MCPConfirmationTickMsg is sent periodically to check for pending MCP confirmations
+type MCPConfirmationTickMsg struct{}
+
+// mcpConfirmationTick returns a command that sends an MCPConfirmationTickMsg every 2 seconds
+func mcpConfirmationTick() tea.Cmd {
+	return tea.Tick(time.Second*2, func(t time.Time) tea.Msg {
+		return MCPConfirmationTickMsg{}
+	})
+}
+
 // MainModel is the main Bubble Tea model for the application.
 type MainModel struct {
 	historyViewport          viewport.Model // For command history
@@ -339,6 +349,12 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	// Initialize router with session manager
 	router.InitRouter(sessionMgr)
 
+	// Initialize MCP handler
+	if err := router.InitMCPHandler(dbSession); err != nil {
+		// Log warning but don't fail - MCP features just won't be available
+		fmt.Fprintf(os.Stderr, "Warning: could not initialize MCP handler: %v\n", err)
+	}
+
 	completionEngine := completion.NewCompletionEngine(dbSession, sessionMgr)
 
 	// Initialize history manager with custom path from config if provided
@@ -426,7 +442,7 @@ func (m *MainModel) Init() tea.Cmd {
 	// Standard button event mode but we'll try to be more specific
 	fmt.Print("\x1b[?1000h") // Enable basic mouse tracking
 	fmt.Print("\x1b[?1006h") // Use SGR encoding for larger coordinates
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, mcpConfirmationTick())
 }
 
 // Update updates the main model.
@@ -725,6 +741,16 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case MCPConfirmationTickMsg:
+		// Poll MCP server for pending confirmations
+		mcpHandler := router.GetMCPHandler()
+		if mcpHandler != nil {
+			pending := mcpHandler.GetPendingConfirmationCount()
+			m.statusBar.PendingConfirmations = pending
+		}
+		// Schedule next tick
+		return m, mcpConfirmationTick()
 	}
 
 	// Only update viewport for mouse wheel events

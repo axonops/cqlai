@@ -440,6 +440,14 @@ func (s *Session) GetCluster() *gocql.ClusterConfig {
 	return s.cluster
 }
 
+// GetContactPoint returns the primary contact point (host:port) for this session
+func (s *Session) GetContactPoint() string {
+	if s.cluster != nil && len(s.cluster.Hosts) > 0 {
+		return fmt.Sprintf("%s:%d", s.cluster.Hosts[0], s.cluster.Port)
+	}
+	return "unknown"
+}
+
 // Query creates a new query with session defaults applied
 func (s *Session) Query(stmt string, values ...interface{}) *gocql.Query {
 	query := s.Session.Query(stmt, values...)

@@ -10,16 +10,17 @@ var ()
 
 // StatusBarModel is the Bubble Tea model for the status bar.
 type StatusBarModel struct {
-	Username     string
-	Host         string
-	Latency      string
-	Consistency  string
-	PagingSize   int
-	Tracing      bool
-	HasTraceData bool // Whether trace data is available to view
-	Keyspace     string
-	Version      string
-	OutputFormat string
+	Username             string
+	Host                 string
+	Latency              string
+	Consistency          string
+	PagingSize           int
+	Tracing              bool
+	HasTraceData         bool // Whether trace data is available to view
+	Keyspace             string
+	Version              string
+	OutputFormat         string
+	PendingConfirmations int // Number of pending MCP confirmations
 }
 
 // NewStatusBarModel creates a new StatusBarModel.
@@ -108,6 +109,16 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 		labelStyle.Render("Pg: ") + pageStyle.Render(fmt.Sprintf("%d", m.PagingSize)) +
 		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState)
+
+	// Add pending confirmations warning if any exist
+	if m.PendingConfirmations > 0 {
+		warningStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF5F5F")).
+			Bold(true)
+
+		statusText += separatorStyle.Render(" │ ") +
+			warningStyle.Render(fmt.Sprintf("⚠️  %d pending", m.PendingConfirmations))
+	}
 
 
 	// Apply style to the entire bar without forced background
