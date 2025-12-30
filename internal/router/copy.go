@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
@@ -474,11 +476,11 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 	// Prepare for building INSERT statements
 	columnList := strings.Join(columns, ", ")
 
-	// Process rows
-	rowCount := 0      // Successfully imported rows
-	processedRows := 0 // Total rows processed (for MAXROWS check)
+	// Process rows - use atomic counters for thread safety with concurrent workers
+	var rowCount int64
+	var insertErrorCount int64
+	processedRows := 0 // Only accessed from main goroutine
 	parseErrorCount := 0
-	insertErrorCount := 0
 	skippedRows := 0
 
 	// Parse numeric options
@@ -488,8 +490,13 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 	maxParseErrors, _ := strconv.Atoi(options["MAXPARSEERRORS"])
 	maxInsertErrors, _ := strconv.Atoi(options["MAXINSERTERRORS"])
 	maxBatchSize, _ := strconv.Atoi(options["MAXBATCHSIZE"])
-	minBatchSize, _ := strconv.Atoi(options["MINBATCHSIZE"])
+	maxRequests, _ := strconv.Atoi(options["MAXREQUESTS"])
 	nullVal := options["NULLVAL"]
+
+	// Ensure reasonable defaults
+	if maxRequests < 1 {
+		maxRequests = 6
+	}
 
 	// Skip initial rows if specified
 	for i := 0; i < skipRows; i++ {
@@ -500,8 +507,34 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		skippedRows++
 	}
 
+	// Create prepared statement template with placeholders
+	placeholders := make([]string, len(columns))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	insertTemplate := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		table, columnList, strings.Join(placeholders, ", "))
+
+	// Create batch channel and wait group for concurrent execution
+	batchChan := make(chan []batchEntry, maxRequests*2)
+	var wg sync.WaitGroup
+
+	// Start worker goroutines for concurrent batch execution
+	for i := 0; i < maxRequests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for batch := range batchChan {
+				errors := h.executeBatchWithValues(batch)
+				atomic.AddInt64(&insertErrorCount, int64(errors))
+				atomic.AddInt64(&rowCount, int64(len(batch)-errors))
+			}
+		}()
+	}
+
 	// Prepare batch for inserts
-	batch := make([]string, 0, maxBatchSize)
+	batch := make([]batchEntry, 0, maxBatchSize)
+	lastProgress := int64(0)
 
 	for {
 		record, err := csvReader.Read()
@@ -511,7 +544,9 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		if err != nil {
 			parseErrorCount++
 			if maxParseErrors != -1 && parseErrorCount > maxParseErrors {
-				return fmt.Sprintf("Too many parse errors. Imported %d rows, failed after %d parse errors", rowCount, parseErrorCount)
+				close(batchChan)
+				wg.Wait()
+				return fmt.Sprintf("Too many parse errors. Imported %d rows, failed after %d parse errors", atomic.LoadInt64(&rowCount), parseErrorCount)
 			}
 			continue
 		}
@@ -526,84 +561,83 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		if len(record) != len(columns) {
 			parseErrorCount++
 			if maxParseErrors != -1 && parseErrorCount > maxParseErrors {
-				return fmt.Sprintf("Too many parse errors. Imported %d rows, failed after %d parse errors", rowCount, parseErrorCount)
+				close(batchChan)
+				wg.Wait()
+				return fmt.Sprintf("Too many parse errors. Imported %d rows, failed after %d parse errors", atomic.LoadInt64(&rowCount), parseErrorCount)
 			}
 			continue
 		}
 
-		// Convert values and build INSERT query
-		valueStrings := make([]string, len(record))
+		// Convert values for prepared statement binding
+		values := make([]interface{}, len(record))
 		for i, val := range record {
 			// Handle NULL values
 			if val == nullVal {
-				valueStrings[i] = "NULL"
+				values[i] = nil
 			} else {
-				valueStrings[i] = h.formatValueForInsert(val, columns[i], table)
+				values[i] = h.parseValueForBinding(val, columns[i], table)
 			}
 		}
 
-		// Build INSERT query
-		insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-			table, columnList, strings.Join(valueStrings, ", "))
+		// Add to batch with prepared statement template
+		batch = append(batch, batchEntry{query: insertTemplate, values: values})
 
-		// Add to batch
-		batch = append(batch, insertQuery)
-
-		// Execute batch if it reaches maxBatchSize
+		// Send batch to workers if it reaches maxBatchSize
 		if len(batch) >= maxBatchSize {
-			errors := h.executeBatch(batch)
-			insertErrorCount += errors
-			if maxInsertErrors != -1 && insertErrorCount > maxInsertErrors {
-				return fmt.Sprintf("Too many insert errors. Imported %d rows, failed after %d insert errors", rowCount, insertErrorCount)
+			// Check for too many insert errors
+			if maxInsertErrors != -1 && atomic.LoadInt64(&insertErrorCount) > int64(maxInsertErrors) {
+				close(batchChan)
+				wg.Wait()
+				return fmt.Sprintf("Too many insert errors. Imported %d rows, failed after %d insert errors", atomic.LoadInt64(&rowCount), atomic.LoadInt64(&insertErrorCount))
 			}
-			rowCount += len(batch) - errors
+			// Send batch to workers (make a copy since we reuse the slice)
+			batchCopy := make([]batchEntry, len(batch))
+			copy(batchCopy, batch)
+			batchChan <- batchCopy
 			batch = batch[:0] // Clear batch
 		}
 
 		// Progress update for large imports
-		if rowCount%chunkSize == 0 && !isStdin {
-			fmt.Printf("\rImported %d rows...", rowCount)
+		currentRows := atomic.LoadInt64(&rowCount)
+		if currentRows-lastProgress >= int64(chunkSize) && !isStdin {
+			fmt.Printf("\rImported %d rows...", currentRows)
+			lastProgress = currentRows
 		}
 	}
 
-	// Execute any remaining batch
+	// Send any remaining batch
 	if len(batch) > 0 {
-		if len(batch) >= minBatchSize || rowCount == 0 {
-			errors := h.executeBatch(batch)
-			insertErrorCount += errors
-			rowCount += len(batch) - errors
-		} else {
-			// Execute individually if below minBatchSize
-			for _, query := range batch {
-				result := h.session.ExecuteCQLQuery(query)
-				if _, ok := result.(error); ok {
-					insertErrorCount++
-				} else {
-					rowCount++
-				}
-			}
-		}
+		batchCopy := make([]batchEntry, len(batch))
+		copy(batchCopy, batch)
+		batchChan <- batchCopy
 	}
 
-	if !isStdin && rowCount > chunkSize {
+	// Close channel and wait for all workers to finish
+	close(batchChan)
+	wg.Wait()
+
+	finalRowCount := atomic.LoadInt64(&rowCount)
+	finalInsertErrors := atomic.LoadInt64(&insertErrorCount)
+
+	if !isStdin && finalRowCount > int64(chunkSize) {
 		fmt.Println() // New line after progress updates
 	}
 
-	totalErrors := parseErrorCount + insertErrorCount
+	totalErrors := int64(parseErrorCount) + finalInsertErrors
 	if totalErrors > 0 {
-		details := fmt.Sprintf("Imported %d rows from %s", rowCount, filename)
+		details := fmt.Sprintf("Imported %d rows from %s", finalRowCount, filename)
 		if skipRows > 0 {
 			details += fmt.Sprintf(" (skipped %d rows)", skippedRows)
 		}
 		if parseErrorCount > 0 {
 			details += fmt.Sprintf(" (%d parse errors)", parseErrorCount)
 		}
-		if insertErrorCount > 0 {
-			details += fmt.Sprintf(" (%d insert errors)", insertErrorCount)
+		if finalInsertErrors > 0 {
+			details += fmt.Sprintf(" (%d insert errors)", finalInsertErrors)
 		}
 		return details
 	}
-	details := fmt.Sprintf("Imported %d rows from %s", rowCount, filename)
+	details := fmt.Sprintf("Imported %d rows from %s", finalRowCount, filename)
 	if skipRows > 0 {
 		details += fmt.Sprintf(" (skipped %d rows)", skippedRows)
 	}
