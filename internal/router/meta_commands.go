@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -409,16 +410,32 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 }
 
 
-// executeBatch executes a batch of INSERT queries and returns the number of errors
+// executeBatch executes a batch of INSERT queries using native Cassandra batching
+// and returns the number of errors
 func (h *MetaCommandHandler) executeBatch(queries []string) int {
-	errors := 0
-	for _, query := range queries {
-		result := h.session.ExecuteCQLQuery(query)
-		if _, ok := result.(error); ok {
-			errors++
-		}
+	if len(queries) == 0 {
+		return 0
 	}
-	return errors
+
+	// Use UNLOGGED batch for better performance (like cqlsh COPY)
+	batch := h.session.CreateBatch(gocql.UnloggedBatch)
+	for _, query := range queries {
+		h.session.AddToBatch(batch, query)
+	}
+
+	err := h.session.ExecuteBatch(batch)
+	if err != nil {
+		// If batch fails, try individual queries to count actual errors
+		errors := 0
+		for _, query := range queries {
+			result := h.session.ExecuteCQLQuery(query)
+			if _, ok := result.(error); ok {
+				errors++
+			}
+		}
+		return errors
+	}
+	return 0
 }
 
 // getTableColumns retrieves column names for a table

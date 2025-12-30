@@ -561,6 +561,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   -- MAXPARSEERRORS = -1     -- 許容される最大パースエラー数(-1 = 無制限)
   -- MAXINSERTERRORS = 1000  -- 許容される最大挿入エラー数
   -- MAXBATCHSIZE = 20       -- バッチ挿入あたりの最大行数
+  -- MAXREQUESTS = 6         -- 並行バッチワーカー数（並列処理）
   -- MINBATCHSIZE = 2        -- バッチ挿入あたりの最小行数
   -- CHUNKSIZE = 5000        -- 進捗更新間の行数
   -- ENCODING = 'UTF8'       -- ファイルエンコーディング
