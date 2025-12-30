@@ -35,6 +35,25 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 		})
 		assertIsError(t, resp, "INSERT should require confirmation")
 		assertContains(t, resp, "requires")
+
+		// Verify request created and tracked
+		text := extractText(t, resp)
+		requestID := extractRequestID(text)
+		if requestID != "" {
+			// Check it's in pending list
+			pendingResp := callTool(t, "get_pending_confirmations", map[string]any{})
+			if pendingResp != nil {
+				assertContains(t, pendingResp, requestID)
+			}
+
+			// Check specific state
+			stateResp := callTool(t, "get_confirmation_state", map[string]any{"request_id": requestID})
+			if stateResp != nil {
+				assertNotError(t, stateResp, "get_confirmation_state should work")
+				assertContains(t, stateResp, "PENDING")
+				assertContains(t, stateResp, "INSERT")
+			}
+		}
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
