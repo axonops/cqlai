@@ -570,6 +570,7 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   -- MAXPARSEERRORS = -1     -- Máximo de erros de análise permitidos (-1 = ilimitado)
   -- MAXINSERTERRORS = 1000  -- Máximo de erros de inserción permitidos
   -- MAXBATCHSIZE = 20       -- Máximo de filas por inserción batch
+  -- MAXREQUESTS = 6         -- Traballadores de lotes concorrentes (paralelismo)
   -- MINBATCHSIZE = 2        -- Mínimo de filas por inserción batch
   -- CHUNKSIZE = 5000        -- Filas entre actualizacións de progreso
   -- ENCODING = 'UTF8'       -- Codificación do arquivo

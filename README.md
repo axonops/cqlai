@@ -573,6 +573,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   -- MAXPARSEERRORS = -1     -- Max parsing errors allowed (-1 = unlimited)
   -- MAXINSERTERRORS = 1000  -- Max insert errors allowed
   -- MAXBATCHSIZE = 20       -- Max rows per batch insert
+  -- MAXREQUESTS = 6         -- Concurrent batch workers (parallelism)
   -- MINBATCHSIZE = 2        -- Min rows per batch insert
   -- CHUNKSIZE = 5000        -- Rows between progress updates
   -- ENCODING = 'UTF8'       -- File encoding
