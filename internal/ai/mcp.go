@@ -48,41 +48,44 @@ type MCPServer struct {
 	cancel context.CancelFunc
 }
 
-// MCPServerConfig holds configuration for starting the MCP server
+// MCPServerConfig holds configuration for the MCP server
+// Configuration can be changed dynamically at runtime via .mcp config commands
 type MCPServerConfig struct {
-	SocketPath         string
-	ConfirmationMode   string // "readonly", "read_write", "dangerous_only", "all", "none"
+	// Server infrastructure
+	SocketPath          string
 	ConfirmationTimeout time.Duration
-	LogLevel           string // "debug", "info", "warning", "error"
-	LogFile            string
+	LogLevel            string
+	LogFile             string
+
+	// Confirmation system (thread-safe via mutex)
+	Mode             ConfigMode // "preset" or "fine-grained"
+	PresetMode       string     // "readonly", "readwrite", "dba" (when Mode=preset)
+	ConfirmQueries   []string   // Categories requiring confirmation (when Mode=preset)
+	SkipConfirmation []string   // Categories to skip confirmation (when Mode=fine-grained)
+
+	// Runtime permission configuration control
+	DisableRuntimePermissionChanges bool // If false, update_mcp_permissions tool is disabled
+
+	// Thread safety for runtime config changes
+	mu sync.RWMutex
 }
 
 // DefaultMCPConfig returns default MCP server configuration
 func DefaultMCPConfig() *MCPServerConfig {
 	return &MCPServerConfig{
 		SocketPath:          "/tmp/cqlai-mcp.sock",
-		ConfirmationMode:    "dangerous_only",
 		ConfirmationTimeout: 5 * time.Minute,
 		LogLevel:            "info",
 		LogFile:             "/tmp/cqlai-mcp.log",
-	}
-}
 
-// GetConfirmationModeDescription returns a human-readable description of a confirmation mode
-func GetConfirmationModeDescription(mode string) string {
-	switch mode {
-	case "readonly":
-		return "Only SELECT and DESCRIBE queries allowed (safest)"
-	case "read_write":
-		return "SELECT, INSERT, UPDATE, DELETE allowed; DROP/TRUNCATE require confirmation"
-	case "dangerous_only":
-		return "Dangerous queries (DELETE/DROP/TRUNCATE/ALTER/GRANT) require confirmation (default)"
-	case "all":
-		return "All queries require confirmation (most restrictive)"
-	case "none":
-		return "No confirmations required (NOT RECOMMENDED - dangerous!)"
-	default:
-		return "Unknown mode"
+		// Default: readonly mode (safest)
+		Mode:             ConfigModePreset,
+		PresetMode:       "readonly",
+		ConfirmQueries:   nil, // No additional confirmations
+		SkipConfirmation: nil,
+
+		// Allow runtime permission changes by default (false = not disabled = allowed)
+		DisableRuntimePermissionChanges: false,
 	}
 }
 
@@ -275,6 +278,21 @@ func (s *MCPServer) GetConnectionInfo() ConnectionInfo {
 	}
 }
 
+// UpdateMode changes the preset mode dynamically
+func (s *MCPServer) UpdateMode(mode string) error {
+	return s.config.UpdatePresetMode(mode)
+}
+
+// UpdateConfirmQueries changes the confirm-queries overlay dynamically
+func (s *MCPServer) UpdateConfirmQueries(categories []string) error {
+	return s.config.UpdateConfirmQueries(categories)
+}
+
+// UpdateSkipConfirmation changes the skip-confirmation list dynamically
+func (s *MCPServer) UpdateSkipConfirmation(categories []string) error {
+	return s.config.UpdateSkipConfirmation(categories)
+}
+
 // acceptConnections accepts connections from Claude Desktop
 func (s *MCPServer) acceptConnections() {
 	for {
@@ -348,9 +366,125 @@ func (s *MCPServer) registerTools() error {
 		logger.DebugfToFile("MCP", "Registered tool: %s", toolDef.Name)
 	}
 
-	logger.DebugfToFile("MCP", "Registered %d tools", len(toolDefs))
+	// Register MCP-specific tool: update_mcp_permissions
+	configTool := s.createUpdatePermissionsTool()
+	configHandler := s.createUpdatePermissionsHandler()
+	s.mcpServer.AddTool(configTool, configHandler)
+	logger.DebugfToFile("MCP", "Registered MCP-specific tool: update_mcp_permissions")
+
+	logger.DebugfToFile("MCP", "Registered %d tools", len(toolDefs)+1)
 
 	return nil
+}
+
+// createUpdatePermissionsTool creates the update_mcp_permissions tool definition
+func (s *MCPServer) createUpdatePermissionsTool() mcp.Tool {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"mode": map[string]any{
+				"type": "string",
+				"description": "Preset mode: readonly, readwrite, or dba",
+				"enum": []string{"readonly", "readwrite", "dba"},
+			},
+			"confirm_queries": map[string]any{
+				"type": "string",
+				"description": "Comma-separated list of categories to confirm (dql,dml,ddl,dcl,file,ALL,none,disable). Only with preset modes.",
+			},
+			"skip_confirmation": map[string]any{
+				"type": "string",
+				"description": "Comma-separated list of categories to skip confirmation (dql,dml,ddl,dcl,file,ALL,none). Switches to fine-grained mode.",
+			},
+			"user_confirmed": map[string]any{
+				"type": "boolean",
+				"description": "REQUIRED: Must be true. Indicates user explicitly approved this configuration change.",
+			},
+		},
+		"required": []string{"user_confirmed"},
+	}
+
+	schemaJSON, _ := json.Marshal(schema)
+	return mcp.NewToolWithRawSchema(
+		"update_mcp_permissions",
+		"Update MCP server configuration (security modes). Requires user confirmation. Use this when user wants to change what operations need approval.",
+		schemaJSON,
+	)
+}
+
+// createUpdatePermissionsHandler creates the handler for update_mcp_permissions tool
+func (s *MCPServer) createUpdatePermissionsHandler() server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		startTime := time.Now()
+		argsMap := request.GetArguments()
+
+		logger.DebugfToFile("MCP", "update_mcp_permissions called with: %v", argsMap)
+
+		// Check if runtime permission changes are disabled
+		if s.config.DisableRuntimePermissionChanges {
+			s.metrics.RecordToolCall("update_mcp_permissions", false, time.Since(startTime))
+			errorMsg := "Runtime permission changes are disabled for this MCP server.\n\n" +
+				"The server was started with --disable-runtime-permission-changes flag.\n" +
+				"To change permissions, stop the server (.mcp stop) and restart with desired security settings.\n\n" +
+				"Current permission configuration is locked to prevent accidental security changes."
+			return mcp.NewToolResultError(errorMsg), nil
+		}
+
+		// Check user_confirmed flag (REQUIRED)
+		userConfirmed, ok := argsMap["user_confirmed"].(bool)
+		if !ok || !userConfirmed {
+			s.metrics.RecordToolCall("update_mcp_permissions", false, time.Since(startTime))
+			return mcp.NewToolResultError("Security configuration change requires user confirmation. Set user_confirmed=true only after explicitly asking the user."), nil
+		}
+
+		// Extract parameters
+		mode, _ := argsMap["mode"].(string)
+		confirmQueries, _ := argsMap["confirm_queries"].(string)
+		skipConfirmation, _ := argsMap["skip_confirmation"].(string)
+
+		// Validate that at least one parameter is provided
+		if mode == "" && confirmQueries == "" && skipConfirmation == "" {
+			s.metrics.RecordToolCall("update_mcp_permissions", false, time.Since(startTime))
+			return mcp.NewToolResultError("Must specify at least one of: mode, confirm_queries, or skip_confirmation"), nil
+		}
+
+		var result strings.Builder
+		result.WriteString("Configuration updated successfully:\n\n")
+
+		// Update mode if provided
+		if mode != "" {
+			if err := s.UpdateMode(mode); err != nil {
+				s.metrics.RecordToolCall("update_mcp_permissions", false, time.Since(startTime))
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to update mode: %v", err)), nil
+			}
+			result.WriteString(fmt.Sprintf("✅ Mode changed to: %s\n", mode))
+		}
+
+		// Update confirm-queries if provided
+		if confirmQueries != "" {
+			categories := ParseCategoryList(confirmQueries)
+			if err := s.UpdateConfirmQueries(categories); err != nil {
+				s.metrics.RecordToolCall("update_mcp_permissions", false, time.Since(startTime))
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to update confirm-queries: %v", err)), nil
+			}
+			result.WriteString(fmt.Sprintf("✅ Confirm-queries set to: %s\n", confirmQueries))
+		}
+
+		// Update skip-confirmation if provided (switches to fine-grained mode)
+		if skipConfirmation != "" {
+			categories := ParseCategoryList(skipConfirmation)
+			if err := s.UpdateSkipConfirmation(categories); err != nil {
+				s.metrics.RecordToolCall("update_mcp_permissions", false, time.Since(startTime))
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to update skip-confirmation: %v", err)), nil
+			}
+			result.WriteString(fmt.Sprintf("✅ Skip-confirmation set to: %s (switched to fine-grained mode)\n", skipConfirmation))
+		}
+
+		result.WriteString("\n")
+		result.WriteString(s.config.FormatConfigForDisplay())
+
+		s.metrics.RecordToolCall("update_mcp_permissions", true, time.Since(startTime))
+		return mcp.NewToolResultText(result.String()), nil
+	}
 }
 
 // convertToolDefinitionToMCPTool converts a CQLAI ToolDefinition to an mcp.Tool
@@ -443,12 +577,20 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	logger.DebugfToFile("MCP", "Query classification: dangerous=%v, severity=%s",
 		classification.IsDangerous, classification.Severity)
 
-	// Check if query is allowed based on confirmation mode
-	allowed, needsConfirmation := s.isQueryAllowed(operation, classification)
+	// Classify the operation by category
+	opInfo := ClassifyOperation(query)
+
+	logger.DebugfToFile("MCP", "Operation classified: category=%s, operation=%s",
+		opInfo.Category, opInfo.Operation)
+
+	// Check if operation is allowed and if it needs confirmation
+	allowed, needsConfirmation, _ := s.CheckOperationPermission(opInfo)
 
 	if !allowed {
 		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-		return mcp.NewToolResultError(fmt.Sprintf("Query not allowed in %s mode: %s", s.config.ConfirmationMode, operation)), nil
+		// Create detailed error with configuration hints
+		errorMsg := CreatePermissionDeniedError(opInfo, s.config.GetConfigSnapshot())
+		return mcp.NewToolResultError(errorMsg), nil
 	}
 
 	if needsConfirmation {
@@ -467,7 +609,9 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		confirmed, err := s.confirmationQueue.WaitForConfirmation(req.ID, time.Second)
 		if err != nil {
 			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-			return mcp.NewToolResultError(fmt.Sprintf("Query requires confirmation: %v", err)), nil
+			// Create detailed error with hints on how to disable confirmations
+			errorMsg := CreateConfirmationRequiredError(opInfo, s.config.GetConfigSnapshot(), req.ID)
+			return mcp.NewToolResultError(errorMsg), nil
 		}
 
 		if !confirmed {
@@ -485,55 +629,6 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 
 	// Return success (in real implementation, this would execute the query)
 	return mcp.NewToolResultText(fmt.Sprintf("Query plan approved: %s", query)), nil
-}
-
-// isQueryAllowed determines if a query is allowed and if it needs confirmation based on the mode
-func (s *MCPServer) isQueryAllowed(operation string, classification QueryClassification) (allowed bool, needsConfirmation bool) {
-	op := strings.ToUpper(operation)
-
-	switch s.config.ConfirmationMode {
-	case "readonly":
-		// Only SELECT and DESCRIBE allowed, no confirmation needed
-		if op == "SELECT" || op == "DESCRIBE" {
-			return true, false
-		}
-		return false, false
-
-	case "read_write":
-		// SELECT, INSERT, UPDATE, DELETE allowed without confirmation
-		// DROP, TRUNCATE require confirmation
-		// Other dangerous operations (CREATE, ALTER, GRANT) not allowed
-		if op == "SELECT" || op == "DESCRIBE" || op == "INSERT" || op == "UPDATE" || op == "DELETE" {
-			return true, false
-		}
-		if op == "DROP" || op == "TRUNCATE" {
-			return true, true // Allowed but needs confirmation
-		}
-		return false, false // CREATE, ALTER, GRANT, etc. not allowed
-
-	case "dangerous_only":
-		// All queries allowed, dangerous ones need confirmation
-		if classification.IsDangerous {
-			return true, true
-		}
-		return true, false
-
-	case "all":
-		// All queries allowed but all need confirmation
-		return true, true
-
-	case "none":
-		// All queries allowed, no confirmation needed
-		return true, false
-
-	default:
-		// Unknown mode, treat as dangerous_only for safety
-		logger.DebugfToFile("MCP", "Unknown confirmation mode %s, defaulting to dangerous_only", s.config.ConfirmationMode)
-		if classification.IsDangerous {
-			return true, true
-		}
-		return true, false
-	}
 }
 
 // buildCQLFromParams builds a CQL query string from submit_query_plan parameters

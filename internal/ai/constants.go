@@ -56,7 +56,8 @@ func (t ToolName) IsValid() bool {
 	switch t {
 	case ToolFuzzySearch, ToolGetSchema, ToolGetTableInfo,
 		ToolListKeyspaces, ToolListTables, ToolSubmitQueryPlan,
-		ToolUserSelection, ToolNotEnoughInfo, ToolNotRelevant, ToolInfo:
+		ToolUserSelection, ToolNotEnoughInfo, ToolNotRelevant, ToolInfo,
+		ToolUpdateMCPPermissions:
 		return true
 	}
 	return false
@@ -64,16 +65,17 @@ func (t ToolName) IsValid() bool {
 
 // Tool names for AI function calling
 const (
-	ToolFuzzySearch     ToolName = "fuzzy_search"
-	ToolGetSchema       ToolName = "get_schema"
-	ToolGetTableInfo    ToolName = "get_table_info"
-	ToolListKeyspaces   ToolName = "list_keyspaces"
-	ToolListTables      ToolName = "list_tables"
-	ToolSubmitQueryPlan ToolName = "submit_query_plan"
-	ToolUserSelection   ToolName = "user_selection"
-	ToolNotEnoughInfo   ToolName = "not_enough_info"
-	ToolNotRelevant     ToolName = "not_relevant"
-	ToolInfo            ToolName = "info" // For informational responses
+	ToolFuzzySearch      ToolName = "fuzzy_search"
+	ToolGetSchema        ToolName = "get_schema"
+	ToolGetTableInfo     ToolName = "get_table_info"
+	ToolListKeyspaces    ToolName = "list_keyspaces"
+	ToolListTables       ToolName = "list_tables"
+	ToolSubmitQueryPlan  ToolName = "submit_query_plan"
+	ToolUserSelection    ToolName = "user_selection"
+	ToolNotEnoughInfo    ToolName = "not_enough_info"
+	ToolNotRelevant      ToolName = "not_relevant"
+	ToolInfo             ToolName = "info" // For informational responses
+	ToolUpdateMCPPermissions ToolName = "update_mcp_permissions" // Update MCP server permission configuration
 )
 
 // Environment variable names

@@ -86,6 +86,8 @@ func (h *MCPHandler) HandleMCPCommand(command string) string {
 			reason = strings.Join(parts[2:], " ")
 		}
 		return h.handleDeny(parts[1], reason)
+	case "permissions-config":
+		return h.handlePermissionsConfig(parts[1:])
 	default:
 		return fmt.Sprintf("Unknown MCP command: %s\n%s", subcommand, h.showUsage())
 	}
@@ -101,7 +103,11 @@ func (h *MCPHandler) handleStart(args []string) string {
 	// Create default config
 	config := ai.DefaultMCPConfig()
 
-	// Parse options (simple parsing for now, can enhance later)
+	// Parse options
+	hasPresetMode := false
+	hasSkipConf := false
+	var confirmQueriesArg []string
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -120,16 +126,71 @@ func (h *MCPHandler) handleStart(args []string) string {
 				config.LogFile = args[i+1]
 				i++
 			}
-		case "--readonly":
-			config.ConfirmationMode = "readonly"
-		case "--read-write":
-			config.ConfirmationMode = "read_write"
-		case "--confirm-on-dangerous":
-			config.ConfirmationMode = "dangerous_only"
-		case "--confirm-all":
-			config.ConfirmationMode = "all"
-		case "--no-confirmation":
-			config.ConfirmationMode = "none"
+
+		// Preset modes
+		case "--readonly_mode":
+			if hasSkipConf {
+				return "Error: Cannot use --readonly_mode with --skip-confirmation"
+			}
+			config.Mode = ai.ConfigModePreset
+			config.PresetMode = "readonly"
+			hasPresetMode = true
+
+		case "--readwrite_mode":
+			if hasSkipConf {
+				return "Error: Cannot use --readwrite_mode with --skip-confirmation"
+			}
+			config.Mode = ai.ConfigModePreset
+			config.PresetMode = "readwrite"
+			hasPresetMode = true
+
+		case "--dba_mode":
+			if hasSkipConf {
+				return "Error: Cannot use --dba_mode with --skip-confirmation"
+			}
+			config.Mode = ai.ConfigModePreset
+			config.PresetMode = "dba"
+			hasPresetMode = true
+
+		// Confirmation overlay (only with preset modes)
+		case "--confirm-queries":
+			if i+1 < len(args) {
+				confirmQueriesArg = ai.ParseCategoryList(args[i+1])
+				i++
+			}
+
+		// Fine-grained mode
+		case "--skip-confirmation":
+			if hasPresetMode {
+				return "Error: Cannot use --skip-confirmation with preset modes (--readonly_mode, --readwrite_mode, --dba_mode)"
+			}
+			if i+1 < len(args) {
+				categories := ai.ParseCategoryList(args[i+1])
+				if err := config.UpdateSkipConfirmation(categories); err != nil {
+					return fmt.Sprintf("Error in --skip-confirmation: %v", err)
+				}
+				hasSkipConf = true
+				i++
+			}
+
+		// Runtime permission config control
+		case "--disable-runtime-permission-changes":
+			config.DisableRuntimePermissionChanges = true
+
+		case "--allow-runtime-permission-changes":
+			config.DisableRuntimePermissionChanges = false
+		}
+	}
+
+	// Validate confirm-queries only with preset modes
+	if len(confirmQueriesArg) > 0 && !hasPresetMode {
+		return "Error: --confirm-queries only allowed with preset modes (--readonly_mode, --readwrite_mode, --dba_mode)"
+	}
+
+	// Apply confirm-queries overlay if specified
+	if len(confirmQueriesArg) > 0 {
+		if err := config.UpdateConfirmQueries(confirmQueriesArg); err != nil {
+			return fmt.Sprintf("Error in --confirm-queries: %v", err)
 		}
 	}
 
@@ -148,26 +209,24 @@ func (h *MCPHandler) handleStart(args []string) string {
 
 	// Build success message
 	var sb strings.Builder
-	sb.WriteString("MCP server started successfully\n\n")
-	sb.WriteString(fmt.Sprintf("Socket: %s\n", config.SocketPath))
-	sb.WriteString("Cassandra connection: ACTIVE (using independent session)\n")
-	sb.WriteString(fmt.Sprintf("Confirmation mode: %s\n", config.ConfirmationMode))
-	sb.WriteString(fmt.Sprintf("Log level: %s\n", config.LogLevel))
-	sb.WriteString(fmt.Sprintf("Log file: %s\n", config.LogFile))
-	sb.WriteString("Available tools: 9 (FUZZY_SEARCH, GET_SCHEMA, LIST_KEYSPACES, LIST_TABLES, etc.)\n\n")
+	sb.WriteString("✅ MCP server started successfully\n\n")
+
+	// Show configuration
+	sb.WriteString(config.FormatConfigForDisplay())
+	sb.WriteString("\n")
+
+	// Server details
+	sb.WriteString("Server Details:\n")
+	sb.WriteString(fmt.Sprintf("  Socket: %s\n", config.SocketPath))
+	sb.WriteString(fmt.Sprintf("  Log level: %s\n", config.LogLevel))
+	sb.WriteString(fmt.Sprintf("  Log file: %s\n", config.LogFile))
+	sb.WriteString("  Available tools: 9 (FUZZY_SEARCH, GET_SCHEMA, LIST_KEYSPACES, LIST_TABLES, etc.)\n\n")
+
 	sb.WriteString("Claude Code can now connect via:\n")
 	sb.WriteString(fmt.Sprintf("  claude mcp add --transport stdio cqlai --scope project -- nc -U %s\n\n", config.SocketPath))
-	sb.WriteString("Or add to .mcp.json:\n")
-	sb.WriteString(fmt.Sprintf(`  {
-    "mcpServers": {
-      "cqlai": {
-        "type": "stdio",
-        "command": "nc",
-        "args": ["-U", "%s"]
-      }
-    }
-  }
-`, config.SocketPath))
+
+	sb.WriteString("Use '.mcp status' to view detailed status\n")
+	sb.WriteString("Use '.mcp permissions-config mode <readonly|readwrite|dba>' to change mode dynamically\n")
 
 	return sb.String()
 }
@@ -220,10 +279,10 @@ func (h *MCPHandler) handleStatus() string {
 	sb.WriteString("MCP Server Status:\n\n")
 	sb.WriteString("  State: RUNNING\n\n")
 
-	// Confirmation mode with description
-	sb.WriteString("Confirmation Mode:\n")
-	sb.WriteString(fmt.Sprintf("  Mode: %s\n", config.ConfirmationMode))
-	sb.WriteString(fmt.Sprintf("  Description: %s\n\n", ai.GetConfirmationModeDescription(config.ConfirmationMode)))
+	// Confirmation configuration (detailed format #3)
+	sb.WriteString("Confirmation Configuration:\n")
+	sb.WriteString(config.FormatConfigForDisplay())
+	sb.WriteString("\n")
 
 	// Cassandra connection details
 	sb.WriteString("Cassandra Connection:\n")
@@ -381,6 +440,115 @@ func (h *MCPHandler) handleDeny(requestID, reason string) string {
 	return sb.String()
 }
 
+// handlePermissionsConfig handles permission configuration changes at runtime
+func (h *MCPHandler) handlePermissionsConfig(args []string) string {
+	if h.mcpServer == nil || !h.mcpServer.IsRunning() {
+		return "MCP server is not running."
+	}
+
+	// No args or "show" = display current config
+	if len(args) == 0 || (len(args) == 1 && strings.ToLower(args[0]) == "show") {
+		config := h.mcpServer.GetConfig()
+		return "Current Permission Configuration:\n\n" + config.FormatConfigForDisplay()
+	}
+
+	// Parse permissions-config subcommand
+	if len(args) < 2 {
+		return "Usage: .mcp permissions-config <setting> <value>\nSettings: mode, confirm-queries, skip-confirmation\nExample: .mcp permissions-config mode readwrite"
+	}
+
+	setting := strings.ToLower(args[0])
+	value := strings.Join(args[1:], " ")
+
+	switch setting {
+	case "mode":
+		return h.handleConfigMode(args[1])
+
+	case "confirm-queries":
+		categories := ai.ParseCategoryList(value)
+		return h.handleConfigConfirmQueries(categories)
+
+	case "skip-confirmation":
+		categories := ai.ParseCategoryList(value)
+		return h.handleConfigSkipConfirmation(categories)
+
+	default:
+		return fmt.Sprintf("Unknown config setting: %s\nValid settings: mode, confirm-queries, skip-confirmation", setting)
+	}
+}
+
+// handleConfigMode changes the preset mode
+func (h *MCPHandler) handleConfigMode(mode string) string {
+	mode = strings.ToLower(mode)
+
+	// Validate mode
+	if err := ai.ValidatePresetMode(mode); err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Update mode
+	if err := h.mcpServer.UpdateMode(mode); err != nil {
+		return fmt.Sprintf("Failed to update mode: %v", err)
+	}
+
+	// Get new config for display
+	config := h.mcpServer.GetConfig()
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("✅ Mode changed to: %s\n\n", mode))
+	sb.WriteString(config.FormatConfigForDisplay())
+
+	return sb.String()
+}
+
+// handleConfigConfirmQueries changes the confirm-queries overlay
+func (h *MCPHandler) handleConfigConfirmQueries(categories []string) string {
+	// Update configuration
+	if err := h.mcpServer.UpdateConfirmQueries(categories); err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Get new config for display
+	config := h.mcpServer.GetConfig()
+
+	var sb strings.Builder
+	if len(categories) == 0 || (len(categories) == 1 && (categories[0] == "none" || categories[0] == "disable")) {
+		sb.WriteString("✅ Confirmations disabled\n\n")
+	} else if len(categories) == 1 && categories[0] == "ALL" {
+		sb.WriteString("✅ Confirmations required for ALL operations\n\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("✅ Confirmations required for: %s\n\n", strings.Join(categories, ", ")))
+	}
+
+	sb.WriteString(config.FormatConfigForDisplay())
+
+	return sb.String()
+}
+
+// handleConfigSkipConfirmation changes the skip-confirmation list (switches to fine-grained mode)
+func (h *MCPHandler) handleConfigSkipConfirmation(categories []string) string {
+	// Update configuration (switches to fine-grained mode)
+	if err := h.mcpServer.UpdateSkipConfirmation(categories); err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Get new config for display
+	config := h.mcpServer.GetConfig()
+
+	var sb strings.Builder
+	if len(categories) == 1 && strings.ToUpper(categories[0]) == "ALL" {
+		sb.WriteString("✅ Switched to fine-grained mode: Skip confirmation on ALL operations\n\n")
+	} else if len(categories) == 0 || (len(categories) == 1 && categories[0] == "none") {
+		sb.WriteString("✅ Switched to fine-grained mode: Confirm ALL operations\n\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("✅ Switched to fine-grained mode: Skip confirmation on %s\n\n", strings.Join(categories, ", ")))
+	}
+
+	sb.WriteString(config.FormatConfigForDisplay())
+
+	return sb.String()
+}
+
 // formatDuration formats a time or duration for display
 func formatDuration(t interface{}) string {
 	var d time.Duration
@@ -404,48 +572,89 @@ func formatDuration(t interface{}) string {
 func (h *MCPHandler) showUsage() string {
 	return `MCP (Model Context Protocol) Server Commands:
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SERVER CONTROL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 .mcp start [options]           Start MCP server
-  Options:
-    --socket-path <path>       Socket path (default: /tmp/cqlai-mcp.sock)
-    --log-level <level>        Log level: debug, info, warning, error (default: info)
-    --log-file <path>          Log file path (default: /tmp/cqlai-mcp.log)
-
-  Confirmation Modes:
-    --readonly                 Only SELECT/DESCRIBE allowed (safest)
-    --read-write               SELECT/INSERT/UPDATE/DELETE allowed; DROP/TRUNCATE require confirmation
-    --confirm-on-dangerous     All queries allowed; dangerous ones require confirmation (default)
-    --confirm-all              All queries require confirmation (most restrictive)
-    --no-confirmation          No confirmations required (NOT RECOMMENDED - dangerous!)
-
 .mcp stop                      Stop MCP server
-.mcp status                    Show server status and metrics
-.mcp metrics                   Show detailed metrics
-.mcp pending                   Show pending confirmation requests
-.mcp confirm <req_id>          Confirm a dangerous query request
-.mcp deny <req_id> [reason]    Deny a dangerous query request
+.mcp status                    Show server status and configuration
+.mcp metrics                   Show detailed request metrics
 .mcp log [options]             Show MCP logs (not yet implemented)
 
-Examples:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+START OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Server Configuration:
+  --socket-path <path>         Socket path (default: /tmp/cqlai-mcp.sock)
+  --log-level <level>          Log level: debug, info, warning, error (default: info)
+  --log-file <path>            Log file path (default: /tmp/cqlai-mcp.log)
+
+Security Modes (choose ONE - mutually exclusive):
+
+  PRESET MODES (Recommended):
+    --readonly_mode            Queries and session settings only (DEFAULT - safest)
+    --readwrite_mode           + Data modifications (INSERT/UPDATE/DELETE)
+    --dba_mode                 All operations allowed
+
+  FINE-GRAINED MODE (Advanced):
+    --skip-confirmation <list> Comma-separated categories to skip confirmation
+                               Categories: dql, dml, ddl, dcl, file, ALL, none
+                               SESSION always skipped automatically
+
+  Confirmation Overlay (only with preset modes):
+    --confirm-queries <list>   Require confirmation even for allowed operations
+                               Values: dql, dml, ddl, dcl, file, ALL, none, disable
+
+  Runtime Permission Control:
+    --disable-runtime-permission-changes  Lock configuration (prevent update_mcp_permissions tool)
+    --allow-runtime-permission-changes    Allow runtime changes (DEFAULT)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RUNTIME CONFIGURATION (Change settings without restart)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.mcp permissions-config                    Show current configuration
+.mcp permissions-config mode <mode>        Change preset mode (readonly|readwrite|dba)
+.mcp permissions-config confirm-queries <list>    Change confirmation overlay
+.mcp permissions-config skip-confirmation <list>  Switch to fine-grained mode
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONFIRMATION MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.mcp pending                   Show pending confirmation requests
+.mcp confirm <req_id>          Approve a pending request
+.mcp deny <req_id> [reason]    Reject a pending request
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Start in readonly (default):
   .mcp start
-  .mcp start --confirm-on-dangerous --log-level debug
-  .mcp status
-  .mcp pending
-  .mcp confirm req_001
-  .mcp deny req_002 "Query too broad"
-  .mcp stop
 
-After starting, configure Claude Code:
-  claude mcp add --transport stdio cqlai --scope project -- nc -U /tmp/cqlai-mcp.sock
+Start in readwrite with confirmations on data mods:
+  .mcp start --readwrite_mode --confirm-queries dml
 
-Or add to .mcp.json:
-  {
-    "mcpServers": {
-      "cqlai": {
-        "type": "stdio",
-        "command": "nc",
-        "args": ["-U", "/tmp/cqlai-mcp.sock"]
-      }
-    }
-  }
+Start in DBA mode with security confirmations:
+  .mcp start --dba_mode --confirm-queries dcl
+
+Fine-grained control (skip on queries and data only):
+  .mcp start --skip-confirmation dql,dml
+
+Change mode at runtime:
+  .mcp permissions-config mode dba
+  .mcp permissions-config confirm-queries disable
+  .mcp permissions-config skip-confirmation ALL
+
+Operation Categories:
+  dql     - Data queries (SELECT, LIST, DESCRIBE) - 14 operations
+  session - Session settings (CONSISTENCY, PAGING, etc) - 8 operations
+  dml     - Data manipulation (INSERT, UPDATE, DELETE) - 8 operations
+  ddl     - Schema definition (CREATE, ALTER, DROP) - 28 operations
+  dcl     - Access control (roles, users, permissions) - 13 operations
+  file    - File operations (COPY, SOURCE) - 3 operations
 `
 }
