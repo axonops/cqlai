@@ -220,7 +220,7 @@ func classifySingleWordOperation(operation string) OperationInfo {
 	case "DESCRIBE", "DESC":
 		return OperationInfo{Category: CategoryDQL, Operation: "DESCRIBE", Description: "Show schema", RiskLevel: "SAFE"}
 	case "SHOW":
-		return OperationInfo{Category: CategoryDQL, Operation: "SHOW", Description: "Show information", RiskLevel: "SAFE"}
+		return OperationInfo{Category: CategoryDQL, Operation: "SHOW", Description: "Show information (cqlsh command)", RiskLevel: "SAFE"}
 	case "LIST":
 		return OperationInfo{Category: CategoryDQL, Operation: "LIST", Description: "List resources", RiskLevel: "SAFE"}
 

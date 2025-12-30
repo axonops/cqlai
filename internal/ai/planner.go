@@ -92,8 +92,8 @@ func RenderCQL(plan *AIResult) (string, error) {
 		// Build the command string directly
 		return buildRawCommandForPlanner(plan)
 	case "EXPAND", "OUTPUT", "CAPTURE", "SAVE", "AUTOFETCH":
-		// Display-only commands - not applicable to programmatic use
-		return "", fmt.Errorf("%s is a display command not applicable to programmatic use", plan.Operation)
+		// Display-only commands - return the command string, will be handled by handleShellCommand
+		return buildRawCommandForPlanner(plan)
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}
