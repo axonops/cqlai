@@ -430,6 +430,11 @@ func renderDescribe(plan *AIResult) (string, error) {
 }
 
 func renderWhereClause(w WhereClause) string {
+	// Handle IS NULL and IS NOT NULL (no value needed)
+	opUpper := strings.ToUpper(w.Operator)
+	if opUpper == "IS NULL" || opUpper == "IS NOT NULL" {
+		return fmt.Sprintf("%s %s", w.Column, w.Operator)
+	}
 	return fmt.Sprintf("%s %s %s", w.Column, w.Operator, formatValue(w.Value))
 }
 

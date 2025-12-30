@@ -64,6 +64,80 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 		}
 	}
 
+	// After compound operation parsing, add type-specific parameters for CREATE/DROP operations
+	if opts, ok := params["options"].(map[string]any); ok {
+		if objType, ok := opts["object_type"].(string); ok {
+			objTypeUpper := strings.ToUpper(objType)
+			switch objTypeUpper {
+			case "INDEX":
+				opts["index_name"] = "test_idx"
+				opts["column"] = "email"
+				// Don't need schema for INDEX
+				delete(params, "schema")
+			case "CUSTOM INDEX":
+				opts["index_name"] = "test_idx"
+				opts["column"] = "email"
+				opts["using"] = "org.apache.cassandra.index.sasi.SASIIndex"
+				// For CUSTOM INDEX, we need to normalize to INDEX for the renderer
+				opts["object_type"] = "INDEX"
+				opts["custom"] = true
+				delete(params, "schema")
+			case "TYPE":
+				opts["type_name"] = "test_type"
+				// Keep schema for TYPE (UDT fields)
+				params["schema"] = map[string]any{
+					"street": "text",
+					"city":   "text",
+				}
+			case "FUNCTION", "OR REPLACE FUNCTION":
+				opts["function_name"] = "test_func"
+				opts["returns"] = "int"
+				opts["language"] = "java"
+				opts["body"] = "return 0;"
+				delete(params, "schema")
+			case "AGGREGATE", "OR REPLACE AGGREGATE":
+				opts["aggregate_name"] = "test_agg"
+				opts["sfunc"] = "state_func"
+				opts["stype"] = "int"
+				opts["input_type"] = "int"
+				delete(params, "schema")
+			case "TRIGGER":
+				opts["trigger_name"] = "test_trigger"
+				opts["trigger_class"] = "org.apache.cassandra.triggers.TestTrigger"
+				delete(params, "schema")
+			case "MATERIALIZED VIEW":
+				opts["view_name"] = "test_mv"
+				opts["base_table"] = table
+				opts["primary_key"] = "(id, name)"
+				params["columns"] = []string{"id", "name"}
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "IS NOT NULL",
+						"value":    nil,
+					},
+					map[string]any{
+						"column":   "name",
+						"operator": "IS NOT NULL",
+						"value":    nil,
+					},
+				}
+				delete(params, "schema")
+			case "ROLE":
+				opts["role_name"] = "test_role"
+				opts["password"] = "test_pass"
+				opts["login"] = true
+				opts["superuser"] = false
+				delete(params, "schema")
+			case "USER":
+				opts["user_name"] = "test_user"
+				opts["password"] = "test_pass"
+				opts["superuser"] = false
+				delete(params, "schema")
+			}
+		}
+	}
+
 	// Add required parameters based on operation
 	switch mainOp {
 	case "INSERT":
@@ -99,9 +173,26 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 		if opts, ok := params["options"].(map[string]any); ok {
 			opts["if_not_exists"] = true
 		}
-		params["schema"] = map[string]any{
-			"id":   "uuid PRIMARY KEY",
-			"name": "text",
+		// Default schema for TABLE/KEYSPACE only (others handled above)
+		if _, hasSchema := params["schema"]; !hasSchema {
+			if opts, ok := params["options"].(map[string]any); ok {
+				if objType, ok := opts["object_type"].(string); ok {
+					objTypeUpper := strings.ToUpper(objType)
+					// Only add schema for TABLE, COLUMNFAMILY, KEYSPACE, or no object_type
+					if objTypeUpper == "TABLE" || objTypeUpper == "COLUMNFAMILY" || objTypeUpper == "KEYSPACE" || objTypeUpper == "" {
+						params["schema"] = map[string]any{
+							"id":   "uuid PRIMARY KEY",
+							"name": "text",
+						}
+					}
+				}
+			} else {
+				// No options, default to table schema
+				params["schema"] = map[string]any{
+					"id":   "uuid PRIMARY KEY",
+					"name": "text",
+				}
+			}
 		}
 	case "ALTER TABLE", "ALTER COLUMNFAMILY", "ALTER", "ALTER KEYSPACE", "ALTER MATERIALIZED VIEW",
 		"ALTER TYPE", "ALTER ROLE", "ALTER USER":
