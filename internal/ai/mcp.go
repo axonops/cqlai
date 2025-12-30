@@ -565,16 +565,26 @@ func (s *MCPServer) createToolHandler(toolName ToolName) server.ToolHandlerFunc 
 	}
 }
 
-// handleSubmitQueryPlan handles submit_query_plan tool with dangerous query detection
+// handleSubmitQueryPlan handles submit_query_plan tool with structured query parameters
 func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[string]any, startTime time.Time) (*mcp.CallToolResult, error) {
-	// Extract query parameters
-	operation, _ := argsMap["operation"].(string)
-	table, _ := argsMap["table"].(string)
+	// Parse structured parameters into SubmitQueryPlanParams
+	params, err := parseSubmitQueryPlanParams(argsMap)
+	if err != nil {
+		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameters: %v", err)), nil
+	}
 
-	// Build CQL query from parameters (simplified - actual query builder would be more complex)
-	query := buildCQLFromParams(argsMap)
+	// Convert to AIResult (structured query plan)
+	aiResult := params.ToQueryPlan()
 
-	logger.DebugfToFile("MCP", "submit_query_plan: operation=%s, table=%s, query=%s", operation, table, query)
+	// Generate CQL using the existing query builder (same as .ai feature uses)
+	query, err := RenderCQL(aiResult)
+	if err != nil {
+		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to generate CQL: %v", err)), nil
+	}
+
+	logger.DebugfToFile("MCP", "submit_query_plan: operation=%s, table=%s, query=%s", params.Operation, params.Table, query)
 
 	// Classify the query for danger level
 	classification := ClassifyQuery(query)
@@ -599,32 +609,22 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	}
 
 	if needsConfirmation {
-		// Create confirmation request
+		// Create confirmation request and return immediately
+		// User will confirm/deny via separate MCP tools (confirm_request, deny_request)
 		req := s.confirmationQueue.NewConfirmationRequest(
 			query,
 			classification,
 			string(ToolSubmitQueryPlan),
-			operation,
+			params.Operation,
 			s.config.ConfirmationTimeout,
 		)
 
-		logger.DebugfToFile("MCP", "Created confirmation request %s for query", req.ID)
+		logger.DebugfToFile("MCP", "Created confirmation request %s for query - waiting for user confirmation via MCP tools", req.ID)
 
-		// Wait for confirmation (with timeout)
-		confirmed, err := s.confirmationQueue.WaitForConfirmation(req.ID, time.Second)
-		if err != nil {
-			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-			// Create detailed error with hints on how to disable confirmations
-			errorMsg := CreateConfirmationRequiredError(opInfo, s.config.GetConfigSnapshot(), req.ID)
-			return mcp.NewToolResultError(errorMsg), nil
-		}
-
-		if !confirmed {
-			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-			return mcp.NewToolResultError("Query was denied by user"), nil
-		}
-
-		logger.DebugfToFile("MCP", "Query confirmed by user, proceeding")
+		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+		// Return error with request ID and hints on how to confirm or update permissions
+		errorMsg := CreateConfirmationRequiredError(opInfo, s.config.GetConfigSnapshot(), req.ID)
+		return mcp.NewToolResultError(errorMsg), nil
 	}
 
 	// Query approved or no confirmation needed - EXECUTE IT
@@ -670,57 +670,110 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	return mcp.NewToolResultText(string(jsonData)), nil
 }
 
-// buildCQLFromParams builds a CQL query string from submit_query_plan parameters
-func buildCQLFromParams(args map[string]any) string {
-	operation, _ := args["operation"].(string)
-	keyspace, _ := args["keyspace"].(string)
-	table, _ := args["table"].(string)
+// parseSubmitQueryPlanParams parses MCP argsMap into SubmitQueryPlanParams structure
+// This allows the MCP server to use the same query builder as the .ai feature
+func parseSubmitQueryPlanParams(args map[string]any) (SubmitQueryPlanParams, error) {
+	params := SubmitQueryPlanParams{}
 
-	// Simplified query building - real implementation would be more sophisticated
-	switch strings.ToUpper(operation) {
-	case "SELECT":
-		columns, _ := args["columns"].([]interface{})
-		colStr := "*"
-		if len(columns) > 0 {
-			colNames := make([]string, len(columns))
-			for i, col := range columns {
-				if colName, ok := col.(string); ok {
-					colNames[i] = colName
-				}
-			}
-			if len(colNames) > 0 {
-				colStr = strings.Join(colNames, ", ")
-			}
-		}
-		return fmt.Sprintf("SELECT %s FROM %s.%s", colStr, keyspace, table)
-
-	case "DELETE":
-		return fmt.Sprintf("DELETE FROM %s.%s", keyspace, table)
-
-	case "UPDATE":
-		return fmt.Sprintf("UPDATE %s.%s", keyspace, table)
-
-	case "INSERT":
-		return fmt.Sprintf("INSERT INTO %s.%s", keyspace, table)
-
-	case "DROP":
-		if table != "" {
-			return fmt.Sprintf("DROP TABLE %s.%s", keyspace, table)
-		}
-		return fmt.Sprintf("DROP KEYSPACE %s", keyspace)
-
-	case "TRUNCATE":
-		return fmt.Sprintf("TRUNCATE %s.%s", keyspace, table)
-
-	case "CREATE":
-		if table != "" {
-			return fmt.Sprintf("CREATE TABLE %s.%s", keyspace, table)
-		}
-		return fmt.Sprintf("CREATE KEYSPACE %s", keyspace)
-
-	default:
-		return fmt.Sprintf("%s %s.%s", operation, keyspace, table)
+	// Required: operation
+	if op, ok := args["operation"].(string); ok {
+		params.Operation = op
+	} else {
+		return params, fmt.Errorf("operation is required")
 	}
+
+	// Optional: keyspace and table
+	if ks, ok := args["keyspace"].(string); ok {
+		params.Keyspace = ks
+	}
+	if tbl, ok := args["table"].(string); ok {
+		params.Table = tbl
+	}
+
+	// Optional: columns (for SELECT/INSERT)
+	if cols, ok := args["columns"].([]interface{}); ok {
+		params.Columns = make([]string, len(cols))
+		for i, col := range cols {
+			if colStr, ok := col.(string); ok {
+				params.Columns[i] = colStr
+			}
+		}
+	}
+
+	// Optional: values (for INSERT/UPDATE)
+	if vals, ok := args["values"].(map[string]interface{}); ok {
+		params.Values = vals
+	}
+
+	// Optional: where clauses (for SELECT/UPDATE/DELETE)
+	if whereRaw, ok := args["where"].([]interface{}); ok {
+		params.Where = make([]WhereClause, len(whereRaw))
+		for i, w := range whereRaw {
+			if whereMap, ok := w.(map[string]interface{}); ok {
+				wc := WhereClause{}
+				if col, ok := whereMap["column"].(string); ok {
+					wc.Column = col
+				}
+				if op, ok := whereMap["operator"].(string); ok {
+					wc.Operator = op
+				}
+				if val, ok := whereMap["value"]; ok {
+					wc.Value = val
+				}
+				params.Where[i] = wc
+			}
+		}
+	}
+
+	// Optional: order by (for SELECT)
+	if orderRaw, ok := args["order_by"].([]interface{}); ok {
+		params.OrderBy = make([]OrderClause, len(orderRaw))
+		for i, o := range orderRaw {
+			if orderMap, ok := o.(map[string]interface{}); ok {
+				oc := OrderClause{}
+				if col, ok := orderMap["column"].(string); ok {
+					oc.Column = col
+				}
+				// Field is called "Order" not "Direction"
+				if order, ok := orderMap["order"].(string); ok {
+					oc.Order = order
+				} else if order, ok := orderMap["direction"].(string); ok {
+					// Also accept "direction" for backwards compatibility
+					oc.Order = order
+				}
+				params.OrderBy[i] = oc
+			}
+		}
+	}
+
+	// Optional: limit
+	if limit, ok := args["limit"].(float64); ok {
+		params.Limit = int(limit)
+	} else if limit, ok := args["limit"].(int); ok {
+		params.Limit = limit
+	}
+
+	// Optional: allow filtering
+	if allow, ok := args["allow_filtering"].(bool); ok {
+		params.AllowFiltering = allow
+	}
+
+	// Optional: schema (for CREATE TABLE)
+	if schema, ok := args["schema"].(map[string]interface{}); ok {
+		params.Schema = make(map[string]string)
+		for k, v := range schema {
+			if vStr, ok := v.(string); ok {
+				params.Schema[k] = vStr
+			}
+		}
+	}
+
+	// Optional: options (for CREATE/ALTER)
+	if opts, ok := args["options"].(map[string]interface{}); ok {
+		params.Options = opts
+	}
+
+	return params, nil
 }
 
 // extractToolArg extracts the argument string for a tool from MCP parameters.

@@ -67,6 +67,12 @@ func RenderCQL(plan *AIResult) (string, error) {
 		return renderDrop(plan)
 	case "DESCRIBE":
 		return renderDescribe(plan)
+	case "GRANT":
+		return renderGrant(plan)
+	case "REVOKE":
+		return renderRevoke(plan)
+	case "TRUNCATE":
+		return renderTruncate(plan)
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}
@@ -391,4 +397,63 @@ func ParsePlanFromJSON(jsonStr string) (*AIResult, error) {
 		return nil, fmt.Errorf("failed to parse plan: %v", err)
 	}
 	return &plan, nil
+}
+
+// renderGrant generates a GRANT statement
+func renderGrant(plan *AIResult) (string, error) {
+	// GRANT requires keyspace, permission, and role
+	// Format: GRANT permission ON KEYSPACE keyspace TO role
+	if plan.Keyspace == "" {
+		return "", fmt.Errorf("keyspace required for GRANT")
+	}
+
+	// Extract permission and role from options (REQUIRED)
+	if plan.Options == nil {
+		return "", fmt.Errorf("options with 'permission' and 'role' required for GRANT")
+	}
+
+	permission, ok := plan.Options["permission"].(string)
+	if !ok || permission == "" {
+		return "", fmt.Errorf("'permission' required in options for GRANT (e.g., SELECT, MODIFY, ALL)")
+	}
+
+	role, ok := plan.Options["role"].(string)
+	if !ok || role == "" {
+		return "", fmt.Errorf("'role' required in options for GRANT")
+	}
+
+	return fmt.Sprintf("GRANT %s ON KEYSPACE %s TO %s", permission, plan.Keyspace, role), nil
+}
+
+// renderRevoke generates a REVOKE statement
+func renderRevoke(plan *AIResult) (string, error) {
+	if plan.Keyspace == "" {
+		return "", fmt.Errorf("keyspace required for REVOKE")
+	}
+
+	// Extract permission and role from options (REQUIRED)
+	if plan.Options == nil {
+		return "", fmt.Errorf("options with 'permission' and 'role' required for REVOKE")
+	}
+
+	permission, ok := plan.Options["permission"].(string)
+	if !ok || permission == "" {
+		return "", fmt.Errorf("'permission' required in options for REVOKE")
+	}
+
+	role, ok := plan.Options["role"].(string)
+	if !ok || role == "" {
+		return "", fmt.Errorf("'role' required in options for REVOKE")
+	}
+
+	return fmt.Sprintf("REVOKE %s ON KEYSPACE %s FROM %s", permission, plan.Keyspace, role), nil
+}
+
+// renderTruncate generates a TRUNCATE statement
+func renderTruncate(plan *AIResult) (string, error) {
+	if plan.Keyspace == "" || plan.Table == "" {
+		return "", fmt.Errorf("keyspace and table required for TRUNCATE")
+	}
+
+	return fmt.Sprintf("TRUNCATE %s.%s", plan.Keyspace, plan.Table), nil
 }

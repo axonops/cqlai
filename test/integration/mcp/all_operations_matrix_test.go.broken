@@ -123,13 +123,13 @@ func TestComplete76Operations_ReadonlyMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	cmd := startCQLAIWithMCP(t, "testdata/readonly.json")
-	defer stopCQLAI(cmd)
+	ctx := startMCPWithMode(t, "readonly", "", "", false)
+	defer stopMCP(ctx)
 	time.Sleep(2 * time.Second)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, "submit_query_plan", map[string]any{
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
@@ -156,13 +156,13 @@ func TestComplete76Operations_ReadwriteMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	cmd := startCQLAIWithMCP(t, "testdata/readwrite.json")
-	defer stopCQLAI(cmd)
+	ctx := startMCPWithMode(t, "readwrite", "", "", false)
+	defer stopMCP(ctx)
 	time.Sleep(2 * time.Second)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, "submit_query_plan", map[string]any{
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
@@ -185,14 +185,14 @@ func TestComplete76Operations_DBAMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	cmd := startCQLAIWithMCP(t, "testdata/dba.json")
-	defer stopCQLAI(cmd)
+	ctx := startMCPWithMode(t, "dba", "", "", false)
+	defer stopMCP(ctx)
 	time.Sleep(2 * time.Second)
 
 	// In DBA mode, ALL operations should be allowed
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, "submit_query_plan", map[string]any{
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
@@ -209,13 +209,13 @@ func TestComplete76Operations_ConfirmALL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	cmd := startCQLAIWithMCP(t, "testdata/dba_confirm_all.json")
-	defer stopCQLAI(cmd)
+	ctx := startMCPWithMode(t, "dba", "ALL", "", false)
+	defer stopMCP(ctx)
 	time.Sleep(2 * time.Second)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, "submit_query_plan", map[string]any{
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
@@ -239,14 +239,14 @@ func TestComplete76Operations_SkipALL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	cmd := startCQLAIWithMCP(t, "testdata/finegrained_skip_all.json")
-	defer stopCQLAI(cmd)
+	ctx := startMCPWithMode(t, "dba", "", "ALL", false)
+	defer stopMCP(ctx)
 	time.Sleep(2 * time.Second)
 
 	// With skip ALL, everything should work without confirmation
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, "submit_query_plan", map[string]any{
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",

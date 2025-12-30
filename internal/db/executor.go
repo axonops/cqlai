@@ -326,10 +326,13 @@ func (s *Session) ExecuteWithMetadata(query string) QueryExecutionResult {
 			iter.Close()
 			result = "No results"
 		} else {
-			// Use existing select query logic (simplified here)
-			// For now, just get row count
+			// Use MapScan to iterate through rows safely (handles NULLs and arbitrary columns)
 			rowCount := 0
-			for iter.Scan() {
+			for {
+				rowMap := make(map[string]interface{})
+				if !iter.MapScan(rowMap) {
+					break
+				}
 				rowCount++
 			}
 

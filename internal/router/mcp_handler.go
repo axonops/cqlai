@@ -103,7 +103,25 @@ func (h *MCPHandler) handleStart(args []string) string {
 	// Create default config
 	config := ai.DefaultMCPConfig()
 
-	// Parse options
+	// Check for --config-file first (loads JSON config)
+	var configFile string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--config-file" && i+1 < len(args) {
+			configFile = args[i+1]
+			break
+		}
+	}
+
+	// Load JSON config if specified
+	if configFile != "" {
+		loadedConfig, err := ai.LoadMCPConfigFromFile(configFile)
+		if err != nil {
+			return fmt.Sprintf("Failed to load config file: %v", err)
+		}
+		config = loadedConfig
+	}
+
+	// Parse options (these override JSON config)
 	hasPresetMode := false
 	hasSkipConf := false
 	var confirmQueriesArg []string
