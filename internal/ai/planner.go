@@ -84,13 +84,9 @@ func RenderCQL(plan *AIResult) (string, error) {
 	case "DESC":
 		// DESC is an alias for DESCRIBE
 		return renderDescribe(plan)
-	case "SHOW", "CONSISTENCY", "PAGING", "TRACING", "EXPAND", "OUTPUT", "CAPTURE", "SAVE", "AUTOFETCH":
-		// SHOW and SESSION operations - these are cqlsh shell commands, not valid CQL
-		return "", fmt.Errorf("%s is a shell command, not CQL - cannot be executed via query builder", plan.Operation)
-	case "COPY", "SOURCE":
-		// FILE operations - special handling required
-		return "", fmt.Errorf("%s requires special handling - cannot be executed via query builder", plan.Operation)
 	default:
+		// Note: SESSION and FILE operations (SHOW, CONSISTENCY, COPY, etc.) are handled
+		// at the MCP layer as raw shell commands, they don't go through RenderCQL
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}
 }

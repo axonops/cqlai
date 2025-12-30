@@ -574,17 +574,30 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameters: %v", err)), nil
 	}
 
-	// Convert to AIResult (structured query plan)
-	aiResult := params.ToQueryPlan()
+	// Check if this is a SESSION or FILE command that should be executed directly
+	// These are shell commands that CQLAI already handles, not CQL
+	opUpper := strings.ToUpper(params.Operation)
+	var query string
 
-	// Generate CQL using the existing query builder (same as .ai feature uses)
-	query, err := RenderCQL(aiResult)
-	if err != nil {
-		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to generate CQL: %v", err)), nil
+	// Classify to check category
+	tempClassify := ClassifyOperation(opUpper)
+
+	if tempClassify.Category == "SESSION" || tempClassify.Category == "FILE" {
+		// Shell commands - execute directly using existing CQLAI infrastructure
+		// Build the raw command string and execute via session
+		query = buildRawCommand(params)
+		logger.DebugfToFile("MCP", "Shell command detected: %s (category: %s), executing directly", query, tempClassify.Category)
+	} else {
+		// Regular CQL - use query builder
+		aiResult := params.ToQueryPlan()
+		var err error
+		query, err = RenderCQL(aiResult)
+		if err != nil {
+			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to generate CQL: %v", err)), nil
+		}
+		logger.DebugfToFile("MCP", "submit_query_plan: operation=%s, table=%s, query=%s", params.Operation, params.Table, query)
 	}
-
-	logger.DebugfToFile("MCP", "submit_query_plan: operation=%s, table=%s, query=%s", params.Operation, params.Table, query)
 
 	// Classify the query for danger level
 	classification := ClassifyQuery(query)
@@ -668,6 +681,97 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	// Return as JSON
 	jsonData, _ := json.Marshal(response)
 	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// buildRawCommand builds a raw command string for shell commands (SESSION/FILE operations)
+// These commands are executed directly by CQLAI's existing infrastructure
+func buildRawCommand(params SubmitQueryPlanParams) string {
+	opUpper := strings.ToUpper(params.Operation)
+
+	// Handle shell commands that CQLAI already knows how to execute
+	switch opUpper {
+	case "SHOW":
+		// SHOW VERSION, SHOW HOST, SHOW SESSION
+		if params.Options != nil {
+			if showType, ok := params.Options["show_type"].(string); ok {
+				return fmt.Sprintf("SHOW %s", strings.ToUpper(showType))
+			}
+		}
+		return "SHOW VERSION" // Default
+
+	case "CONSISTENCY":
+		// CONSISTENCY [level]
+		if params.Options != nil {
+			if level, ok := params.Options["level"].(string); ok {
+				return fmt.Sprintf("CONSISTENCY %s", strings.ToUpper(level))
+			}
+		}
+		return "CONSISTENCY" // Show current
+
+	case "TRACING":
+		// TRACING [ON|OFF]
+		if params.Options != nil {
+			if state, ok := params.Options["state"].(string); ok {
+				return fmt.Sprintf("TRACING %s", strings.ToUpper(state))
+			}
+		}
+		return "TRACING" // Toggle
+
+	case "PAGING":
+		// PAGING [ON|OFF|page_size]
+		if params.Options != nil {
+			if state, ok := params.Options["state"].(string); ok {
+				return fmt.Sprintf("PAGING %s", state)
+			}
+		}
+		return "PAGING" // Show current
+
+	case "COPY":
+		// COPY table TO/FROM 'file'
+		direction := "TO"
+		if params.Options != nil {
+			if dir, ok := params.Options["direction"].(string); ok {
+				direction = strings.ToUpper(dir)
+			}
+		}
+
+		filePath := "/tmp/export.csv"
+		if params.Options != nil {
+			if fp, ok := params.Options["file_path"].(string); ok {
+				filePath = fp
+			}
+		}
+
+		tableName := params.Table
+		if params.Keyspace != "" {
+			tableName = fmt.Sprintf("%s.%s", params.Keyspace, params.Table)
+		}
+
+		return fmt.Sprintf("COPY %s %s '%s'", tableName, direction, filePath)
+
+	case "SOURCE":
+		// SOURCE 'file.cql'
+		filePath := ""
+		if params.Options != nil {
+			if fp, ok := params.Options["file_path"].(string); ok {
+				filePath = fp
+			}
+		}
+		return fmt.Sprintf("SOURCE '%s'", filePath)
+
+	case "EXPAND", "AUTOFETCH", "OUTPUT", "CAPTURE", "SAVE":
+		// Simple toggle commands
+		if params.Options != nil {
+			if state, ok := params.Options["state"].(string); ok {
+				return fmt.Sprintf("%s %s", opUpper, strings.ToUpper(state))
+			}
+		}
+		return opUpper // Toggle or show current
+
+	default:
+		// For any other shell command, just return the operation name
+		return params.Operation
+	}
 }
 
 // parseSubmitQueryPlanParams parses MCP argsMap into SubmitQueryPlanParams structure
