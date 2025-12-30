@@ -372,7 +372,12 @@ func (s *MCPServer) registerTools() error {
 	s.mcpServer.AddTool(configTool, configHandler)
 	logger.DebugfToFile("MCP", "Registered MCP-specific tool: update_mcp_permissions")
 
-	logger.DebugfToFile("MCP", "Registered %d tools", len(toolDefs)+1)
+	// Register confirmation lifecycle tools
+	if err := s.registerConfirmationTools(); err != nil {
+		return fmt.Errorf("failed to register confirmation tools: %w", err)
+	}
+
+	logger.DebugfToFile("MCP", "Registered %d tools total", len(toolDefs)+1+7)
 
 	return nil
 }
@@ -810,4 +815,36 @@ func (s *MCPServer) GetConfirmationRequest(requestID string) (*ConfirmationReque
 		return nil, fmt.Errorf("confirmation queue not initialized")
 	}
 	return s.confirmationQueue.GetRequest(requestID)
+}
+
+// CancelRequest cancels a confirmation request
+func (s *MCPServer) CancelRequest(requestID, cancelledBy, reason string) error {
+	if s.confirmationQueue == nil {
+		return fmt.Errorf("confirmation queue not initialized")
+	}
+	return s.confirmationQueue.CancelRequest(requestID, cancelledBy, reason)
+}
+
+// GetApprovedConfirmations returns all approved confirmation requests
+func (s *MCPServer) GetApprovedConfirmations() []*ConfirmationRequest {
+	if s.confirmationQueue == nil {
+		return nil
+	}
+	return s.confirmationQueue.GetApprovedConfirmations()
+}
+
+// GetDeniedConfirmations returns all denied confirmation requests
+func (s *MCPServer) GetDeniedConfirmations() []*ConfirmationRequest {
+	if s.confirmationQueue == nil {
+		return nil
+	}
+	return s.confirmationQueue.GetDeniedConfirmations()
+}
+
+// GetCancelledConfirmations returns all cancelled confirmation requests
+func (s *MCPServer) GetCancelledConfirmations() []*ConfirmationRequest {
+	if s.confirmationQueue == nil {
+		return nil
+	}
+	return s.confirmationQueue.GetCancelledConfirmations()
 }

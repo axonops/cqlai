@@ -99,6 +99,25 @@ func (q *ConfirmationQueue) DenyRequest(requestID, deniedBy, reason string) erro
 	return nil
 }
 
+// CancelRequest marks a request as cancelled
+func (q *ConfirmationQueue) CancelRequest(requestID, cancelledBy, reason string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	req, exists := q.requests[requestID]
+	if !exists {
+		return fmt.Errorf("confirmation request %s not found", requestID)
+	}
+
+	// Can cancel in any state (PENDING, CONFIRMED, DENIED, TIMEOUT)
+	req.Status = "CANCELLED"
+	req.UserConfirmed = false
+	req.ConfirmedBy = cancelledBy
+	req.ConfirmedAt = time.Now()
+
+	return nil
+}
+
 // GetRequest retrieves a confirmation request by ID
 func (q *ConfirmationQueue) GetRequest(requestID string) (*ConfirmationRequest, error) {
 	q.mu.RLock()
@@ -125,6 +144,51 @@ func (q *ConfirmationQueue) GetPendingConfirmations() []*ConfirmationRequest {
 	}
 
 	return pending
+}
+
+// GetApprovedConfirmations returns all confirmed requests
+func (q *ConfirmationQueue) GetApprovedConfirmations() []*ConfirmationRequest {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	approved := []*ConfirmationRequest{}
+	for _, req := range q.requests {
+		if req.Status == "CONFIRMED" {
+			approved = append(approved, req)
+		}
+	}
+
+	return approved
+}
+
+// GetDeniedConfirmations returns all denied requests
+func (q *ConfirmationQueue) GetDeniedConfirmations() []*ConfirmationRequest {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	denied := []*ConfirmationRequest{}
+	for _, req := range q.requests {
+		if req.Status == "DENIED" {
+			denied = append(denied, req)
+		}
+	}
+
+	return denied
+}
+
+// GetCancelledConfirmations returns all cancelled requests
+func (q *ConfirmationQueue) GetCancelledConfirmations() []*ConfirmationRequest {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	cancelled := []*ConfirmationRequest{}
+	for _, req := range q.requests {
+		if req.Status == "CANCELLED" {
+			cancelled = append(cancelled, req)
+		}
+	}
+
+	return cancelled
 }
 
 // CleanupExpired marks expired requests as timed out
@@ -183,6 +247,8 @@ func (q *ConfirmationQueue) WaitForConfirmation(requestID string, pollInterval t
 			return true, nil
 		case "DENIED":
 			return false, fmt.Errorf("user denied the operation")
+		case "CANCELLED":
+			return false, fmt.Errorf("confirmation request was cancelled")
 		case "TIMEOUT":
 			return false, fmt.Errorf("confirmation request timed out")
 		case "PENDING":
