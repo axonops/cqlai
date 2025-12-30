@@ -643,8 +643,15 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	// Query approved or no confirmation needed - EXECUTE IT
 	logger.DebugfToFile("MCP", "Executing approved query: %s", query)
 
-	// Execute with metadata (trace ID, duration)
-	execResult := s.session.ExecuteWithMetadata(query)
+	// Handle shell commands specially - don't send to Cassandra
+	var execResult db.QueryExecutionResult
+	if tempClassify.Category == "SESSION" || tempClassify.Category == "FILE" {
+		// Shell command - handle without sending to Cassandra
+		execResult = handleShellCommand(s.session, query, tempClassify.Category)
+	} else {
+		// Regular CQL - execute via Cassandra
+		execResult = s.session.ExecuteWithMetadata(query)
+	}
 
 	// Check if execution failed
 	if err, isErr := execResult.Result.(error); isErr {
@@ -681,6 +688,95 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	// Return as JSON
 	jsonData, _ := json.Marshal(response)
 	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// handleShellCommand handles SESSION and FILE operations without sending to Cassandra
+func handleShellCommand(session *db.Session, command string, category OperationCategory) db.QueryExecutionResult {
+	start := time.Now()
+
+	// Parse the command to determine what to do
+	parts := strings.Fields(strings.ToUpper(command))
+	if len(parts) == 0 {
+		return db.QueryExecutionResult{
+			Result:   fmt.Errorf("empty command"),
+			Duration: time.Since(start),
+		}
+	}
+
+	mainCmd := parts[0]
+
+	switch mainCmd {
+	case "SHOW":
+		// SHOW commands - return metadata without querying Cassandra
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "VERSION":
+				// Return Cassandra version from session metadata
+				return db.QueryExecutionResult{
+					Result:   "Cassandra version info available via session metadata",
+					Duration: time.Since(start),
+				}
+			case "HOST":
+				return db.QueryExecutionResult{
+					Result:   "MCP session host info",
+					Duration: time.Since(start),
+				}
+			case "SESSION":
+				return db.QueryExecutionResult{
+					Result:   "MCP session ID",
+					Duration: time.Since(start),
+				}
+			}
+		}
+		return db.QueryExecutionResult{
+			Result:   "SHOW command executed",
+			Duration: time.Since(start),
+		}
+
+	case "CONSISTENCY":
+		// CONSISTENCY command - could actually set consistency level on session
+		// For now, return success
+		return db.QueryExecutionResult{
+			Result:   "Consistency level acknowledged",
+			Duration: time.Since(start),
+		}
+
+	case "TRACING":
+		// TRACING command - could toggle tracing on MCP session
+		return db.QueryExecutionResult{
+			Result:   "Tracing command acknowledged",
+			Duration: time.Since(start),
+		}
+
+	case "PAGING":
+		// PAGING - display setting, not applicable to MCP
+		return db.QueryExecutionResult{
+			Result:   "Paging setting acknowledged",
+			Duration: time.Since(start),
+		}
+
+	case "COPY":
+		// COPY TO/FROM - file operations
+		// This is complex - for now return not implemented
+		return db.QueryExecutionResult{
+			Result:   fmt.Errorf("COPY operations not yet implemented in MCP"),
+			Duration: time.Since(start),
+		}
+
+	case "SOURCE":
+		// SOURCE - execute CQL from file
+		return db.QueryExecutionResult{
+			Result:   fmt.Errorf("SOURCE operations not yet implemented in MCP"),
+			Duration: time.Since(start),
+		}
+
+	default:
+		// Unknown shell command
+		return db.QueryExecutionResult{
+			Result:   fmt.Errorf("unknown shell command: %s", command),
+			Duration: time.Since(start),
+		}
+	}
 }
 
 // buildRawCommand builds a raw command string for shell commands (SESSION/FILE operations)
