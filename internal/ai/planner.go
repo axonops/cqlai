@@ -77,6 +77,8 @@ func RenderCQL(plan *AIResult) (string, error) {
 		return renderAlter(plan)
 	case "LIST":
 		return renderList(plan)
+	case "SHOW":
+		return renderShow(plan)
 	case "USE":
 		return renderUse(plan)
 	case "BATCH":
@@ -84,9 +86,15 @@ func RenderCQL(plan *AIResult) (string, error) {
 	case "DESC":
 		// DESC is an alias for DESCRIBE
 		return renderDescribe(plan)
+	case "CONSISTENCY", "PAGING", "TRACING", "COPY", "SOURCE":
+		// SESSION and FILE operations - handled by buildRawCommand at MCP layer
+		// If we get here, it means they weren't intercepted at MCP layer
+		// Build the command string directly
+		return buildRawCommandForPlanner(plan)
+	case "EXPAND", "OUTPUT", "CAPTURE", "SAVE", "AUTOFETCH":
+		// Display-only commands - not applicable to programmatic use
+		return "", fmt.Errorf("%s is a display command not applicable to programmatic use", plan.Operation)
 	default:
-		// Note: SESSION and FILE operations (SHOW, CONSISTENCY, COPY, etc.) are handled
-		// at the MCP layer as raw shell commands, they don't go through RenderCQL
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}
 }
@@ -955,6 +963,71 @@ func renderAlterUser(plan *AIResult) (string, error) {
 
 	sb.WriteString(strings.Join(withClauses, " AND "))
 	return sb.String(), nil
+}
+
+// buildRawCommandForPlanner converts AIResult to raw shell command for SESSION/FILE operations
+func buildRawCommandForPlanner(plan *AIResult) (string, error) {
+	opUpper := strings.ToUpper(plan.Operation)
+
+	switch opUpper {
+	case "CONSISTENCY":
+		if plan.Options != nil {
+			if level, ok := plan.Options["level"].(string); ok {
+				return fmt.Sprintf("CONSISTENCY %s", strings.ToUpper(level)), nil
+			}
+		}
+		return "CONSISTENCY", nil
+
+	case "PAGING":
+		if plan.Options != nil {
+			if state, ok := plan.Options["state"].(string); ok {
+				return fmt.Sprintf("PAGING %s", state), nil
+			}
+		}
+		return "PAGING", nil
+
+	case "TRACING":
+		if plan.Options != nil {
+			if state, ok := plan.Options["state"].(string); ok {
+				return fmt.Sprintf("TRACING %s", strings.ToUpper(state)), nil
+			}
+		}
+		return "TRACING", nil
+
+	case "COPY":
+		direction := "TO"
+		if plan.Options != nil {
+			if dir, ok := plan.Options["direction"].(string); ok {
+				direction = strings.ToUpper(dir)
+			}
+		}
+
+		filePath := "/tmp/export.csv"
+		if plan.Options != nil {
+			if fp, ok := plan.Options["file_path"].(string); ok {
+				filePath = fp
+			}
+		}
+
+		tableName := plan.Table
+		if plan.Keyspace != "" {
+			tableName = fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table)
+		}
+
+		return fmt.Sprintf("COPY %s %s '%s'", tableName, direction, filePath), nil
+
+	case "SOURCE":
+		filePath := ""
+		if plan.Options != nil {
+			if fp, ok := plan.Options["file_path"].(string); ok {
+				filePath = fp
+			}
+		}
+		return fmt.Sprintf("SOURCE '%s'", filePath), nil
+
+	default:
+		return plan.Operation, nil
+	}
 }
 
 // renderList generates LIST statements (ROLES, USERS, PERMISSIONS)
