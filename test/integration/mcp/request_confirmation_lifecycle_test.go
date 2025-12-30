@@ -239,6 +239,9 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_lifecycle",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",

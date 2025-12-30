@@ -47,6 +47,9 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_skipdql",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",
@@ -114,6 +117,9 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_dqlml",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",
@@ -178,6 +184,9 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_dmlddl",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
 			"schema": map[string]any{
 				"id":        "uuid PRIMARY KEY",
 				"timestamp": "timestamp",
@@ -258,6 +267,9 @@ func TestFineGrained_SkipALL(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipall",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
 			"schema": map[string]any{
 				"id":   "uuid PRIMARY KEY",
 				"data": "text",
@@ -348,6 +360,9 @@ func TestFineGrained_SkipNone(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipnone",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
 			"schema": map[string]any{
 				"id":   "uuid PRIMARY KEY",
 				"data": "text",

@@ -281,9 +281,21 @@ func renderCreate(plan *AIResult) (string, error) {
 
 	var sb strings.Builder
 
+	// Check for IF NOT EXISTS option
+	ifNotExists := false
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	// Handle CREATE KEYSPACE
 	if plan.Table == "" && plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("CREATE KEYSPACE %s", plan.Keyspace))
+		if ifNotExists {
+			sb.WriteString(fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s", plan.Keyspace))
+		} else {
+			sb.WriteString(fmt.Sprintf("CREATE KEYSPACE %s", plan.Keyspace))
+		}
 
 		// Add WITH REPLICATION clause if options are provided
 		if plan.Options != nil {
@@ -307,7 +319,11 @@ func renderCreate(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("table or keyspace name required for CREATE")
 	}
 
-	sb.WriteString("CREATE TABLE ")
+	if ifNotExists {
+		sb.WriteString("CREATE TABLE IF NOT EXISTS ")
+	} else {
+		sb.WriteString("CREATE TABLE ")
+	}
 
 	if plan.Keyspace != "" {
 		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))

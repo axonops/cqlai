@@ -169,6 +169,11 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000060",
+				"name":  "Test User",
+				"email": "test@example.com",
+			},
 		})
 		assertIsError(t, resp, "INSERT should be blocked in readonly")
 		assertContains(t, resp, "not allowed")
@@ -190,6 +195,11 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000061",
+				"name":  "Test User 2",
+				"email": "test2@example.com",
+			},
 		})
 		assertNotError(t, resp, "INSERT should be allowed after mode change")
 	})
@@ -200,6 +210,14 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
+			"schema": map[string]any{
+				"id":        "uuid PRIMARY KEY",
+				"timestamp": "timestamp",
+				"message":   "text",
+			},
 		})
 		assertIsError(t, resp, "CREATE should be blocked in readwrite")
 		assertContains(t, resp, "dba") // Should suggest dba mode
@@ -220,6 +238,14 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
+			"options": map[string]any{
+				"if_not_exists": true,
+			},
+			"schema": map[string]any{
+				"id":        "uuid PRIMARY KEY",
+				"timestamp": "timestamp",
+				"message":   "text",
+			},
 		})
 		assertNotError(t, resp, "CREATE should be allowed in dba mode")
 	})
@@ -239,6 +265,10 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"options": map[string]any{
+				"permission": "SELECT",
+				"role":       "app_readonly",
+			},
 		})
 		assertIsError(t, resp, "GRANT should require confirmation")
 		assertContains(t, resp, "requires")
@@ -270,6 +300,10 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
+			"options": map[string]any{
+				"permission": "SELECT",
+				"role":       "app_readonly",
+			},
 		})
 		assertNotError(t, resp, "GRANT should work without confirmation after disable")
 	})
@@ -449,11 +483,40 @@ func TestReadwriteMode_AllOperations(t *testing.T) {
 
 	for _, op := range allOperationsMatrix {
 		t.Run(op.operation, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			params := map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
-			})
+			}
+
+			// Add required parameters based on operation
+			switch op.operation {
+			case "INSERT":
+				params["values"] = map[string]any{
+					"id":    "00000000-0000-0000-0000-000000000062",
+					"name":  "Test User",
+					"email": "test@example.com",
+				}
+			case "UPDATE":
+				params["values"] = map[string]any{"name": "Updated Name"}
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "=",
+						"value":    "00000000-0000-0000-0000-000000000062",
+					},
+				}
+			case "DELETE":
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "=",
+						"value":    "00000000-0000-0000-0000-000000000062",
+					},
+				}
+			}
+
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 
 			if op.category == "DQL" || op.category == "DML" {
 				assertNotError(t, resp, op.operation+" should be allowed")
@@ -547,11 +610,40 @@ func TestFineGrainedMode(t *testing.T) {
 
 		// All operations should be allowed without confirmation
 		for _, op := range allOperationsMatrix {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			params := map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
-			})
+			}
+
+			// Add required parameters based on operation
+			switch op.operation {
+			case "INSERT":
+				params["values"] = map[string]any{
+					"id":    "00000000-0000-0000-0000-000000000070",
+					"name":  "Test User",
+					"email": "test@example.com",
+				}
+			case "UPDATE":
+				params["values"] = map[string]any{"name": "Updated Name"}
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "=",
+						"value":    "00000000-0000-0000-0000-000000000070",
+					},
+				}
+			case "DELETE":
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "=",
+						"value":    "00000000-0000-0000-0000-000000000070",
+					},
+				}
+			}
+
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 			assertNotError(t, resp, op.operation+" should be allowed with skip ALL")
 		}
 	})
@@ -565,11 +657,40 @@ func TestFineGrainedMode(t *testing.T) {
 
 		// All operations should require confirmation (except SESSION)
 		for _, op := range allOperationsMatrix {
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+			params := map[string]any{
 				"operation": op.operation,
 				"keyspace":  "test_mcp",
 				"table":     "users",
-			})
+			}
+
+			// Add required parameters based on operation
+			switch op.operation {
+			case "INSERT":
+				params["values"] = map[string]any{
+					"id":    "00000000-0000-0000-0000-000000000071",
+					"name":  "Test User",
+					"email": "test@example.com",
+				}
+			case "UPDATE":
+				params["values"] = map[string]any{"name": "Updated Name"}
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "=",
+						"value":    "00000000-0000-0000-0000-000000000071",
+					},
+				}
+			case "DELETE":
+				params["where"] = []any{
+					map[string]any{
+						"column":   "id",
+						"operator": "=",
+						"value":    "00000000-0000-0000-0000-000000000071",
+					},
+				}
+			}
+
+			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 			assertIsError(t, resp, op.operation+" should require confirmation with skip none")
 			text := extractText(t, resp)
 			assert.Contains(t, text, "requires")

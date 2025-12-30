@@ -92,6 +92,13 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 	case "CREATE TABLE", "CREATE COLUMNFAMILY", "CREATE", "CREATE KEYSPACE", "CREATE INDEX", "CREATE CUSTOM INDEX",
 		"CREATE MATERIALIZED VIEW", "CREATE TYPE", "CREATE FUNCTION", "CREATE OR REPLACE FUNCTION",
 		"CREATE AGGREGATE", "CREATE OR REPLACE AGGREGATE", "CREATE TRIGGER", "CREATE ROLE", "CREATE USER":
+		// Add IF NOT EXISTS to prevent conflicts when tests run multiple times
+		if params["options"] == nil {
+			params["options"] = map[string]any{}
+		}
+		if opts, ok := params["options"].(map[string]any); ok {
+			opts["if_not_exists"] = true
+		}
 		params["schema"] = map[string]any{
 			"id":   "uuid PRIMARY KEY",
 			"name": "text",
