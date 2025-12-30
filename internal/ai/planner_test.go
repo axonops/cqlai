@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -421,6 +422,58 @@ func TestRenderRevokePermissionGranularity(t *testing.T) {
 			got, err := RenderCQL(tt.plan)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestRenderGrantInvalidPermission tests that invalid permissions are rejected
+func TestRenderGrantInvalidPermission(t *testing.T) {
+	tests := []struct {
+		name       string
+		permission string
+	}{
+		{"invalid permission READ", "READ"},
+		{"invalid permission WRITE", "WRITE"},
+		{"invalid permission ADMIN", "ADMIN"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := &AIResult{
+				Operation: "GRANT",
+				Keyspace:  "test_ks",
+				Options: map[string]any{
+					"permission": tt.permission,
+					"role":       "test_role",
+				},
+			}
+
+			_, err := RenderCQL(plan)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid permission")
+		})
+	}
+}
+
+// TestRenderGrantAllPermissionTypes tests all valid Cassandra permissions
+func TestRenderGrantAllPermissionTypes(t *testing.T) {
+	permissions := []string{"CREATE", "ALTER", "DROP", "SELECT", "MODIFY", "AUTHORIZE", "DESCRIBE", "EXECUTE", "UNMASK", "SELECT_MASKED", "ALL"}
+
+	for _, perm := range permissions {
+		t.Run("GRANT_"+perm, func(t *testing.T) {
+			plan := &AIResult{
+				Operation: "GRANT",
+				Keyspace:  "test_ks",
+				Options: map[string]any{
+					"permission": perm,
+					"role":       "test_role",
+				},
+			}
+
+			cql, err := RenderCQL(plan)
+			assert.NoError(t, err)
+			assert.Contains(t, cql, "GRANT")
+			assert.Contains(t, cql, strings.ToUpper(perm))
 		})
 	}
 }

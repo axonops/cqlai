@@ -485,6 +485,20 @@ func renderGrant(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'permission' required in options for GRANT (e.g., SELECT, MODIFY, ALL)")
 	}
 
+	// Validate permission is one of the Cassandra-supported types
+	validPermissions := []string{"CREATE", "ALTER", "DROP", "SELECT", "MODIFY", "AUTHORIZE", "DESCRIBE", "EXECUTE", "UNMASK", "SELECT_MASKED", "ALL", "ALL PERMISSIONS"}
+	permUpper := strings.ToUpper(permission)
+	isValid := false
+	for _, vp := range validPermissions {
+		if permUpper == vp {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		return "", fmt.Errorf("invalid permission '%s' - must be one of: CREATE, ALTER, DROP, SELECT, MODIFY, AUTHORIZE, DESCRIBE, EXECUTE, UNMASK, SELECT_MASKED, ALL", permission)
+	}
+
 	role, ok := plan.Options["role"].(string)
 	if !ok || role == "" {
 		return "", fmt.Errorf("'role' required in options for GRANT")
@@ -584,6 +598,20 @@ func renderRevoke(plan *AIResult) (string, error) {
 	permission, ok := plan.Options["permission"].(string)
 	if !ok || permission == "" {
 		return "", fmt.Errorf("'permission' required in options for REVOKE")
+	}
+
+	// Validate permission is one of the Cassandra-supported types
+	validPermissions := []string{"CREATE", "ALTER", "DROP", "SELECT", "MODIFY", "AUTHORIZE", "DESCRIBE", "EXECUTE", "UNMASK", "SELECT_MASKED", "ALL", "ALL PERMISSIONS"}
+	permUpper := strings.ToUpper(permission)
+	isValid := false
+	for _, vp := range validPermissions {
+		if permUpper == vp {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		return "", fmt.Errorf("invalid permission '%s' - must be one of: CREATE, ALTER, DROP, SELECT, MODIFY, AUTHORIZE, DESCRIBE, EXECUTE, UNMASK, SELECT_MASKED, ALL", permission)
 	}
 
 	role, ok := plan.Options["role"].(string)
