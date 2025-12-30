@@ -211,8 +211,17 @@ func GetCommonToolDefinitions() []ToolDefinition {
 			Parameters: map[string]any{
 				"operation": map[string]any{
 					"type":        "string",
-					"description": "The CQL operation: SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, or DESCRIBE",
-					"enum":        []string{"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "DESCRIBE"},
+					"description": "The CQL operation type",
+					"enum": []string{
+						// DQL - Data Query Language
+						"SELECT", "DESCRIBE", "LIST", "SHOW",
+						// DML - Data Manipulation Language
+						"INSERT", "UPDATE", "DELETE", "BATCH",
+						// DDL - Data Definition Language
+						"CREATE", "ALTER", "DROP", "TRUNCATE", "USE",
+						// DCL - Data Control Language
+						"GRANT", "REVOKE",
+					},
 				},
 				"keyspace": map[string]any{
 					"type":        "string",
@@ -261,6 +270,14 @@ func GetCommonToolDefinitions() []ToolDefinition {
 				"allow_filtering": map[string]any{
 					"type":        "boolean",
 					"description": "Whether to use ALLOW FILTERING",
+				},
+				"schema": map[string]any{
+					"type":        "object",
+					"description": "Column definitions for CREATE TABLE (key: column name, value: column type with constraints)",
+				},
+				"options": map[string]any{
+					"type":        "object",
+					"description": "Operation-specific parameters (e.g., for GRANT: {permission: 'SELECT', role: 'app_readonly'}, for CREATE INDEX: {index_name: 'idx', column: 'email'}, for ALTER: {action: 'ADD', column_name: 'age', column_type: 'int'})",
 				},
 				"confidence": map[string]any{
 					"type":        "number",
