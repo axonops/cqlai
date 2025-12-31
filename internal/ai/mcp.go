@@ -77,6 +77,9 @@ type MCPServerConfig struct {
 	// Runtime permission configuration control
 	DisableRuntimePermissionChanges bool // If false, update_mcp_permissions tool is disabled
 
+	// MCP request approval control (NOT runtime changeable - startup only)
+	AllowMCPRequestApproval bool // If true, allows confirm_request MCP tool to approve dangerous queries (default: false)
+
 	// Thread safety for runtime config changes
 	mu sync.RWMutex
 }
@@ -104,6 +107,9 @@ func DefaultMCPConfig() *MCPServerConfig {
 
 		// Allow runtime permission changes by default (false = not disabled = allowed)
 		DisableRuntimePermissionChanges: false,
+
+		// Disallow MCP request approval by default (security: requires explicit opt-in)
+		AllowMCPRequestApproval: false,
 	}
 }
 

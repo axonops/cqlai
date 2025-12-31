@@ -94,6 +94,11 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.DisableRuntimePermissionChanges = lockdown
 	}
 
+	// MCP request approval (security: opt-in only, not runtime changeable)
+	if allowApproval, ok := jsonConfig["allow_mcp_request_approval"].(bool); ok {
+		config.AllowMCPRequestApproval = allowApproval
+	}
+
 	// Timeout
 	if timeout, ok := jsonConfig["confirmation_timeout_seconds"].(float64); ok && timeout > 0 {
 		config.ConfirmationTimeout = time.Duration(timeout) * time.Second

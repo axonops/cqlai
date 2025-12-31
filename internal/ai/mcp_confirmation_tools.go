@@ -26,6 +26,8 @@ func (s *MCPServer) registerConfirmationTools() error {
 		{s.createGetDeniedConfirmationsTool(), s.createGetDeniedConfirmationsHandler()},
 		{s.createGetCancelledConfirmationsTool(), s.createGetCancelledConfirmationsHandler()},
 		{s.createGetConfirmationStateTool(), s.createGetConfirmationStateHandler()},
+		{s.createConfirmRequestTool(), s.createConfirmRequestHandler()},
+		{s.createDenyRequestTool(), s.createDenyRequestHandler()},
 		{s.createCancelConfirmationTool(), s.createCancelConfirmationHandler()},
 		{s.createGetTraceDataTool(), s.createGetTraceDataHandler()},
 	}
@@ -225,6 +227,165 @@ func (s *MCPServer) createGetConfirmationStateHandler() server.ToolHandlerFunc {
 		result := formatSingleConfirmation(req)
 		s.metrics.RecordToolCall("get_confirmation_state", true, time.Since(startTime))
 		return mcp.NewToolResultText(result), nil
+	}
+}
+
+// confirm_request tool - Approves dangerous queries (requires user_confirmed AND allow_mcp_request_approval)
+func (s *MCPServer) createConfirmRequestTool() mcp.Tool {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"request_id": map[string]any{
+				"type":        "string",
+				"description": "The confirmation request ID to approve (e.g., req_001)",
+			},
+			"user_confirmed": map[string]any{
+				"type":        "boolean",
+				"description": "REQUIRED: Must be true to indicate you have asked the user and they confirmed. Claude cannot approve dangerous operations without explicit user consent.",
+			},
+		},
+		"required": []string{"request_id", "user_confirmed"},
+	}
+	schemaJSON, _ := json.Marshal(schema)
+	return mcp.NewToolWithRawSchema(
+		"confirm_request",
+		"Approve a dangerous query that requires confirmation. CRITICAL: You MUST set user_confirmed=true AND you MUST have explicitly asked the user for approval in your prompt. Never approve dangerous operations without user consent. Note: This tool is only available if allow_mcp_request_approval is enabled in config.",
+		schemaJSON,
+	)
+}
+
+func (s *MCPServer) createConfirmRequestHandler() server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		startTime := time.Now()
+
+		// Security check: Only allow if explicitly enabled in config
+		if !s.config.AllowMCPRequestApproval {
+			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("confirm_request tool is disabled. Set allow_mcp_request_approval=true in MCP config to enable (security setting)."), nil
+		}
+
+		argsMap := request.GetArguments()
+
+		requestID, ok := argsMap["request_id"].(string)
+		if !ok {
+			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("Missing or invalid request_id parameter"), nil
+		}
+
+		userConfirmed, ok := argsMap["user_confirmed"].(bool)
+		if !ok {
+			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("Missing or invalid user_confirmed parameter - must be boolean"), nil
+		}
+
+		if !userConfirmed {
+			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("Cannot confirm request: user_confirmed must be true. You must ask the user for explicit approval before confirming dangerous operations."), nil
+		}
+
+		err := s.ConfirmRequest(requestID, "claude")
+		if err != nil {
+			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to confirm request: %v", err)), nil
+		}
+
+		// Execute the confirmed query
+		if err := s.ExecuteConfirmedQuery(requestID); err != nil {
+			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Request confirmed but execution failed: %v", err)), nil
+		}
+
+		// Get updated request to show execution details
+		req, _ := s.GetConfirmationRequest(requestID)
+
+		result := map[string]any{
+			"status":      "confirmed_and_executed",
+			"request_id":  requestID,
+			"query":       req.Query,
+			"executed":    req.Executed,
+			"executed_at": req.ExecutedAt.Format("2006-01-02 15:04:05"),
+		}
+
+		if req.ExecutionTime > 0 {
+			result["execution_time_ms"] = req.ExecutionTime.Milliseconds()
+		}
+		if req.TraceID != nil {
+			result["trace_id"] = fmt.Sprintf("%x", req.TraceID)
+		}
+		if req.RowsAffected > 0 {
+			result["rows_affected"] = req.RowsAffected
+		}
+
+		s.metrics.RecordToolCall("confirm_request", true, time.Since(startTime))
+
+		jsonData, _ := json.Marshal(result)
+		return mcp.NewToolResultText(string(jsonData)), nil
+	}
+}
+
+// deny_request tool - Denies dangerous queries (always allowed - no security risk in denying)
+func (s *MCPServer) createDenyRequestTool() mcp.Tool {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"request_id": map[string]any{
+				"type":        "string",
+				"description": "The confirmation request ID to deny (e.g., req_001)",
+			},
+			"reason": map[string]any{
+				"type":        "string",
+				"description": "Reason for denying the request (e.g., 'User declined', 'Too risky')",
+			},
+			"user_confirmed": map[string]any{
+				"type":        "boolean",
+				"description": "REQUIRED: Must be true to indicate you have asked the user and they declined. Claude cannot deny without user interaction.",
+			},
+		},
+		"required": []string{"request_id", "user_confirmed"},
+	}
+	schemaJSON, _ := json.Marshal(schema)
+	return mcp.NewToolWithRawSchema(
+		"deny_request",
+		"Deny a dangerous query that requires confirmation. CRITICAL: You MUST set user_confirmed=true AND you MUST have explicitly asked the user, who declined. Provide a clear reason for the denial.",
+		schemaJSON,
+	)
+}
+
+func (s *MCPServer) createDenyRequestHandler() server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		startTime := time.Now()
+		argsMap := request.GetArguments()
+
+		requestID, ok := argsMap["request_id"].(string)
+		if !ok {
+			s.metrics.RecordToolCall("deny_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("Missing or invalid request_id parameter"), nil
+		}
+
+		userConfirmed, ok := argsMap["user_confirmed"].(bool)
+		if !ok {
+			s.metrics.RecordToolCall("deny_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("Missing or invalid user_confirmed parameter - must be boolean"), nil
+		}
+
+		if !userConfirmed {
+			s.metrics.RecordToolCall("deny_request", false, time.Since(startTime))
+			return mcp.NewToolResultError("Cannot deny request: user_confirmed must be true. You must ask the user before denying on their behalf."), nil
+		}
+
+		reason, _ := argsMap["reason"].(string)
+		if reason == "" {
+			reason = "User declined"
+		}
+
+		err := s.DenyRequest(requestID, "claude", reason)
+		if err != nil {
+			s.metrics.RecordToolCall("deny_request", false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to deny request: %v", err)), nil
+		}
+
+		s.metrics.RecordToolCall("deny_request", true, time.Since(startTime))
+		return mcp.NewToolResultText(fmt.Sprintf("Request %s denied. Reason: %s", requestID, reason)), nil
 	}
 }
 

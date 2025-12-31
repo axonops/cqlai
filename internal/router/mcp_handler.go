@@ -197,6 +197,9 @@ func (h *MCPHandler) handleStart(args []string) string {
 
 		case "--allow-runtime-permission-changes":
 			config.DisableRuntimePermissionChanges = false
+
+		case "--allow-mcp-request-approval":
+			config.AllowMCPRequestApproval = true
 		}
 	}
 
@@ -410,8 +413,14 @@ func (h *MCPHandler) handleConfirm(requestID string) string {
 		return fmt.Sprintf("Error: %v", err)
 	}
 
-	// Confirm the request (username would come from session, using "user" for now)
-	err = h.mcpServer.ConfirmRequest(requestID, "user")
+	// Confirm the request (use session username or "mcp_client" as identifier)
+	confirmedBy := "mcp_client"
+	if h.replSession != nil {
+		if username := h.replSession.Username(); username != "" {
+			confirmedBy = username
+		}
+	}
+	err = h.mcpServer.ConfirmRequest(requestID, confirmedBy)
 	if err != nil {
 		return fmt.Sprintf("Failed to confirm request: %v", err)
 	}
@@ -462,8 +471,14 @@ func (h *MCPHandler) handleDeny(requestID, reason string) string {
 		reason = "User denied"
 	}
 
-	// Deny the request (username would come from session, using "user" for now)
-	err = h.mcpServer.DenyRequest(requestID, "user", reason)
+	// Deny the request (use session username or "mcp_client" as identifier)
+	deniedBy := "mcp_client"
+	if h.replSession != nil {
+		if username := h.replSession.Username(); username != "" {
+			deniedBy = username
+		}
+	}
+	err = h.mcpServer.DenyRequest(requestID, deniedBy, reason)
 	if err != nil {
 		return fmt.Sprintf("Failed to deny request: %v", err)
 	}
