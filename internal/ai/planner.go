@@ -959,6 +959,23 @@ func renderAlterRole(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'role_name' required in options for ALTER ROLE")
 	}
 
+	// Check if this is ADD_IDENTITY or DROP_IDENTITY
+	if action, ok := plan.Options["action"].(string); ok {
+		actionUpper := strings.ToUpper(action)
+		if actionUpper == "ADD_IDENTITY" || actionUpper == "DROP_IDENTITY" {
+			identity, ok := plan.Options["identity"].(string)
+			if !ok || identity == "" {
+				return "", fmt.Errorf("'identity' required in options for ADD/DROP IDENTITY")
+			}
+
+			if actionUpper == "ADD_IDENTITY" {
+				return fmt.Sprintf("ALTER ROLE %s ADD IDENTITY '%s';", roleName, identity), nil
+			} else {
+				return fmt.Sprintf("ALTER ROLE %s DROP IDENTITY '%s';", roleName, identity), nil
+			}
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("ALTER ROLE %s WITH ", roleName))
 

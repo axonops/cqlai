@@ -50,7 +50,7 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 				"object_type": subType,
 			}
 			// Fall through to add type-specific parameters below
-		case "GRANT", "REVOKE":
+		case "GRANT":
 			// GRANT ROLE vs GRANT permission
 			if strings.Contains(subType, "ROLE") {
 				params["options"] = map[string]any{
@@ -61,6 +61,17 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 				return params
 			}
 			// Fall through for regular permission grants
+		case "REVOKE":
+			// REVOKE ROLE vs REVOKE permission
+			if strings.Contains(subType, "ROLE") {
+				params["options"] = map[string]any{
+					"grant_type": "ROLE",
+					"role":       "developer",
+					"from_role":  "app_admin",
+				}
+				return params
+			}
+			// Fall through for regular permission revokes
 		}
 	}
 
@@ -202,15 +213,37 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 			"column_name": "age",
 			"column_type": "int",
 		}
-	case "GRANT", "REVOKE", "GRANT ROLE", "REVOKE ROLE":
+	case "GRANT", "GRANT ROLE":
 		params["options"] = map[string]any{
 			"permission": "SELECT",
 			"role":       "app_readonly",
 		}
-	case "ADD IDENTITY", "DROP IDENTITY":
+	case "REVOKE":
 		params["options"] = map[string]any{
-			"identity": "user@REALM",
-			"role":     "app_role",
+			"permission": "SELECT",
+			"role":       "app_readonly",
+		}
+	case "REVOKE ROLE":
+		params["options"] = map[string]any{
+			"grant_type": "ROLE",
+			"role":       "developer",
+			"from_role":  "app_admin",
+		}
+	case "ADD IDENTITY":
+		params["operation"] = "ALTER"
+		params["options"] = map[string]any{
+			"object_type": "ROLE",
+			"action":      "ADD_IDENTITY",
+			"identity":    "user@REALM",
+			"role_name":   "app_role",
+		}
+	case "DROP IDENTITY":
+		params["operation"] = "ALTER"
+		params["options"] = map[string]any{
+			"object_type": "ROLE",
+			"action":      "DROP_IDENTITY",
+			"identity":    "user@REALM",
+			"role_name":   "app_role",
 		}
 	}
 
