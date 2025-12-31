@@ -1,9 +1,11 @@
 package ai
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -39,8 +41,9 @@ type MCPServer struct {
 	metrics *MetricsCollector
 	mcpLog  *MCPLogger
 
-	// Query history for audit trail (path to history file)
+	// Query history for audit trail
 	historyFilePath string
+	historyMu       sync.RWMutex // Protects history file during rotation
 
 	// Server state
 	running   bool
@@ -61,6 +64,8 @@ type MCPServerConfig struct {
 	LogLevel            string
 	LogFile             string
 	HistoryFile         string // Path to MCP history file (default: ~/.cqlai/cqlai_mcp_history)
+	HistoryMaxSize      int64  // Max history file size in bytes before rotation (default: 10MB)
+	HistoryMaxRotations int    // Number of rotated history files to keep (default: 5)
 
 	// Confirmation system (thread-safe via mutex)
 	Mode             ConfigMode // "preset" or "fine-grained"
@@ -78,14 +83,16 @@ type MCPServerConfig struct {
 // DefaultMCPConfig returns default MCP server configuration
 func DefaultMCPConfig() *MCPServerConfig {
 	home, _ := os.UserHomeDir()
-	defaultHistoryPath := filepath.Join(home, ".cqlai", "cqlai_mcp_history")
+	cqlaiDir := filepath.Join(home, ".cqlai")
 
 	return &MCPServerConfig{
 		SocketPath:          "/tmp/cqlai-mcp.sock",
 		ConfirmationTimeout: 5 * time.Minute,
 		LogLevel:            "info",
-		LogFile:             "/tmp/cqlai-mcp.log",
-		HistoryFile:         defaultHistoryPath,
+		LogFile:             filepath.Join(cqlaiDir, "cqlai_mcp.log"),
+		HistoryFile:         filepath.Join(cqlaiDir, "cqlai_mcp_history"),
+		HistoryMaxSize:      10 * 1024 * 1024, // 10MB
+		HistoryMaxRotations: 5,                // Keep 5 rotated files
 
 		// Default: readonly mode (safest)
 		Mode:             ConfigModePreset,
@@ -713,7 +720,7 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 
 	// Save to history for audit trail
 	if s.historyFilePath != "" {
-		if err := appendQueryToHistory(s.historyFilePath, query); err != nil {
+		if err := appendQueryToHistory(s.historyFilePath, query, s.config.HistoryMaxSize, s.config.HistoryMaxRotations); err != nil {
 			logger.DebugfToFile("MCP", "Warning: failed to save query to history: %v", err)
 		}
 	}
@@ -1243,7 +1250,7 @@ func (s *MCPServer) ExecuteConfirmedQuery(requestID string) error {
 
 	// Save to history for audit trail
 	if s.historyFilePath != "" {
-		if err := appendQueryToHistory(s.historyFilePath, req.Query); err != nil {
+		if err := appendQueryToHistory(s.historyFilePath, req.Query, s.config.HistoryMaxSize, s.config.HistoryMaxRotations); err != nil {
 			logger.DebugfToFile("MCP", "Warning: failed to save confirmed query to history: %v", err)
 		}
 	}
@@ -1276,8 +1283,8 @@ func (s *MCPServer) GetCancelledConfirmations() []*ConfirmationRequest {
 }
 
 // appendQueryToHistory appends a query to the MCP history file for audit trail
-// Also handles file rotation when size exceeds limit
-func appendQueryToHistory(historyPath string, query string) error {
+// Also handles file rotation when size exceeds limit (logrotate-style with gzip)
+func appendQueryToHistory(historyPath string, query string, maxSize int64, maxRotations int) error {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil
@@ -1289,9 +1296,8 @@ func appendQueryToHistory(historyPath string, query string) error {
 		return fmt.Errorf("failed to create history directory: %v", err)
 	}
 
-	// Check file size and rotate if needed (keep history under 10MB)
-	const maxHistoryBytes = 10 * 1024 * 1024 // 10MB
-	if err := rotateHistoryIfNeeded(historyPath, maxHistoryBytes); err != nil {
+	// Check file size and rotate if needed (logrotate-style with gzip)
+	if err := rotateHistoryIfNeeded(historyPath, maxSize, maxRotations); err != nil {
 		logger.DebugfToFile("MCP", "Warning: history rotation failed: %v", err)
 	}
 
@@ -1335,7 +1341,9 @@ func logConfirmationEvent(historyPath string, eventType string, requestID string
 }
 
 // rotateHistoryIfNeeded rotates history file if it exceeds size limit
-func rotateHistoryIfNeeded(historyPath string, maxBytes int64) error {
+// Implements logrotate-style rotation with gzip compression and numbered backups
+// Example: cqlai_mcp_history -> cqlai_mcp_history.1.gz -> cqlai_mcp_history.2.gz -> ... -> cqlai_mcp_history.5.gz
+func rotateHistoryIfNeeded(historyPath string, maxBytes int64, maxRotations int) error {
 	// Check if file exists and get size
 	info, err := os.Stat(historyPath)
 	if err != nil {
@@ -1350,17 +1358,69 @@ func rotateHistoryIfNeeded(historyPath string, maxBytes int64) error {
 		return nil
 	}
 
-	// Rotate: rename current file to .old, keeping only last rotation
-	oldPath := historyPath + ".old"
-
-	// Remove previous .old if it exists
-	os.Remove(oldPath)
-
-	// Rename current to .old
-	if err := os.Rename(historyPath, oldPath); err != nil {
-		return fmt.Errorf("failed to rotate history file: %v", err)
+	// If maxRotations is 0, don't keep any rotations (just truncate)
+	if maxRotations == 0 {
+		if err := os.Remove(historyPath); err != nil {
+			return fmt.Errorf("failed to remove history file: %v", err)
+		}
+		logger.DebugfToFile("MCP", "Removed history file (was %d bytes, maxRotations=0)", info.Size())
+		return nil
 	}
 
-	logger.DebugfToFile("MCP", "Rotated history file (was %d bytes)", info.Size())
+	// Rotate existing numbered backups: .N.gz -> .(N+1).gz
+	// Start from the oldest and work backwards to avoid overwriting
+	for i := maxRotations - 1; i >= 1; i-- {
+		oldPath := fmt.Sprintf("%s.%d.gz", historyPath, i)
+		newPath := fmt.Sprintf("%s.%d.gz", historyPath, i+1)
+
+		if _, err := os.Stat(oldPath); err == nil {
+			// File exists, rename it
+			if i+1 > maxRotations {
+				// Would exceed maxRotations, delete instead
+				os.Remove(oldPath)
+			} else {
+				os.Remove(newPath) // Remove destination if it exists
+				os.Rename(oldPath, newPath)
+			}
+		}
+	}
+
+	// Compress current file to .1.gz
+	gzPath := historyPath + ".1.gz"
+	if err := compressFile(historyPath, gzPath); err != nil {
+		return fmt.Errorf("failed to compress history file: %v", err)
+	}
+
+	// Remove original (now compressed)
+	if err := os.Remove(historyPath); err != nil {
+		return fmt.Errorf("failed to remove original history file after compression: %v", err)
+	}
+
+	logger.DebugfToFile("MCP", "Rotated history file (was %d bytes, compressed to %s)", info.Size(), gzPath)
 	return nil
+}
+
+// compressFile compresses a file using gzip
+func compressFile(srcPath string, destPath string) error {
+	// Open source file
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// Create destination file
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	// Create gzip writer
+	gzWriter := gzip.NewWriter(destFile)
+	defer gzWriter.Close()
+
+	// Copy and compress
+	_, err = io.Copy(gzWriter, srcFile)
+	return err
 }

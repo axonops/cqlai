@@ -43,6 +43,16 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.HistoryFile = hf
 	}
 
+	// History max size (in MB)
+	if hms, ok := jsonConfig["history_max_size_mb"].(float64); ok && hms > 0 {
+		config.HistoryMaxSize = int64(hms * 1024 * 1024)
+	}
+
+	// History max rotations
+	if hmr, ok := jsonConfig["history_max_rotations"].(float64); ok && hmr >= 0 {
+		config.HistoryMaxRotations = int(hmr)
+	}
+
 	// Mode (preset or skip_confirmation for fine-grained)
 	if mode, ok := jsonConfig["mode"].(string); ok && mode != "" {
 		// Preset mode
