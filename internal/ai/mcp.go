@@ -1285,13 +1285,20 @@ func (s *MCPServer) GetCancelledConfirmations() []*ConfirmationRequest {
 }
 
 // historyRotationWorker runs in background and rotates history file when needed
+// Also checks for timed out confirmation requests and logs them
 func (s *MCPServer) historyRotationWorker() {
 	ticker := time.NewTicker(s.config.HistoryRotationInterval)
 	defer ticker.Stop()
 
+	// Track which requests we've already logged as timed out
+	loggedTimeouts := make(map[string]bool)
+
 	for {
 		select {
 		case <-ticker.C:
+			// Check for timed out confirmation requests
+			s.checkAndLogTimeouts(loggedTimeouts)
+
 			// Check if rotation needed
 			if err := s.checkAndRotateHistory(); err != nil {
 				logger.DebugfToFile("MCP", "History rotation error: %v", err)
@@ -1300,6 +1307,30 @@ func (s *MCPServer) historyRotationWorker() {
 			// Server shutting down
 			logger.DebugfToFile("MCP", "History rotation worker stopped")
 			return
+		}
+	}
+}
+
+// checkAndLogTimeouts checks for timed out requests and logs them
+func (s *MCPServer) checkAndLogTimeouts(logged map[string]bool) {
+	if s.confirmationQueue == nil {
+		return
+	}
+
+	// Get all pending requests
+	pending := s.confirmationQueue.GetPendingConfirmations()
+
+	for _, req := range pending {
+		// Check if timed out and not already logged
+		if time.Now().After(req.Timeout) && !logged[req.ID] {
+			// Mark as logged
+			logged[req.ID] = true
+
+			// Log timeout event
+			details := fmt.Sprintf("timeout_after=%v", s.config.ConfirmationTimeout)
+			s.logConfirmationToHistory("CONFIRM_TIMEOUT", req.ID, req.Query, details)
+
+			logger.DebugfToFile("MCP", "Confirmation request %s timed out", req.ID)
 		}
 	}
 }
