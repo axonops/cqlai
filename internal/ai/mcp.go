@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,9 @@ type MCPServer struct {
 	// Observability
 	metrics *MetricsCollector
 	mcpLog  *MCPLogger
+
+	// Query history for audit trail (path to history file)
+	historyFilePath string
 
 	// Server state
 	running   bool
@@ -136,6 +140,10 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 	// Create confirmation queue
 	confirmationQueue := NewConfirmationQueue()
 
+	// Setup history file path for query audit trail
+	home, _ := os.UserHomeDir()
+	historyPath := filepath.Join(home, ".cqlai", "mcp_history")
+
 	s := &MCPServer{
 		session:           mcpSession,
 		cache:             cache,
@@ -143,6 +151,7 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 		socketPath:        config.SocketPath,
 		confirmationQueue: confirmationQueue,
 		config:            config,
+		historyFilePath:   historyPath,
 		metrics:           metrics,
 		mcpLog:            mcpLog,
 		ctx:               ctx,
@@ -695,6 +704,13 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), true, time.Since(startTime))
 	s.mcpLog.LogToolExecution(string(ToolSubmitQueryPlan), argsMap, response, nil, time.Since(startTime))
 
+	// Save to history for audit trail
+	if s.historyFilePath != "" {
+		if err := appendQueryToHistory(s.historyFilePath, query); err != nil {
+			logger.DebugfToFile("MCP", "Warning: failed to save query to history: %v", err)
+		}
+	}
+
 	// Return as JSON
 	jsonData, _ := json.Marshal(response)
 	return mcp.NewToolResultText(string(jsonData)), nil
@@ -1173,6 +1189,13 @@ func (s *MCPServer) ExecuteConfirmedQuery(requestID string) error {
 		req.RowsAffected = qr.RowCount
 	}
 
+	// Save to history for audit trail
+	if s.historyFilePath != "" {
+		if err := appendQueryToHistory(s.historyFilePath, req.Query); err != nil {
+			logger.DebugfToFile("MCP", "Warning: failed to save confirmed query to history: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -1198,4 +1221,30 @@ func (s *MCPServer) GetCancelledConfirmations() []*ConfirmationRequest {
 		return nil
 	}
 	return s.confirmationQueue.GetCancelledConfirmations()
+}
+
+// appendQueryToHistory appends a query to the MCP history file for audit trail
+func appendQueryToHistory(historyPath string, query string) error {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(historyPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create history directory: %v", err)
+	}
+
+	// Append to file (thread-safe via O_APPEND)
+	file, err := os.OpenFile(historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open history file: %v", err)
+	}
+	defer file.Close()
+
+	// Write query with timestamp
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	_, err = fmt.Fprintf(file, "[%s] %s\n", timestamp, query)
+	return err
 }

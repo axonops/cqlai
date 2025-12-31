@@ -2,10 +2,13 @@ package ai
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -362,22 +365,102 @@ func (s *MCPServer) createGetTraceDataHandler() server.ToolHandlerFunc {
 		argsMap := request.GetArguments()
 
 		traceIDHex, ok := argsMap["trace_id"].(string)
-		if !ok {
+		if !ok || traceIDHex == "" {
 			s.metrics.RecordToolCall("get_trace_data", false, time.Since(startTime))
 			return mcp.NewToolResultError("Missing or invalid trace_id parameter"), nil
 		}
 
-		// TODO: Need to set the trace ID on session and call GetTraceData()
-		// For now, return placeholder
+		// Parse hex trace ID to bytes
+		traceIDBytes, err := parseHexTraceID(traceIDHex)
+		if err != nil {
+			s.metrics.RecordToolCall("get_trace_data", false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid trace_id format: %v", err)), nil
+		}
+
+		// Query trace data from Cassandra
+		traceData, err := getTraceDataByID(s.session, traceIDBytes)
+		if err != nil {
+			s.metrics.RecordToolCall("get_trace_data", false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to retrieve trace data: %v", err)), nil
+		}
+
 		s.metrics.RecordToolCall("get_trace_data", true, time.Since(startTime))
 
-		result := map[string]any{
-			"trace_id": traceIDHex,
-			"message":  "Trace data retrieval not yet fully implemented",
-			"todo":     "Need to integrate with session.GetTraceData()",
-		}
+		result := traceData
 
 		jsonData, _ := json.Marshal(result)
 		return mcp.NewToolResultText(string(jsonData)), nil
 	}
+}
+
+// parseHexTraceID parses a hex string trace ID to bytes
+func parseHexTraceID(hexStr string) ([]byte, error) {
+	traceIDBytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex trace ID: %v", err)
+	}
+	if len(traceIDBytes) != 16 {
+		return nil, fmt.Errorf("trace ID must be 16 bytes (UUID), got %d bytes", len(traceIDBytes))
+	}
+	return traceIDBytes, nil
+}
+
+// getTraceDataByID retrieves trace data for a specific trace ID
+func getTraceDataByID(session *db.Session, traceIDBytes []byte) (map[string]any, error) {
+	// Convert bytes to UUID
+	traceID, err := gocql.UUIDFromBytes(traceIDBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse trace ID: %v", err)
+	}
+
+	// Query trace events
+	query := `SELECT event_id, activity, source, source_elapsed, thread
+	          FROM system_traces.events
+	          WHERE session_id = ?
+	          ORDER BY event_id`
+
+	iter := session.Query(query, traceID).Consistency(gocql.LocalOne).Iter()
+	defer iter.Close()
+
+	var events []map[string]any
+	var eventID gocql.UUID
+	var activity, source, thread string
+	var sourceElapsed int
+
+	for iter.Scan(&eventID, &activity, &source, &sourceElapsed, &thread) {
+		event := map[string]any{
+			"event_id":       eventID.String(),
+			"activity":       activity,
+			"source":         source,
+			"source_elapsed": sourceElapsed,
+			"thread":         thread,
+		}
+		events = append(events, event)
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to retrieve trace events: %v", err)
+	}
+
+	// Get session info
+	var coordinator string
+	var duration int
+	sessionIter := session.Query(`SELECT coordinator, duration
+	                                FROM system_traces.sessions
+	                                WHERE session_id = ?`, traceID).Consistency(gocql.LocalOne).Iter()
+
+	hasSession := sessionIter.Scan(&coordinator, &duration)
+	_ = sessionIter.Close()
+
+	result := map[string]any{
+		"trace_id": traceID.String(),
+		"events":   events,
+	}
+
+	if hasSession {
+		result["coordinator"] = coordinator
+		result["duration_us"] = duration
+	}
+
+	return result, nil
 }
