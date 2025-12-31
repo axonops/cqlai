@@ -63,9 +63,10 @@ type MCPServerConfig struct {
 	ConfirmationTimeout time.Duration
 	LogLevel            string
 	LogFile             string
-	HistoryFile         string // Path to MCP history file (default: ~/.cqlai/cqlai_mcp_history)
-	HistoryMaxSize      int64  // Max history file size in bytes before rotation (default: 10MB)
-	HistoryMaxRotations int    // Number of rotated history files to keep (default: 5)
+	HistoryFile             string        // Path to MCP history file (default: ~/.cqlai/cqlai_mcp_history)
+	HistoryMaxSize          int64         // Max history file size in bytes before rotation (default: 10MB)
+	HistoryMaxRotations     int           // Number of rotated history files to keep (default: 5)
+	HistoryRotationInterval time.Duration // How often to check for rotation (default: 1 minute)
 
 	// Confirmation system (thread-safe via mutex)
 	Mode             ConfigMode // "preset" or "fine-grained"
@@ -86,13 +87,14 @@ func DefaultMCPConfig() *MCPServerConfig {
 	cqlaiDir := filepath.Join(home, ".cqlai")
 
 	return &MCPServerConfig{
-		SocketPath:          "/tmp/cqlai-mcp.sock",
-		ConfirmationTimeout: 5 * time.Minute,
-		LogLevel:            "info",
-		LogFile:             filepath.Join(cqlaiDir, "cqlai_mcp.log"),
-		HistoryFile:         filepath.Join(cqlaiDir, "cqlai_mcp_history"),
-		HistoryMaxSize:      10 * 1024 * 1024, // 10MB
-		HistoryMaxRotations: 5,                // Keep 5 rotated files
+		SocketPath:              "/tmp/cqlai-mcp.sock",
+		ConfirmationTimeout:     5 * time.Minute,
+		LogLevel:                "info",
+		LogFile:                 filepath.Join(cqlaiDir, "cqlai_mcp.log"),
+		HistoryFile:             filepath.Join(cqlaiDir, "cqlai_mcp_history"),
+		HistoryMaxSize:          10 * 1024 * 1024, // 10MB
+		HistoryMaxRotations:     5,                // Keep 5 rotated files
+		HistoryRotationInterval: 1 * time.Minute, // Check every minute
 
 		// Default: readonly mode (safest)
 		Mode:             ConfigModePreset,
@@ -209,6 +211,12 @@ func (s *MCPServer) Start() error {
 
 	s.running = true
 	s.startedAt = time.Now()
+
+	// Start background history rotation worker if history enabled
+	if s.historyFilePath != "" && s.config.HistoryRotationInterval > 0 {
+		go s.historyRotationWorker()
+		logger.DebugfToFile("MCP", "Started history rotation worker (interval: %v)", s.config.HistoryRotationInterval)
+	}
 
 	logger.DebugfToFile("MCP", "MCP server started on socket: %s", s.socketPath)
 	s.mcpLog.LogServerStart(s.session, s.socketPath)
@@ -652,10 +660,8 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		logger.DebugfToFile("MCP", "Created confirmation request %s for query - waiting for user confirmation via MCP tools", req.ID)
 
 		// Log confirmation request to history
-		if s.historyFilePath != "" {
-			details := fmt.Sprintf("operation=%s category=%s dangerous=%v", params.Operation, opInfo.Category, classification.IsDangerous)
-			logConfirmationEvent(s.historyFilePath, "CONFIRM_REQUESTED", req.ID, query, details)
-		}
+		details := fmt.Sprintf("operation=%s category=%s dangerous=%v", params.Operation, opInfo.Category, classification.IsDangerous)
+		s.logConfirmationToHistory("CONFIRM_REQUESTED", req.ID, query, details)
 
 		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
 		// Return error with request ID and hints on how to confirm or update permissions
@@ -719,10 +725,8 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	s.mcpLog.LogToolExecution(string(ToolSubmitQueryPlan), argsMap, response, nil, time.Since(startTime))
 
 	// Save to history for audit trail
-	if s.historyFilePath != "" {
-		if err := appendQueryToHistory(s.historyFilePath, query, s.config.HistoryMaxSize, s.config.HistoryMaxRotations); err != nil {
-			logger.DebugfToFile("MCP", "Warning: failed to save query to history: %v", err)
-		}
+	if err := s.appendToHistory(query); err != nil {
+		logger.DebugfToFile("MCP", "Warning: failed to save query to history: %v", err)
 	}
 
 	// Return as JSON
@@ -1155,9 +1159,9 @@ func (s *MCPServer) ConfirmRequest(requestID, confirmedBy string) error {
 	}
 
 	// Log confirmation approval to history
-	if s.historyFilePath != "" && req != nil {
+	if req != nil {
 		details := fmt.Sprintf("confirmed_by=%s", confirmedBy)
-		logConfirmationEvent(s.historyFilePath, "CONFIRM_APPROVED", requestID, req.Query, details)
+		s.logConfirmationToHistory("CONFIRM_APPROVED", requestID, req.Query, details)
 	}
 
 	return nil
@@ -1178,9 +1182,9 @@ func (s *MCPServer) DenyRequest(requestID, deniedBy, reason string) error {
 	}
 
 	// Log confirmation denial to history
-	if s.historyFilePath != "" && req != nil {
+	if req != nil {
 		details := fmt.Sprintf("denied_by=%s reason=%q", deniedBy, reason)
-		logConfirmationEvent(s.historyFilePath, "CONFIRM_DENIED", requestID, req.Query, details)
+		s.logConfirmationToHistory("CONFIRM_DENIED", requestID, req.Query, details)
 	}
 
 	return nil
@@ -1209,9 +1213,9 @@ func (s *MCPServer) CancelRequest(requestID, cancelledBy, reason string) error {
 	}
 
 	// Log cancellation to history
-	if s.historyFilePath != "" && req != nil {
+	if req != nil {
 		details := fmt.Sprintf("cancelled_by=%s reason=%q", cancelledBy, reason)
-		logConfirmationEvent(s.historyFilePath, "CONFIRM_CANCELLED", requestID, req.Query, details)
+		s.logConfirmationToHistory("CONFIRM_CANCELLED", requestID, req.Query, details)
 	}
 
 	return nil
@@ -1249,10 +1253,8 @@ func (s *MCPServer) ExecuteConfirmedQuery(requestID string) error {
 	}
 
 	// Save to history for audit trail
-	if s.historyFilePath != "" {
-		if err := appendQueryToHistory(s.historyFilePath, req.Query, s.config.HistoryMaxSize, s.config.HistoryMaxRotations); err != nil {
-			logger.DebugfToFile("MCP", "Warning: failed to save confirmed query to history: %v", err)
-		}
+	if err := s.appendToHistory(req.Query); err != nil {
+		logger.DebugfToFile("MCP", "Warning: failed to save confirmed query to history: %v", err)
 	}
 
 	return nil
@@ -1282,52 +1284,115 @@ func (s *MCPServer) GetCancelledConfirmations() []*ConfirmationRequest {
 	return s.confirmationQueue.GetCancelledConfirmations()
 }
 
-// appendQueryToHistory appends a query to the MCP history file for audit trail
-// Also handles file rotation when size exceeds limit (logrotate-style with gzip)
-func appendQueryToHistory(historyPath string, query string, maxSize int64, maxRotations int) error {
+// historyRotationWorker runs in background and rotates history file when needed
+func (s *MCPServer) historyRotationWorker() {
+	ticker := time.NewTicker(s.config.HistoryRotationInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Check if rotation needed
+			if err := s.checkAndRotateHistory(); err != nil {
+				logger.DebugfToFile("MCP", "History rotation error: %v", err)
+			}
+		case <-s.ctx.Done():
+			// Server shutting down
+			logger.DebugfToFile("MCP", "History rotation worker stopped")
+			return
+		}
+	}
+}
+
+// checkAndRotateHistory checks file size and rotates if needed (called by background worker)
+func (s *MCPServer) checkAndRotateHistory() error {
+	// Check file size (no lock needed for Stat)
+	info, err := os.Stat(s.historyFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // File doesn't exist yet
+		}
+		return err
+	}
+
+	// If under limit, no rotation needed
+	if info.Size() < s.config.HistoryMaxSize {
+		return nil
+	}
+
+	// Need to rotate - acquire write lock (blocks new writes briefly)
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+
+	// Double-check size after acquiring lock (another check might have rotated)
+	info, err = os.Stat(s.historyFilePath)
+	if err != nil || info.Size() < s.config.HistoryMaxSize {
+		return nil
+	}
+
+	// Perform rotation (lock held, no concurrent writes during this)
+	logger.DebugfToFile("MCP", "Rotating history file (size: %d bytes)", info.Size())
+	return rotateHistoryFiles(s.historyFilePath, s.config.HistoryMaxRotations)
+}
+
+// appendToHistory appends a query to history (thread-safe with RLock)
+func (s *MCPServer) appendToHistory(query string) error {
+	if s.historyFilePath == "" {
+		return nil
+	}
+
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil
 	}
 
+	// Acquire read lock (allows concurrent writes, blocks during rotation)
+	s.historyMu.RLock()
+	defer s.historyMu.RUnlock()
+
 	// Ensure directory exists
-	dir := filepath.Dir(historyPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create history directory: %v", err)
+	dir := filepath.Dir(s.historyFilePath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		logger.DebugfToFile("MCP", "Creating history directory: %s", dir)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return fmt.Errorf("failed to create history directory: %v", err)
+		}
 	}
 
-	// Check file size and rotate if needed (logrotate-style with gzip)
-	if err := rotateHistoryIfNeeded(historyPath, maxSize, maxRotations); err != nil {
-		logger.DebugfToFile("MCP", "Warning: history rotation failed: %v", err)
-	}
-
-	// Append to file (thread-safe via O_APPEND)
-	file, err := os.OpenFile(historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	// Append to file (O_APPEND is atomic at OS level)
+	file, err := os.OpenFile(s.historyFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open history file: %v", err)
 	}
 	defer file.Close()
 
-	// Write query with timestamp and type marker
+	// Write query with timestamp
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	_, err = fmt.Fprintf(file, "[%s] QUERY: %s\n", timestamp, query)
 	return err
 }
 
-// logConfirmationEvent logs confirmation lifecycle events to history
-func logConfirmationEvent(historyPath string, eventType string, requestID string, query string, details string) error {
-	if historyPath == "" {
+// logConfirmationToHistory logs confirmation lifecycle events (thread-safe with RLock)
+func (s *MCPServer) logConfirmationToHistory(eventType string, requestID string, query string, details string) error {
+	if s.historyFilePath == "" {
 		return nil
 	}
 
+	// Acquire read lock (allows concurrent writes, blocks during rotation)
+	s.historyMu.RLock()
+	defer s.historyMu.RUnlock()
+
 	// Ensure directory exists
-	dir := filepath.Dir(historyPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create history directory: %v", err)
+	dir := filepath.Dir(s.historyFilePath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		logger.DebugfToFile("MCP", "Creating history directory: %s", dir)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return fmt.Errorf("failed to create history directory: %v", err)
+		}
 	}
 
 	// Append to file
-	file, err := os.OpenFile(historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	file, err := os.OpenFile(s.historyFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open history file: %v", err)
 	}
@@ -1340,30 +1405,17 @@ func logConfirmationEvent(historyPath string, eventType string, requestID string
 	return err
 }
 
-// rotateHistoryIfNeeded rotates history file if it exceeds size limit
-// Implements logrotate-style rotation with gzip compression and numbered backups
+// rotateHistoryFiles rotates history file with gzip compression and numbered backups
+// Implements logrotate-style rotation
 // Example: cqlai_mcp_history -> cqlai_mcp_history.1.gz -> cqlai_mcp_history.2.gz -> ... -> cqlai_mcp_history.5.gz
-func rotateHistoryIfNeeded(historyPath string, maxBytes int64, maxRotations int) error {
-	// Check if file exists and get size
-	info, err := os.Stat(historyPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // File doesn't exist yet
-		}
-		return err
-	}
-
-	// If under limit, no rotation needed
-	if info.Size() < maxBytes {
-		return nil
-	}
-
+// MUST be called with historyMu Lock held
+func rotateHistoryFiles(historyPath string, maxRotations int) error {
 	// If maxRotations is 0, don't keep any rotations (just truncate)
 	if maxRotations == 0 {
 		if err := os.Remove(historyPath); err != nil {
 			return fmt.Errorf("failed to remove history file: %v", err)
 		}
-		logger.DebugfToFile("MCP", "Removed history file (was %d bytes, maxRotations=0)", info.Size())
+		logger.DebugfToFile("MCP", "Removed history file (maxRotations=0)")
 		return nil
 	}
 
@@ -1396,7 +1448,7 @@ func rotateHistoryIfNeeded(historyPath string, maxBytes int64, maxRotations int)
 		return fmt.Errorf("failed to remove original history file after compression: %v", err)
 	}
 
-	logger.DebugfToFile("MCP", "Rotated history file (was %d bytes, compressed to %s)", info.Size(), gzPath)
+	logger.DebugfToFile("MCP", "Rotated history file, compressed to %s", gzPath)
 	return nil
 }
 
@@ -1422,5 +1474,34 @@ func compressFile(srcPath string, destPath string) error {
 
 	// Copy and compress
 	_, err = io.Copy(gzWriter, srcFile)
+	return err
+}
+
+// appendQueryToHistory is a test helper wrapper (for unit tests without MCPServer)
+func appendQueryToHistory(historyPath string, query string, maxSize int64, maxRotations int) error {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(historyPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		logger.DebugfToFile("MCP", "Creating history directory for test: %s", dir)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return fmt.Errorf("failed to create history directory: %v", err)
+		}
+	}
+
+	// Append to file (test helper - no rotation/locking)
+	file, err := os.OpenFile(historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open history file: %v", err)
+	}
+	defer file.Close()
+
+	// Write query with timestamp
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	_, err = fmt.Fprintf(file, "[%s] QUERY: %s\n", timestamp, query)
 	return err
 }

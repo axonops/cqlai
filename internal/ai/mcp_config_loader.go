@@ -53,6 +53,11 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.HistoryMaxRotations = int(hmr)
 	}
 
+	// History rotation interval (in seconds)
+	if hri, ok := jsonConfig["history_rotation_interval_seconds"].(float64); ok && hri > 0 {
+		config.HistoryRotationInterval = time.Duration(hri) * time.Second
+	}
+
 	// Mode (preset or skip_confirmation for fine-grained)
 	if mode, ok := jsonConfig["mode"].(string); ok && mode != "" {
 		// Preset mode
