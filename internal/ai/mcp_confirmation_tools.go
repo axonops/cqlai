@@ -65,11 +65,16 @@ func (s *MCPServer) createGetMCPStatusHandler() server.ToolHandlerFunc {
 		status := map[string]any{
 			"state":  "RUNNING",
 			"config": map[string]any{
-				"mode":                            string(config.Mode),
-				"preset_mode":                     config.PresetMode,
-				"confirm_queries":                 config.ConfirmQueries,
-				"skip_confirmation":               config.SkipConfirmation,
-				"disable_runtime_permission_changes": config.DisableRuntimePermissionChanges,
+				"mode":                                   string(config.Mode),
+				"preset_mode":                            config.PresetMode,
+				"confirm_queries":                        config.ConfirmQueries,
+				"skip_confirmation":                      config.SkipConfirmation,
+				"disable_runtime_permission_changes":     config.DisableRuntimePermissionChanges,
+				"allow_mcp_request_approval":             config.AllowMCPRequestApproval,
+				"history_file":                           config.HistoryFile,
+				"history_max_size_mb":                    config.HistoryMaxSize / (1024 * 1024),
+				"history_max_rotations":                  config.HistoryMaxRotations,
+				"history_rotation_interval_seconds":      int(config.HistoryRotationInterval.Seconds()),
 			},
 			"connection": map[string]any{
 				"contact_point": connInfo.ContactPoint,
@@ -283,7 +288,7 @@ func (s *MCPServer) createConfirmRequestHandler() server.ToolHandlerFunc {
 			return mcp.NewToolResultError("Cannot confirm request: user_confirmed must be true. You must ask the user for explicit approval before confirming dangerous operations."), nil
 		}
 
-		err := s.ConfirmRequest(requestID, "claude")
+		err := s.ConfirmRequest(requestID, "mcp")
 		if err != nil {
 			s.metrics.RecordToolCall("confirm_request", false, time.Since(startTime))
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to confirm request: %v", err)), nil
@@ -378,7 +383,7 @@ func (s *MCPServer) createDenyRequestHandler() server.ToolHandlerFunc {
 			reason = "User declined"
 		}
 
-		err := s.DenyRequest(requestID, "claude", reason)
+		err := s.DenyRequest(requestID, "mcp", reason)
 		if err != nil {
 			s.metrics.RecordToolCall("deny_request", false, time.Since(startTime))
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to deny request: %v", err)), nil
@@ -429,7 +434,7 @@ func (s *MCPServer) createCancelConfirmationHandler() server.ToolHandlerFunc {
 			reason = "Cancelled by Claude"
 		}
 
-		err := s.CancelRequest(requestID, "claude", reason)
+		err := s.CancelRequest(requestID, "mcp", reason)
 		if err != nil {
 			s.metrics.RecordToolCall("cancel_confirmation", false, time.Since(startTime))
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to cancel request: %v", err)), nil

@@ -198,6 +198,7 @@ func (h *MCPHandler) handleStart(args []string) string {
 		case "--allow-runtime-permission-changes":
 			config.DisableRuntimePermissionChanges = false
 
+		// MCP request approval (security: explicit opt-in)
 		case "--allow-mcp-request-approval":
 			config.AllowMCPRequestApproval = true
 		}
@@ -318,7 +319,9 @@ func (h *MCPHandler) handleStatus() string {
 	sb.WriteString("Server Configuration:\n")
 	sb.WriteString(fmt.Sprintf("  Socket: %s\n", config.SocketPath))
 	sb.WriteString(fmt.Sprintf("  Log level: %s\n", config.LogLevel))
-	sb.WriteString(fmt.Sprintf("  Log file: %s\n\n", config.LogFile))
+	sb.WriteString(fmt.Sprintf("  Log file: %s\n", config.LogFile))
+	sb.WriteString(fmt.Sprintf("  History file: %s\n", config.HistoryFile))
+	sb.WriteString(fmt.Sprintf("  MCP request approval: %v (security: must opt-in to enable)\n\n", config.AllowMCPRequestApproval))
 
 	// Metrics
 	sb.WriteString("Metrics:\n")

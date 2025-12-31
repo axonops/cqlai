@@ -3,6 +3,7 @@ package ai
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ConfigMode represents the configuration mode type
@@ -125,25 +126,35 @@ func (c *MCPServerConfig) GetConfigSnapshot() MCPConfigSnapshot {
 	defer c.mu.RUnlock()
 
 	return MCPConfigSnapshot{
-		Mode:                      c.Mode,
-		PresetMode:                c.PresetMode,
-		ConfirmQueries:            append([]string(nil), c.ConfirmQueries...),   // Copy slice
-		SkipConfirmation:          append([]string(nil), c.SkipConfirmation...), // Copy slice
-		SocketPath:                c.SocketPath,
-		LogLevel:                  c.LogLevel,
+		Mode:                            c.Mode,
+		PresetMode:                      c.PresetMode,
+		ConfirmQueries:                  append([]string(nil), c.ConfirmQueries...),   // Copy slice
+		SkipConfirmation:                append([]string(nil), c.SkipConfirmation...), // Copy slice
+		SocketPath:                      c.SocketPath,
+		LogLevel:                        c.LogLevel,
 		DisableRuntimePermissionChanges: c.DisableRuntimePermissionChanges,
+		AllowMCPRequestApproval:         c.AllowMCPRequestApproval,
+		HistoryFile:                     c.HistoryFile,
+		HistoryMaxSize:                  c.HistoryMaxSize,
+		HistoryMaxRotations:             c.HistoryMaxRotations,
+		HistoryRotationInterval:         c.HistoryRotationInterval,
 	}
 }
 
 // MCPConfigSnapshot is a point-in-time snapshot of configuration
 type MCPConfigSnapshot struct {
-	Mode                      ConfigMode
-	PresetMode                string
-	ConfirmQueries            []string
-	SkipConfirmation          []string
-	SocketPath                string
-	LogLevel                  string
+	Mode                            ConfigMode
+	PresetMode                      string
+	ConfirmQueries                  []string
+	SkipConfirmation                []string
+	SocketPath                      string
+	LogLevel                        string
 	DisableRuntimePermissionChanges bool
+	AllowMCPRequestApproval         bool
+	HistoryFile                     string
+	HistoryMaxSize                  int64
+	HistoryMaxRotations             int
+	HistoryRotationInterval         time.Duration
 }
 
 // GetModeDescription returns a human-readable description of the current mode
