@@ -50,6 +50,61 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Debug - Check initial state
+        run: |
+          echo "=== Initial Keychain State ==="
+          security list-keychains
+          echo ""
+          echo "=== Default Keychain ==="
+          security default-keychain
+          echo ""
+          echo "=== Initial Signing Identities ==="
+          security find-identity -v -p codesigning
+          echo ""
+          echo "=== Check if secrets are set ==="
+          if [ -z "${{ secrets.CSC_INSTALLER_LINK }}" ]; then
+            echo "ERROR: CSC_INSTALLER_LINK secret is empty or not set"
+          else
+            echo "CSC_INSTALLER_LINK secret is set (length: ${#CSC_INSTALLER_LINK})"
+          fi
+          if [ -z "${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}" ]; then
+            echo "ERROR: CSC_INSTALLER_KEY_PASSWORD secret is empty or not set"
+          else
+            echo "CSC_INSTALLER_KEY_PASSWORD secret is set"
+          fi
+        env:
+          CSC_INSTALLER_LINK: ${{ secrets.CSC_INSTALLER_LINK }}
+
+      - name: Setup temporary installer signing keychain
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
+          p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
+
+      - name: Debug - Check post-import state
+        run: |
+          echo "=== Post-Import Keychain State ==="
+          security list-keychains
+          echo ""
+          echo "=== Default Keychain ==="
+          security default-keychain
+          echo ""
+          echo "=== All Keychains with Identities ==="
+          for keychain in $(security list-keychains | tr -d '"'); do
+            echo "Keychain: $keychain"
+            security find-identity -v -p codesigning "$keychain" || echo "Failed to read keychain"
+            echo ""
+          done
+          echo ""
+          echo "=== Signing Identities (default keychain) ==="
+          security find-identity -v -p codesigning
+          echo ""
+          echo "=== All Identities (not just codesigning) ==="
+          security find-identity -v
+          echo ""
+          echo "=== Keychain Info ==="
+          security show-keychain-info $(security default-keychain | tr -d '"') || echo "Failed to get keychain info"
+
       - name: Build binary
         env:
           GOOS: darwin
@@ -61,16 +116,6 @@ jobs:
             -o "${OUTPUT_NAME}" \
             ./cmd/cqlai
           chmod +x "${OUTPUT_NAME}"
-
-      - name: Setup temporary installer signing keychain
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
-          p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
-
-      - name: List signing identities
-        run: |
-          security find-identity -v -p codesigning
 
       - name: Create PKG package
         run: |
