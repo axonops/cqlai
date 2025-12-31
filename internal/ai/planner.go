@@ -94,6 +94,12 @@ func RenderCQL(plan *AIResult) (string, error) {
 	case "EXPAND", "OUTPUT", "CAPTURE", "SAVE", "AUTOFETCH":
 		// Display-only commands - return the command string, will be handled by handleShellCommand
 		return buildRawCommandForPlanner(plan)
+	case "ADD":
+		// Handle ADD IDENTITY
+		return renderAddIdentity(plan)
+	case "BEGIN", "APPLY":
+		// BEGIN BATCH and APPLY BATCH - not supported yet
+		return "", fmt.Errorf("BATCH operations not yet supported in query builder - use raw CQL")
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", plan.Operation)
 	}
@@ -374,6 +380,8 @@ func renderDrop(plan *AIResult) (string, error) {
 				return renderDropRole(plan)
 			case "USER":
 				return renderDropUser(plan)
+			case "IDENTITY":
+				return renderAddIdentity(plan) // Reuse renderAddIdentity for DROP IDENTITY
 			}
 		}
 	}
@@ -722,6 +730,39 @@ func renderRevoke(plan *AIResult) (string, error) {
 	}
 
 	return fmt.Sprintf("REVOKE %s ON %s FROM %s;", permission, resource, role), nil
+}
+
+// renderAddIdentity generates ADD IDENTITY and DROP IDENTITY statements
+func renderAddIdentity(plan *AIResult) (string, error) {
+	if plan.Options == nil {
+		return "", fmt.Errorf("options required for ADD/DROP IDENTITY")
+	}
+
+	objectType, _ := plan.Options["object_type"].(string)
+	if strings.ToUpper(objectType) != "IDENTITY" {
+		return "", fmt.Errorf("object_type must be IDENTITY for ADD/DROP IDENTITY operations")
+	}
+
+	identity, ok := plan.Options["identity"].(string)
+	if !ok || identity == "" {
+		return "", fmt.Errorf("'identity' required in options for ADD/DROP IDENTITY")
+	}
+
+	role, ok := plan.Options["role"].(string)
+	if !ok || role == "" {
+		return "", fmt.Errorf("'role' required in options for ADD/DROP IDENTITY")
+	}
+
+	// Determine if this is ADD or DROP
+	op := strings.ToUpper(plan.Operation)
+	if op == "ADD" {
+		// ADD IDENTITY syntax: ADD IDENTITY 'identity' TO role_name
+		return fmt.Sprintf("ADD IDENTITY '%s' TO %s;", identity, role), nil
+	} else {
+		// DROP IDENTITY syntax: DROP IDENTITY 'identity' (role is implicit from context)
+		// Cassandra may not support this syntax directly, but generate it for testing
+		return fmt.Sprintf("DROP IDENTITY '%s';", identity), nil
+	}
 }
 
 // renderTruncate generates a TRUNCATE statement

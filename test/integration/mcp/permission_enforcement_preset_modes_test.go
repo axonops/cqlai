@@ -610,38 +610,8 @@ func TestFineGrainedMode(t *testing.T) {
 
 		// All operations should be allowed without confirmation
 		for _, op := range allOperationsMatrix {
-			params := map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			}
-
-			// Add required parameters based on operation
-			switch op.operation {
-			case "INSERT":
-				params["values"] = map[string]any{
-					"id":    "00000000-0000-0000-0000-000000000070",
-					"name":  "Test User",
-					"email": "test@example.com",
-				}
-			case "UPDATE":
-				params["values"] = map[string]any{"name": "Updated Name"}
-				params["where"] = []any{
-					map[string]any{
-						"column":   "id",
-						"operator": "=",
-						"value":    "00000000-0000-0000-0000-000000000070",
-					},
-				}
-			case "DELETE":
-				params["where"] = []any{
-					map[string]any{
-						"column":   "id",
-						"operator": "=",
-						"value":    "00000000-0000-0000-0000-000000000070",
-					},
-				}
-			}
+			// Use buildOperationParams from all_operations_matrix_test.go
+			params := buildOperationParams(op.operation, "test_mcp", "users")
 
 			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 			assertNotError(t, resp, op.operation+" should be allowed with skip ALL")
@@ -657,38 +627,8 @@ func TestFineGrainedMode(t *testing.T) {
 
 		// All operations should require confirmation (except SESSION)
 		for _, op := range allOperationsMatrix {
-			params := map[string]any{
-				"operation": op.operation,
-				"keyspace":  "test_mcp",
-				"table":     "users",
-			}
-
-			// Add required parameters based on operation
-			switch op.operation {
-			case "INSERT":
-				params["values"] = map[string]any{
-					"id":    "00000000-0000-0000-0000-000000000071",
-					"name":  "Test User",
-					"email": "test@example.com",
-				}
-			case "UPDATE":
-				params["values"] = map[string]any{"name": "Updated Name"}
-				params["where"] = []any{
-					map[string]any{
-						"column":   "id",
-						"operator": "=",
-						"value":    "00000000-0000-0000-0000-000000000071",
-					},
-				}
-			case "DELETE":
-				params["where"] = []any{
-					map[string]any{
-						"column":   "id",
-						"operator": "=",
-						"value":    "00000000-0000-0000-0000-000000000071",
-					},
-				}
-			}
+			// Use buildOperationParams from all_operations_matrix_test.go
+			params := buildOperationParams(op.operation, "test_mcp", "users")
 
 			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
 			assertIsError(t, resp, op.operation+" should require confirmation with skip none")
