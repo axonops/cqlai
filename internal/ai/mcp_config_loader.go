@@ -38,6 +38,11 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.LogFile = lf
 	}
 
+	// History file
+	if hf, ok := jsonConfig["history_file"].(string); ok && hf != "" {
+		config.HistoryFile = hf
+	}
+
 	// Mode (preset or skip_confirmation for fine-grained)
 	if mode, ok := jsonConfig["mode"].(string); ok && mode != "" {
 		// Preset mode

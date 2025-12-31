@@ -60,6 +60,7 @@ type MCPServerConfig struct {
 	ConfirmationTimeout time.Duration
 	LogLevel            string
 	LogFile             string
+	HistoryFile         string // Path to MCP history file (default: ~/.cqlai/cqlai_mcp_history)
 
 	// Confirmation system (thread-safe via mutex)
 	Mode             ConfigMode // "preset" or "fine-grained"
@@ -76,11 +77,15 @@ type MCPServerConfig struct {
 
 // DefaultMCPConfig returns default MCP server configuration
 func DefaultMCPConfig() *MCPServerConfig {
+	home, _ := os.UserHomeDir()
+	defaultHistoryPath := filepath.Join(home, ".cqlai", "cqlai_mcp_history")
+
 	return &MCPServerConfig{
 		SocketPath:          "/tmp/cqlai-mcp.sock",
 		ConfirmationTimeout: 5 * time.Minute,
 		LogLevel:            "info",
 		LogFile:             "/tmp/cqlai-mcp.log",
+		HistoryFile:         defaultHistoryPath,
 
 		// Default: readonly mode (safest)
 		Mode:             ConfigModePreset,
@@ -140,10 +145,6 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 	// Create confirmation queue
 	confirmationQueue := NewConfirmationQueue()
 
-	// Setup history file path for query audit trail
-	home, _ := os.UserHomeDir()
-	historyPath := filepath.Join(home, ".cqlai", "mcp_history")
-
 	s := &MCPServer{
 		session:           mcpSession,
 		cache:             cache,
@@ -151,7 +152,7 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 		socketPath:        config.SocketPath,
 		confirmationQueue: confirmationQueue,
 		config:            config,
-		historyFilePath:   historyPath,
+		historyFilePath:   config.HistoryFile,
 		metrics:           metrics,
 		mcpLog:            mcpLog,
 		ctx:               ctx,
@@ -643,6 +644,12 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 
 		logger.DebugfToFile("MCP", "Created confirmation request %s for query - waiting for user confirmation via MCP tools", req.ID)
 
+		// Log confirmation request to history
+		if s.historyFilePath != "" {
+			details := fmt.Sprintf("operation=%s category=%s dangerous=%v", params.Operation, opInfo.Category, classification.IsDangerous)
+			logConfirmationEvent(s.historyFilePath, "CONFIRM_REQUESTED", req.ID, query, details)
+		}
+
 		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
 		// Return error with request ID and hints on how to confirm or update permissions
 		errorMsg := CreateConfirmationRequiredError(opInfo, s.config.GetConfigSnapshot(), req.ID)
@@ -1131,7 +1138,22 @@ func (s *MCPServer) ConfirmRequest(requestID, confirmedBy string) error {
 	if s.confirmationQueue == nil {
 		return fmt.Errorf("confirmation queue not initialized")
 	}
-	return s.confirmationQueue.ConfirmRequest(requestID, confirmedBy)
+
+	// Get request before confirming to log it
+	req, _ := s.confirmationQueue.GetRequest(requestID)
+
+	err := s.confirmationQueue.ConfirmRequest(requestID, confirmedBy)
+	if err != nil {
+		return err
+	}
+
+	// Log confirmation approval to history
+	if s.historyFilePath != "" && req != nil {
+		details := fmt.Sprintf("confirmed_by=%s", confirmedBy)
+		logConfirmationEvent(s.historyFilePath, "CONFIRM_APPROVED", requestID, req.Query, details)
+	}
+
+	return nil
 }
 
 // DenyRequest denies a pending dangerous query request
@@ -1139,7 +1161,22 @@ func (s *MCPServer) DenyRequest(requestID, deniedBy, reason string) error {
 	if s.confirmationQueue == nil {
 		return fmt.Errorf("confirmation queue not initialized")
 	}
-	return s.confirmationQueue.DenyRequest(requestID, deniedBy, reason)
+
+	// Get request before denying to log it
+	req, _ := s.confirmationQueue.GetRequest(requestID)
+
+	err := s.confirmationQueue.DenyRequest(requestID, deniedBy, reason)
+	if err != nil {
+		return err
+	}
+
+	// Log confirmation denial to history
+	if s.historyFilePath != "" && req != nil {
+		details := fmt.Sprintf("denied_by=%s reason=%q", deniedBy, reason)
+		logConfirmationEvent(s.historyFilePath, "CONFIRM_DENIED", requestID, req.Query, details)
+	}
+
+	return nil
 }
 
 // GetConfirmationRequest retrieves a specific confirmation request by ID
@@ -1155,7 +1192,22 @@ func (s *MCPServer) CancelRequest(requestID, cancelledBy, reason string) error {
 	if s.confirmationQueue == nil {
 		return fmt.Errorf("confirmation queue not initialized")
 	}
-	return s.confirmationQueue.CancelRequest(requestID, cancelledBy, reason)
+
+	// Get request before cancelling to log it
+	req, _ := s.confirmationQueue.GetRequest(requestID)
+
+	err := s.confirmationQueue.CancelRequest(requestID, cancelledBy, reason)
+	if err != nil {
+		return err
+	}
+
+	// Log cancellation to history
+	if s.historyFilePath != "" && req != nil {
+		details := fmt.Sprintf("cancelled_by=%s reason=%q", cancelledBy, reason)
+		logConfirmationEvent(s.historyFilePath, "CONFIRM_CANCELLED", requestID, req.Query, details)
+	}
+
+	return nil
 }
 
 // ExecuteConfirmedQuery executes a confirmed request's query and updates request metadata
@@ -1224,6 +1276,7 @@ func (s *MCPServer) GetCancelledConfirmations() []*ConfirmationRequest {
 }
 
 // appendQueryToHistory appends a query to the MCP history file for audit trail
+// Also handles file rotation when size exceeds limit
 func appendQueryToHistory(historyPath string, query string) error {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -1236,6 +1289,12 @@ func appendQueryToHistory(historyPath string, query string) error {
 		return fmt.Errorf("failed to create history directory: %v", err)
 	}
 
+	// Check file size and rotate if needed (keep history under 10MB)
+	const maxHistoryBytes = 10 * 1024 * 1024 // 10MB
+	if err := rotateHistoryIfNeeded(historyPath, maxHistoryBytes); err != nil {
+		logger.DebugfToFile("MCP", "Warning: history rotation failed: %v", err)
+	}
+
 	// Append to file (thread-safe via O_APPEND)
 	file, err := os.OpenFile(historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
@@ -1243,8 +1302,65 @@ func appendQueryToHistory(historyPath string, query string) error {
 	}
 	defer file.Close()
 
-	// Write query with timestamp
+	// Write query with timestamp and type marker
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	_, err = fmt.Fprintf(file, "[%s] %s\n", timestamp, query)
+	_, err = fmt.Fprintf(file, "[%s] QUERY: %s\n", timestamp, query)
 	return err
+}
+
+// logConfirmationEvent logs confirmation lifecycle events to history
+func logConfirmationEvent(historyPath string, eventType string, requestID string, query string, details string) error {
+	if historyPath == "" {
+		return nil
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(historyPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create history directory: %v", err)
+	}
+
+	// Append to file
+	file, err := os.OpenFile(historyPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open history file: %v", err)
+	}
+	defer file.Close()
+
+	// Write event with timestamp
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	_, err = fmt.Fprintf(file, "[%s] %s: request_id=%s query=%q details=%s\n",
+		timestamp, eventType, requestID, query, details)
+	return err
+}
+
+// rotateHistoryIfNeeded rotates history file if it exceeds size limit
+func rotateHistoryIfNeeded(historyPath string, maxBytes int64) error {
+	// Check if file exists and get size
+	info, err := os.Stat(historyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // File doesn't exist yet
+		}
+		return err
+	}
+
+	// If under limit, no rotation needed
+	if info.Size() < maxBytes {
+		return nil
+	}
+
+	// Rotate: rename current file to .old, keeping only last rotation
+	oldPath := historyPath + ".old"
+
+	// Remove previous .old if it exists
+	os.Remove(oldPath)
+
+	// Rename current to .old
+	if err := os.Rename(historyPath, oldPath); err != nil {
+		return fmt.Errorf("failed to rotate history file: %v", err)
+	}
+
+	logger.DebugfToFile("MCP", "Rotated history file (was %d bytes)", info.Size())
+	return nil
 }
