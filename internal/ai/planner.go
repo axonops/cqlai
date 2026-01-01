@@ -184,6 +184,43 @@ func renderSelect(plan *AIResult) (string, error) {
 }
 
 func renderInsert(plan *AIResult) (string, error) {
+	// Phase 1: INSERT JSON uses different syntax
+	if plan.InsertJSON {
+		if plan.JSONValue == "" {
+			return "", fmt.Errorf("json_value required for INSERT JSON")
+		}
+
+		var sb strings.Builder
+		sb.WriteString("INSERT INTO ")
+
+		if plan.Keyspace != "" {
+			sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+		} else {
+			sb.WriteString(plan.Table)
+		}
+
+		// Escape single quotes in JSON string
+		escapedJSON := strings.ReplaceAll(plan.JSONValue, "'", "''")
+		sb.WriteString(fmt.Sprintf(" JSON '%s'", escapedJSON))
+
+		// USING clause works with INSERT JSON
+		usingClauses := []string{}
+		if plan.UsingTTL > 0 {
+			usingClauses = append(usingClauses, fmt.Sprintf("TTL %d", plan.UsingTTL))
+		}
+		if plan.UsingTimestamp > 0 {
+			usingClauses = append(usingClauses, fmt.Sprintf("TIMESTAMP %d", plan.UsingTimestamp))
+		}
+		if len(usingClauses) > 0 {
+			sb.WriteString(" USING ")
+			sb.WriteString(strings.Join(usingClauses, " AND "))
+		}
+
+		sb.WriteString(";")
+		return sb.String(), nil
+	}
+
+	// Regular INSERT with column/value pairs
 	if len(plan.Values) == 0 {
 		return "", fmt.Errorf("no values to insert")
 	}

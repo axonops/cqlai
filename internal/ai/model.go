@@ -96,6 +96,10 @@ type AIResult struct {
 	Distinct   bool `json:"distinct,omitempty"`    // SELECT DISTINCT
 	SelectJSON bool `json:"select_json,omitempty"` // SELECT JSON
 
+	// Phase 1: INSERT JSON
+	InsertJSON bool   `json:"insert_json,omitempty"` // INSERT JSON format
+	JSONValue  string `json:"json_value,omitempty"`  // JSON string for INSERT JSON
+
 	GroupBy           []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
 	OrderBy           []OrderClause  `json:"order_by,omitempty"`
 	Limit             int            `json:"limit,omitempty"`

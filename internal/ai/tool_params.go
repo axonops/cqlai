@@ -68,6 +68,10 @@ type SubmitQueryPlanParams struct {
 	SelectJSON     bool `json:"select_json,omitempty"`  // SELECT JSON
 	PerPartitionLimit int `json:"per_partition_limit,omitempty"` // PER PARTITION LIMIT
 
+	// Phase 1: INSERT JSON
+	InsertJSON bool   `json:"insert_json,omitempty"` // INSERT JSON format
+	JSONValue  string `json:"json_value,omitempty"`  // JSON string
+
 	OrderBy        []OrderClause     `json:"order_by,omitempty"`
 	Limit          int               `json:"limit,omitempty"`
 	AllowFiltering bool              `json:"allow_filtering,omitempty"`
@@ -170,6 +174,8 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		UsingTimestamp:    p.UsingTimestamp,    // Phase 1
 		Distinct:          p.Distinct,          // Phase 1
 		SelectJSON:        p.SelectJSON,        // Phase 1
+		InsertJSON:        p.InsertJSON,        // Phase 1
+		JSONValue:         p.JSONValue,         // Phase 1
 		OrderBy:           p.OrderBy,
 		Limit:             p.Limit,
 		PerPartitionLimit: p.PerPartitionLimit, // Phase 1

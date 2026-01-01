@@ -946,3 +946,30 @@ func TestRenderSelect_PerPartitionLimit(t *testing.T) {
 	assert.Contains(t, got2, "PER PARTITION LIMIT 5")
 	assert.Contains(t, got2, "LIMIT 100")
 }
+
+// TestRenderInsert_JSON tests INSERT JSON statement
+func TestRenderInsert_JSON(t *testing.T) {
+	plan1 := &AIResult{
+		Operation:  "INSERT",
+		Table:      "users",
+		InsertJSON: true,
+		JSONValue:  `{"id": 500, "name": "JSONTest", "email": "json@example.com"}`,
+	}
+	got1, err1 := RenderCQL(plan1)
+	assert.NoError(t, err1)
+	assert.Contains(t, got1, "INSERT INTO users JSON")
+	assert.Contains(t, got1, `{"id": 500`)
+
+	// Test INSERT JSON with USING TTL
+	plan2 := &AIResult{
+		Operation:  "INSERT",
+		Table:      "users",
+		InsertJSON: true,
+		JSONValue:  `{"id": 501, "name": "JSONWithTTL"}`,
+		UsingTTL:   300,
+	}
+	got2, err2 := RenderCQL(plan2)
+	assert.NoError(t, err2)
+	assert.Contains(t, got2, "INSERT INTO users JSON")
+	assert.Contains(t, got2, "USING TTL 300")
+}
