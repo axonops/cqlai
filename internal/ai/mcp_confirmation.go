@@ -191,22 +191,22 @@ func (q *ConfirmationQueue) GetCancelledConfirmations() []*ConfirmationRequest {
 	return cancelled
 }
 
-// CleanupExpired marks expired requests as timed out
-func (q *ConfirmationQueue) CleanupExpired() int {
+// CleanupExpired marks expired requests as timed out and returns their IDs
+func (q *ConfirmationQueue) CleanupExpired() []string {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	now := time.Now()
-	expired := 0
+	var timedOutIDs []string
 
 	for _, req := range q.requests {
 		if req.Status == "PENDING" && now.After(req.Timeout) {
 			req.Status = "TIMEOUT"
-			expired++
+			timedOutIDs = append(timedOutIDs, req.ID)
 		}
 	}
 
-	return expired
+	return timedOutIDs
 }
 
 // RemoveRequest removes a confirmation request from the queue

@@ -1521,6 +1521,9 @@ func (s *MCPServer) ConfirmRequest(requestID, confirmedBy string) error {
 		s.logConfirmationToHistory("CONFIRM_APPROVED", requestID, req.Query, details)
 	}
 
+	// Send SSE event to notify client of status change
+	s.sendConfirmationStatusEvent(requestID, "CONFIRMED", confirmedBy, "")
+
 	return nil
 }
 
@@ -1543,6 +1546,9 @@ func (s *MCPServer) DenyRequest(requestID, deniedBy, reason string) error {
 		details := fmt.Sprintf("denied_by=%s reason=%q", deniedBy, reason)
 		s.logConfirmationToHistory("CONFIRM_DENIED", requestID, req.Query, details)
 	}
+
+	// Send SSE event to notify client of status change
+	s.sendConfirmationStatusEvent(requestID, "DENIED", deniedBy, reason)
 
 	return nil
 }
@@ -1575,8 +1581,45 @@ func (s *MCPServer) CancelRequest(requestID, cancelledBy, reason string) error {
 		s.logConfirmationToHistory("CONFIRM_CANCELLED", requestID, req.Query, details)
 	}
 
+	// Send SSE event to notify client of status change
+	s.sendConfirmationStatusEvent(requestID, "CANCELLED", cancelledBy, reason)
+
 	return nil
 }
+
+// ============================================================================
+// SSE Event Notifications
+// ============================================================================
+
+// sendConfirmationStatusEvent sends an SSE event to notify clients of confirmation status changes
+func (s *MCPServer) sendConfirmationStatusEvent(requestID, status, actor, reason string) {
+	if s.mcpServer == nil {
+		return // Server not initialized
+	}
+
+	// Build event params
+	params := map[string]any{
+		"request_id": requestID,
+		"status":     status,
+		"actor":      actor,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+
+	if reason != "" {
+		params["reason"] = reason
+	}
+
+	// Send SSE notification to all connected clients
+	// Method name follows MCP notification conventions
+	s.mcpServer.SendNotificationToAllClients("confirmation/statusChanged", params)
+
+	logger.DebugfToFile("MCP", "SSE event sent: confirmation/statusChanged status=%s request_id=%s actor=%s",
+		status, requestID, actor)
+}
+
+// ============================================================================
+// Query Execution
+// ============================================================================
 
 // ExecuteConfirmedQuery executes a confirmed request's query and updates request metadata
 func (s *MCPServer) ExecuteConfirmedQuery(requestID string) error {
@@ -1688,6 +1731,9 @@ func (s *MCPServer) checkAndLogTimeouts(logged map[string]bool) {
 			s.logConfirmationToHistory("CONFIRM_TIMEOUT", req.ID, req.Query, details)
 
 			logger.DebugfToFile("MCP", "Confirmation request %s timed out", req.ID)
+
+			// Send SSE event to notify client of timeout
+			s.sendConfirmationStatusEvent(req.ID, "TIMEOUT", "system", "confirmation timeout exceeded")
 		}
 	}
 }

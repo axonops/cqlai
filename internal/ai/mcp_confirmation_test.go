@@ -163,8 +163,9 @@ func TestConfirmationQueue_CleanupExpired(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Cleanup expired
-	expired := q.CleanupExpired()
-	assert.Equal(t, 1, expired)
+	timedOutIDs := q.CleanupExpired()
+	assert.Equal(t, 1, len(timedOutIDs))
+	assert.Equal(t, req1.ID, timedOutIDs[0])
 
 	// Verify first request is timed out
 	updated1, _ := q.GetRequest(req1.ID)
