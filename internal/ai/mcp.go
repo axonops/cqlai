@@ -3,10 +3,14 @@ package ai
 import (
 	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,9 +33,10 @@ type MCPServer struct {
 	resolver *Resolver
 
 	// MCP server infrastructure
-	mcpServer  *server.MCPServer // The mark3labs MCP server
-	listener   net.Listener
-	socketPath string
+	mcpServer  *server.MCPServer            // The mark3labs MCP server
+	httpServer *server.StreamableHTTPServer // HTTP transport server
+	listener   net.Listener                  // Deprecated - will be removed
+	socketPath string                        // Deprecated - will be removed
 
 	// Confirmation system for dangerous queries
 	confirmationQueue *ConfirmationQueue
@@ -197,8 +202,120 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 	return s, nil
 }
 
-// Start starts the MCP server on a Unix domain socket.
-// The server listens for JSON-RPC tool calls from Claude Desktop.
+// ============================================================================
+// HTTP Authentication and Security
+// ============================================================================
+
+// generateAPIKey generates a cryptographically secure API key
+func generateAPIKey() (string, error) {
+	bytes := make([]byte, 32) // 256 bits
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	return "sk_local_" + base64.URLEncoding.EncodeToString(bytes)[:32], nil
+}
+
+// validateAPIKey validates the provided API key using constant-time comparison
+func (s *MCPServer) validateAPIKey(provided string) bool {
+	expected := s.config.ApiKey
+	if expected == "" {
+		// No key configured - reject for security
+		logger.DebugfToFile("MCP", "API key validation failed: no key configured")
+		return false
+	}
+	// Constant-time comparison to prevent timing attacks
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+}
+
+// maskAPIKey masks an API key for safe logging
+func maskAPIKey(key string) string {
+	if len(key) <= 12 {
+		return "***"
+	}
+	return key[:8] + "..." + key[len(key)-4:]
+}
+
+// authMiddleware wraps an http.Handler with authentication and origin validation
+func (s *MCPServer) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-Key")
+
+		if apiKey == "" {
+			logger.DebugfToFile("MCP", "Authentication failed: missing X-API-Key header")
+			http.Error(w, "missing X-API-Key header", http.StatusUnauthorized)
+			return
+		}
+
+		if !s.validateAPIKey(apiKey) {
+			logger.DebugfToFile("MCP", "Authentication failed: invalid API key")
+			http.Error(w, "invalid API key", http.StatusUnauthorized)
+			return
+		}
+
+		// Log successful authentication (masked key)
+		logger.DebugfToFile("MCP", "API key validated: %s", maskAPIKey(apiKey))
+
+		// Validate origin (DNS rebinding protection)
+		if !s.validateOrigin(r) {
+			logger.DebugfToFile("MCP", "Origin validation failed: %s", r.Header.Get("Origin"))
+			http.Error(w, "origin not allowed", http.StatusForbidden)
+			return
+		}
+
+		// Authentication and origin validation passed - call next handler
+		next.ServeHTTP(w, r)
+	})
+}
+
+// validateOrigin validates the Origin header to prevent DNS rebinding attacks
+func (s *MCPServer) validateOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true // No origin header = direct API request (OK)
+	}
+
+	// If listening on localhost/127.0.0.1, only allow localhost origins
+	if s.config.HttpHost == "127.0.0.1" || s.config.HttpHost == "localhost" {
+		allowedOrigins := []string{
+			"http://localhost",
+			"http://127.0.0.1",
+			"https://localhost",
+			"https://127.0.0.1",
+		}
+
+		for _, allowed := range allowedOrigins {
+			if strings.HasPrefix(origin, allowed) {
+				logger.DebugfToFile("MCP", "Origin validated (localhost): %s", origin)
+				return true
+			}
+		}
+		logger.DebugfToFile("MCP", "Origin rejected (not localhost): %s", origin)
+		return false
+	}
+
+	// For non-localhost binding, check configured allowed_origins
+	if len(s.config.AllowedOrigins) > 0 {
+		for _, allowed := range s.config.AllowedOrigins {
+			if strings.HasPrefix(origin, allowed) {
+				logger.DebugfToFile("MCP", "Origin validated (allowed): %s", origin)
+				return true
+			}
+		}
+		logger.DebugfToFile("MCP", "Origin rejected (not in allowed list): %s", origin)
+		return false
+	}
+
+	// No allowed origins configured for non-localhost = reject (safe default)
+	logger.DebugfToFile("MCP", "Origin rejected (no allowed_origins configured): %s", origin)
+	return false
+}
+
+// ============================================================================
+// Server Lifecycle
+// ============================================================================
+
+// Start starts the MCP server on HTTP transport.
+// The server listens for JSON-RPC tool calls from Claude or other MCP clients.
 func (s *MCPServer) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -207,17 +324,21 @@ func (s *MCPServer) Start() error {
 		return fmt.Errorf("MCP server already running")
 	}
 
-	// Remove existing socket if it exists
-	if err := removeSocketIfExists(s.socketPath); err != nil {
-		return fmt.Errorf("failed to remove existing socket: %w", err)
-	}
+	// Auto-generate API key if not provided
+	if s.config.ApiKey == "" {
+		key, err := generateAPIKey()
+		if err != nil {
+			return fmt.Errorf("failed to generate API key: %w", err)
+		}
+		s.config.ApiKey = key
+		logger.DebugfToFile("MCP", "Auto-generated API key: %s", maskAPIKey(key))
 
-	// Create Unix domain socket listener
-	listener, err := net.Listen("unix", s.socketPath)
-	if err != nil {
-		return fmt.Errorf("failed to create socket listener: %w", err)
+		// Display key to user (only shown once)
+		fmt.Printf("\n=== MCP Server API Key ===\n")
+		fmt.Printf("API Key: %s\n", key)
+		fmt.Printf("(Save this key - it won't be shown again)\n")
+		fmt.Printf("==========================\n\n")
 	}
-	s.listener = listener
 
 	// Create mark3labs/mcp-go server and register tools
 	s.mcpServer = server.NewMCPServer(
@@ -226,11 +347,33 @@ func (s *MCPServer) Start() error {
 		server.WithToolCapabilities(false), // No tool subscriptions needed
 	)
 
-	// Register all 9 existing tools
+	// Register all tools
 	if err := s.registerTools(); err != nil {
-		listener.Close()
 		return fmt.Errorf("failed to register tools: %w", err)
 	}
+
+	// Create StreamableHTTPServer
+	s.httpServer = server.NewStreamableHTTPServer(
+		s.mcpServer,
+		server.WithEndpointPath("/mcp"),
+		server.WithStateful(true),
+	)
+
+	// Wrap with authentication middleware
+	handler := s.authMiddleware(s.httpServer)
+
+	// Start HTTP server with authentication
+	addr := fmt.Sprintf("%s:%d", s.config.HttpHost, s.config.HttpPort)
+	go func() {
+		logger.DebugfToFile("MCP", "Starting HTTP server on %s", addr)
+		httpServer := &http.Server{
+			Addr:    addr,
+			Handler: handler,
+		}
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.DebugfToFile("MCP", "HTTP server error: %v", err)
+		}
+	}()
 
 	s.running = true
 	s.startedAt = time.Now()
@@ -241,11 +384,8 @@ func (s *MCPServer) Start() error {
 		logger.DebugfToFile("MCP", "Started history rotation worker (interval: %v)", s.config.HistoryRotationInterval)
 	}
 
-	logger.DebugfToFile("MCP", "MCP server started on socket: %s", s.socketPath)
-	s.mcpLog.LogServerStart(s.session, s.socketPath)
-
-	// Start accepting connections in a goroutine
-	go s.acceptConnections()
+	logger.DebugfToFile("MCP", "MCP server started on http://%s", addr)
+	s.mcpLog.LogServerStart(s.session, addr)
 
 	return nil
 }
@@ -264,9 +404,14 @@ func (s *MCPServer) Stop() error {
 	// Signal shutdown
 	s.cancel()
 
-	// Close listener
-	if s.listener != nil {
-		s.listener.Close()
+	// Stop HTTP server
+	if s.httpServer != nil {
+		logger.DebugfToFile("MCP", "Shutting down HTTP server...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+			logger.DebugfToFile("MCP", "HTTP server shutdown error: %v", err)
+		}
 	}
 
 	// Close MCP session (independent from REPL)
@@ -282,9 +427,6 @@ func (s *MCPServer) Stop() error {
 	if s.mcpLog != nil {
 		s.mcpLog.Close()
 	}
-
-	// Remove socket file
-	removeSocketIfExists(s.socketPath)
 
 	s.running = false
 
@@ -339,58 +481,6 @@ func (s *MCPServer) UpdateConfirmQueries(categories []string) error {
 // UpdateSkipConfirmation changes the skip-confirmation list dynamically
 func (s *MCPServer) UpdateSkipConfirmation(categories []string) error {
 	return s.config.UpdateSkipConfirmation(categories)
-}
-
-// acceptConnections accepts connections from Claude Desktop
-func (s *MCPServer) acceptConnections() {
-	for {
-		select {
-		case <-s.ctx.Done():
-			logger.DebugfToFile("MCP", "Accept loop shutting down")
-			return
-		default:
-			// Accept connection with timeout
-			conn, err := s.listener.Accept()
-			if err != nil {
-				select {
-				case <-s.ctx.Done():
-					// Server shutting down, expected error
-					return
-				default:
-					logger.DebugfToFile("MCP", "Error accepting connection: %v", err)
-					s.mcpLog.LogError("ACCEPT_ERROR", err)
-					continue
-				}
-			}
-
-			logger.DebugfToFile("MCP", "New MCP connection accepted")
-			s.mcpLog.LogClaudeConnected()
-
-			// Handle connection in separate goroutine
-			go s.handleConnection(conn)
-		}
-	}
-}
-
-// handleConnection handles a single MCP connection from Claude Desktop.
-// The connection is a Unix socket that nc bridges to Claude's stdin/stdout.
-func (s *MCPServer) handleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	logger.DebugfToFile("MCP", "Handling MCP connection from Claude Desktop")
-
-	// Create StdioServer to handle JSON-RPC protocol over the socket
-	stdioServer := server.NewStdioServer(s.mcpServer)
-
-	// Use the socket connection as stdin/stdout for MCP protocol
-	// The connection implements io.Reader and io.Writer
-	err := stdioServer.Listen(s.ctx, conn, conn)
-	if err != nil {
-		logger.DebugfToFile("MCP", "Connection error: %v", err)
-		s.mcpLog.LogError("CONNECTION_ERROR", err)
-	}
-
-	logger.DebugfToFile("MCP", "MCP connection closed")
 }
 
 // registerTools registers all CQLAI tools with the MCP server
@@ -1128,25 +1218,6 @@ func join(strs []string, sep string) string {
 		result += sep + strs[i]
 	}
 	return result
-}
-
-// removeSocketIfExists removes a Unix socket file if it exists
-func removeSocketIfExists(path string) error {
-	// Check if socket file exists by trying to dial it
-	if conn, err := net.Dial("unix", path); err == nil {
-		// Socket is active and accepting connections
-		conn.Close()
-		return fmt.Errorf("socket %s is already in use by another process", path)
-	}
-
-	// Socket file may exist but not accepting connections
-	// Try to remove it (if it doesn't exist, that's ok)
-	if err := removeFile(path); err != nil {
-		// Only return error if file exists but can't be removed
-		return fmt.Errorf("failed to remove socket file: %w", err)
-	}
-
-	return nil
 }
 
 // removeFile removes a file, ignoring "file not found" errors
