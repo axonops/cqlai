@@ -451,8 +451,11 @@ func TestAuthMiddleware(t *testing.T) {
 	validKey := ksuid.New().String()
 	server := &MCPServer{
 		config: &MCPServerConfig{
-			ApiKey:   validKey,
-			HttpHost: "127.0.0.1",
+			ApiKey:              validKey,
+			HttpHost:            "127.0.0.1",
+			IpAllowlist:         []string{"127.0.0.1"},
+			IpAllowlistDisabled: false,
+			RequiredHeaders:     make(map[string]string),
 		},
 	}
 
@@ -466,6 +469,7 @@ func TestAuthMiddleware(t *testing.T) {
 	t.Run("missing API key header", func(t *testing.T) {
 		nextCalled = false
 		req := httptest.NewRequest("POST", "/mcp", nil)
+		req.RemoteAddr = "127.0.0.1:54321"
 		rec := httptest.NewRecorder()
 
 		handler := server.authMiddleware(nextHandler)
@@ -486,6 +490,7 @@ func TestAuthMiddleware(t *testing.T) {
 		nextCalled = false
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("X-API-Key", ksuid.New().String()) // Different KSUID
+		req.RemoteAddr = "127.0.0.1:54321"
 		rec := httptest.NewRecorder()
 
 		handler := server.authMiddleware(nextHandler)
@@ -504,6 +509,7 @@ func TestAuthMiddleware(t *testing.T) {
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("X-API-Key", validKey)
 		req.Header.Set("Origin", "https://evil.com")
+		req.RemoteAddr = "127.0.0.1:54321"
 		rec := httptest.NewRecorder()
 
 		handler := server.authMiddleware(nextHandler)
@@ -525,6 +531,7 @@ func TestAuthMiddleware(t *testing.T) {
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("X-API-Key", validKey)
 		req.Header.Set("Origin", "http://localhost:3000")
+		req.RemoteAddr = "127.0.0.1:54321"
 		rec := httptest.NewRecorder()
 
 		handler := server.authMiddleware(nextHandler)
@@ -543,6 +550,7 @@ func TestAuthMiddleware(t *testing.T) {
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("X-API-Key", validKey)
 		// No Origin header (direct API request)
+		req.RemoteAddr = "127.0.0.1:54321"
 		rec := httptest.NewRecorder()
 
 		handler := server.authMiddleware(nextHandler)

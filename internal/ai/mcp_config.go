@@ -125,6 +125,12 @@ func (c *MCPServerConfig) GetConfigSnapshot() MCPConfigSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	// Copy RequiredHeaders map
+	requiredHeadersCopy := make(map[string]string, len(c.RequiredHeaders))
+	for k, v := range c.RequiredHeaders {
+		requiredHeadersCopy[k] = v
+	}
+
 	return MCPConfigSnapshot{
 		Mode:                            c.Mode,
 		PresetMode:                      c.PresetMode,
@@ -136,6 +142,10 @@ func (c *MCPServerConfig) GetConfigSnapshot() MCPConfigSnapshot {
 		ApiKey:                          c.ApiKey,
 		ApiKeyMaxAge:                    c.ApiKeyMaxAge,
 		AllowedOrigins:                  append([]string(nil), c.AllowedOrigins...), // Copy slice
+		IpAllowlist:                     append([]string(nil), c.IpAllowlist...),    // Copy slice
+		IpAllowlistDisabled:             c.IpAllowlistDisabled,
+		AuditHttpHeaders:                append([]string(nil), c.AuditHttpHeaders...), // Copy slice
+		RequiredHeaders:                 requiredHeadersCopy,                           // Copy map
 		LogLevel:                        c.LogLevel,
 		DisableRuntimePermissionChanges: c.DisableRuntimePermissionChanges,
 		AllowMCPRequestApproval:         c.AllowMCPRequestApproval,
@@ -158,6 +168,10 @@ type MCPConfigSnapshot struct {
 	ApiKey                          string
 	ApiKeyMaxAge                    time.Duration
 	AllowedOrigins                  []string
+	IpAllowlist                     []string
+	IpAllowlistDisabled             bool
+	AuditHttpHeaders                []string
+	RequiredHeaders                 map[string]string
 	LogLevel                        string
 	DisableRuntimePermissionChanges bool
 	AllowMCPRequestApproval         bool

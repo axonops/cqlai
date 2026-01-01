@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -63,11 +64,15 @@ type MCPServer struct {
 // Configuration can be changed dynamically at runtime via .mcp config commands
 type MCPServerConfig struct {
 	// Server infrastructure - HTTP transport
-	HttpHost        string        // HTTP server host (default: 127.0.0.1)
-	HttpPort        int           // HTTP server port (default: 8888)
-	ApiKey          string        // API key for authentication (auto-generated if empty)
-	ApiKeyMaxAge    time.Duration // Max age for API keys (default: 30 days, 0 = disabled)
-	AllowedOrigins  []string      // Allowed Origin headers for non-localhost (DNS rebinding protection)
+	HttpHost             string        // HTTP server host (default: 127.0.0.1)
+	HttpPort             int           // HTTP server port (default: 8888)
+	ApiKey               string        // API key for authentication (auto-generated if empty)
+	ApiKeyMaxAge         time.Duration // Max age for API keys (default: 30 days, 0 = disabled)
+	AllowedOrigins       []string      // Allowed Origin headers for non-localhost (DNS rebinding protection)
+	IpAllowlist          []string      // IP/CIDR allowlist (default: 127.0.0.1)
+	IpAllowlistDisabled  bool          // Disable IP checking (SECURITY RISK, triggers warnings)
+	AuditHttpHeaders     []string      // HTTP headers to log for audit trail (default: X-Forwarded-For, User-Agent)
+	RequiredHeaders      map[string]string // Required headers with exact values or regex patterns
 
 	// Legacy
 	SocketPath          string // Deprecated: Will be removed
@@ -104,11 +109,15 @@ func DefaultMCPConfig() *MCPServerConfig {
 
 	return &MCPServerConfig{
 		// HTTP transport (default)
-		HttpHost:        "127.0.0.1",
-		HttpPort:        8888,
-		ApiKey:          "", // Auto-generated on start if empty
-		ApiKeyMaxAge:    30 * 24 * time.Hour, // 30 days (0 = disabled)
-		AllowedOrigins:  nil, // Only used for non-localhost bindings
+		HttpHost:            "127.0.0.1",
+		HttpPort:            8888,
+		ApiKey:              "", // Auto-generated on start if empty
+		ApiKeyMaxAge:        30 * 24 * time.Hour, // 30 days (0 = disabled)
+		AllowedOrigins:      nil, // Only used for non-localhost bindings
+		IpAllowlist:         []string{"127.0.0.1"}, // Default: localhost only
+		IpAllowlistDisabled: false,
+		AuditHttpHeaders:    []string{"X-Forwarded-For", "User-Agent"}, // Default audit headers
+		RequiredHeaders:     make(map[string]string), // Default: no required headers
 
 		// Legacy (deprecated)
 		SocketPath:              "", // Empty = HTTP mode (socket deprecated)
@@ -282,11 +291,128 @@ func ParseKSUID(key string) (ksuid.KSUID, error) {
 	return id, nil
 }
 
-// authMiddleware wraps an http.Handler with authentication and origin validation
+// ============================================================================
+// IP Allowlisting
+// ============================================================================
+
+// extractClientIP extracts the client IP from http.Request
+// Returns the direct connection IP (from RemoteAddr), not X-Forwarded-For
+func extractClientIP(r *http.Request) (string, error) {
+	// RemoteAddr format: "ip:port" or "[ipv6]:port"
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// Try without port (shouldn't happen but be defensive)
+		return r.RemoteAddr, nil
+	}
+	return host, nil
+}
+
+// validateClientIP checks if client IP is in allowlist
+func (s *MCPServer) validateClientIP(r *http.Request) bool {
+	// If IP allowlist disabled, allow all IPs (with warning)
+	if s.config.IpAllowlistDisabled {
+		logger.DebugfToFile("MCP", "IP allowlist disabled - accepting all IPs (SECURITY RISK)")
+		return true
+	}
+
+	clientIP, err := extractClientIP(r)
+	if err != nil {
+		logger.DebugfToFile("MCP", "Failed to extract client IP: %v", err)
+		return false
+	}
+
+	// Parse client IP
+	clientAddr := net.ParseIP(clientIP)
+	if clientAddr == nil {
+		logger.DebugfToFile("MCP", "Invalid client IP format: %s", clientIP)
+		return false
+	}
+
+	// Check against allowlist (supports both single IPs and CIDR ranges)
+	for _, allowed := range s.config.IpAllowlist {
+		// Check if it's a CIDR range
+		if strings.Contains(allowed, "/") {
+			_, ipNet, err := net.ParseCIDR(allowed)
+			if err != nil {
+				logger.DebugfToFile("MCP", "Invalid CIDR in allowlist: %s", allowed)
+				continue
+			}
+			if ipNet.Contains(clientAddr) {
+				logger.DebugfToFile("MCP", "Client IP %s allowed (matches CIDR %s)", clientIP, allowed)
+				return true
+			}
+		} else {
+			// Direct IP comparison
+			allowedAddr := net.ParseIP(allowed)
+			if allowedAddr == nil {
+				logger.DebugfToFile("MCP", "Invalid IP in allowlist: %s", allowed)
+				continue
+			}
+			if clientAddr.Equal(allowedAddr) {
+				logger.DebugfToFile("MCP", "Client IP %s allowed (exact match)", clientIP)
+				return true
+			}
+		}
+	}
+
+	logger.DebugfToFile("MCP", "Client IP %s rejected (not in allowlist: %v)", clientIP, s.config.IpAllowlist)
+	return false
+}
+
+// ============================================================================
+// Required Header Validation
+// ============================================================================
+
+// validateRequiredHeaders checks if all required headers are present with valid values
+func (s *MCPServer) validateRequiredHeaders(r *http.Request) error {
+	if len(s.config.RequiredHeaders) == 0 {
+		return nil // No required headers configured
+	}
+
+	for headerName, expectedValue := range s.config.RequiredHeaders {
+		actualValue := r.Header.Get(headerName)
+
+		if actualValue == "" {
+			return fmt.Errorf("required header '%s' is missing", headerName)
+		}
+
+		// Check if expected value is a regex pattern (contains regex chars)
+		// Simple heuristic: if contains ^, $, *, +, ?, [, ], (, ), |, . then treat as regex
+		isRegex := strings.ContainsAny(expectedValue, "^$*+?[]().|")
+
+		if isRegex {
+			// Regex pattern match
+			matched, err := regexp.MatchString(expectedValue, actualValue)
+			if err != nil {
+				return fmt.Errorf("invalid regex pattern for header '%s': %w", headerName, err)
+			}
+			if !matched {
+				return fmt.Errorf("header '%s' value '%s' does not match pattern '%s'",
+					headerName, actualValue, expectedValue)
+			}
+			logger.DebugfToFile("MCP", "Required header '%s' validated (regex match)", headerName)
+		} else {
+			// Exact match
+			if actualValue != expectedValue {
+				return fmt.Errorf("header '%s' value '%s' does not match expected '%s'",
+					headerName, actualValue, expectedValue)
+			}
+			logger.DebugfToFile("MCP", "Required header '%s' validated (exact match)", headerName)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// Authentication Middleware
+// ============================================================================
+
+// authMiddleware wraps an http.Handler with all security validations
 func (s *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Layer 1: API key validation
 		apiKey := r.Header.Get("X-API-Key")
-
 		if apiKey == "" {
 			logger.DebugfToFile("MCP", "Authentication failed: missing X-API-Key header")
 			http.Error(w, "missing X-API-Key header", http.StatusUnauthorized)
@@ -299,17 +425,31 @@ func (s *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Log successful authentication (masked key)
 		logger.DebugfToFile("MCP", "API key validated: %s", MaskAPIKey(apiKey))
 
-		// Validate origin (DNS rebinding protection)
+		// Layer 2: Origin validation (DNS rebinding protection)
 		if !s.validateOrigin(r) {
 			logger.DebugfToFile("MCP", "Origin validation failed: %s", r.Header.Get("Origin"))
 			http.Error(w, "origin not allowed", http.StatusForbidden)
 			return
 		}
 
-		// Authentication and origin validation passed - call next handler
+		// Layer 3: IP allowlist validation
+		if !s.validateClientIP(r) {
+			clientIP, _ := extractClientIP(r)
+			logger.DebugfToFile("MCP", "IP validation failed: %s", clientIP)
+			http.Error(w, "IP not in allowlist", http.StatusForbidden)
+			return
+		}
+
+		// Layer 4: Required headers validation
+		if err := s.validateRequiredHeaders(r); err != nil {
+			logger.DebugfToFile("MCP", "Required header validation failed: %v", err)
+			http.Error(w, fmt.Sprintf("required header validation failed: %v", err), http.StatusForbidden)
+			return
+		}
+
+		// All validation layers passed - call next handler
 		next.ServeHTTP(w, r)
 	})
 }
@@ -419,6 +559,18 @@ func (s *MCPServer) Start() error {
 	} else {
 		maxAgeDays := int(s.config.ApiKeyMaxAge.Hours() / 24)
 		logger.DebugfToFile("MCP", "API key max age: %d days", maxAgeDays)
+	}
+
+	// SECURITY WARNING: Check if IP allowlist is disabled
+	if s.config.IpAllowlistDisabled {
+		logger.DebugfToFile("MCP", "WARNING: IP allowlist is DISABLED - all IPs will be accepted")
+		fmt.Printf("\n⚠️  WARNING: IP ALLOWLIST DISABLED ⚠️\n")
+		fmt.Printf("All client IPs will be accepted. This is a security risk.\n")
+		fmt.Printf("Recommendation: Use default IP allowlist (127.0.0.1) or configure specific IPs\n")
+		fmt.Printf("Only disable in fully trusted networks.\n")
+		fmt.Printf("=========================================================\n\n")
+	} else {
+		logger.DebugfToFile("MCP", "IP allowlist: %v", s.config.IpAllowlist)
 	}
 
 	// Create mark3labs/mcp-go server and register tools
