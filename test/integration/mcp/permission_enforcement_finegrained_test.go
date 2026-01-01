@@ -1,8 +1,16 @@
 package mcp
 
 import (
+	"os"
 	"testing"
+
+	"github.com/axonops/cqlai/internal/ai"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // TestFineGrained_SkipDQL tests skipping only DQL
 func TestFineGrained_SkipDQL(t *testing.T) {
@@ -10,14 +18,14 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_dql.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// DQL should skip confirmation
 	t.Run("SELECT_no_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -27,7 +35,7 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 
 	// DML should require confirmation
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -43,7 +51,7 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 
 	// DDL should require confirmation
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_skipdql",
@@ -66,14 +74,14 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql_dml.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_dql_dml.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// DQL and DML should work
 	t.Run("SELECT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -82,7 +90,7 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 	})
 
 	t.Run("INSERT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -96,7 +104,7 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 	})
 
 	t.Run("DELETE_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -113,7 +121,7 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 
 	// DDL should require confirmation
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_dqlml",
@@ -131,7 +139,7 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 
 	// DCL should require confirmation
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -150,14 +158,14 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql_dml_ddl.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_dql_dml_ddl.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// DQL, DML, DDL should all work
 	t.Run("SELECT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -166,7 +174,7 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 	})
 
 	t.Run("INSERT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -180,7 +188,7 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 	})
 
 	t.Run("CREATE_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_dmlddl",
@@ -198,7 +206,7 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 
 	// Only DCL should require confirmation
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -217,14 +225,14 @@ func TestFineGrained_SkipALL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_all.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_all.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// Everything should work without confirmation
 	t.Run("SELECT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -233,7 +241,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 	})
 
 	t.Run("INSERT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -247,7 +255,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 	})
 
 	t.Run("DELETE_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -263,7 +271,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 	})
 
 	t.Run("CREATE_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipall",
@@ -279,7 +287,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 	})
 
 	t.Run("DROP_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipall",
@@ -288,7 +296,7 @@ func TestFineGrained_SkipALL(t *testing.T) {
 	})
 
 	t.Run("GRANT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -307,14 +315,14 @@ func TestFineGrained_SkipNone(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_none.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_none.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// Everything should require confirmation (except SESSION)
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -324,7 +332,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 	})
 
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -339,7 +347,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -356,7 +364,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 	})
 
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipnone",
@@ -373,7 +381,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 	})
 
 	t.Run("DROP_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipnone",
@@ -383,7 +391,7 @@ func TestFineGrained_SkipNone(t *testing.T) {
 	})
 
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",

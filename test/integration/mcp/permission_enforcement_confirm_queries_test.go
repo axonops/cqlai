@@ -1,10 +1,17 @@
 package mcp
 
 import (
+	"os"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // TestConfirmQueries_ReadwriteWithDML tests readwrite + confirm dml
 func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
@@ -12,12 +19,12 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readwrite_confirm_dml.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite_confirm_dml.json")
+	defer stopMCPHTTP(ctx)
 
 	// DQL should work without confirmation
 	t.Run("SELECT_no_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -27,7 +34,7 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 
 	// DML should require confirmation
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -45,13 +52,13 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 		requestID := extractRequestID(text)
 		if requestID != "" {
 			// Check it's in pending list
-			pendingResp := callTool(t, ctx.SocketPath, "get_pending_confirmations", map[string]any{})
+			pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
 			if pendingResp != nil {
 				assertContains(t, pendingResp, requestID)
 			}
 
 			// Check specific state
-			stateResp := callTool(t, ctx.SocketPath, "get_confirmation_state", map[string]any{"request_id": requestID})
+			stateResp := callToolHTTP(t, ctx, "get_confirmation_state", map[string]any{"request_id": requestID})
 			if stateResp != nil {
 				assertNotError(t, stateResp, "get_confirmation_state should work")
 				assertContains(t, stateResp, "PENDING")
@@ -61,7 +68,7 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -78,7 +85,7 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 
 	// DDL still blocked (not allowed in readwrite)
 	t.Run("CREATE_blocked", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -99,15 +106,15 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_ddl.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_ddl.json")
+	defer stopMCPHTTP(ctx)
 
 	// Ensure test data exists (in case previous tests dropped tables)
 	ensureTestDataExists(t, ctx.Session)
 
 	// DML should work without confirmation
 	t.Run("INSERT_no_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -122,7 +129,7 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 
 	// DDL should require confirmation
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -137,7 +144,7 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 	})
 
 	t.Run("DROP_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -147,7 +154,7 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 
 	// DCL should work without confirmation
 	t.Run("GRANT_no_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"options": map[string]any{
@@ -165,12 +172,12 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_dml_ddl.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_dml_ddl.json")
+	defer stopMCPHTTP(ctx)
 
 	// DQL should work
 	t.Run("SELECT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -180,7 +187,7 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 
 	// Both DML and DDL should require confirmation
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -194,7 +201,7 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 	})
 
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -209,7 +216,7 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 
 	// DCL should work
 	t.Run("GRANT_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"options": map[string]any{
@@ -227,12 +234,12 @@ func TestConfirmQueries_ReadonlyWithDQL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly_confirm_dql.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly_confirm_dql.json")
+	defer stopMCPHTTP(ctx)
 
 	// Even SELECT should require confirmation
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -243,7 +250,7 @@ func TestConfirmQueries_ReadonlyWithDQL(t *testing.T) {
 
 	// DML still blocked (not in allowed list)
 	t.Run("INSERT_still_blocked", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -264,12 +271,12 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_all.json")
+	defer stopMCPHTTP(ctx)
 
 	// ALL operations should require confirmation (except SESSION)
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -281,7 +288,7 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 	})
 
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -298,7 +305,7 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -317,7 +324,7 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 	})
 
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -334,7 +341,7 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 	})
 
 	t.Run("DROP_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -346,7 +353,7 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 	})
 
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"options": map[string]any{

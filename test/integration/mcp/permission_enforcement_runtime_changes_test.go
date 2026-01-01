@@ -2,10 +2,17 @@ package mcp
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // TestRuntimeChanges_ReadonlyToReadwrite tests escalating from readonly to readwrite
 func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
@@ -13,15 +20,15 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Verify INSERT blocked
 	t.Run("step1_INSERT_blocked", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -37,7 +44,7 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 
 	// Change to readwrite
 	t.Run("step2_upgrade_to_readwrite", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"mode":           "readwrite",
 			"user_confirmed": true,
 		})
@@ -46,7 +53,7 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 
 	// Verify INSERT now works
 	t.Run("step3_INSERT_now_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -61,7 +68,7 @@ func TestRuntimeChanges_ReadonlyToReadwrite(t *testing.T) {
 
 	// Verify status updated
 	t.Run("step4_verify_status", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+		resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 		if resp != nil {
 			text := extractText(t, resp)
 			var status map[string]any
@@ -79,15 +86,15 @@ func TestRuntimeChanges_ReadwriteToDBA(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Verify CREATE blocked
 	t.Run("CREATE_blocked_in_readwrite", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_runtime",
@@ -106,7 +113,7 @@ func TestRuntimeChanges_ReadwriteToDBA(t *testing.T) {
 
 	// Upgrade to DBA
 	t.Run("upgrade_to_dba", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"mode":           "dba",
 			"user_confirmed": true,
 		})
@@ -115,7 +122,7 @@ func TestRuntimeChanges_ReadwriteToDBA(t *testing.T) {
 
 	// CREATE now works
 	t.Run("CREATE_now_works", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_runtime",
@@ -138,15 +145,15 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba.json") // DBA without confirmations
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json") // DBA without confirmations
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Initially no confirmations
 	t.Run("GRANT_works_initially", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -160,7 +167,7 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 
 	// Add DCL confirmations
 	t.Run("add_dcl_confirmations", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"confirm_queries": "dcl",
 			"user_confirmed":  true,
 		})
@@ -169,7 +176,7 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 
 	// Now GRANT requires confirmation
 	t.Run("GRANT_now_requires_confirmation", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -188,15 +195,15 @@ func TestRuntimeChanges_DisableConfirmations(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json") // Starts with ALL
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_all.json") // Starts with ALL
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Initially requires confirmation
 	t.Run("SELECT_requires_confirmation_initially", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -206,7 +213,7 @@ func TestRuntimeChanges_DisableConfirmations(t *testing.T) {
 
 	// Disable confirmations
 	t.Run("disable_confirmations", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"confirm_queries": "disable",
 			"user_confirmed":  true,
 		})
@@ -215,7 +222,7 @@ func TestRuntimeChanges_DisableConfirmations(t *testing.T) {
 
 	// Now works without confirmation
 	t.Run("SELECT_works_after_disable", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -230,15 +237,15 @@ func TestRuntimeChanges_PresetToFineGrained(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly.json") // Preset mode
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json") // Preset mode
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Verify preset mode
 	t.Run("verify_preset_mode", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+		resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 		if resp != nil {
 			text := extractText(t, resp)
 			assert.Contains(t, text, "preset")
@@ -247,7 +254,7 @@ func TestRuntimeChanges_PresetToFineGrained(t *testing.T) {
 
 	// Switch to fine-grained
 	t.Run("switch_to_finegrained", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"skip_confirmation": "dql,dml",
 			"user_confirmed":    true,
 		})
@@ -256,7 +263,7 @@ func TestRuntimeChanges_PresetToFineGrained(t *testing.T) {
 
 	// Verify fine-grained mode
 	t.Run("verify_finegrained_mode", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+		resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 		if resp != nil {
 			text := extractText(t, resp)
 			var status map[string]any
@@ -269,7 +276,7 @@ func TestRuntimeChanges_PresetToFineGrained(t *testing.T) {
 
 	// Switch back to preset
 	t.Run("switch_back_to_preset", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"mode":           "dba",
 			"user_confirmed": true,
 		})
@@ -283,15 +290,15 @@ func TestRuntimeChanges_UserConfirmedRequired(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Without user_confirmed should fail
 	t.Run("without_user_confirmed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"mode":           "dba",
 			"user_confirmed": false,
 		})
@@ -301,7 +308,7 @@ func TestRuntimeChanges_UserConfirmedRequired(t *testing.T) {
 
 	// With user_confirmed should succeed
 	t.Run("with_user_confirmed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"mode":           "dba",
 			"user_confirmed": true,
 		})
