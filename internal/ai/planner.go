@@ -345,6 +345,14 @@ func renderUpdate(plan *AIResult) (string, error) {
 				keyStr := formatValue(op.Key, "")
 				valStr := formatValue(op.Value, op.ValueType)
 				setClauses = append(setClauses, fmt.Sprintf("%s[%s] = %s", col, keyStr, valStr))
+			case "set_field":
+				// udt.field = value
+				if op.Key == nil {
+					return "", fmt.Errorf("field name (key) required for set_field operation")
+				}
+				fieldName := fmt.Sprintf("%v", op.Key) // Field name as string
+				valStr := formatValue(op.Value, op.ValueType)
+				setClauses = append(setClauses, fmt.Sprintf("%s.%s = %s", col, fieldName, valStr))
 			case "set_index":
 				// list[index] = value
 				if op.Index == nil {
