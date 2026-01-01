@@ -207,7 +207,7 @@ func GetCommonToolDefinitions() []ToolDefinition {
 		},
 		{
 			Name:        ToolSubmitQueryPlan.String(),
-			Description: "Submit the final CQL query plan based on gathered information",
+			Description: "Submit the final CQL query plan based on gathered information. Supports ALL CQL features including collections, counters, LWTs, BATCH, etc.",
 			Parameters: map[string]any{
 				"operation": map[string]any{
 					"type":        "string",
@@ -233,16 +233,51 @@ func GetCommonToolDefinitions() []ToolDefinition {
 				},
 				"columns": map[string]any{
 					"type":        "array",
-					"description": "Column names for SELECT or INSERT operations",
+					"description": "Column names for SELECT or INSERT. Supports functions: COUNT(*), WRITETIME(col), TTL(col), CAST(x AS type), col[key], col.field",
 					"items":       map[string]any{"type": "string"},
 				},
 				"values": map[string]any{
 					"type":        "object",
-					"description": "Values for INSERT or UPDATE operations",
+					"description": "Values for INSERT or UPDATE operations. Use uuid(), now() for functions. Use lists [], sets {}, maps {'k':'v'}",
+				},
+				"value_types": map[string]any{
+					"type":        "object",
+					"description": "Type hints for values (col -> 'list<text>', 'set<int>', 'map<text,int>') - helps format collections correctly",
+				},
+				"counter_ops": map[string]any{
+					"type":        "object",
+					"description": "Counter operations (col -> '+5' or '-2') for counter increment/decrement",
+				},
+				"collection_ops": map[string]any{
+					"type":        "object",
+					"description": "Collection operations: append, prepend, add, remove, merge, set_element, set_index, set_field",
 				},
 				"where": map[string]any{
 					"type":        "array",
-					"description": "WHERE conditions",
+					"description": "WHERE conditions. Supports CONTAINS, CONTAINS KEY, TOKEN(), tuple notation",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"column":    map[string]any{"type": "string"},
+							"operator":  map[string]any{"type": "string", "description": "=, <, >, <=, >=, IN, CONTAINS, CONTAINS KEY"},
+							"value":     map[string]any{},
+							"is_token":  map[string]any{"type": "boolean", "description": "Wrap column in TOKEN()"},
+							"columns":   map[string]any{"type": "array", "description": "For tuple notation"},
+							"values":    map[string]any{"type": "array", "description": "For tuple notation"},
+						},
+					},
+				},
+				"if_not_exists": map[string]any{
+					"type":        "boolean",
+					"description": "INSERT IF NOT EXISTS or CREATE IF NOT EXISTS",
+				},
+				"if_exists": map[string]any{
+					"type":        "boolean",
+					"description": "UPDATE/DELETE/ALTER/DROP IF EXISTS",
+				},
+				"if_conditions": map[string]any{
+					"type":        "array",
+					"description": "LWT conditions: UPDATE/DELETE IF col = val",
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
@@ -251,6 +286,44 @@ func GetCommonToolDefinitions() []ToolDefinition {
 							"value":    map[string]any{},
 						},
 					},
+				},
+				"using_ttl": map[string]any{
+					"type":        "integer",
+					"description": "TTL in seconds for INSERT/UPDATE USING TTL",
+				},
+				"using_timestamp": map[string]any{
+					"type":        "integer",
+					"description": "Timestamp in microseconds for INSERT/UPDATE/DELETE USING TIMESTAMP",
+				},
+				"distinct": map[string]any{
+					"type":        "boolean",
+					"description": "SELECT DISTINCT (partition key columns only)",
+				},
+				"select_json": map[string]any{
+					"type":        "boolean",
+					"description": "SELECT JSON output format",
+				},
+				"per_partition_limit": map[string]any{
+					"type":        "integer",
+					"description": "PER PARTITION LIMIT for SELECT",
+				},
+				"insert_json": map[string]any{
+					"type":        "boolean",
+					"description": "INSERT JSON mode",
+				},
+				"json_value": map[string]any{
+					"type":        "string",
+					"description": "JSON string for INSERT JSON",
+				},
+				"batch_type": map[string]any{
+					"type":        "string",
+					"description": "BATCH type: LOGGED (default), UNLOGGED, or COUNTER",
+					"enum":        []string{"LOGGED", "UNLOGGED", "COUNTER"},
+				},
+				"batch_statements": map[string]any{
+					"type":        "array",
+					"description": "Statements in the BATCH (array of query plans)",
+					"items":       map[string]any{"type": "object"},
 				},
 				"order_by": map[string]any{
 					"type":        "array",
@@ -277,7 +350,7 @@ func GetCommonToolDefinitions() []ToolDefinition {
 				},
 				"options": map[string]any{
 					"type":        "object",
-					"description": "Operation-specific parameters (e.g., for GRANT: {permission: 'SELECT', role: 'app_readonly'}, for CREATE INDEX: {index_name: 'idx', column: 'email'}, for ALTER: {action: 'ADD', column_name: 'age', column_type: 'int'})",
+					"description": "Operation-specific parameters. Supports: if_not_exists, if_exists, custom_index, using_class, or_replace, and more",
 				},
 				"confidence": map[string]any{
 					"type":        "number",
