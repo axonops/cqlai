@@ -572,18 +572,34 @@ func renderDrop(plan *AIResult) (string, error) {
 		}
 	}
 
+	// Phase 5: Check for IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("DROP ")
 
 	if plan.Table != "" {
-		sb.WriteString("TABLE ")
+		if ifExists {
+			sb.WriteString("TABLE IF EXISTS ")
+		} else {
+			sb.WriteString("TABLE ")
+		}
 		if plan.Keyspace != "" {
 			sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
 		} else {
 			sb.WriteString(plan.Table)
 		}
 	} else if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("KEYSPACE %s", plan.Keyspace))
+		if ifExists {
+			sb.WriteString(fmt.Sprintf("KEYSPACE IF EXISTS %s", plan.Keyspace))
+		} else {
+			sb.WriteString(fmt.Sprintf("KEYSPACE %s", plan.Keyspace))
+		}
 	}
 
 	sb.WriteString(";")
@@ -1419,7 +1435,43 @@ func renderCreateIndex(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'column' required in options for CREATE INDEX")
 	}
 
-	return fmt.Sprintf("CREATE INDEX %s ON %s.%s (%s);", indexName, plan.Keyspace, plan.Table, column), nil
+	// Phase 5: Check for IF NOT EXISTS and CUSTOM INDEX
+	ifNotExists := false
+	customIndex := false
+	usingClass := ""
+
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+		if custom, ok := plan.Options["custom_index"].(bool); ok {
+			customIndex = custom
+		}
+		if class, ok := plan.Options["using_class"].(string); ok {
+			usingClass = class
+			customIndex = true // If using_class provided, it's custom
+		}
+	}
+
+	var sb strings.Builder
+	if customIndex {
+		sb.WriteString("CREATE CUSTOM INDEX ")
+	} else {
+		sb.WriteString("CREATE INDEX ")
+	}
+
+	if ifNotExists {
+		sb.WriteString("IF NOT EXISTS ")
+	}
+
+	sb.WriteString(fmt.Sprintf("%s ON %s.%s (%s)", indexName, plan.Keyspace, plan.Table, column))
+
+	if customIndex && usingClass != "" {
+		sb.WriteString(fmt.Sprintf(" USING '%s'", usingClass))
+	}
+
+	sb.WriteString(";")
+	return sb.String(), nil
 }
 
 // renderDropIndex generates DROP INDEX statements
@@ -1433,6 +1485,17 @@ func renderDropIndex(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'index_name' required in options for DROP INDEX")
 	}
 
+	// Phase 5: Check for IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP INDEX IF EXISTS %s.%s;", plan.Keyspace, indexName), nil
+	}
 	return fmt.Sprintf("DROP INDEX %s.%s;", plan.Keyspace, indexName), nil
 }
 
@@ -1451,8 +1514,20 @@ func renderCreateType(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("schema required for CREATE TYPE (field definitions)")
 	}
 
+	// Phase 5: Check for IF NOT EXISTS
+	ifNotExists := false
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("CREATE TYPE %s.%s (", plan.Keyspace, typeName))
+	if ifNotExists {
+		sb.WriteString(fmt.Sprintf("CREATE TYPE IF NOT EXISTS %s.%s (", plan.Keyspace, typeName))
+	} else {
+		sb.WriteString(fmt.Sprintf("CREATE TYPE %s.%s (", plan.Keyspace, typeName))
+	}
 
 	fields := make([]string, 0, len(plan.Schema))
 	for fieldName, fieldType := range plan.Schema {
@@ -1698,8 +1773,20 @@ func renderCreateRole(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'role_name' required in options for CREATE ROLE")
 	}
 
+	// Phase 5: Check for IF NOT EXISTS
+	ifNotExists := false
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("CREATE ROLE %s", roleName))
+	if ifNotExists {
+		sb.WriteString(fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", roleName))
+	} else {
+		sb.WriteString(fmt.Sprintf("CREATE ROLE %s", roleName))
+	}
 
 	// Build WITH clause if options provided
 	withClauses := []string{}
