@@ -42,6 +42,7 @@ func (q *ConfirmationQueue) NewConfirmationRequest(query string, classification 
 		ToolOperation:  toolOp,
 		Status:         "PENDING",
 		UserConfirmed:  false,
+		StatusChanged:  make(chan string, 1), // Buffered channel for status notifications
 	}
 
 	q.requests[id] = req
@@ -74,6 +75,13 @@ func (q *ConfirmationQueue) ConfirmRequest(requestID, confirmedBy string) error 
 	req.ConfirmedBy = confirmedBy
 	req.ConfirmedAt = time.Now()
 
+	// Signal waiting goroutines (for HTTP streaming)
+	select {
+	case req.StatusChanged <- "CONFIRMED":
+	default:
+		// Channel full or no one listening - that's ok
+	}
+
 	return nil
 }
 
@@ -96,6 +104,13 @@ func (q *ConfirmationQueue) DenyRequest(requestID, deniedBy, reason string) erro
 	req.ConfirmedBy = deniedBy
 	req.ConfirmedAt = time.Now()
 
+	// Signal waiting goroutines (for HTTP streaming)
+	select {
+	case req.StatusChanged <- "DENIED":
+	default:
+		// Channel full or no one listening - that's ok
+	}
+
 	return nil
 }
 
@@ -114,6 +129,13 @@ func (q *ConfirmationQueue) CancelRequest(requestID, cancelledBy, reason string)
 	req.UserConfirmed = false
 	req.ConfirmedBy = cancelledBy
 	req.ConfirmedAt = time.Now()
+
+	// Signal waiting goroutines (for HTTP streaming)
+	select {
+	case req.StatusChanged <- "CANCELLED":
+	default:
+		// Channel full or no one listening - that's ok
+	}
 
 	return nil
 }

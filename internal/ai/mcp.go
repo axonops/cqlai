@@ -1023,8 +1023,7 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	}
 
 	if needsConfirmation {
-		// Create confirmation request and return immediately
-		// User will confirm/deny via separate MCP tools (confirm_request, deny_request)
+		// Create confirmation request
 		req := s.confirmationQueue.NewConfirmationRequest(
 			query,
 			classification,
@@ -1033,16 +1032,39 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 			s.config.ConfirmationTimeout,
 		)
 
-		logger.DebugfToFile("MCP", "Created confirmation request %s for query - waiting for user confirmation via MCP tools", req.ID)
+		logger.DebugfToFile("MCP", "Created confirmation request %s for query - blocking HTTP connection until user responds", req.ID)
 
 		// Log confirmation request to history
 		details := fmt.Sprintf("operation=%s category=%s dangerous=%v", params.Operation, opInfo.Category, classification.IsDangerous)
 		s.logConfirmationToHistory("CONFIRM_REQUESTED", req.ID, query, details)
 
-		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-		// Return error with request ID and hints on how to confirm or update permissions
-		errorMsg := CreateConfirmationRequiredError(opInfo, s.config.GetConfigSnapshot(), req.ID)
-		return mcp.NewToolResultError(errorMsg), nil
+		// CRITICAL: BLOCK and wait for user to confirm/deny via MCP tools
+		// This keeps the HTTP connection open (streaming)
+		// User calls confirm_request or deny_request in separate request
+		status, confirmedBy, reason, err := s.WaitForConfirmation(req.ID, s.config.ConfirmationTimeout)
+
+		if err != nil {
+			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Confirmation wait failed: %v", err)), nil
+		}
+
+		// Status is now: CONFIRMED, DENIED, CANCELLED, or TIMEOUT
+		if status != "CONFIRMED" {
+			// Request was denied, cancelled, or timed out
+			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+			errorMsg := fmt.Sprintf("Query not executed: %s (reason: %s)", status, reason)
+			if status == "DENIED" {
+				errorMsg = fmt.Sprintf("Query denied by %s: %s", confirmedBy, reason)
+			} else if status == "CANCELLED" {
+				errorMsg = fmt.Sprintf("Query cancelled by %s: %s", confirmedBy, reason)
+			} else if status == "TIMEOUT" {
+				errorMsg = fmt.Sprintf("Confirmation timed out after %v - query not executed", s.config.ConfirmationTimeout)
+			}
+			return mcp.NewToolResultError(errorMsg), nil
+		}
+
+		// CONFIRMED - fall through to execution below
+		logger.DebugfToFile("MCP", "Request %s confirmed by %s - proceeding with execution", req.ID, confirmedBy)
 	}
 
 	// Query approved or no confirmation needed - EXECUTE IT
@@ -1499,6 +1521,54 @@ func (s *MCPServer) GetPendingConfirmations() []*ConfirmationRequest {
 		return nil
 	}
 	return s.confirmationQueue.GetPendingConfirmations()
+}
+
+// WaitForConfirmation blocks until a confirmation request is resolved (confirmed, denied, cancelled, or timed out)
+// This enables HTTP streaming - the connection stays open until user responds
+// Returns: (status, confirmedBy, reason, error)
+func (s *MCPServer) WaitForConfirmation(requestID string, timeout time.Duration) (string, string, string, error) {
+	req, err := s.confirmationQueue.GetRequest(requestID)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	// Set up timeout timer
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	logger.DebugfToFile("MCP", "Waiting for confirmation on request %s (timeout: %v)", requestID, timeout)
+
+	// Wait for status change or timeout
+	select {
+	case status := <-req.StatusChanged:
+		// Status changed (CONFIRMED, DENIED, or CANCELLED)
+		logger.DebugfToFile("MCP", "Confirmation request %s resolved: %s", requestID, status)
+
+		// Get updated request details
+		updatedReq, _ := s.confirmationQueue.GetRequest(requestID)
+		if updatedReq != nil {
+			return status, updatedReq.ConfirmedBy, "", nil
+		}
+		return status, "", "", nil
+
+	case <-timer.C:
+		// Timeout - mark request as timed out
+		logger.DebugfToFile("MCP", "Confirmation request %s timed out after %v", requestID, timeout)
+
+		// Update status
+		s.confirmationQueue.mu.Lock()
+		req.Status = "TIMEOUT"
+		s.confirmationQueue.mu.Unlock()
+
+		// Log timeout
+		details := fmt.Sprintf("timeout_after=%v", timeout)
+		s.logConfirmationToHistory("CONFIRM_TIMEOUT", requestID, req.Query, details)
+
+		// Send SSE notification
+		s.sendConfirmationStatusEvent(requestID, "TIMEOUT", "system", "confirmation timeout exceeded")
+
+		return "TIMEOUT", "", "confirmation timeout exceeded", nil
+	}
 }
 
 // ConfirmRequest confirms a pending dangerous query request

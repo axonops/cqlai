@@ -624,6 +624,99 @@ func TestHTTP_SSE_ConfirmationEvent(t *testing.T) {
 	})
 }
 
+func TestHTTP_StreamingConfirmation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/http_streaming.json"
+
+	apiKey, _ := ai.GenerateAPIKey()
+	configJSON := fmt.Sprintf(`{
+		"http_host": "127.0.0.1",
+		"http_port": 8894,
+		"api_key": "%s",
+		"mode": "readwrite",
+		"confirm_queries": ["dml"],
+		"allow_mcp_request_approval": true,
+		"confirmation_timeout_seconds": 30
+	}`, apiKey)
+
+	err := os.WriteFile(configPath, []byte(configJSON), 0644)
+	require.NoError(t, err)
+
+	ctx := startMCPFromConfigHTTP(t, configPath)
+	defer stopMCPHTTP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
+
+	t.Run("HTTP connection stays open during confirmation wait", func(t *testing.T) {
+		// Channel to capture result from goroutine
+		responseChan := make(chan map[string]any, 1)
+		errorChan := make(chan error, 1)
+
+		// Thread 1: Submit query (will BLOCK waiting for confirmation)
+		go func() {
+			t.Logf("Thread 1: Submitting INSERT (requires confirmation)...")
+			resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+				"operation": "INSERT",
+				"keyspace":  "test_mcp",
+				"table":     "users",
+				"values": map[string]any{
+					"id":    "00000000-0000-0000-0000-000000000066",
+					"name":  "Streaming Test",
+					"email": "streaming@test.com",
+				},
+			})
+			if resp == nil {
+				errorChan <- fmt.Errorf("nil response")
+				return
+			}
+			responseChan <- resp
+			t.Logf("Thread 1: Got response!")
+		}()
+
+		// Give submit_query_plan time to create confirmation request
+		time.Sleep(1 * time.Second)
+
+		// Get the request ID by checking pending
+		t.Logf("Thread 2: Checking pending confirmations...")
+		pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
+		require.NotNil(t, pendingResp, "Should get pending confirmations")
+		pendingText := extractText(t, pendingResp)
+		requestID := extractRequestID(pendingText)
+		require.NotEmpty(t, requestID, "Should have pending request")
+		t.Logf("Thread 2: Found pending request: %s", requestID)
+
+		// Thread 2: Approve the request (should unblock Thread 1)
+		t.Logf("Thread 2: Approving request %s...", requestID)
+		_, confirmResult := callToolHTTPWithNotifications(t, ctx, "confirm_request", map[string]any{
+			"request_id":     requestID,
+			"user_confirmed": true,
+		})
+		assertNotError(t, confirmResult, "confirm_request should succeed")
+		t.Logf("Thread 2: Request approved!")
+
+		// Thread 1 should now receive response with query execution results
+		select {
+		case resp := <-responseChan:
+			t.Logf("Thread 1: Received response after confirmation!")
+			assertNotError(t, resp, "Query should execute successfully after confirmation")
+
+			text := extractText(t, resp)
+			assert.Contains(t, text, "executed", "Should indicate query was executed")
+			t.Logf("✅ STREAMING CONFIRMATION WORKS: Connection stayed open, query executed after approval")
+
+		case err := <-errorChan:
+			t.Fatalf("Error in submit thread: %v", err)
+
+		case <-time.After(10 * time.Second):
+			t.Fatal("Timeout: Thread 1 never received response after confirmation")
+		}
+	})
+}
+
 // listenForSSEEvents opens SSE connection and forwards events to channel
 func listenForSSEEvents(t *testing.T, ctx *HTTPTestContext, eventChan chan<- map[string]any, stopChan <-chan bool) {
 	// Create SSE GET request

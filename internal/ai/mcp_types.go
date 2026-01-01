@@ -29,6 +29,9 @@ type ConfirmationRequest struct {
 	ExecutedAt      time.Time     // When execution happened
 	ExecutionError  string        // Error message if execution failed
 	RowsAffected    int           // Rows affected (for DML) or returned (for SELECT)
+
+	// Streaming HTTP support - signals when status changes
+	StatusChanged   chan string   // Channel that receives status when changed (CONFIRMED, DENIED, CANCELLED, TIMEOUT)
 }
 
 // ConfirmationResponse represents user's response to a confirmation request
