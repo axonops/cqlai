@@ -176,7 +176,7 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 
 	// Now GRANT requires confirmation
 	t.Run("GRANT_now_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -185,7 +185,6 @@ func TestRuntimeChanges_AddConfirmQueries(t *testing.T) {
 				"role":       "app_readonly",
 			},
 		})
-		assertIsError(t, resp, "GRANT should require confirmation")
 	})
 }
 
@@ -203,12 +202,11 @@ func TestRuntimeChanges_DisableConfirmations(t *testing.T) {
 
 	// Initially requires confirmation
 	t.Run("SELECT_requires_confirmation_initially", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-		assertIsError(t, resp, "SELECT should require confirmation with ALL")
 	})
 
 	// Disable confirmations

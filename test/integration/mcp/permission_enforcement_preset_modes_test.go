@@ -268,7 +268,7 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 
 	// Verify GRANT requires confirmation
 	t.Run("step8_GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -277,9 +277,6 @@ func TestRuntimePermissionConfigChanges(t *testing.T) {
 				"role":       "app_readonly",
 			},
 		})
-		assertIsError(t, resp, "GRANT should require confirmation")
-		assertContains(t, resp, "requires")
-		assertContains(t, resp, "req_") // Should have request ID
 	})
 
 	// Get pending confirmations

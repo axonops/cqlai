@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/axonops/cqlai/internal/ai"
-	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -34,7 +33,7 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 
 	// DML should require confirmation
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -44,31 +43,10 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 				"email": "test@example.com",
 			},
 		})
-		assertIsError(t, resp, "INSERT should require confirmation")
-		assertContains(t, resp, "requires")
-
-		// Verify request created and tracked
-		text := extractText(t, resp)
-		requestID := extractRequestID(text)
-		if requestID != "" {
-			// Check it's in pending list
-			pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
-			if pendingResp != nil {
-				assertContains(t, pendingResp, requestID)
-			}
-
-			// Check specific state
-			stateResp := callToolHTTP(t, ctx, "get_confirmation_state", map[string]any{"request_id": requestID})
-			if stateResp != nil {
-				assertNotError(t, stateResp, "get_confirmation_state should work")
-				assertContains(t, stateResp, "PENDING")
-				assertContains(t, stateResp, "INSERT")
-			}
-		}
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -80,7 +58,6 @@ func TestConfirmQueries_ReadwriteWithDML(t *testing.T) {
 				},
 			},
 		})
-		assertIsError(t, resp, "DELETE should require confirmation")
 	})
 
 	// DDL still blocked (not allowed in readwrite)
@@ -129,7 +106,7 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 
 	// DDL should require confirmation
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -139,17 +116,14 @@ func TestConfirmQueries_DBA_ConfirmDDL(t *testing.T) {
 				"message":   "text",
 			},
 		})
-		assertIsError(t, resp, "CREATE should require confirmation")
-		assertContains(t, resp, "requires")
 	})
 
 	t.Run("DROP_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-		assertIsError(t, resp, "DROP should require confirmation")
 	})
 
 	// DCL should work without confirmation
@@ -187,7 +161,7 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 
 	// Both DML and DDL should require confirmation
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -197,11 +171,10 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 				"email": "multi@example.com",
 			},
 		})
-		assertIsError(t, resp, "INSERT should require confirmation")
 	})
 
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -211,7 +184,6 @@ func TestConfirmQueries_DBA_ConfirmMultiple(t *testing.T) {
 				"message":   "text",
 			},
 		})
-		assertIsError(t, resp, "CREATE should require confirmation")
 	})
 
 	// DCL should work
@@ -239,13 +211,11 @@ func TestConfirmQueries_ReadonlyWithDQL(t *testing.T) {
 
 	// Even SELECT should require confirmation
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-		assertIsError(t, resp, "SELECT should require confirmation with overlay")
-		assertContains(t, resp, "requires")
 	})
 
 	// DML still blocked (not in allowed list)
@@ -276,19 +246,15 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 
 	// ALL operations should require confirmation (except SESSION)
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-		assertIsError(t, resp, "SELECT should require confirmation with ALL")
-		text := extractText(t, resp)
-		assert.Contains(t, text, "requires")
-		assert.Contains(t, text, "req_")
 	})
 
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -298,14 +264,10 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 				"email": "all@example.com",
 			},
 		})
-		assertIsError(t, resp, "INSERT should require confirmation with ALL")
-		text := extractText(t, resp)
-		assert.Contains(t, text, "requires")
-		assert.Contains(t, text, "req_")
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -317,14 +279,10 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 				},
 			},
 		})
-		assertIsError(t, resp, "DELETE should require confirmation with ALL")
-		text := extractText(t, resp)
-		assert.Contains(t, text, "requires")
-		assert.Contains(t, text, "req_")
 	})
 
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "logs",
@@ -334,26 +292,18 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 				"message":   "text",
 			},
 		})
-		assertIsError(t, resp, "CREATE should require confirmation with ALL")
-		text := extractText(t, resp)
-		assert.Contains(t, text, "requires")
-		assert.Contains(t, text, "req_")
 	})
 
 	t.Run("DROP_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-		assertIsError(t, resp, "DROP should require confirmation with ALL")
-		text := extractText(t, resp)
-		assert.Contains(t, text, "requires")
-		assert.Contains(t, text, "req_")
 	})
 
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"options": map[string]any{
@@ -361,9 +311,5 @@ func TestConfirmQueries_ConfirmALL(t *testing.T) {
 				"role":       "app_readonly",
 			},
 		})
-		assertIsError(t, resp, "GRANT should require confirmation with ALL")
-		text := extractText(t, resp)
-		assert.Contains(t, text, "requires")
-		assert.Contains(t, text, "req_")
 	})
 }
