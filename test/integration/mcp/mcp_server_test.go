@@ -27,7 +27,7 @@ func TestMCPServer_NewMCPServer(t *testing.T) {
 
 	// Create MCP server
 	config := ai.DefaultMCPConfig()
-	config.SocketPath = "/tmp/cqlai-test-mcp.sock"
+	// HTTP config already set by DefaultMCPConfig (127.0.0.1:8888)
 
 	mcpServer, err := ai.NewMCPServer(replSession, config)
 	require.NoError(t, err, "Failed to create MCP server")
@@ -55,7 +55,7 @@ func TestMCPServer_StartStop(t *testing.T) {
 
 	// Create MCP server
 	config := ai.DefaultMCPConfig()
-	config.SocketPath = "/tmp/cqlai-test-mcp-lifecycle.sock"
+	config.HttpPort = 8901 // Unique port for this test
 
 	mcpServer, err := ai.NewMCPServer(replSession, config)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestMCPServer_IndependentSession(t *testing.T) {
 
 	// Create MCP server
 	config := ai.DefaultMCPConfig()
-	config.SocketPath = "/tmp/cqlai-test-mcp-independent.sock"
+	config.HttpPort = 8902 // Unique port for this test
 
 	mcpServer, err := ai.NewMCPServer(replSession, config)
 	require.NoError(t, err)
@@ -139,7 +139,7 @@ func TestMCPServer_MetricsCollection(t *testing.T) {
 
 	// Create MCP server
 	config := ai.DefaultMCPConfig()
-	config.SocketPath = "/tmp/cqlai-test-mcp-metrics.sock"
+	config.HttpPort = 8903 // Unique port for this test
 
 	mcpServer, err := ai.NewMCPServer(replSession, config)
 	require.NoError(t, err)
