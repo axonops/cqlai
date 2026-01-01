@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/segmentio/ksuid"
 )
 
 // MCPServer manages the Model Context Protocol server for Claude Desktop integration.
@@ -207,32 +207,29 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 // HTTP Authentication and Security
 // ============================================================================
 
-// generateAPIKey generates a time-based UUID API key
-// Uses Cassandra's TimeUUID (UUIDv1) which embeds timestamp for future expiration support
+// generateAPIKey generates a KSUID API key
+// KSUID = K-Sortable Unique ID: 160 bits (32-bit timestamp + 128-bit random payload)
+// More secure than TimeUUID (no MAC address, more entropy, cryptographically random)
 func generateAPIKey() (string, error) {
-	timeUUID := gocql.TimeUUID()
-	return timeUUID.String(), nil
+	id := ksuid.New()
+	return id.String(), nil
 }
 
-// ValidateAPIKeyFormat validates that a string is a valid TimeUUID (UUIDv1)
+// ValidateAPIKeyFormat validates that a string is a valid KSUID
 // maxAge: maximum allowed age for the key (0 = no age check)
 func ValidateAPIKeyFormat(key string, maxAge time.Duration) error {
 	if key == "" {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
-	uuid, err := gocql.ParseUUID(key)
+	// Parse KSUID
+	id, err := ksuid.Parse(key)
 	if err != nil {
-		return fmt.Errorf("API key must be a valid TimeUUID (UUIDv1 format): %w", err)
+		return fmt.Errorf("API key must be a valid KSUID (27-char base62): %w", err)
 	}
 
-	// MUST be TimeUUID (version 1)
-	if uuid.Version() != 1 {
-		return fmt.Errorf("API key must be a TimeUUID (UUIDv1), got UUIDv%d", uuid.Version())
-	}
-
-	// Extract timestamp
-	keyTime := uuid.Time()
+	// Extract timestamp (KSUID embeds epoch seconds in first 4 bytes)
+	keyTime := id.Time()
 	keyAge := time.Since(keyTime)
 
 	// SECURITY: Reject future timestamps (prevents expiration bypass attack)
@@ -249,7 +246,7 @@ func ValidateAPIKeyFormat(key string, maxAge time.Duration) error {
 	}
 
 	// Log the timestamp for audit purposes
-	logger.DebugfToFile("MCP", "API key validated: TimeUUID generated at %v (age: %v)",
+	logger.DebugfToFile("MCP", "API key validated: KSUID generated at %v (age: %v)",
 		keyTime.Format(time.RFC3339), keyAge.Round(time.Second))
 
 	return nil
@@ -268,6 +265,7 @@ func (s *MCPServer) validateAPIKey(provided string) bool {
 }
 
 // MaskAPIKey masks an API key for safe logging
+// KSUID format: 27 chars base62, shows first 8 and last 4
 func MaskAPIKey(key string) string {
 	if len(key) <= 12 {
 		return "***"
@@ -275,16 +273,13 @@ func MaskAPIKey(key string) string {
 	return key[:8] + "..." + key[len(key)-4:]
 }
 
-// ParseTimeUUID parses an API key as a TimeUUID and returns it
-func ParseTimeUUID(key string) (gocql.UUID, error) {
-	uuid, err := gocql.ParseUUID(key)
+// ParseKSUID parses an API key as a KSUID and returns it with timestamp
+func ParseKSUID(key string) (ksuid.KSUID, error) {
+	id, err := ksuid.Parse(key)
 	if err != nil {
-		return gocql.UUID{}, fmt.Errorf("invalid UUID format: %w", err)
+		return ksuid.KSUID{}, fmt.Errorf("invalid KSUID format: %w", err)
 	}
-	if uuid.Version() != 1 {
-		return gocql.UUID{}, fmt.Errorf("not a TimeUUID (got UUIDv%d)", uuid.Version())
-	}
-	return uuid, nil
+	return id, nil
 }
 
 // authMiddleware wraps an http.Handler with authentication and origin validation

@@ -67,8 +67,8 @@ func (s *MCPServer) createGetMCPStatusHandler() server.ToolHandlerFunc {
 		var apiKeyTimestamp string
 		var apiKeyAge string
 		var apiKeyExpired bool
-		if uuid, err := ParseTimeUUID(config.ApiKey); err == nil {
-			keyTime := uuid.Time()
+		if id, err := ParseKSUID(config.ApiKey); err == nil {
+			keyTime := id.Time()
 			keyAgeD := time.Since(keyTime)
 			apiKeyTimestamp = keyTime.Format(time.RFC3339)
 			apiKeyAge = keyAgeD.Round(time.Hour).String()

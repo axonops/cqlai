@@ -700,13 +700,13 @@ func formatAPIKeyInfo(apiKey string, maxAge time.Duration) string {
 	// Mask the key
 	masked := ai.MaskAPIKey(apiKey)
 
-	// Extract timestamp if valid TimeUUID
-	uuid, err := ai.ParseTimeUUID(apiKey)
+	// Extract timestamp from KSUID
+	id, err := ai.ParseKSUID(apiKey)
 	if err != nil {
 		return fmt.Sprintf("%s (invalid: %v)", masked, err)
 	}
 
-	keyTime := uuid.Time()
+	keyTime := id.Time()
 	keyAge := time.Since(keyTime)
 
 	// Format the output
@@ -775,7 +775,7 @@ Server Configuration:
 HTTP Transport:
   --http-host <host>           HTTP server host (default: 127.0.0.1)
   --http-port <port>           HTTP server port (default: 8888)
-  --api-key <timeuuid>         TimeUUID API key (default: auto-generated)
+  --api-key <ksuid>            KSUID API key (default: auto-generated)
   --api-key-max-age-days <n>   Max API key age in days (default: 30, 0=disabled)
   --disable-api-key-age-check  Disable age validation (SECURITY RISK)
   --allowed-origins <list>     Comma-separated allowed origins (for non-localhost)

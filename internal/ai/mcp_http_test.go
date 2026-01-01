@@ -4,12 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/segmentio/ksuid"
 )
 
 // ============================================================================
@@ -24,20 +23,14 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name:    "valid TimeUUID (v1) - generated fresh",
-			key:     gocql.TimeUUID().String(),
+			name:    "valid KSUID - generated fresh",
+			key:     ksuid.New().String(),
 			wantErr: false,
 		},
 		{
-			name:    "valid TimeUUID from gocql",
-			key:     gocql.TimeUUID().String(),
+			name:    "valid KSUID from library",
+			key:     ksuid.New().String(),
 			wantErr: false,
-		},
-		{
-			name:    "invalid - UUIDv4 (random UUID)",
-			key:     gocql.MustRandomUUID().String(), // This is v4
-			wantErr: true,
-			errMsg:  "must be a TimeUUID (UUIDv1), got UUIDv4",
 		},
 		{
 			name:    "empty key",
@@ -47,30 +40,29 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 		},
 		{
 			name:    "invalid format - random text",
-			key:     "not-a-uuid",
+			key:     "not-a-ksuid",
 			wantErr: true,
-			errMsg:  "must be a valid TimeUUID",
+			errMsg:  "must be a valid KSUID",
 		},
 		{
-			name:    "invalid format - malformed UUID",
-			key:     "a1b2c3d4-1234-11ef",
+			name:    "invalid format - too short",
+			key:     "2ABCDEFabcdef",
 			wantErr: true,
-			errMsg:  "must be a valid TimeUUID",
+			errMsg:  "must be a valid KSUID",
 		},
 		{
-			name:    "invalid format - wrong separators",
-			key:     "a1b2c3d4_1234_11ef_8000_000000000001",
+			name:    "invalid format - UUID (wrong type)",
+			key:     "a1b2c3d4-1234-11ef-8000-000000000001",
 			wantErr: true,
-			errMsg:  "must be a valid TimeUUID",
+			errMsg:  "must be a valid KSUID",
 		},
 		{
 			name: "invalid - future timestamp (expiration bypass attack)",
 			key: func() string {
-				// Create TimeUUID with timestamp 1 year in the future
+				// Create KSUID with timestamp 1 year in the future
 				futureTime := time.Now().Add(365 * 24 * time.Hour)
-				timestamp := (futureTime.Unix()*1e7 + 0x01b21dd213814000)
-				uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
-				return uuid.String()
+				id, _ := ksuid.NewRandomWithTime(futureTime)
+				return id.String()
 			}(),
 			wantErr: true,
 			errMsg:  "timestamp is in the future",
@@ -78,11 +70,10 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 		{
 			name: "valid - timestamp with acceptable clock skew (30 seconds)",
 			key: func() string {
-				// Create TimeUUID with timestamp 30 seconds in the future (within tolerance)
+				// Create KSUID with timestamp 30 seconds in the future (within tolerance)
 				futureTime := time.Now().Add(30 * time.Second)
-				timestamp := (futureTime.Unix()*1e7 + 0x01b21dd213814000)
-				uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
-				return uuid.String()
+				id, _ := ksuid.NewRandomWithTime(futureTime)
+				return id.String()
 			}(),
 			wantErr: false,
 		},
@@ -161,13 +152,15 @@ func TestValidateAPIKeyFormat_Expiration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create TimeUUID with specified age
+			// Create KSUID with specified age
 			pastTime := time.Now().Add(-tt.keyAge)
-			timestamp := (pastTime.Unix()*1e7 + 0x01b21dd213814000)
-			uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
-			key := uuid.String()
+			id, err := ksuid.NewRandomWithTime(pastTime)
+			if err != nil {
+				t.Fatalf("Failed to create KSUID: %v", err)
+			}
+			key := id.String()
 
-			err := ValidateAPIKeyFormat(key, tt.maxAge)
+			err = ValidateAPIKeyFormat(key, tt.maxAge)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateAPIKeyFormat() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -193,16 +186,15 @@ func TestGenerateAPIKey(t *testing.T) {
 			t.Fatalf("generateAPIKey() failed: %v", err)
 		}
 
-		// Check UUID format (8-4-4-4-12 hex digits)
-		uuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-		if !uuidRegex.MatchString(key) {
-			t.Errorf("Expected valid UUID format, got: %s", key)
+		// KSUID is 27 chars in base62
+		if len(key) != 27 {
+			t.Errorf("Expected KSUID length 27, got %d: %s", len(key), key)
 		}
 
-		// Verify it's a valid TimeUUID (can be parsed)
-		_, err = gocql.ParseUUID(key)
+		// Verify it's a valid KSUID (can be parsed)
+		_, err = ksuid.Parse(key)
 		if err != nil {
-			t.Errorf("Generated key is not a valid UUID: %v", err)
+			t.Errorf("Generated key is not a valid KSUID: %v", err)
 		}
 	})
 
@@ -228,22 +220,23 @@ func TestGenerateAPIKey(t *testing.T) {
 			t.Fatalf("generateAPIKey() failed: %v", err)
 		}
 
-		// Parse TimeUUID and get timestamp
-		uuid, err := gocql.ParseUUID(key)
+		// Parse KSUID and get timestamp
+		id, err := ksuid.Parse(key)
 		if err != nil {
-			t.Fatalf("Failed to parse UUID: %v", err)
+			t.Fatalf("Failed to parse KSUID: %v", err)
 		}
 
 		// Verify timestamp is within generation window
-		keyTime := uuid.Time()
-		if keyTime.Before(beforeGen) || keyTime.After(afterGen) {
+		// KSUID timestamp is in seconds, so allow 2-second window
+		keyTime := id.Time()
+		if keyTime.Before(beforeGen.Add(-1*time.Second)) || keyTime.After(afterGen.Add(1*time.Second)) {
 			t.Errorf("Key timestamp %v not within generation window [%v - %v]",
 				keyTime, beforeGen, afterGen)
 		}
 
 		// Verify we can calculate age (for future expiration logic)
 		age := time.Since(keyTime)
-		if age < 0 || age > time.Second {
+		if age < -1*time.Second || age > 2*time.Second {
 			t.Errorf("Unexpected key age: %v", age)
 		}
 	})
@@ -254,8 +247,8 @@ func TestGenerateAPIKey(t *testing.T) {
 // ============================================================================
 
 func TestValidateAPIKey(t *testing.T) {
-	// Use a valid TimeUUID format for testing
-	testKey := "a1b2c3d4-1234-11ef-8000-000000000001"
+	// Use a valid KSUID for testing
+	testKey := ksuid.New().String()
 
 	config := &MCPServerConfig{
 		ApiKey: testKey,
@@ -277,7 +270,7 @@ func TestValidateAPIKey(t *testing.T) {
 		},
 		{
 			name:     "invalid key",
-			provided: "a1b2c3d4-1234-11ef-8000-000000000002",
+			provided: ksuid.New().String(), // Different KSUID
 			want:     false,
 		},
 		{
@@ -322,9 +315,9 @@ func TestMaskAPIKey(t *testing.T) {
 		want string
 	}{
 		{
-			name: "normal UUID key",
-			key:  "a1b2c3d4-1234-11ef-8000-123456789abc",
-			want: "a1b2c3d4...9abc", // Shows first 8 + ... + last 4
+			name: "normal KSUID key (27 chars)",
+			key:  "2ABCDEFGHIJKLMNOPQRSTUVWXYZa", // 27 chars
+			want: "2ABCDEFG...XYZa",             // First 8 + ... + last 4
 		},
 		{
 			name: "short key",
@@ -455,7 +448,7 @@ func TestValidateOrigin(t *testing.T) {
 // ============================================================================
 
 func TestAuthMiddleware(t *testing.T) {
-	validKey := "a1b2c3d4-1234-11ef-8000-000000000001"
+	validKey := ksuid.New().String()
 	server := &MCPServer{
 		config: &MCPServerConfig{
 			ApiKey:   validKey,
@@ -492,7 +485,7 @@ func TestAuthMiddleware(t *testing.T) {
 	t.Run("invalid API key", func(t *testing.T) {
 		nextCalled = false
 		req := httptest.NewRequest("POST", "/mcp", nil)
-		req.Header.Set("X-API-Key", "a1b2c3d4-1234-11ef-8000-000000000099")
+		req.Header.Set("X-API-Key", ksuid.New().String()) // Different KSUID
 		rec := httptest.NewRecorder()
 
 		handler := server.authMiddleware(nextHandler)
@@ -643,7 +636,7 @@ func TestValidateAPIKey_ConstantTime(t *testing.T) {
 	// While we can't directly measure timing, we can verify the behavior
 	// matches what crypto/subtle.ConstantTimeCompare would do
 
-	correctKey := "a1b2c3d4-1234-11ef-8000-000000000001"
+	correctKey := ksuid.New().String()
 	config := &MCPServerConfig{
 		ApiKey: correctKey,
 	}
@@ -657,9 +650,9 @@ func TestValidateAPIKey_ConstantTime(t *testing.T) {
 	}
 
 	// Test that byte-by-byte differences are handled
-	almostCorrect := "a1b2c3d4-1234-11ef-8000-000000000002" // Last digit different
+	almostCorrect := ksuid.New().String() // Different KSUID
 	if server.validateAPIKey(almostCorrect) {
-		t.Error("validateAPIKey() should reject almost-correct key")
+		t.Error("validateAPIKey() should reject different KSUID")
 	}
 
 	// Verify correct key works

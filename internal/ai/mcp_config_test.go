@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/segmentio/ksuid"
 )
 
 // ============================================================================
@@ -56,7 +56,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	t.Run("valid HTTP config with all fields", func(t *testing.T) {
-		validKey := gocql.TimeUUID().String()
+		validKey := ksuid.New().String()
 		configJSON := `{
 			"http_host": "0.0.0.0",
 			"http_port": 9999,
@@ -94,7 +94,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	})
 
 	t.Run("HTTP config with environment variable expansion", func(t *testing.T) {
-		validKey := gocql.TimeUUID().String()
+		validKey := ksuid.New().String()
 		os.Setenv("TEST_MCP_API_KEY", validKey)
 		defer os.Unsetenv("TEST_MCP_API_KEY")
 
@@ -120,7 +120,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	})
 
 	t.Run("HTTP config with default value expansion", func(t *testing.T) {
-		defaultKey := gocql.TimeUUID().String()
+		defaultKey := ksuid.New().String()
 		configJSON := `{
 			"api_key": "${NONEXISTENT_KEY:-` + defaultKey + `}"
 		}`
@@ -140,9 +140,9 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid API key - not a TimeUUID", func(t *testing.T) {
+	t.Run("invalid API key - not a KSUID", func(t *testing.T) {
 		configJSON := `{
-			"api_key": "not-a-valid-timeuuid"
+			"api_key": "not-a-valid-ksuid"
 		}`
 
 		configPath := filepath.Join(tmpDir, "invalid_key.json")
@@ -159,20 +159,20 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid API key - UUIDv4 instead of TimeUUID", func(t *testing.T) {
-		randomUUID := gocql.MustRandomUUID().String() // This is v4
+	t.Run("invalid API key - UUID instead of KSUID", func(t *testing.T) {
+		uuidKey := "a1b2c3d4-1234-11ef-8000-000000000001"
 		configJSON := `{
-			"api_key": "` + randomUUID + `"
+			"api_key": "` + uuidKey + `"
 		}`
 
-		configPath := filepath.Join(tmpDir, "uuidv4_key.json")
+		configPath := filepath.Join(tmpDir, "uuid_key.json")
 		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
 			t.Fatalf("Failed to write test config: %v", err)
 		}
 
 		_, err := LoadMCPConfigFromFile(configPath)
 		if err == nil {
-			t.Error("LoadMCPConfigFromFile() should reject UUIDv4 (must be TimeUUID/UUIDv1)")
+			t.Error("LoadMCPConfigFromFile() should reject UUID (must be KSUID)")
 		}
 	})
 
@@ -226,7 +226,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	})
 
 	t.Run("custom api_key_max_age_days", func(t *testing.T) {
-		validKey := gocql.TimeUUID().String()
+		validKey := ksuid.New().String()
 		configJSON := `{
 			"api_key": "` + validKey + `",
 			"api_key_max_age_days": 7
@@ -249,7 +249,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	})
 
 	t.Run("disable age check with 0", func(t *testing.T) {
-		validKey := gocql.TimeUUID().String()
+		validKey := ksuid.New().String()
 		configJSON := `{
 			"api_key": "` + validKey + `",
 			"api_key_max_age_days": 0
@@ -271,7 +271,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	})
 
 	t.Run("disable age check with negative value", func(t *testing.T) {
-		validKey := gocql.TimeUUID().String()
+		validKey := ksuid.New().String()
 		configJSON := `{
 			"api_key": "` + validKey + `",
 			"api_key_max_age_days": -1
@@ -293,11 +293,10 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 	})
 
 	t.Run("expired key rejected at config load", func(t *testing.T) {
-		// Create TimeUUID that's 60 days old
+		// Create KSUID that's 60 days old
 		pastTime := time.Now().Add(-60 * 24 * time.Hour)
-		timestamp := (pastTime.Unix()*1e7 + 0x01b21dd213814000)
-		uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
-		expiredKey := uuid.String()
+		id, _ := ksuid.NewRandomWithTime(pastTime)
+		expiredKey := id.String()
 
 		configJSON := `{
 			"api_key": "` + expiredKey + `",
@@ -324,7 +323,7 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 // ============================================================================
 
 func TestMCPConfigSnapshot(t *testing.T) {
-	validKey := gocql.TimeUUID().String()
+	validKey := ksuid.New().String()
 	maxAge := 15 * 24 * time.Hour
 	config := &MCPServerConfig{
 		HttpHost:                        "0.0.0.0",
@@ -402,7 +401,7 @@ func TestMCPConfigSnapshot(t *testing.T) {
 func TestConfigRoundTrip(t *testing.T) {
 	// Test that we can load a config, modify it, and snapshot it
 	tmpDir := t.TempDir()
-	validKey := gocql.TimeUUID().String()
+	validKey := ksuid.New().String()
 
 	configJSON := `{
 		"http_host": "0.0.0.0",
