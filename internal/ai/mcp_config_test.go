@@ -316,6 +316,97 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 			t.Errorf("Error should mention expiration, got: %v", err)
 		}
 	})
+
+	t.Run("env var expansion for all string fields", func(t *testing.T) {
+		// Set up environment variables
+		os.Setenv("TEST_HOST", "192.168.1.100")
+		os.Setenv("TEST_ORIGIN", "https://app.example.com")
+		os.Setenv("TEST_IP", "10.0.1.0/24")
+		os.Setenv("TEST_HEADER", "X-Custom-Header")
+		os.Setenv("TEST_LOG_LEVEL", "DEBUG")
+		defer func() {
+			os.Unsetenv("TEST_HOST")
+			os.Unsetenv("TEST_ORIGIN")
+			os.Unsetenv("TEST_IP")
+			os.Unsetenv("TEST_HEADER")
+			os.Unsetenv("TEST_LOG_LEVEL")
+		}()
+
+		validKey := ksuid.New().String()
+		configJSON := `{
+			"http_host": "${TEST_HOST}",
+			"allowed_origins": ["${TEST_ORIGIN}"],
+			"ip_allowlist": ["${TEST_IP}"],
+			"audit_http_headers": ["${TEST_HEADER}"],
+			"log_level": "${TEST_LOG_LEVEL}",
+			"api_key": "` + validKey + `"
+		}`
+
+		configPath := filepath.Join(tmpDir, "all_env_vars.json")
+		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		config, err := LoadMCPConfigFromFile(configPath)
+		if err != nil {
+			t.Fatalf("LoadMCPConfigFromFile() failed: %v", err)
+		}
+
+		// Verify all env vars were expanded
+		if config.HttpHost != "192.168.1.100" {
+			t.Errorf("HttpHost not expanded: got %q, want \"192.168.1.100\"", config.HttpHost)
+		}
+		if len(config.AllowedOrigins) != 1 || config.AllowedOrigins[0] != "https://app.example.com" {
+			t.Errorf("AllowedOrigins not expanded: got %v", config.AllowedOrigins)
+		}
+		if len(config.IpAllowlist) != 1 || config.IpAllowlist[0] != "10.0.1.0/24" {
+			t.Errorf("IpAllowlist not expanded: got %v", config.IpAllowlist)
+		}
+		if len(config.AuditHttpHeaders) != 1 || config.AuditHttpHeaders[0] != "X-Custom-Header" {
+			t.Errorf("AuditHttpHeaders not expanded: got %v", config.AuditHttpHeaders)
+		}
+		if config.LogLevel != "DEBUG" {
+			t.Errorf("LogLevel not expanded: got %q, want \"DEBUG\"", config.LogLevel)
+		}
+	})
+
+	t.Run("required headers with env var expansion", func(t *testing.T) {
+		os.Setenv("PROXY_HEADER", "X-Proxy-Verified")
+		os.Setenv("PROXY_VALUE", "true")
+		os.Setenv("REQ_ID_PATTERN", "^req_[0-9a-f]{16}$")
+		defer func() {
+			os.Unsetenv("PROXY_HEADER")
+			os.Unsetenv("PROXY_VALUE")
+			os.Unsetenv("REQ_ID_PATTERN")
+		}()
+
+		validKey := ksuid.New().String()
+		configJSON := `{
+			"api_key": "` + validKey + `",
+			"required_headers": {
+				"${PROXY_HEADER}": "${PROXY_VALUE}",
+				"X-Request-ID": "${REQ_ID_PATTERN}"
+			}
+		}`
+
+		configPath := filepath.Join(tmpDir, "required_headers_env.json")
+		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		config, err := LoadMCPConfigFromFile(configPath)
+		if err != nil {
+			t.Fatalf("LoadMCPConfigFromFile() failed: %v", err)
+		}
+
+		// Verify env vars were expanded in both keys and values
+		if val, ok := config.RequiredHeaders["X-Proxy-Verified"]; !ok || val != "true" {
+			t.Errorf("Required header key not expanded: got %v", config.RequiredHeaders)
+		}
+		if val, ok := config.RequiredHeaders["X-Request-ID"]; !ok || val != "^req_[0-9a-f]{16}$" {
+			t.Errorf("Required header value not expanded: got %v", config.RequiredHeaders)
+		}
+	})
 }
 
 // ============================================================================

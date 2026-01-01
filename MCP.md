@@ -81,9 +81,18 @@ Use the get_mcp_status tool
 
 ### Configuration File Format
 
+**Note:** Socket transport is deprecated. Use HTTP transport instead (see below).
+
 ```json
 {
-  "socket_path": "/tmp/cqlai-mcp.sock",
+  "http_host": "127.0.0.1",
+  "http_port": 8888,
+  "api_key": "${MCP_API_KEY}",
+  "api_key_max_age_days": 30,
+  "allowed_origins": ["http://localhost"],
+  "ip_allowlist": ["127.0.0.1"],
+  "audit_http_headers": ["X-Forwarded-For", "User-Agent"],
+
   "log_level": "info",
   "log_file": "~/.cqlai/cqlai_mcp.log",
 
@@ -99,6 +108,53 @@ Use the get_mcp_status tool
   "disable_runtime_permission_changes": false,
   "allow_mcp_request_approval": false
 }
+```
+
+### Environment Variable Expansion
+
+**ALL configuration fields support environment variables:**
+
+```json
+{
+  "http_host": "${MCP_HOST:-127.0.0.1}",
+  "api_key": "${MCP_API_KEY}",
+  "ip_allowlist": ["${OFFICE_SUBNET}", "${VPN_GATEWAY}"],
+  "allowed_origins": ["${ALLOWED_ORIGIN}"],
+  "required_headers": {
+    "${PROXY_HEADER}": "${PROXY_VALUE}"
+  },
+  "log_level": "${LOG_LEVEL:-info}"
+}
+```
+
+**Syntax:**
+- `${VAR}` - Required: fails if VAR not set
+- `${VAR:-default}` - Optional: uses default if VAR not set
+- Explicit values still work: `"api_key": "2ABCDEFGHIJKLMNOPQRSTUVWXYZa"`
+
+**Environment variables are OPTIONAL** - use them for secrets/environment-specific values, use explicit values for static config.
+
+**Benefits:**
+- ✅ Keep secrets out of config files
+- ✅ Environment-specific configuration (dev/staging/prod)
+- ✅ CI/CD integration (inject secrets at runtime)
+- ✅ Team collaboration (share config, not secrets)
+
+**Example:**
+```bash
+# Set environment variables
+export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+export OFFICE_SUBNET="10.0.1.0/24"
+export MCP_HOST="192.168.1.100"
+
+# Start CQLAI - config file uses ${VAR} syntax
+cqlai --mcpconfig ~/.cqlai/.mcp.json
+```
+
+**CLI flags also support env vars** (inside CQLAI console):
+```bash
+# Use single quotes to prevent shell expansion!
+.mcp start --api-key='${MCP_API_KEY}' --ip-allowlist='${OFFICE_SUBNET}'
 ```
 
 ### Permission Modes

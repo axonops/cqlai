@@ -213,28 +213,63 @@ subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 
 ### Environment Variable Support
 
-API keys support environment variable expansion in **both** JSON config and CLI flags:
+**ALL configuration fields** support environment variable expansion in **both** JSON config and CLI flags.
 
-**JSON config file:**
+**Syntax:**
+- `${VAR}` - Expand environment variable (required - fails if not set)
+- `${VAR:-default}` - Use default value if VAR not set
+- Explicit values: `"http_host": "192.168.1.100"` (no expansion)
+
+**Environment variables are OPTIONAL** - mix and match with explicit values as needed.
+
+**JSON config file (all fields support env vars):**
 ```json
 {
+  "http_host": "${MCP_HOST:-127.0.0.1}",
+  "http_port": 8888,
   "api_key": "${MCP_API_KEY}",
-  "api_key_max_age_days": 30
+  "api_key_max_age_days": 30,
+  "allowed_origins": ["${ALLOWED_ORIGIN}"],
+  "ip_allowlist": ["${OFFICE_SUBNET}", "${VPN_GATEWAY}"],
+  "audit_http_headers": ["${CUSTOM_HEADER}"],
+  "log_level": "${LOG_LEVEL:-info}",
+  "log_file": "${MCP_LOG_FILE:-~/.cqlai/cqlai_mcp.log}",
+  "required_headers": {
+    "${PROXY_HEADER}": "${PROXY_VALUE}",
+    "X-Request-ID": "${REQ_ID_PATTERN}"
+  }
 }
 ```
 
-**CLI flag (inside CQLAI console):**
+**CLI flags (inside CQLAI console - all support env vars):**
 ```bash
-# Variable name can be anything (not just MCP_API_KEY)
-export MY_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
-.mcp start --api-key='${MY_KEY}'
+# Set environment variables
+export MCP_HOST="192.168.1.100"
+export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+export OFFICE_SUBNET="10.0.1.0/24"
+export PROXY_HEADER="X-Proxy-Verified"
 
-# With default value:
-.mcp start --api-key='${MY_KEY:-2DefaultKeyIfNotSet1234567}'
+# Use in CLI flags (single quotes to prevent shell expansion!)
+.mcp start \
+  --http-host='${MCP_HOST}' \
+  --api-key='${MCP_API_KEY}' \
+  --ip-allowlist='${OFFICE_SUBNET}' \
+  --require-headers='${PROXY_HEADER}:true' \
+  --log-level='${LOG_LEVEL:-debug}'
 ```
 
-**Important:** Use single quotes (`'${VAR}'`) in CLI to prevent shell expansion.
+**Important:** Use single quotes (`'${VAR}'`) in CLI flags to prevent shell expansion.
 CQLAI will expand the variable internally.
+
+**Supported fields:**
+- `http_host`, `http_port` (port is numeric, but can use var for string representation)
+- `api_key`
+- `allowed_origins` (array - each element expanded)
+- `ip_allowlist` (array - each element expanded)
+- `audit_http_headers` (array - each element expanded)
+- `required_headers` (map - both keys and values expanded)
+- `log_level`, `log_file`, `history_file`
+- `mode`, `preset_mode`
 
 ### Example Configuration
 
@@ -1234,39 +1269,65 @@ server {
 }
 ```
 
-### 2. Use Environment Variables for API Keys
+### 2. Use Environment Variables for Configuration
 
-**Bad (hardcoded in config file):**
+**ALL config fields support environment variables** - not just API keys!
+
+**Bad (hardcoded sensitive/environment-specific values):**
 ```json
 {
-  "api_key": "2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+  "api_key": "2ABCDEFGHIJKLMNOPQRSTUVWXYZa",
+  "http_host": "192.168.1.100",
+  "ip_allowlist": ["10.0.1.0/24", "10.0.2.0/24"]
 }
 ```
 
-**Good (environment variable - JSON config):**
+**Good (environment variables for everything):**
 ```json
 {
-  "api_key": "${MCP_API_KEY}"
+  "api_key": "${MCP_API_KEY}",
+  "http_host": "${MCP_HOST:-127.0.0.1}",
+  "http_port": 8888,
+  "allowed_origins": ["${ALLOWED_ORIGIN}"],
+  "ip_allowlist": ["${OFFICE_SUBNET}", "${VPN_SUBNET}"],
+  "audit_http_headers": ["X-Forwarded-For", "${CUSTOM_HEADER}"],
+  "required_headers": {
+    "${PROXY_MARKER}": "${PROXY_VALUE}"
+  }
 }
 ```
 
-Set environment variable (name can be anything):
+Set environment variables (names can be anything):
 ```bash
 export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
-# or
-export CQLAI_MCP_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
-# or
-export MY_SECRET_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+export MCP_HOST="192.168.1.100"
+export OFFICE_SUBNET="10.0.1.0/24"
+export VPN_SUBNET="10.0.2.0/24"
+export ALLOWED_ORIGIN="https://app.company.com"
+export PROXY_MARKER="X-Proxy-Verified"
+export PROXY_VALUE="true"
+export CUSTOM_HEADER="X-Correlation-ID"
 ```
 
-**Good (environment variable - CLI flag inside CQLAI):**
+**Benefits:**
+- ✅ No sensitive data in config files
+- ✅ Environment-specific configuration (dev/staging/prod)
+- ✅ CI/CD friendly (inject secrets at runtime)
+- ✅ Secret management integration (Vault, AWS Secrets, etc.)
+- ✅ Team collaboration (share config file, not secrets)
+
+**CLI flags also support env vars (inside CQLAI console):**
 ```bash
 export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
-# Inside CQLAI console:
-.mcp start --api-key='${MCP_API_KEY}'
+export OFFICE_SUBNET="10.0.1.0/24"
+
+# Inside CQLAI console (use single quotes!):
+.mcp start \
+  --api-key='${MCP_API_KEY}' \
+  --ip-allowlist='${OFFICE_SUBNET}'
 ```
 
-**Note:** Use single quotes (`'${VAR}'`) to prevent shell expansion.
+**Important:** Use single quotes (`'${VAR}'`) in CLI to prevent shell expansion.
 CQLAI expands the variable internally.
 
 ### 3. Use Narrow IP Allowlists

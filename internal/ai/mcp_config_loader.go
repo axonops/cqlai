@@ -26,12 +26,12 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 
 	// Socket path (deprecated - will be removed)
 	if sp, ok := jsonConfig["socket_path"].(string); ok && sp != "" {
-		config.SocketPath = sp
+		config.SocketPath = ExpandEnvVar(sp)
 	}
 
 	// HTTP transport configuration
 	if host, ok := jsonConfig["http_host"].(string); ok && host != "" {
-		config.HttpHost = host
+		config.HttpHost = ExpandEnvVar(host)
 	}
 	if port, ok := jsonConfig["http_port"].(float64); ok && port > 0 {
 		config.HttpPort = int(port)
@@ -61,24 +61,51 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.AllowedOrigins = make([]string, len(origins))
 		for i, o := range origins {
 			if str, ok := o.(string); ok {
-				config.AllowedOrigins[i] = str
+				config.AllowedOrigins[i] = ExpandEnvVar(str)
+			}
+		}
+	}
+	if ipList, ok := jsonConfig["ip_allowlist"].([]interface{}); ok && len(ipList) > 0 {
+		config.IpAllowlist = make([]string, len(ipList))
+		for i, ip := range ipList {
+			if str, ok := ip.(string); ok {
+				config.IpAllowlist[i] = ExpandEnvVar(str)
+			}
+		}
+	}
+	if ipDisabled, ok := jsonConfig["ip_allowlist_disabled"].(bool); ok {
+		config.IpAllowlistDisabled = ipDisabled
+	}
+	if auditHeaders, ok := jsonConfig["audit_http_headers"].([]interface{}); ok && len(auditHeaders) > 0 {
+		config.AuditHttpHeaders = make([]string, len(auditHeaders))
+		for i, h := range auditHeaders {
+			if str, ok := h.(string); ok {
+				config.AuditHttpHeaders[i] = ExpandEnvVar(str)
+			}
+		}
+	}
+	if reqHeaders, ok := jsonConfig["required_headers"].(map[string]interface{}); ok && len(reqHeaders) > 0 {
+		config.RequiredHeaders = make(map[string]string, len(reqHeaders))
+		for k, v := range reqHeaders {
+			if str, ok := v.(string); ok {
+				config.RequiredHeaders[ExpandEnvVar(k)] = ExpandEnvVar(str)
 			}
 		}
 	}
 
 	// Log level
 	if ll, ok := jsonConfig["log_level"].(string); ok && ll != "" {
-		config.LogLevel = ll
+		config.LogLevel = ExpandEnvVar(ll)
 	}
 
 	// Log file
 	if lf, ok := jsonConfig["log_file"].(string); ok && lf != "" {
-		config.LogFile = lf
+		config.LogFile = ExpandEnvVar(lf)
 	}
 
 	// History file
 	if hf, ok := jsonConfig["history_file"].(string); ok && hf != "" {
-		config.HistoryFile = hf
+		config.HistoryFile = ExpandEnvVar(hf)
 	}
 
 	// History max size (in MB)

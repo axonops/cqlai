@@ -140,7 +140,7 @@ func (h *MCPHandler) handleStart(args []string) string {
 		// HTTP transport configuration
 		case "--http-host":
 			if i+1 < len(args) {
-				config.HttpHost = args[i+1]
+				config.HttpHost = ai.ExpandEnvVar(args[i+1])
 				i++
 			}
 		case "--http-port":
@@ -183,26 +183,26 @@ func (h *MCPHandler) handleStart(args []string) string {
 			config.ApiKeyMaxAge = 0
 		case "--allowed-origins":
 			if i+1 < len(args) {
-				// Parse comma-separated list of origins
+				// Parse comma-separated list of origins (supports env vars)
 				origins := strings.Split(args[i+1], ",")
 				config.AllowedOrigins = make([]string, 0, len(origins))
 				for _, origin := range origins {
 					trimmed := strings.TrimSpace(origin)
 					if trimmed != "" {
-						config.AllowedOrigins = append(config.AllowedOrigins, trimmed)
+						config.AllowedOrigins = append(config.AllowedOrigins, ai.ExpandEnvVar(trimmed))
 					}
 				}
 				i++
 			}
 		case "--ip-allowlist":
 			if i+1 < len(args) {
-				// Parse comma-separated list of IPs/CIDRs
+				// Parse comma-separated list of IPs/CIDRs (supports env vars)
 				ips := strings.Split(args[i+1], ",")
 				config.IpAllowlist = make([]string, 0, len(ips))
 				for _, ip := range ips {
 					trimmed := strings.TrimSpace(ip)
 					if trimmed != "" {
-						config.IpAllowlist = append(config.IpAllowlist, trimmed)
+						config.IpAllowlist = append(config.IpAllowlist, ai.ExpandEnvVar(trimmed))
 					}
 				}
 				i++
@@ -211,27 +211,27 @@ func (h *MCPHandler) handleStart(args []string) string {
 			config.IpAllowlistDisabled = true
 		case "--audit-http-headers":
 			if i+1 < len(args) {
-				// Parse comma-separated list of headers
+				// Parse comma-separated list of headers (supports env vars)
 				headers := strings.Split(args[i+1], ",")
 				config.AuditHttpHeaders = make([]string, 0, len(headers))
 				for _, header := range headers {
 					trimmed := strings.TrimSpace(header)
 					if trimmed != "" {
-						config.AuditHttpHeaders = append(config.AuditHttpHeaders, trimmed)
+						config.AuditHttpHeaders = append(config.AuditHttpHeaders, ai.ExpandEnvVar(trimmed))
 					}
 				}
 				i++
 			}
 		case "--require-headers":
 			if i+1 < len(args) {
-				// Parse comma-separated list of header:value pairs
+				// Parse comma-separated list of header:value pairs (supports env vars)
 				pairs := strings.Split(args[i+1], ",")
 				config.RequiredHeaders = make(map[string]string)
 				for _, pair := range pairs {
 					parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
 					if len(parts) == 2 {
-						headerName := strings.TrimSpace(parts[0])
-						headerValue := strings.TrimSpace(parts[1])
+						headerName := ai.ExpandEnvVar(strings.TrimSpace(parts[0]))
+						headerValue := ai.ExpandEnvVar(strings.TrimSpace(parts[1]))
 						config.RequiredHeaders[headerName] = headerValue
 					}
 				}
@@ -240,12 +240,12 @@ func (h *MCPHandler) handleStart(args []string) string {
 
 		case "--log-level":
 			if i+1 < len(args) {
-				config.LogLevel = args[i+1]
+				config.LogLevel = ai.ExpandEnvVar(args[i+1])
 				i++
 			}
 		case "--log-file":
 			if i+1 < len(args) {
-				config.LogFile = args[i+1]
+				config.LogFile = ai.ExpandEnvVar(args[i+1])
 				i++
 			}
 
