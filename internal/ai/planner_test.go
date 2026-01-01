@@ -628,3 +628,186 @@ func TestRenderUpdate_WithTTL(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderInsert_WithTimestamp tests INSERT with USING TIMESTAMP clause
+func TestRenderInsert_WithTimestamp(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "INSERT with TIMESTAMP",
+			plan: &AIResult{
+				Operation: "INSERT",
+				Table:     "users",
+				Values: map[string]any{
+					"id":   10,
+					"name": "TimestampTest",
+				},
+				UsingTimestamp: 1609459200000000,
+			},
+			want:    "INSERT INTO users (id, name) VALUES (10, 'TimestampTest') USING TIMESTAMP 1609459200000000;",
+			wantErr: false,
+		},
+		{
+			name: "INSERT with TTL and TIMESTAMP combined",
+			plan: &AIResult{
+				Operation: "INSERT",
+				Table:     "users",
+				Values: map[string]any{
+					"id":   11,
+					"name": "Combined",
+				},
+				UsingTTL:       300,
+				UsingTimestamp: 1609459200000000,
+			},
+			want:    "USING TTL 300 AND TIMESTAMP 1609459200000000",
+			wantErr: false,
+		},
+		{
+			name: "INSERT without TIMESTAMP",
+			plan: &AIResult{
+				Operation: "INSERT",
+				Table:     "users",
+				Values: map[string]any{
+					"id":   12,
+					"name": "NoTimestamp",
+				},
+			},
+			want:    "INSERT INTO users",  // Just check it's INSERT, not exact column order
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderUpdate_WithTimestamp tests UPDATE with USING TIMESTAMP clause
+func TestRenderUpdate_WithTimestamp(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "UPDATE with TIMESTAMP",
+			plan: &AIResult{
+				Operation: "UPDATE",
+				Table:     "users",
+				Values: map[string]any{
+					"name": "Updated",
+				},
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 1},
+				},
+				UsingTimestamp: 1609459200000000,
+			},
+			want:    "UPDATE users USING TIMESTAMP 1609459200000000 SET name = 'Updated' WHERE id = 1;",
+			wantErr: false,
+		},
+		{
+			name: "UPDATE with TTL and TIMESTAMP",
+			plan: &AIResult{
+				Operation: "UPDATE",
+				Table:     "users",
+				Values: map[string]any{
+					"email": "new@example.com",
+				},
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 2},
+				},
+				UsingTTL:       600,
+				UsingTimestamp: 1609459200000000,
+			},
+			want:    "USING TTL 600 AND TIMESTAMP 1609459200000000",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderDelete_WithTimestamp tests DELETE with USING TIMESTAMP clause
+func TestRenderDelete_WithTimestamp(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "DELETE with TIMESTAMP",
+			plan: &AIResult{
+				Operation: "DELETE",
+				Table:     "users",
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 1},
+				},
+				UsingTimestamp: 1609459200000000,
+			},
+			want:    "DELETE FROM users USING TIMESTAMP 1609459200000000 WHERE id = 1;",
+			wantErr: false,
+		},
+		{
+			name: "DELETE specific columns with TIMESTAMP",
+			plan: &AIResult{
+				Operation: "DELETE",
+				Table:     "users",
+				Columns:   []string{"email", "name"},
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 2},
+				},
+				UsingTimestamp: 1609459200000000,
+			},
+			want:    "DELETE email, name FROM users USING TIMESTAMP 1609459200000000 WHERE id = 2;",
+			wantErr: false,
+		},
+		{
+			name: "DELETE without TIMESTAMP",
+			plan: &AIResult{
+				Operation: "DELETE",
+				Table:     "users",
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 3},
+				},
+			},
+			want:    "DELETE FROM users WHERE id = 3;",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, tt.want)
+			}
+		})
+	}
+}

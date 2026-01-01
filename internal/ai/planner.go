@@ -289,6 +289,11 @@ func renderDelete(plan *AIResult) (string, error) {
 		sb.WriteString(plan.Table)
 	}
 
+	// Phase 1: USING TIMESTAMP clause (DELETE only supports TIMESTAMP, not TTL)
+	if plan.UsingTimestamp > 0 {
+		sb.WriteString(fmt.Sprintf(" USING TIMESTAMP %d", plan.UsingTimestamp))
+	}
+
 	// WHERE clause (required for DELETE)
 	if len(plan.Where) == 0 {
 		return "", fmt.Errorf("WHERE clause is required for DELETE")
