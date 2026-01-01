@@ -134,6 +134,7 @@ func (c *MCPServerConfig) GetConfigSnapshot() MCPConfigSnapshot {
 		HttpHost:                        c.HttpHost,
 		HttpPort:                        c.HttpPort,
 		ApiKey:                          c.ApiKey,
+		ApiKeyMaxAge:                    c.ApiKeyMaxAge,
 		AllowedOrigins:                  append([]string(nil), c.AllowedOrigins...), // Copy slice
 		LogLevel:                        c.LogLevel,
 		DisableRuntimePermissionChanges: c.DisableRuntimePermissionChanges,
@@ -155,6 +156,7 @@ type MCPConfigSnapshot struct {
 	HttpHost                        string
 	HttpPort                        int
 	ApiKey                          string
+	ApiKeyMaxAge                    time.Duration
 	AllowedOrigins                  []string
 	LogLevel                        string
 	DisableRuntimePermissionChanges bool

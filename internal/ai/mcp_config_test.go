@@ -3,6 +3,7 @@ package ai
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,10 @@ func TestDefaultMCPConfig(t *testing.T) {
 	}
 	if config.ApiKey != "" {
 		t.Errorf("Expected ApiKey empty (auto-generated), got %q", config.ApiKey)
+	}
+	expectedMaxAge := 30 * 24 * time.Hour
+	if config.ApiKeyMaxAge != expectedMaxAge {
+		t.Errorf("Expected ApiKeyMaxAge %v (30 days), got %v", expectedMaxAge, config.ApiKeyMaxAge)
 	}
 	if config.AllowedOrigins != nil {
 		t.Errorf("Expected AllowedOrigins nil, got %v", config.AllowedOrigins)
@@ -219,6 +224,99 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 			t.Error("LoadMCPConfigFromFile() should fail for invalid JSON")
 		}
 	})
+
+	t.Run("custom api_key_max_age_days", func(t *testing.T) {
+		validKey := gocql.TimeUUID().String()
+		configJSON := `{
+			"api_key": "` + validKey + `",
+			"api_key_max_age_days": 7
+		}`
+
+		configPath := filepath.Join(tmpDir, "custom_age.json")
+		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		config, err := LoadMCPConfigFromFile(configPath)
+		if err != nil {
+			t.Fatalf("LoadMCPConfigFromFile() failed: %v", err)
+		}
+
+		expectedMaxAge := 7 * 24 * time.Hour
+		if config.ApiKeyMaxAge != expectedMaxAge {
+			t.Errorf("Expected ApiKeyMaxAge %v (7 days), got %v", expectedMaxAge, config.ApiKeyMaxAge)
+		}
+	})
+
+	t.Run("disable age check with 0", func(t *testing.T) {
+		validKey := gocql.TimeUUID().String()
+		configJSON := `{
+			"api_key": "` + validKey + `",
+			"api_key_max_age_days": 0
+		}`
+
+		configPath := filepath.Join(tmpDir, "age_disabled.json")
+		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		config, err := LoadMCPConfigFromFile(configPath)
+		if err != nil {
+			t.Fatalf("LoadMCPConfigFromFile() failed: %v", err)
+		}
+
+		if config.ApiKeyMaxAge != 0 {
+			t.Errorf("Expected ApiKeyMaxAge 0 (disabled), got %v", config.ApiKeyMaxAge)
+		}
+	})
+
+	t.Run("disable age check with negative value", func(t *testing.T) {
+		validKey := gocql.TimeUUID().String()
+		configJSON := `{
+			"api_key": "` + validKey + `",
+			"api_key_max_age_days": -1
+		}`
+
+		configPath := filepath.Join(tmpDir, "age_negative.json")
+		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		config, err := LoadMCPConfigFromFile(configPath)
+		if err != nil {
+			t.Fatalf("LoadMCPConfigFromFile() failed: %v", err)
+		}
+
+		if config.ApiKeyMaxAge != 0 {
+			t.Errorf("Expected ApiKeyMaxAge 0 (negative treated as disabled), got %v", config.ApiKeyMaxAge)
+		}
+	})
+
+	t.Run("expired key rejected at config load", func(t *testing.T) {
+		// Create TimeUUID that's 60 days old
+		pastTime := time.Now().Add(-60 * 24 * time.Hour)
+		timestamp := (pastTime.Unix()*1e7 + 0x01b21dd213814000)
+		uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
+		expiredKey := uuid.String()
+
+		configJSON := `{
+			"api_key": "` + expiredKey + `",
+			"api_key_max_age_days": 30
+		}`
+
+		configPath := filepath.Join(tmpDir, "expired_key.json")
+		if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		_, err := LoadMCPConfigFromFile(configPath)
+		if err == nil {
+			t.Error("LoadMCPConfigFromFile() should reject expired API key")
+		}
+		if !strings.Contains(err.Error(), "expired") {
+			t.Errorf("Error should mention expiration, got: %v", err)
+		}
+	})
 }
 
 // ============================================================================
@@ -227,10 +325,12 @@ func TestLoadMCPConfigFromFile(t *testing.T) {
 
 func TestMCPConfigSnapshot(t *testing.T) {
 	validKey := gocql.TimeUUID().String()
+	maxAge := 15 * 24 * time.Hour
 	config := &MCPServerConfig{
 		HttpHost:                        "0.0.0.0",
 		HttpPort:                        9999,
 		ApiKey:                          validKey,
+		ApiKeyMaxAge:                    maxAge,
 		AllowedOrigins:                  []string{"https://example.com"},
 		Mode:                            ConfigModePreset,
 		PresetMode:                      "readonly",
@@ -256,6 +356,9 @@ func TestMCPConfigSnapshot(t *testing.T) {
 	}
 	if snapshot.ApiKey != validKey {
 		t.Errorf("Expected ApiKey %q, got %q", validKey, snapshot.ApiKey)
+	}
+	if snapshot.ApiKeyMaxAge != maxAge {
+		t.Errorf("Expected ApiKeyMaxAge %v, got %v", maxAge, snapshot.ApiKeyMaxAge)
 	}
 	if len(snapshot.AllowedOrigins) != 1 {
 		t.Errorf("Expected 1 allowed origin, got %d", len(snapshot.AllowedOrigins))

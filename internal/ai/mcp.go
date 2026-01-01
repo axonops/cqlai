@@ -63,10 +63,11 @@ type MCPServer struct {
 // Configuration can be changed dynamically at runtime via .mcp config commands
 type MCPServerConfig struct {
 	// Server infrastructure - HTTP transport
-	HttpHost        string   // HTTP server host (default: 127.0.0.1)
-	HttpPort        int      // HTTP server port (default: 8888)
-	ApiKey          string   // API key for authentication (auto-generated if empty)
-	AllowedOrigins  []string // Allowed Origin headers for non-localhost (DNS rebinding protection)
+	HttpHost        string        // HTTP server host (default: 127.0.0.1)
+	HttpPort        int           // HTTP server port (default: 8888)
+	ApiKey          string        // API key for authentication (auto-generated if empty)
+	ApiKeyMaxAge    time.Duration // Max age for API keys (default: 30 days, 0 = disabled)
+	AllowedOrigins  []string      // Allowed Origin headers for non-localhost (DNS rebinding protection)
 
 	// Legacy
 	SocketPath          string // Deprecated: Will be removed
@@ -106,6 +107,7 @@ func DefaultMCPConfig() *MCPServerConfig {
 		HttpHost:        "127.0.0.1",
 		HttpPort:        8888,
 		ApiKey:          "", // Auto-generated on start if empty
+		ApiKeyMaxAge:    30 * 24 * time.Hour, // 30 days (0 = disabled)
 		AllowedOrigins:  nil, // Only used for non-localhost bindings
 
 		// Legacy (deprecated)
@@ -213,7 +215,8 @@ func generateAPIKey() (string, error) {
 }
 
 // validateAPIKeyFormat validates that a string is a valid TimeUUID (UUIDv1)
-func validateAPIKeyFormat(key string) error {
+// maxAge: maximum allowed age for the key (0 = no age check)
+func validateAPIKeyFormat(key string, maxAge time.Duration) error {
 	if key == "" {
 		return fmt.Errorf("API key cannot be empty")
 	}
@@ -230,6 +233,7 @@ func validateAPIKeyFormat(key string) error {
 
 	// Extract timestamp
 	keyTime := uuid.Time()
+	keyAge := time.Since(keyTime)
 
 	// SECURITY: Reject future timestamps (prevents expiration bypass attack)
 	// Allow 1 minute clock skew tolerance
@@ -238,9 +242,15 @@ func validateAPIKeyFormat(key string) error {
 			keyTime.Format(time.RFC3339))
 	}
 
+	// SECURITY: Reject expired keys (if maxAge check enabled)
+	if maxAge > 0 && keyAge > maxAge {
+		return fmt.Errorf("API key expired: created at %v (age: %v, max allowed: %v)",
+			keyTime.Format(time.RFC3339), keyAge.Round(time.Hour), maxAge)
+	}
+
 	// Log the timestamp for audit purposes
 	logger.DebugfToFile("MCP", "API key validated: TimeUUID generated at %v (age: %v)",
-		keyTime.Format(time.RFC3339), time.Since(keyTime).Round(time.Second))
+		keyTime.Format(time.RFC3339), keyAge.Round(time.Second))
 
 	return nil
 }
@@ -389,6 +399,19 @@ func (s *MCPServer) Start() error {
 		fmt.Printf("API Key: %s\n", key)
 		fmt.Printf("(Save this key - it won't be shown again)\n")
 		fmt.Printf("==========================\n\n")
+	}
+
+	// SECURITY WARNING: Check if API key age validation is disabled
+	if s.config.ApiKeyMaxAge <= 0 {
+		logger.DebugfToFile("MCP", "WARNING: API key age validation is DISABLED - keys will never expire")
+		fmt.Printf("\n⚠️  WARNING: API KEY AGE VALIDATION DISABLED ⚠️\n")
+		fmt.Printf("API keys will NEVER expire. This is a security risk.\n")
+		fmt.Printf("Recommendation: Set 'api_key_max_age_days' in config (default: 30 days)\n")
+		fmt.Printf("Example: \"api_key_max_age_days\": 30\n")
+		fmt.Printf("=========================================================\n\n")
+	} else {
+		maxAgeDays := int(s.config.ApiKeyMaxAge.Hours() / 24)
+		logger.DebugfToFile("MCP", "API key max age: %d days", maxAgeDays)
 	}
 
 	// Create mark3labs/mcp-go server and register tools

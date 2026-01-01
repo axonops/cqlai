@@ -24,8 +24,8 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name:    "valid TimeUUID (v1)",
-			key:     "a1b2c3d4-1234-11ef-8000-000000000001",
+			name:    "valid TimeUUID (v1) - generated fresh",
+			key:     gocql.TimeUUID().String(),
 			wantErr: false,
 		},
 		{
@@ -90,7 +90,8 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateAPIKeyFormat(tt.key)
+			// Test with default maxAge (30 days)
+			err := validateAPIKeyFormat(tt.key, 30*24*time.Hour)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateAPIKeyFormat(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
 				return
@@ -99,6 +100,82 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("validateAPIKeyFormat(%q) error = %v, want error containing %q",
 						tt.key, err, tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+// ============================================================================
+// API Key Expiration Tests
+// ============================================================================
+
+func TestValidateAPIKeyFormat_Expiration(t *testing.T) {
+	tests := []struct {
+		name    string
+		keyAge  time.Duration
+		maxAge  time.Duration
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "fresh key (1 hour old, max 30 days)",
+			keyAge:  1 * time.Hour,
+			maxAge:  30 * 24 * time.Hour,
+			wantErr: false,
+		},
+		{
+			name:    "key within limit (29 days old, max 30 days)",
+			keyAge:  29 * 24 * time.Hour,
+			maxAge:  30 * 24 * time.Hour,
+			wantErr: false,
+		},
+		{
+			name:    "expired key (31 days old, max 30 days)",
+			keyAge:  31 * 24 * time.Hour,
+			maxAge:  30 * 24 * time.Hour,
+			wantErr: true,
+			errMsg:  "API key expired",
+		},
+		{
+			name:    "very old key (365 days old, max 30 days)",
+			keyAge:  365 * 24 * time.Hour,
+			maxAge:  30 * 24 * time.Hour,
+			wantErr: true,
+			errMsg:  "API key expired",
+		},
+		{
+			name:    "old key but age check disabled (100 days, maxAge=0)",
+			keyAge:  100 * 24 * time.Hour,
+			maxAge:  0, // Disabled
+			wantErr: false,
+		},
+		{
+			name:    "expired key (10 days old, max 7 days)",
+			keyAge:  10 * 24 * time.Hour,
+			maxAge:  7 * 24 * time.Hour,
+			wantErr: true,
+			errMsg:  "API key expired",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create TimeUUID with specified age
+			pastTime := time.Now().Add(-tt.keyAge)
+			timestamp := (pastTime.Unix()*1e7 + 0x01b21dd213814000)
+			uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
+			key := uuid.String()
+
+			err := validateAPIKeyFormat(key, tt.maxAge)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateAPIKeyFormat() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err != nil && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("validateAPIKeyFormat() error = %v, want error containing %q",
+						err, tt.errMsg)
 				}
 			}
 		})

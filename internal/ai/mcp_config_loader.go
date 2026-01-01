@@ -38,10 +38,24 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 	}
 	if apiKey, ok := jsonConfig["api_key"].(string); ok && apiKey != "" {
 		expandedKey := expandEnvVar(apiKey) // Support ${VAR} and ${VAR:-default}
-		if err := validateAPIKeyFormat(expandedKey); err != nil {
+		// Validate with maxAge from config (use default if not set yet)
+		maxAge := config.ApiKeyMaxAge
+		if maxAge == 0 {
+			maxAge = 30 * 24 * time.Hour // Default from DefaultMCPConfig
+		}
+		if err := validateAPIKeyFormat(expandedKey, maxAge); err != nil {
 			return nil, fmt.Errorf("invalid api_key in config: %w", err)
 		}
 		config.ApiKey = expandedKey
+	}
+	if maxAgeDays, ok := jsonConfig["api_key_max_age_days"].(float64); ok {
+		if maxAgeDays == 0 {
+			config.ApiKeyMaxAge = 0 // Disabled
+		} else if maxAgeDays < 0 {
+			config.ApiKeyMaxAge = 0 // Negative = disabled
+		} else {
+			config.ApiKeyMaxAge = time.Duration(maxAgeDays*24) * time.Hour
+		}
 	}
 	if origins, ok := jsonConfig["allowed_origins"].([]interface{}); ok && len(origins) > 0 {
 		config.AllowedOrigins = make([]string, len(origins))
