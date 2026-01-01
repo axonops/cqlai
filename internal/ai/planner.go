@@ -1593,8 +1593,30 @@ func renderCreateFunction(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'body' required in options for CREATE FUNCTION")
 	}
 
+	// Phase 5: Check for CREATE OR REPLACE and IF NOT EXISTS
+	orReplace := false
+	ifNotExists := false
+	if plan.Options != nil {
+		if or, ok := plan.Options["or_replace"].(bool); ok {
+			orReplace = or
+		}
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("CREATE FUNCTION %s.%s (", plan.Keyspace, functionName))
+	if orReplace {
+		sb.WriteString("CREATE OR REPLACE FUNCTION ")
+	} else if ifNotExists {
+		sb.WriteString(fmt.Sprintf("CREATE FUNCTION IF NOT EXISTS %s.%s (", plan.Keyspace, functionName))
+		goto args // Skip second write
+	} else {
+		sb.WriteString("CREATE FUNCTION ")
+	}
+	sb.WriteString(fmt.Sprintf("%s.%s (", plan.Keyspace, functionName))
+
+args:
 
 	// Add arguments if provided
 	if args, ok := plan.Options["arguments"].(map[string]interface{}); ok && len(args) > 0 {
@@ -1649,8 +1671,27 @@ func renderCreateAggregate(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'stype' (state type) required in options for CREATE AGGREGATE")
 	}
 
+	// Phase 5: Check for OR REPLACE and IF NOT EXISTS
+	orReplace := false
+	ifNotExists := false
+	if plan.Options != nil {
+		if or, ok := plan.Options["or_replace"].(bool); ok {
+			orReplace = or
+		}
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("CREATE AGGREGATE %s.%s (", plan.Keyspace, aggregateName))
+	if orReplace {
+		sb.WriteString("CREATE OR REPLACE AGGREGATE ")
+	} else if ifNotExists {
+		sb.WriteString("CREATE AGGREGATE IF NOT EXISTS ")
+	} else {
+		sb.WriteString("CREATE AGGREGATE ")
+	}
+	sb.WriteString(fmt.Sprintf("%s.%s (", plan.Keyspace, aggregateName))
 
 	// Add input type if provided
 	if inputType, ok := plan.Options["input_type"].(string); ok && inputType != "" {
@@ -1743,9 +1784,22 @@ func renderCreateMaterializedView(plan *AIResult) (string, error) {
 		selectColumns = strings.Join(plan.Columns, ", ")
 	}
 
+	// Phase 5: Check for IF NOT EXISTS
+	ifNotExists := false
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW %s.%s AS SELECT %s FROM %s.%s",
-		plan.Keyspace, viewName, selectColumns, plan.Keyspace, baseTable))
+	if ifNotExists {
+		sb.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW IF NOT EXISTS %s.%s AS SELECT %s FROM %s.%s",
+			plan.Keyspace, viewName, selectColumns, plan.Keyspace, baseTable))
+	} else {
+		sb.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW %s.%s AS SELECT %s FROM %s.%s",
+			plan.Keyspace, viewName, selectColumns, plan.Keyspace, baseTable))
+	}
 
 	// WHERE clause (required for MVs)
 	if len(plan.Where) > 0 {
