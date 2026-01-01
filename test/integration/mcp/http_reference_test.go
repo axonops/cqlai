@@ -61,23 +61,21 @@ func startMCPFromConfigHTTP(t *testing.T, configPath string) *HTTPTestContext {
 		httpPort = int(p)
 	}
 
-	// Generate API key if not in config
-	apiKey := ""
-	if key, ok := jsonConfig["api_key"].(string); ok {
-		apiKey = ai.ExpandEnvVar(key)
-	}
+	// Check if TEST_MCP_API_KEY is already set (by test file's init())
+	// If not, generate a new key for this test
+	apiKey := os.Getenv("TEST_MCP_API_KEY")
 	if apiKey == "" {
-		// Generate for test
+		var err error
 		apiKey, err = ai.GenerateAPIKey()
 		require.NoError(t, err)
+
+		// Set environment variable so config file ${TEST_MCP_API_KEY} expands
+		os.Setenv("TEST_MCP_API_KEY", apiKey)
+		t.Cleanup(func() { os.Unsetenv("TEST_MCP_API_KEY") })
 	}
 
-	// Start server with config file
+	// Start server with config file (will expand ${TEST_MCP_API_KEY})
 	cmd := fmt.Sprintf(".mcp start --config-file %s", configPath)
-	if apiKey != "" && jsonConfig["api_key"] == nil {
-		// If key not in config, pass via flag
-		cmd += fmt.Sprintf(" --api-key %s", apiKey)
-	}
 
 	result := mcpHandler.HandleMCPCommand(cmd)
 	require.Contains(t, result, "started successfully", "MCP start failed: %s", result)

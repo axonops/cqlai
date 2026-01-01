@@ -2,10 +2,21 @@ package mcp
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	// Generate a single API key for all lockdown tests
+	// Set as environment variable so config files can use ${TEST_MCP_API_KEY}
+	key, err := ai.GenerateAPIKey()
+	if err == nil {
+		os.Setenv("TEST_MCP_API_KEY", key)
+	}
+}
 
 // TestLockdown_ReadonlyMode tests lockdown in readonly mode
 func TestLockdown_ReadonlyMode(t *testing.T) {
@@ -13,14 +24,14 @@ func TestLockdown_ReadonlyMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly_locked.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly_locked.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// Verify status shows lockdown
 	t.Run("status_shows_disabled", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+		resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 		if resp != nil {
 			text := extractText(t, resp)
 			var status map[string]any
@@ -34,7 +45,7 @@ func TestLockdown_ReadonlyMode(t *testing.T) {
 
 	// Try to change mode (should be blocked)
 	t.Run("mode_change_blocked", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"mode":           "readwrite",
 			"user_confirmed": true,
 		})
@@ -45,7 +56,7 @@ func TestLockdown_ReadonlyMode(t *testing.T) {
 
 	// Try to change confirm-queries (should be blocked)
 	t.Run("confirm_queries_blocked", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"confirm_queries": "dql",
 			"user_confirmed":  true,
 		})
@@ -54,7 +65,7 @@ func TestLockdown_ReadonlyMode(t *testing.T) {
 
 	// Try to change skip-confirmation (should be blocked)
 	t.Run("skip_confirmation_blocked", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+		resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 			"skip_confirmation": "dql,dml",
 			"user_confirmed":    true,
 		})
@@ -63,7 +74,7 @@ func TestLockdown_ReadonlyMode(t *testing.T) {
 
 	// But operations should still work normally
 	t.Run("operations_still_work", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -89,13 +100,13 @@ func TestLockdown_AllModes(t *testing.T) {
 
 	for _, cfg := range configs {
 		t.Run(cfg.mode+"_locked", func(t *testing.T) {
-			ctx := startMCPFromConfig(t, cfg.file)
-			defer stopMCP(ctx)
+			ctx := startMCPFromConfigHTTP(t, cfg.file)
+			defer stopMCPHTTP(ctx)
 
 			ensureTestDataExists(t, ctx.Session)
 
 			// Verify lockdown in status
-			resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+			resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 			if resp != nil {
 				text := extractText(t, resp)
 				var status map[string]any
@@ -106,7 +117,7 @@ func TestLockdown_AllModes(t *testing.T) {
 			}
 
 			// Verify update_mcp_permissions is blocked
-			updateResp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+			updateResp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 				"mode":           "dba",
 				"user_confirmed": true,
 			})
@@ -121,12 +132,12 @@ func TestLockdown_ErrorMessage(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly_locked.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly_locked.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
-	resp := callTool(t, ctx.SocketPath, "update_mcp_permissions", map[string]any{
+	resp := callToolHTTP(t, ctx, "update_mcp_permissions", map[string]any{
 		"mode":           "dba",
 		"user_confirmed": true,
 	})
