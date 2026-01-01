@@ -293,9 +293,26 @@ func renderUpdate(plan *AIResult) (string, error) {
 	}
 
 	// SET clause
+	sb.WriteString(" SET ")
+	setClauses := make([]string, 0)
+
+	// Phase 2: Counter operations (counter = counter + N)
+	if len(plan.CounterOps) > 0 {
+		for col, delta := range plan.CounterOps {
+			// Validate delta format (+N or -N)
+			if !strings.HasPrefix(delta, "+") && !strings.HasPrefix(delta, "-") {
+				return "", fmt.Errorf("counter operation must be increment (+N) or decrement (-N), got: %s", delta)
+			}
+			// Parse operator and number for proper spacing
+			operator := delta[0:1]     // "+" or "-"
+			number := delta[1:]        // "5", "1", etc.
+			// Render as: counter_col = counter_col + N (with spaces)
+			setClauses = append(setClauses, fmt.Sprintf("%s = %s %s %s", col, col, operator, number))
+		}
+	}
+
+	// Regular value updates (non-counters)
 	if len(plan.Values) > 0 {
-		sb.WriteString(" SET ")
-		setClauses := make([]string, 0, len(plan.Values))
 		for col, val := range plan.Values {
 			// TODO: Get type hint from plan.ValueTypes or schema
 			typeHint := ""
@@ -304,8 +321,13 @@ func renderUpdate(plan *AIResult) (string, error) {
 			}
 			setClauses = append(setClauses, fmt.Sprintf("%s = %s", col, formatValue(val, typeHint)))
 		}
-		sb.WriteString(strings.Join(setClauses, ", "))
 	}
+
+	if len(setClauses) == 0 {
+		return "", fmt.Errorf("UPDATE requires SET clause (values or counter operations)")
+	}
+
+	sb.WriteString(strings.Join(setClauses, ", "))
 
 	// WHERE clause (required for UPDATE)
 	if len(plan.Where) == 0 {

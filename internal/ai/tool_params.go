@@ -59,6 +59,9 @@ type SubmitQueryPlanParams struct {
 	ValueTypes     map[string]string `json:"value_types,omitempty"` // Phase 0: Type hints for values
 	Where          []WhereClause     `json:"where,omitempty"`
 
+	// Phase 2: Counter operations
+	CounterOps map[string]string `json:"counter_ops,omitempty"` // col → "+5" or "-2"
+
 	// Phase 1: USING clauses
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds
@@ -170,6 +173,7 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		Values:         p.Values,
 		ValueTypes:     p.ValueTypes, // Phase 0: Pass through type hints
 		Where:          p.Where,
+		CounterOps:        p.CounterOps,        // Phase 2
 		UsingTTL:          p.UsingTTL,          // Phase 1
 		UsingTimestamp:    p.UsingTimestamp,    // Phase 1
 		Distinct:          p.Distinct,          // Phase 1

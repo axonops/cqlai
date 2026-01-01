@@ -88,6 +88,9 @@ type AIResult struct {
 	ValueTypes     map[string]string `json:"value_types,omitempty"` // Phase 0: Type hints for values (col → "list<text>", "set<int>", etc.)
 	Where          []WhereClause  `json:"where,omitempty"`
 
+	// Phase 2: Counter operations
+	CounterOps map[string]string `json:"counter_ops,omitempty"` // col → "+5" or "-2"
+
 	// Phase 1: USING clauses for DML operations
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds (INSERT, UPDATE)
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds (INSERT, UPDATE, DELETE)

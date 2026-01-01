@@ -973,3 +973,67 @@ func TestRenderInsert_JSON(t *testing.T) {
 	assert.Contains(t, got2, "INSERT INTO users JSON")
 	assert.Contains(t, got2, "USING TTL 300")
 }
+
+// ============================================================================
+// Phase 2: Collection Operations Tests
+// ============================================================================
+
+// TestRenderUpdate_CounterIncrement tests counter increment operations
+func TestRenderUpdate_CounterIncrement(t *testing.T) {
+	plan1 := &AIResult{
+		Operation: "UPDATE",
+		Table:     "counters",
+		CounterOps: map[string]string{
+			"views": "+1",
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: "page1"}},
+	}
+	got1, err1 := RenderCQL(plan1)
+	assert.NoError(t, err1)
+	assert.Contains(t, got1, "UPDATE counters SET views = views + 1 WHERE id = 'page1';")
+
+	// Multiple counters
+	plan2 := &AIResult{
+		Operation: "UPDATE",
+		Table:     "counters",
+		CounterOps: map[string]string{
+			"views":  "+5",
+			"clicks": "+2",
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: "page2"}},
+	}
+	got2, err2 := RenderCQL(plan2)
+	assert.NoError(t, err2)
+	assert.Contains(t, got2, "views = views + 5")
+	assert.Contains(t, got2, "clicks = clicks + 2")
+}
+
+// TestRenderUpdate_CounterDecrement tests counter decrement operations
+func TestRenderUpdate_CounterDecrement(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "counters",
+		CounterOps: map[string]string{
+			"views": "-3",
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: "page1"}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "views = views - 3")
+}
+
+// TestRenderUpdate_CounterInvalidFormat tests counter operation validation
+func TestRenderUpdate_CounterInvalidFormat(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "counters",
+		CounterOps: map[string]string{
+			"views": "5", // Missing + or -
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: "page1"}},
+	}
+	_, err := RenderCQL(plan)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "counter operation must be increment (+N) or decrement (-N)")
+}
