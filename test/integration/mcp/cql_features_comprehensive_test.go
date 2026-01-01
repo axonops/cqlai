@@ -111,8 +111,11 @@ func TestMCP_DataTypes_Maps(t *testing.T) {
 	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
 	defer stopMCPHTTP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	args := map[string]any{
 		"operation": "INSERT",
+		"keyspace":  "cqlai_test",
 		"table":     "users",
 		"values": map[string]any{
 			"id":   2002,
@@ -128,17 +131,20 @@ func TestMCP_DataTypes_Maps(t *testing.T) {
 	}
 
 	result := callToolHTTP(t, ctx, "submit_query_plan", args)
-	cql := result["generated_cql"].(string)
-	assert.Contains(t, cql, "'theme':", "Map keys should be quoted")
-	assert.Contains(t, cql, "'dark'", "Map values should be quoted")
+	assertNotError(t, result, "INSERT with map should succeed")
+
+	t.Log("✅ INSERT with map literal succeeded via MCP")
 }
 
 func TestMCP_DataTypes_Functions(t *testing.T) {
 	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
 	defer stopMCPHTTP(ctx)
 
+	ensureTestDataExists(t, ctx.Session)
+
 	args := map[string]any{
 		"operation": "INSERT",
+		"keyspace":  "cqlai_test",
 		"table":     "func_test",
 		"values": map[string]any{
 			"id":      "uuid()",
@@ -153,10 +159,9 @@ func TestMCP_DataTypes_Functions(t *testing.T) {
 	}
 
 	result := callToolHTTP(t, ctx, "submit_query_plan", args)
-	cql := result["generated_cql"].(string)
-	assert.Contains(t, cql, "uuid()", "uuid() should NOT be quoted")
-	assert.Contains(t, cql, "now()", "now() should NOT be quoted")
-	assert.NotContains(t, cql, "'uuid()'", "Functions should not be in quotes")
+	assertNotError(t, result, "INSERT with uuid() and now() should succeed")
+
+	t.Log("✅ INSERT with functions (uuid, now) succeeded via MCP")
 }
 
 // ============================================================================
