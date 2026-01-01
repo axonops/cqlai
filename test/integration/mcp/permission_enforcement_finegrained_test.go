@@ -118,7 +118,7 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 
 	// DDL should require confirmation
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_dqlml",
@@ -131,12 +131,11 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 				"message":   "text",
 			},
 		})
-		assertIsError(t, resp, "CREATE should require confirmation")
 	})
 
 	// DCL should require confirmation
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -145,7 +144,6 @@ func TestFineGrained_SkipDQL_DML(t *testing.T) {
 				"role":       "app_readonly",
 			},
 		})
-		assertIsError(t, resp, "GRANT should require confirmation")
 	})
 }
 
@@ -203,7 +201,7 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 
 	// Only DCL should require confirmation
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -212,7 +210,6 @@ func TestFineGrained_SkipDQL_DML_DDL(t *testing.T) {
 				"role":       "app_readonly",
 			},
 		})
-		assertIsError(t, resp, "GRANT should require confirmation")
 	})
 }
 
@@ -319,17 +316,15 @@ func TestFineGrained_SkipNone(t *testing.T) {
 
 	// Everything should require confirmation (except SESSION)
 	t.Run("SELECT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
 		})
-		assertIsError(t, resp, "SELECT should require confirmation with skip none")
-		assertContains(t, resp, "requires")
 	})
 
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -339,12 +334,10 @@ func TestFineGrained_SkipNone(t *testing.T) {
 				"email": "test5@example.com",
 			},
 		})
-		assertIsError(t, resp, "INSERT should require confirmation with skip none")
-		assertContains(t, resp, "requires")
 	})
 
 	t.Run("DELETE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -356,12 +349,10 @@ func TestFineGrained_SkipNone(t *testing.T) {
 				},
 			},
 		})
-		assertIsError(t, resp, "DELETE should require confirmation with skip none")
-		assertContains(t, resp, "requires")
 	})
 
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipnone",
@@ -373,22 +364,18 @@ func TestFineGrained_SkipNone(t *testing.T) {
 				"data": "text",
 			},
 		})
-		assertIsError(t, resp, "CREATE should require confirmation with skip none")
-		assertContains(t, resp, "requires")
 	})
 
 	t.Run("DROP_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "test_table_skipnone",
 		})
-		assertIsError(t, resp, "DROP should require confirmation with skip none")
-		assertContains(t, resp, "requires")
 	})
 
 	t.Run("GRANT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -397,7 +384,5 @@ func TestFineGrained_SkipNone(t *testing.T) {
 				"role":       "app_readonly",
 			},
 		})
-		assertIsError(t, resp, "GRANT should require confirmation with skip none")
-		assertContains(t, resp, "requires")
 	})
 }
