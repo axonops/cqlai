@@ -1039,27 +1039,33 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		s.logConfirmationToHistory("CONFIRM_REQUESTED", req.ID, query, details)
 
 		// Send initial notification on stream: "waiting for confirmation"
-		// This tells Claude the request is pending and provides context
+		// This tells Claude the request is pending and provides full context
 		timeoutMinutes := int(s.config.ConfirmationTimeout.Minutes())
 		s.mcpServer.SendNotificationToClient(ctx, "confirmation/requested", map[string]any{
 			"request_id":      req.ID,
 			"status":          "PENDING",
 			"query":           query,
-			"operation":       params.Operation,
+			"operation_info": map[string]any{
+				"type":        string(opInfo.Category), // DQL, DML, DDL, DCL, SESSION, FILE
+				"operation":   opInfo.Operation,        // INSERT, DROP TABLE, etc.
+				"description": opInfo.Description,      // "Insert data", "Delete table", etc.
+				"risk_level":  opInfo.RiskLevel,        // SAFE, LOW, MEDIUM, HIGH, CRITICAL
+			},
 			"timeout_seconds": int(s.config.ConfirmationTimeout.Seconds()),
 			"timeout_message": fmt.Sprintf("Request will timeout in %d minutes", timeoutMinutes),
 			"approval_workflow": map[string]any{
-				"step_1": "Ask the user: 'Do you want to execute this query?'",
+				"step_1": fmt.Sprintf("Ask the user: 'Do you want to execute this %s query: %s?'",
+					opInfo.RiskLevel, query),
 				"step_2": "If user says YES: Call confirm_request tool with user_confirmed=true",
 				"step_3": "If user says NO: Call deny_request tool with reason",
 				"important": "NEVER approve dangerous operations without explicit user consent",
 			},
 			"tools": map[string]any{
 				"approve": map[string]any{
-					"tool":              "confirm_request",
-					"request_id":        req.ID,
-					"user_confirmed":    true,
-					"must_ask_user":     "You MUST ask the user first. Set user_confirmed=true only after user explicitly approves.",
+					"tool":           "confirm_request",
+					"request_id":     req.ID,
+					"user_confirmed": true,
+					"must_ask_user":  "You MUST ask the user first. Set user_confirmed=true only after user explicitly approves.",
 				},
 				"deny": map[string]any{
 					"tool":       "deny_request",
