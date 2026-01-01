@@ -88,6 +88,8 @@ func (h *MCPHandler) HandleMCPCommand(command string) string {
 		return h.handleDeny(parts[1], reason)
 	case "permissions-config":
 		return h.handlePermissionsConfig(parts[1:])
+	case "generate-api-key":
+		return h.handleGenerateAPIKey()
 	default:
 		return fmt.Sprintf("Unknown MCP command: %s\n%s", subcommand, h.showUsage())
 	}
@@ -661,6 +663,42 @@ func (h *MCPHandler) handlePermissionsConfig(args []string) string {
 	}
 }
 
+// handleGenerateAPIKey generates a new KSUID API key
+func (h *MCPHandler) handleGenerateAPIKey() string {
+	// Generate new KSUID
+	key, err := ai.GenerateAPIKey()
+	if err != nil {
+		return fmt.Sprintf("Failed to generate API key: %v", err)
+	}
+
+	// Extract timestamp for display
+	id, _ := ai.ParseKSUID(key)
+	keyTime := id.Time()
+
+	var sb strings.Builder
+	sb.WriteString("✅ New API Key Generated\n\n")
+	sb.WriteString(fmt.Sprintf("API Key: %s\n\n", key))
+	sb.WriteString("Key Details:\n")
+	sb.WriteString(fmt.Sprintf("  Format: KSUID (K-Sortable Unique ID)\n"))
+	sb.WriteString(fmt.Sprintf("  Length: 27 characters (base62 encoding)\n"))
+	sb.WriteString(fmt.Sprintf("  Generated: %s\n", keyTime.Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("  Entropy: 128 bits of cryptographically secure random data\n\n"))
+
+	sb.WriteString("⚠️  IMPORTANT:\n")
+	sb.WriteString("1. Save this key securely (it won't be shown again)\n")
+	sb.WriteString("2. Update your .mcp.json config file:\n")
+	sb.WriteString(fmt.Sprintf("   \"api_key\": \"%s\"\n\n", key))
+	sb.WriteString("3. Restart MCP server with new key:\n")
+	sb.WriteString(fmt.Sprintf("   .mcp stop\n"))
+	sb.WriteString(fmt.Sprintf("   .mcp start --api-key=%s\n\n", key))
+
+	sb.WriteString("Or use environment variable:\n")
+	sb.WriteString(fmt.Sprintf("   export MCP_API_KEY=\"%s\"\n", key))
+	sb.WriteString("   Then in config: \"api_key\": \"${MCP_API_KEY}\"\n")
+
+	return sb.String()
+}
+
 // handleConfigMode changes the preset mode
 func (h *MCPHandler) handleConfigMode(mode string) string {
 	mode = strings.ToLower(mode)
@@ -806,6 +844,7 @@ SERVER CONTROL
 .mcp stop                      Stop MCP server
 .mcp status                    Show server status and configuration
 .mcp metrics                   Show detailed request metrics
+.mcp generate-api-key          Generate a new KSUID API key for rotation
 .mcp log [options]             Show MCP logs (not yet implemented)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

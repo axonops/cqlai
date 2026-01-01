@@ -181,9 +181,9 @@ func TestValidateAPIKeyFormat_Expiration(t *testing.T) {
 
 func TestGenerateAPIKey(t *testing.T) {
 	t.Run("generates valid key format", func(t *testing.T) {
-		key, err := generateAPIKey()
+		key, err := GenerateAPIKey()
 		if err != nil {
-			t.Fatalf("generateAPIKey() failed: %v", err)
+			t.Fatalf("GenerateAPIKey() failed: %v", err)
 		}
 
 		// KSUID is 27 chars in base62
@@ -199,11 +199,11 @@ func TestGenerateAPIKey(t *testing.T) {
 	})
 
 	t.Run("generates unique keys", func(t *testing.T) {
-		key1, err1 := generateAPIKey()
-		key2, err2 := generateAPIKey()
+		key1, err1 := GenerateAPIKey()
+		key2, err2 := GenerateAPIKey()
 
 		if err1 != nil || err2 != nil {
-			t.Fatalf("generateAPIKey() failed: %v, %v", err1, err2)
+			t.Fatalf("GenerateAPIKey() failed: %v, %v", err1, err2)
 		}
 
 		if key1 == key2 {
@@ -213,11 +213,11 @@ func TestGenerateAPIKey(t *testing.T) {
 
 	t.Run("embeds timestamp for expiration support", func(t *testing.T) {
 		beforeGen := time.Now()
-		key, err := generateAPIKey()
+		key, err := GenerateAPIKey()
 		afterGen := time.Now()
 
 		if err != nil {
-			t.Fatalf("generateAPIKey() failed: %v", err)
+			t.Fatalf("GenerateAPIKey() failed: %v", err)
 		}
 
 		// Parse KSUID and get timestamp

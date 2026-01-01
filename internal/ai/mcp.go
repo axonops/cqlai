@@ -216,10 +216,10 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 // HTTP Authentication and Security
 // ============================================================================
 
-// generateAPIKey generates a KSUID API key
+// GenerateAPIKey generates a KSUID API key
 // KSUID = K-Sortable Unique ID: 160 bits (32-bit timestamp + 128-bit random payload)
 // More secure than TimeUUID (no MAC address, more entropy, cryptographically random)
-func generateAPIKey() (string, error) {
+func GenerateAPIKey() (string, error) {
 	id := ksuid.New()
 	return id.String(), nil
 }
@@ -564,7 +564,7 @@ func (s *MCPServer) Start() error {
 
 	// Auto-generate API key if not provided
 	if s.config.ApiKey == "" {
-		key, err := generateAPIKey()
+		key, err := GenerateAPIKey()
 		if err != nil {
 			return fmt.Errorf("failed to generate API key: %w", err)
 		}
