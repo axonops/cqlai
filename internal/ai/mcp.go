@@ -284,7 +284,7 @@ func (s *MCPServer) validateOrigin(r *http.Request) bool {
 		}
 
 		for _, allowed := range allowedOrigins {
-			if strings.HasPrefix(origin, allowed) {
+			if matchOrigin(origin, allowed) {
 				logger.DebugfToFile("MCP", "Origin validated (localhost): %s", origin)
 				return true
 			}
@@ -296,7 +296,7 @@ func (s *MCPServer) validateOrigin(r *http.Request) bool {
 	// For non-localhost binding, check configured allowed_origins
 	if len(s.config.AllowedOrigins) > 0 {
 		for _, allowed := range s.config.AllowedOrigins {
-			if strings.HasPrefix(origin, allowed) {
+			if matchOrigin(origin, allowed) {
 				logger.DebugfToFile("MCP", "Origin validated (allowed): %s", origin)
 				return true
 			}
@@ -307,6 +307,27 @@ func (s *MCPServer) validateOrigin(r *http.Request) bool {
 
 	// No allowed origins configured for non-localhost = reject (safe default)
 	logger.DebugfToFile("MCP", "Origin rejected (no allowed_origins configured): %s", origin)
+	return false
+}
+
+// matchOrigin checks if an origin matches an allowed origin pattern
+// Ensures exact match or match with port/path, preventing subdomain attacks
+func matchOrigin(origin, allowed string) bool {
+	// Exact match
+	if origin == allowed {
+		return true
+	}
+
+	// Match with port (e.g., http://localhost:3000 matches http://localhost)
+	if strings.HasPrefix(origin, allowed+":") {
+		return true
+	}
+
+	// Match with path (e.g., http://localhost/path matches http://localhost)
+	if strings.HasPrefix(origin, allowed+"/") {
+		return true
+	}
+
 	return false
 }
 
