@@ -527,10 +527,7 @@ func renderCreate(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("table or keyspace name required for CREATE")
 	}
 
-	// Build CREATE TABLE with modifiers
-	if plan.Temporary {
-		sb.WriteString("CREATE TEMPORARY TABLE ")
-	} else if ifNotExists {
+	if ifNotExists {
 		sb.WriteString("CREATE TABLE IF NOT EXISTS ")
 	} else {
 		sb.WriteString("CREATE TABLE ")
