@@ -3,12 +3,19 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // NOTE: This test validates actual query execution and DB changes
 // Requires: Cassandra running + test_mcp keyspace with tables
@@ -20,8 +27,8 @@ func TestQueryExecution_HappyPath(t *testing.T) {
 	}
 
 	// Start in DBA mode (all operations allowed, no confirmations)
-	ctx := startMCPFromConfig(t, "testdata/dba.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
@@ -39,7 +46,7 @@ func TestQueryExecution_HappyPath(t *testing.T) {
 	// Test SELECT - verify data exists
 	t.Run("SELECT_query", func(t *testing.T) {
 		// Via MCP
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -67,8 +74,8 @@ func TestQueryValidation_PermissionEnforcement(t *testing.T) {
 	}
 
 	// Start in readonly mode
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
@@ -92,7 +99,7 @@ func TestQueryValidation_PermissionEnforcement(t *testing.T) {
 
 	// Try INSERT via MCP (should be blocked)
 	t.Run("INSERT_blocked_in_readonly", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -121,8 +128,8 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 	}
 
 	// Start in readwrite mode
-	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
@@ -139,7 +146,7 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 
 	// Test SELECT returns actual data
 	t.Run("SELECT_returns_data", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "SELECT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -166,7 +173,7 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 
 	// Test INSERT execution metadata (doesn't validate data insert due to simplified query building)
 	t.Run("INSERT_execution_metadata", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -195,7 +202,7 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 
 	// Test UPDATE allowed
 	t.Run("UPDATE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "UPDATE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -213,7 +220,7 @@ func TestQueryValidation_DMLOperations(t *testing.T) {
 
 	// Test DELETE allowed
 	t.Run("DELETE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -236,14 +243,14 @@ func TestQueryValidation_DDLOperations(t *testing.T) {
 	}
 
 	// Start in DBA mode
-	ctx := startMCPFromConfig(t, "testdata/dba.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// CREATE TABLE should be allowed
 	t.Run("CREATE_TABLE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs",
@@ -258,7 +265,7 @@ func TestQueryValidation_DDLOperations(t *testing.T) {
 
 	// ALTER TABLE should be allowed
 	t.Run("ALTER_TABLE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "ALTER",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -274,7 +281,7 @@ func TestQueryValidation_DDLOperations(t *testing.T) {
 
 	// DROP TABLE should be allowed
 	t.Run("DROP_TABLE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs",
@@ -284,7 +291,7 @@ func TestQueryValidation_DDLOperations(t *testing.T) {
 
 	// TRUNCATE should be allowed
 	t.Run("TRUNCATE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "TRUNCATE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -300,14 +307,14 @@ func TestQueryValidation_DCLOperations(t *testing.T) {
 	}
 
 	// Start in DBA mode
-	ctx := startMCPFromConfig(t, "testdata/dba.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// GRANT should be allowed
 	t.Run("GRANT_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -321,7 +328,7 @@ func TestQueryValidation_DCLOperations(t *testing.T) {
 
 	// REVOKE should be allowed
 	t.Run("REVOKE_allowed", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "REVOKE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -336,13 +343,13 @@ func TestQueryValidation_ConnectionState(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	// Verify status shows connected
-	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+	resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 	if resp != nil {
 		text := extractText(t, resp)
 		var status map[string]any

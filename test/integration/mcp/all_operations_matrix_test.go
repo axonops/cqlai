@@ -1,8 +1,16 @@
 package mcp
 
 import (
+	"os"
 	"testing"
+
+	"github.com/axonops/cqlai/internal/ai"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // Helper function to build parameters for each operation type
 
@@ -124,15 +132,15 @@ func TestComplete76Operations_ReadonlyMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
+			resp := callToolHTTP(t, ctx, "submit_query_plan", params)
 
 			// Only DQL and SESSION should be allowed in readonly
 			if op.category == "DQL" || op.category == "SESSION" {
@@ -155,15 +163,15 @@ func TestComplete76Operations_ReadwriteMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readwrite.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
+			resp := callToolHTTP(t, ctx, "submit_query_plan", params)
 
 			// DQL, SESSION, DML, FILE should be allowed
 			if op.category == "DQL" || op.category == "SESSION" || op.category == "DML" || op.category == "FILE" {
@@ -182,8 +190,8 @@ func TestComplete76Operations_DBAMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
@@ -191,7 +199,7 @@ func TestComplete76Operations_DBAMode(t *testing.T) {
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
+			resp := callToolHTTP(t, ctx, "submit_query_plan", params)
 
 			assertNotError(t, resp, op.operation+" should be allowed in DBA mode")
 		})
@@ -204,15 +212,15 @@ func TestComplete76Operations_ConfirmALL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_all.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
+			resp := callToolHTTP(t, ctx, "submit_query_plan", params)
 
 			// SESSION never requires confirmation
 			if op.category == "SESSION" {
@@ -232,8 +240,8 @@ func TestComplete76Operations_SkipALL(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_all.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_all.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
@@ -241,7 +249,7 @@ func TestComplete76Operations_SkipALL(t *testing.T) {
 	for _, op := range complete76Operations {
 		t.Run(op.operation, func(t *testing.T) {
 			params := buildOperationParams(op.operation, "test_mcp", "users")
-			resp := callTool(t, ctx.SocketPath, "submit_query_plan", params)
+			resp := callToolHTTP(t, ctx, "submit_query_plan", params)
 
 			assertNotError(t, resp, op.operation+" should work with skip ALL")
 		})

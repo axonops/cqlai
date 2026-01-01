@@ -2,10 +2,17 @@ package mcp
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // TestConfirmationLifecycle_CreateAndPending tests creating confirmation requests
 func TestConfirmationLifecycle_CreateAndPending(t *testing.T) {
@@ -14,15 +21,15 @@ func TestConfirmationLifecycle_CreateAndPending(t *testing.T) {
 	}
 
 	// Start with DBA mode + confirm on DCL
-	ctx := startMCPFromConfig(t, "testdata/dba_locked.json") // Has confirm_queries: ["dcl"]
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_locked.json") // Has confirm_queries: ["dcl"]
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Submit DCL operation (should create confirmation request)
 	t.Run("create_request", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "GRANT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -39,7 +46,7 @@ func TestConfirmationLifecycle_CreateAndPending(t *testing.T) {
 
 	// Get pending confirmations
 	t.Run("get_pending", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "get_pending_confirmations", map[string]any{})
+		resp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
 		if resp != nil {
 			assertNotError(t, resp, "get_pending should succeed")
 			text := extractText(t, resp)
@@ -64,14 +71,14 @@ func TestConfirmationLifecycle_GetConfirmationState(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json") // Confirm ALL
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_all.json") // Confirm ALL
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Create a request
-	resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+	resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 		"operation": "DELETE",
 		"keyspace":  "test_mcp",
 		"table":     "users",
@@ -89,7 +96,7 @@ func TestConfirmationLifecycle_GetConfirmationState(t *testing.T) {
 
 	if requestID != "" {
 		t.Run("get_state_by_id", func(t *testing.T) {
-			stateResp := callTool(t, ctx.SocketPath, "get_confirmation_state", map[string]any{
+			stateResp := callToolHTTP(t, ctx, "get_confirmation_state", map[string]any{
 				"request_id": requestID,
 			})
 
@@ -116,14 +123,14 @@ func TestConfirmationLifecycle_CancelRequest(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_all.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_all.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Create a request
-	resp := callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+	resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 		"operation": "TRUNCATE",
 		"keyspace":  "test_mcp",
 		"table":     "users",
@@ -135,7 +142,7 @@ func TestConfirmationLifecycle_CancelRequest(t *testing.T) {
 	if requestID != "" {
 		// Cancel the request
 		t.Run("cancel", func(t *testing.T) {
-			cancelResp := callTool(t, ctx.SocketPath, "cancel_confirmation", map[string]any{
+			cancelResp := callToolHTTP(t, ctx, "cancel_confirmation", map[string]any{
 				"request_id": requestID,
 				"reason":     "Testing cancellation",
 			})
@@ -149,7 +156,7 @@ func TestConfirmationLifecycle_CancelRequest(t *testing.T) {
 
 		// Verify it appears in cancelled list
 		t.Run("verify_in_cancelled_list", func(t *testing.T) {
-			cancelledResp := callTool(t, ctx.SocketPath, "get_cancelled_confirmations", map[string]any{})
+			cancelledResp := callToolHTTP(t, ctx, "get_cancelled_confirmations", map[string]any{})
 			if cancelledResp != nil {
 				assertNotError(t, cancelledResp, "get_cancelled should work")
 				text := extractText(t, cancelledResp)
@@ -171,7 +178,7 @@ func TestConfirmationLifecycle_CancelRequest(t *testing.T) {
 
 		// Verify no longer in pending list
 		t.Run("not_in_pending", func(t *testing.T) {
-			pendingResp := callTool(t, ctx.SocketPath, "get_pending_confirmations", map[string]any{})
+			pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
 			if pendingResp != nil {
 				text := extractText(t, pendingResp)
 				assert.NotContains(t, text, requestID, "Should not be in pending after cancel")
@@ -186,15 +193,15 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_confirm_dml_ddl.json") // Confirm DML + DDL
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_confirm_dml_ddl.json") // Confirm DML + DDL
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
 
 	// Create multiple requests
 	t.Run("INSERT_request", func(t *testing.T) {
-		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -206,7 +213,7 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 		})
 	})
 	t.Run("UPDATE_request", func(t *testing.T) {
-		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "UPDATE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -221,7 +228,7 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 		})
 	})
 	t.Run("DELETE_request", func(t *testing.T) {
-		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DELETE",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -235,7 +242,7 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 		})
 	})
 	t.Run("CREATE_request", func(t *testing.T) {
-		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_lifecycle",
@@ -250,7 +257,7 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 		})
 	})
 	t.Run("DROP_request", func(t *testing.T) {
-		callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+		callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "DROP",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -259,7 +266,7 @@ func TestConfirmationLifecycle_MultipleRequests(t *testing.T) {
 
 	// Get pending - should have all 5
 	t.Run("multiple_pending", func(t *testing.T) {
-		resp := callTool(t, ctx.SocketPath, "get_pending_confirmations", map[string]any{})
+		resp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
 		if resp != nil {
 			text := extractText(t, resp)
 			var pending []map[string]any
@@ -277,8 +284,8 @@ func TestConfirmationLifecycle_EmptyLists(t *testing.T) {
 	}
 
 	// Start fresh server
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
 
@@ -293,7 +300,7 @@ func TestConfirmationLifecycle_EmptyLists(t *testing.T) {
 
 	for _, tool := range tools {
 		t.Run(tool, func(t *testing.T) {
-			resp := callTool(t, ctx.SocketPath, tool, map[string]any{})
+			resp := callToolHTTP(t, ctx, tool, map[string]any{})
 			if resp != nil {
 				assertNotError(t, resp, tool+" should work")
 				text := extractText(t, resp)
