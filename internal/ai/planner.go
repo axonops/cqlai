@@ -1428,17 +1428,50 @@ func renderList(plan *AIResult) (string, error) {
 
 	switch strings.ToUpper(objectType) {
 	case "ROLES":
-		return "LIST ROLES", nil
+		// LIST ROLES [OF role] [NORECURSIVE]
+		var sb strings.Builder
+		sb.WriteString("LIST ROLES")
+
+		if ofRole, ok := plan.Options["of_role"].(string); ok && ofRole != "" {
+			sb.WriteString(fmt.Sprintf(" OF %s", ofRole))
+		}
+
+		if norecursive, ok := plan.Options["norecursive"].(bool); ok && norecursive {
+			sb.WriteString(" NORECURSIVE")
+		}
+
+		return sb.String(), nil
 
 	case "USERS":
 		return "LIST USERS", nil
 
 	case "PERMISSIONS":
-		// LIST PERMISSIONS [OF role]
-		if role, ok := plan.Options["role"].(string); ok && role != "" {
-			return fmt.Sprintf("LIST PERMISSIONS OF %s", role), nil
+		// LIST [ALL] PERMISSIONS [ON resource] [OF role] [NORECURSIVE]
+		var sb strings.Builder
+
+		// Check for ALL
+		if listAll, ok := plan.Options["list_all"].(bool); ok && listAll {
+			sb.WriteString("LIST ALL PERMISSIONS")
+		} else {
+			sb.WriteString("LIST PERMISSIONS")
 		}
-		return "LIST PERMISSIONS", nil
+
+		// ON resource
+		if onResource, ok := plan.Options["on_resource"].(string); ok && onResource != "" {
+			sb.WriteString(fmt.Sprintf(" ON %s", onResource))
+		}
+
+		// OF role
+		if role, ok := plan.Options["role"].(string); ok && role != "" {
+			sb.WriteString(fmt.Sprintf(" OF %s", role))
+		}
+
+		// NORECURSIVE
+		if norecursive, ok := plan.Options["norecursive"].(bool); ok && norecursive {
+			sb.WriteString(" NORECURSIVE")
+		}
+
+		return sb.String(), nil
 
 	default:
 		return "", fmt.Errorf("unsupported LIST object_type: %s (must be ROLES, USERS, or PERMISSIONS)", objectType)
@@ -1761,10 +1794,16 @@ func renderDropFunction(plan *AIResult) (string, error) {
 		}
 	}
 
-	if ifExists {
-		return fmt.Sprintf("DROP FUNCTION IF EXISTS %s.%s;", plan.Keyspace, functionName), nil
+	// Optional: function signature for overload disambiguation
+	signature := ""
+	if funcSig, ok := plan.Options["function_signature"].(string); ok && funcSig != "" {
+		signature = fmt.Sprintf("(%s)", funcSig)
 	}
-	return fmt.Sprintf("DROP FUNCTION %s.%s;", plan.Keyspace, functionName), nil
+
+	if ifExists {
+		return fmt.Sprintf("DROP FUNCTION IF EXISTS %s.%s%s;", plan.Keyspace, functionName, signature), nil
+	}
+	return fmt.Sprintf("DROP FUNCTION %s.%s%s;", plan.Keyspace, functionName, signature), nil
 }
 
 // renderCreateAggregate generates CREATE AGGREGATE statements
@@ -1850,10 +1889,16 @@ func renderDropAggregate(plan *AIResult) (string, error) {
 		}
 	}
 
-	if ifExists {
-		return fmt.Sprintf("DROP AGGREGATE IF EXISTS %s.%s;", plan.Keyspace, aggregateName), nil
+	// Optional: function signature for overload disambiguation
+	signature := ""
+	if aggSig, ok := plan.Options["aggregate_signature"].(string); ok && aggSig != "" {
+		signature = fmt.Sprintf("(%s)", aggSig)
 	}
-	return fmt.Sprintf("DROP AGGREGATE %s.%s;", plan.Keyspace, aggregateName), nil
+
+	if ifExists {
+		return fmt.Sprintf("DROP AGGREGATE IF EXISTS %s.%s%s;", plan.Keyspace, aggregateName, signature), nil
+	}
+	return fmt.Sprintf("DROP AGGREGATE %s.%s%s;", plan.Keyspace, aggregateName, signature), nil
 }
 
 // renderCreateTrigger generates CREATE TRIGGER statements
@@ -1872,6 +1917,18 @@ func renderCreateTrigger(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'trigger_class' required in options for CREATE TRIGGER")
 	}
 
+	// Phase 5: IF NOT EXISTS
+	ifNotExists := false
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
+	if ifNotExists {
+		return fmt.Sprintf("CREATE TRIGGER IF NOT EXISTS %s ON %s.%s USING '%s';",
+			triggerName, plan.Keyspace, plan.Table, triggerClass), nil
+	}
 	return fmt.Sprintf("CREATE TRIGGER %s ON %s.%s USING '%s';",
 		triggerName, plan.Keyspace, plan.Table, triggerClass), nil
 }
@@ -2050,8 +2107,20 @@ func renderCreateUser(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'password' required in options for CREATE USER")
 	}
 
+	// Phase 5: IF NOT EXISTS
+	ifNotExists := false
+	if plan.Options != nil {
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", userName, password))
+	if ifNotExists {
+		sb.WriteString(fmt.Sprintf("CREATE USER IF NOT EXISTS %s WITH PASSWORD '%s'", userName, password))
+	} else {
+		sb.WriteString(fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", userName, password))
+	}
 
 	// Optional superuser flag
 	if superuser, ok := plan.Options["superuser"].(bool); ok && superuser {
