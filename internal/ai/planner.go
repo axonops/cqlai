@@ -645,8 +645,22 @@ func renderWhereClause(w WhereClause) string {
 	if opUpper == "IS NULL" || opUpper == "IS NOT NULL" {
 		return fmt.Sprintf("%s %s", w.Column, w.Operator)
 	}
+
+	// Phase 6: Handle tuple notation (col1, col2) > (val1, val2)
+	if len(w.Columns) > 0 && len(w.Values) > 0 {
+		left := fmt.Sprintf("(%s)", strings.Join(w.Columns, ", "))
+		right := formatTuple(w.Values)
+		return fmt.Sprintf("%s %s %s", left, w.Operator, right)
+	}
+
+	// Phase 6: Handle TOKEN() wrapper
+	column := w.Column
+	if w.IsToken {
+		column = fmt.Sprintf("TOKEN(%s)", w.Column)
+	}
+
 	// TODO: Add ValueType field to WhereClause for type hints
-	return fmt.Sprintf("%s %s %s", w.Column, w.Operator, formatValue(w.Value, ""))
+	return fmt.Sprintf("%s %s %s", column, w.Operator, formatValue(w.Value, ""))
 }
 
 // formatValue is the main entry point for formatting CQL values with optional type hints

@@ -140,6 +140,11 @@ type WhereClause struct {
 	Column   string `json:"column"`
 	Operator string `json:"operator"` // =, <, >, <=, >=, IN, CONTAINS
 	Value    any    `json:"value"`
+
+	// Phase 6: Advanced WHERE features
+	IsToken bool     `json:"is_token,omitempty"` // Wrap column in TOKEN()
+	Columns []string `json:"columns,omitempty"`  // For tuple notation: (col1, col2)
+	Values  []any    `json:"values,omitempty"`   // For tuple notation: (val1, val2)
 }
 
 // OrderClause represents ORDER BY
