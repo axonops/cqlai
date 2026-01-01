@@ -61,20 +61,35 @@ func startMCPFromConfigHTTP(t *testing.T, configPath string) *HTTPTestContext {
 		httpPort = int(p)
 	}
 
-	// Check if TEST_MCP_API_KEY is already set (by test file's init())
-	// If not, generate a new key for this test
-	apiKey := os.Getenv("TEST_MCP_API_KEY")
-	if apiKey == "" {
-		var err error
-		apiKey, err = ai.GenerateAPIKey()
-		require.NoError(t, err)
-
-		// Set environment variable so config file ${TEST_MCP_API_KEY} expands
-		os.Setenv("TEST_MCP_API_KEY", apiKey)
-		t.Cleanup(func() { os.Unsetenv("TEST_MCP_API_KEY") })
+	// Check what API key is in the config file
+	apiKeyFromConfig := ""
+	if key, ok := jsonConfig["api_key"].(string); ok {
+		apiKeyFromConfig = key
 	}
 
-	// Start server with config file (will expand ${TEST_MCP_API_KEY})
+	// Determine which API key to use:
+	// 1. If config has hardcoded key (no ${VAR}), use that
+	// 2. If config has ${VAR}, ensure TEST_MCP_API_KEY is set
+	var apiKey string
+	if apiKeyFromConfig != "" && !strings.Contains(apiKeyFromConfig, "${") {
+		// Hardcoded key in config - use it directly
+		apiKey = apiKeyFromConfig
+	} else {
+		// Config uses ${VAR} or no key - check TEST_MCP_API_KEY
+		apiKey = os.Getenv("TEST_MCP_API_KEY")
+		if apiKey == "" {
+			// Generate new key
+			var err error
+			apiKey, err = ai.GenerateAPIKey()
+			require.NoError(t, err)
+
+			// Set environment variable so config ${TEST_MCP_API_KEY} expands
+			os.Setenv("TEST_MCP_API_KEY", apiKey)
+			t.Cleanup(func() { os.Unsetenv("TEST_MCP_API_KEY") })
+		}
+	}
+
+	// Start server with config file
 	cmd := fmt.Sprintf(".mcp start --config-file %s", configPath)
 
 	result := mcpHandler.HandleMCPCommand(cmd)
