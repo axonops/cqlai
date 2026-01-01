@@ -449,9 +449,39 @@ func (s *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// All validation layers passed - call next handler
+		// All validation layers passed
+		// Log audit headers if configured
+		s.logAuditHeaders(r)
+
+		// Call next handler
 		next.ServeHTTP(w, r)
 	})
+}
+
+// logAuditHeaders logs configured HTTP headers for audit trail
+func (s *MCPServer) logAuditHeaders(r *http.Request) {
+	if len(s.config.AuditHttpHeaders) == 0 {
+		return
+	}
+
+	clientIP, _ := extractClientIP(r)
+	logger.DebugfToFile("MCP", "Request audit: method=%s path=%s client_ip=%s",
+		r.Method, r.URL.Path, clientIP)
+
+	for _, headerName := range s.config.AuditHttpHeaders {
+		if headerName == "ALL" {
+			// Log all headers
+			for name, values := range r.Header {
+				logger.DebugfToFile("MCP", "  %s: %s", name, strings.Join(values, ", "))
+			}
+			return
+		}
+
+		value := r.Header.Get(headerName)
+		if value != "" {
+			logger.DebugfToFile("MCP", "  %s: %s", headerName, value)
+		}
+	}
 }
 
 // validateOrigin validates the Origin header to prevent DNS rebinding attacks
