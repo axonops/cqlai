@@ -58,8 +58,16 @@ type MCPServer struct {
 // MCPServerConfig holds configuration for the MCP server
 // Configuration can be changed dynamically at runtime via .mcp config commands
 type MCPServerConfig struct {
-	// Server infrastructure
-	SocketPath          string
+	// Server infrastructure - HTTP transport
+	HttpHost        string   // HTTP server host (default: 127.0.0.1)
+	HttpPort        int      // HTTP server port (default: 8888)
+	ApiKey          string   // API key for authentication (auto-generated if empty)
+	AllowedOrigins  []string // Allowed Origin headers for non-localhost (DNS rebinding protection)
+
+	// Legacy
+	SocketPath          string // Deprecated: Will be removed
+
+	// Server configuration
 	ConfirmationTimeout time.Duration
 	LogLevel            string
 	LogFile             string
@@ -90,7 +98,16 @@ func DefaultMCPConfig() *MCPServerConfig {
 	cqlaiDir := filepath.Join(home, ".cqlai")
 
 	return &MCPServerConfig{
-		SocketPath:              "/tmp/cqlai-mcp.sock",
+		// HTTP transport (default)
+		HttpHost:        "127.0.0.1",
+		HttpPort:        8888,
+		ApiKey:          "", // Auto-generated on start if empty
+		AllowedOrigins:  nil, // Only used for non-localhost bindings
+
+		// Legacy (deprecated)
+		SocketPath:              "", // Empty = HTTP mode (socket deprecated)
+
+		// Server configuration
 		ConfirmationTimeout:     5 * time.Minute,
 		LogLevel:                "info",
 		LogFile:                 filepath.Join(cqlaiDir, "cqlai_mcp.log"),
