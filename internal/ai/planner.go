@@ -311,7 +311,49 @@ func renderUpdate(plan *AIResult) (string, error) {
 		}
 	}
 
-	// Regular value updates (non-counters)
+	// Phase 2: Collection operations (list append/prepend, set add/remove, map merge, element updates)
+	if len(plan.CollectionOps) > 0 {
+		for col, op := range plan.CollectionOps {
+			switch op.Operation {
+			case "append":
+				// list = list + [values]
+				listValue := formatValue(op.Value, fmt.Sprintf("list<%s>", op.ValueType))
+				setClauses = append(setClauses, fmt.Sprintf("%s = %s + %s", col, col, listValue))
+			case "prepend":
+				// list = [values] + list
+				listValue := formatValue(op.Value, fmt.Sprintf("list<%s>", op.ValueType))
+				setClauses = append(setClauses, fmt.Sprintf("%s = %s + %s", col, listValue, col))
+			case "add":
+				// set = set + {values}
+				setValue := formatValue(op.Value, fmt.Sprintf("set<%s>", op.ValueType))
+				setClauses = append(setClauses, fmt.Sprintf("%s = %s + %s", col, col, setValue))
+			case "remove":
+				// set = set - {values}
+				setValue := formatValue(op.Value, fmt.Sprintf("set<%s>", op.ValueType))
+				setClauses = append(setClauses, fmt.Sprintf("%s = %s - %s", col, col, setValue))
+			case "merge":
+				// map = map + {key: value}
+				mapValue := formatValue(op.Value, fmt.Sprintf("map<%s,%s>", op.ValueType, op.ValueType)) // Simplified - may need key/value types
+				setClauses = append(setClauses, fmt.Sprintf("%s = %s + %s", col, col, mapValue))
+			case "set_element":
+				// map[key] = value
+				keyStr := formatValue(op.Key, "")
+				valStr := formatValue(op.Value, op.ValueType)
+				setClauses = append(setClauses, fmt.Sprintf("%s[%s] = %s", col, keyStr, valStr))
+			case "set_index":
+				// list[index] = value
+				if op.Index == nil {
+					return "", fmt.Errorf("index required for set_index operation")
+				}
+				valStr := formatValue(op.Value, op.ValueType)
+				setClauses = append(setClauses, fmt.Sprintf("%s[%d] = %s", col, *op.Index, valStr))
+			default:
+				return "", fmt.Errorf("unsupported collection operation: %s", op.Operation)
+			}
+		}
+	}
+
+	// Regular value updates (non-counters, non-collections)
 	if len(plan.Values) > 0 {
 		for col, val := range plan.Values {
 			// TODO: Get type hint from plan.ValueTypes or schema
@@ -324,7 +366,7 @@ func renderUpdate(plan *AIResult) (string, error) {
 	}
 
 	if len(setClauses) == 0 {
-		return "", fmt.Errorf("UPDATE requires SET clause (values or counter operations)")
+		return "", fmt.Errorf("UPDATE requires SET clause (values, counter operations, or collection operations)")
 	}
 
 	sb.WriteString(strings.Join(setClauses, ", "))

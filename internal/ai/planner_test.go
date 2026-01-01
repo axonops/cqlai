@@ -1037,3 +1037,140 @@ func TestRenderUpdate_CounterInvalidFormat(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "counter operation must be increment (+N) or decrement (-N)")
 }
+
+// TestRenderUpdate_ListAppend tests list append operation
+func TestRenderUpdate_ListAppend(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"phones": {
+				Operation: "append",
+				Value:     []any{"555-9999", "555-8888"},
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 30}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "phones = phones + ['555-9999', '555-8888']")
+}
+
+// TestRenderUpdate_ListPrepend tests list prepend operation
+func TestRenderUpdate_ListPrepend(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"phones": {
+				Operation: "prepend",
+				Value:     []any{"555-0000"},
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 30}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "phones = ['555-0000'] + phones")
+}
+
+// TestRenderUpdate_SetAdd tests set add operation
+func TestRenderUpdate_SetAdd(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"tags": {
+				Operation: "add",
+				Value:     []any{"new_tag", "another_tag"},
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 10}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "tags = tags + {'new_tag', 'another_tag'}")
+}
+
+// TestRenderUpdate_SetRemove tests set remove operation
+func TestRenderUpdate_SetRemove(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"tags": {
+				Operation: "remove",
+				Value:     []any{"old_tag"},
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 10}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "tags = tags - {'old_tag'}")
+}
+
+// TestRenderUpdate_MapMerge tests map merge operation
+func TestRenderUpdate_MapMerge(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"settings": {
+				Operation: "merge",
+				Value:     map[string]any{"new_key": "new_value"},
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 20}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "settings = settings +")
+	assert.Contains(t, got, "'new_key':")
+}
+
+// TestRenderUpdate_MapElementUpdate tests map[key] = value
+func TestRenderUpdate_MapElementUpdate(t *testing.T) {
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"settings": {
+				Operation: "set_element",
+				Key:       "theme",
+				Value:     "light",
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 20}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "settings['theme'] = 'light'")
+}
+
+// TestRenderUpdate_ListElementUpdate tests list[index] = value
+func TestRenderUpdate_ListElementUpdate(t *testing.T) {
+	index := 0
+	plan := &AIResult{
+		Operation: "UPDATE",
+		Table:     "users",
+		CollectionOps: map[string]CollectionOp{
+			"phones": {
+				Operation: "set_index",
+				Index:     &index,
+				Value:     "555-NEW",
+				ValueType: "text",
+			},
+		},
+		Where: []WhereClause{{Column: "id", Operator: "=", Value: 30}},
+	}
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "phones[0] = '555-NEW'")
+}

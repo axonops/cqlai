@@ -91,6 +91,9 @@ type AIResult struct {
 	// Phase 2: Counter operations
 	CounterOps map[string]string `json:"counter_ops,omitempty"` // col → "+5" or "-2"
 
+	// Phase 2: Collection operations (lists, sets, maps)
+	CollectionOps map[string]CollectionOp `json:"collection_ops,omitempty"` // col → operation details
+
 	// Phase 1: USING clauses for DML operations
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds (INSERT, UPDATE)
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds (INSERT, UPDATE, DELETE)
@@ -134,6 +137,15 @@ type WhereClause struct {
 type OrderClause struct {
 	Column string `json:"column"`
 	Order  string `json:"order"` // ASC or DESC
+}
+
+// CollectionOp represents a collection operation (Phase 2)
+type CollectionOp struct {
+	Operation string `json:"operation"` // "append", "prepend", "add", "remove", "merge", "set_element", "set_index"
+	Value     any    `json:"value"`     // Value(s) for the operation
+	ValueType string `json:"value_type,omitempty"` // Optional type hint
+	Index     *int   `json:"index,omitempty"`      // For list[index] = val
+	Key       any    `json:"key,omitempty"`        // For map[key] = val
 }
 
 // PlanValidator validates a query plan against schema
