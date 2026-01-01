@@ -166,12 +166,13 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		Values:         p.Values,
 		ValueTypes:     p.ValueTypes, // Phase 0: Pass through type hints
 		Where:          p.Where,
-		UsingTTL:       p.UsingTTL,       // Phase 1
-		UsingTimestamp: p.UsingTimestamp, // Phase 1
-		Distinct:       p.Distinct,        // Phase 1
-		SelectJSON:     p.SelectJSON,      // Phase 1
-		OrderBy:        p.OrderBy,
-		Limit:          p.Limit,
+		UsingTTL:          p.UsingTTL,          // Phase 1
+		UsingTimestamp:    p.UsingTimestamp,    // Phase 1
+		Distinct:          p.Distinct,          // Phase 1
+		SelectJSON:        p.SelectJSON,        // Phase 1
+		OrderBy:           p.OrderBy,
+		Limit:             p.Limit,
+		PerPartitionLimit: p.PerPartitionLimit, // Phase 1
 		AllowFiltering: p.AllowFiltering,
 		Schema:         p.Schema,
 		Options:        p.Options,

@@ -96,10 +96,11 @@ type AIResult struct {
 	Distinct   bool `json:"distinct,omitempty"`    // SELECT DISTINCT
 	SelectJSON bool `json:"select_json,omitempty"` // SELECT JSON
 
-	GroupBy        []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
-	OrderBy        []OrderClause  `json:"order_by,omitempty"`
-	Limit          int            `json:"limit,omitempty"`
-	AllowFiltering bool           `json:"allow_filtering,omitempty"`
+	GroupBy           []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
+	OrderBy           []OrderClause  `json:"order_by,omitempty"`
+	Limit             int            `json:"limit,omitempty"`
+	PerPartitionLimit int            `json:"per_partition_limit,omitempty"` // Phase 1: PER PARTITION LIMIT
+	AllowFiltering    bool           `json:"allow_filtering,omitempty"`
 
 	// For DDL operations
 	Schema  map[string]string `json:"schema,omitempty"`  // Column definitions for CREATE TABLE

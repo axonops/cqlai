@@ -923,3 +923,26 @@ func TestRenderSelect_JSON(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderSelect_PerPartitionLimit tests PER PARTITION LIMIT clause
+func TestRenderSelect_PerPartitionLimit(t *testing.T) {
+	plan1 := &AIResult{
+		Operation:         "SELECT",
+		Table:             "users",
+		PerPartitionLimit: 5,
+	}
+	got1, err1 := RenderCQL(plan1)
+	assert.NoError(t, err1)
+	assert.Contains(t, got1, "PER PARTITION LIMIT 5")
+
+	plan2 := &AIResult{
+		Operation:         "SELECT",
+		Table:             "users",
+		PerPartitionLimit: 5,
+		Limit:             100,
+	}
+	got2, err2 := RenderCQL(plan2)
+	assert.NoError(t, err2)
+	assert.Contains(t, got2, "PER PARTITION LIMIT 5")
+	assert.Contains(t, got2, "LIMIT 100")
+}

@@ -164,6 +164,11 @@ func renderSelect(plan *AIResult) (string, error) {
 		sb.WriteString(strings.Join(orderClauses, ", "))
 	}
 
+	// Phase 1: PER PARTITION LIMIT clause (before regular LIMIT)
+	if plan.PerPartitionLimit > 0 {
+		sb.WriteString(fmt.Sprintf(" PER PARTITION LIMIT %d", plan.PerPartitionLimit))
+	}
+
 	// LIMIT clause
 	if plan.Limit > 0 {
 		sb.WriteString(fmt.Sprintf(" LIMIT %d", plan.Limit))
