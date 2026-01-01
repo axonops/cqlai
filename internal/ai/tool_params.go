@@ -58,6 +58,10 @@ type SubmitQueryPlanParams struct {
 	Values         map[string]any    `json:"values,omitempty"`
 	ValueTypes     map[string]string `json:"value_types,omitempty"` // Phase 0: Type hints for values
 	Where          []WhereClause     `json:"where,omitempty"`
+
+	// Phase 1: USING clauses
+	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds
+	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds
 	OrderBy        []OrderClause     `json:"order_by,omitempty"`
 	Limit          int               `json:"limit,omitempty"`
 	AllowFiltering bool              `json:"allow_filtering,omitempty"`
@@ -156,6 +160,8 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		Values:         p.Values,
 		ValueTypes:     p.ValueTypes, // Phase 0: Pass through type hints
 		Where:          p.Where,
+		UsingTTL:       p.UsingTTL,       // Phase 1
+		UsingTimestamp: p.UsingTimestamp, // Phase 1
 		OrderBy:        p.OrderBy,
 		Limit:          p.Limit,
 		AllowFiltering: p.AllowFiltering,

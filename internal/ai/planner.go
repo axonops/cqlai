@@ -197,10 +197,24 @@ func renderInsert(plan *AIResult) (string, error) {
 		values = append(values, formatValue(val, typeHint))
 	}
 
-	sb.WriteString(fmt.Sprintf(" (%s) VALUES (%s);",
+	sb.WriteString(fmt.Sprintf(" (%s) VALUES (%s)",
 		strings.Join(columns, ", "),
 		strings.Join(values, ", ")))
 
+	// Phase 1: USING clause (TTL and/or TIMESTAMP)
+	usingClauses := []string{}
+	if plan.UsingTTL > 0 {
+		usingClauses = append(usingClauses, fmt.Sprintf("TTL %d", plan.UsingTTL))
+	}
+	if plan.UsingTimestamp > 0 {
+		usingClauses = append(usingClauses, fmt.Sprintf("TIMESTAMP %d", plan.UsingTimestamp))
+	}
+	if len(usingClauses) > 0 {
+		sb.WriteString(" USING ")
+		sb.WriteString(strings.Join(usingClauses, " AND "))
+	}
+
+	sb.WriteString(";")
 	return sb.String(), nil
 }
 
@@ -212,6 +226,19 @@ func renderUpdate(plan *AIResult) (string, error) {
 		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
 	} else {
 		sb.WriteString(plan.Table)
+	}
+
+	// Phase 1: USING clause (appears after table name, before SET in UPDATE)
+	usingClauses := []string{}
+	if plan.UsingTTL > 0 {
+		usingClauses = append(usingClauses, fmt.Sprintf("TTL %d", plan.UsingTTL))
+	}
+	if plan.UsingTimestamp > 0 {
+		usingClauses = append(usingClauses, fmt.Sprintf("TIMESTAMP %d", plan.UsingTimestamp))
+	}
+	if len(usingClauses) > 0 {
+		sb.WriteString(" USING ")
+		sb.WriteString(strings.Join(usingClauses, " AND "))
 	}
 
 	// SET clause

@@ -477,3 +477,154 @@ func TestRenderGrantAllPermissionTypes(t *testing.T) {
 		})
 	}
 }
+
+// ============================================================================
+// Phase 1: Simple DML Features Tests
+// ============================================================================
+
+// TestRenderInsert_WithTTL tests INSERT with USING TTL clause
+func TestRenderInsert_WithTTL(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "INSERT with TTL",
+			plan: &AIResult{
+				Operation: "INSERT",
+				Table:     "users",
+				Values: map[string]any{
+					"id":   1,
+					"name": "Alice",
+				},
+				UsingTTL: 300,
+			},
+			want:    "INSERT INTO users (id, name) VALUES (1, 'Alice') USING TTL 300;",
+			wantErr: false,
+		},
+		{
+			name: "INSERT with TTL and keyspace",
+			plan: &AIResult{
+				Operation: "INSERT",
+				Keyspace:  "test_ks",
+				Table:     "users",
+				Values: map[string]any{
+					"id":    100,
+					"email": "test@example.com",
+				},
+				UsingTTL: 600,
+			},
+			want:    "INSERT INTO test_ks.users (id, email) VALUES (100, 'test@example.com') USING TTL 600;",
+			wantErr: false,
+		},
+		{
+			name: "INSERT without TTL (backward compatible)",
+			plan: &AIResult{
+				Operation: "INSERT",
+				Table:     "users",
+				Values: map[string]any{
+					"id":   2,
+					"name": "Bob",
+				},
+				UsingTTL: 0,
+			},
+			want:    "INSERT INTO users (id, name) VALUES (2, 'Bob');",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, "INSERT INTO")
+				if tt.plan.UsingTTL > 0 {
+					assert.Contains(t, got, "USING TTL")
+				} else {
+					assert.NotContains(t, got, "USING TTL")
+				}
+			}
+		})
+	}
+}
+
+// TestRenderUpdate_WithTTL tests UPDATE with USING TTL clause
+func TestRenderUpdate_WithTTL(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "UPDATE with TTL",
+			plan: &AIResult{
+				Operation: "UPDATE",
+				Table:     "users",
+				Values: map[string]any{
+					"name": "Updated",
+				},
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 1},
+				},
+				UsingTTL: 600,
+			},
+			want:    "UPDATE users USING TTL 600 SET name = 'Updated' WHERE id = 1;",
+			wantErr: false,
+		},
+		{
+			name: "UPDATE with TTL and multiple columns",
+			plan: &AIResult{
+				Operation: "UPDATE",
+				Table:     "users",
+				Values: map[string]any{
+					"name":  "New Name",
+					"email": "new@example.com",
+				},
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 5},
+				},
+				UsingTTL: 1200,
+			},
+			want:    "UPDATE users USING TTL 1200 SET",
+			wantErr: false,
+		},
+		{
+			name: "UPDATE without TTL",
+			plan: &AIResult{
+				Operation: "UPDATE",
+				Table:     "users",
+				Values: map[string]any{
+					"name": "Regular",
+				},
+				Where: []WhereClause{
+					{Column: "id", Operator: "=", Value: 2},
+				},
+			},
+			want:    "UPDATE users SET name = 'Regular' WHERE id = 2;",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, tt.want)
+				if tt.plan.UsingTTL > 0 {
+					assert.Contains(t, got, "USING TTL")
+				} else {
+					assert.NotContains(t, got, "USING")
+				}
+			}
+		})
+	}
+}

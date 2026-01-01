@@ -87,6 +87,10 @@ type AIResult struct {
 	Values         map[string]any `json:"values,omitempty"`
 	ValueTypes     map[string]string `json:"value_types,omitempty"` // Phase 0: Type hints for values (col → "list<text>", "set<int>", etc.)
 	Where          []WhereClause  `json:"where,omitempty"`
+
+	// Phase 1: USING clauses for DML operations
+	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds (INSERT, UPDATE)
+	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds (INSERT, UPDATE, DELETE)
 	GroupBy        []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
 	OrderBy        []OrderClause  `json:"order_by,omitempty"`
 	Limit          int            `json:"limit,omitempty"`
