@@ -59,11 +59,22 @@ func createTestREPLSession(t *testing.T) (*db.Session, error) {
 	return session, nil
 }
 
-// MCPTestContext holds test context
+// MCPTestContext holds test context for socket-based tests (DEPRECATED)
 type MCPTestContext struct {
 	Session    *db.Session
 	MCPHandler *router.MCPHandler
 	SocketPath string
+}
+
+// HTTPTestContext holds test context for HTTP-based tests
+type HTTPTestContext struct {
+	Session      *db.Session
+	MCPHandler   *router.MCPHandler
+	HTTPHost     string
+	HTTPPort     int
+	APIKey       string
+	BaseURL      string
+	MCPSessionID string // MCP protocol session ID
 }
 
 // startMCPFromConfig starts MCP using JSON config file

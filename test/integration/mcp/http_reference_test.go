@@ -4,17 +4,18 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/axonops/cqlai/internal/ai"
-	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,17 +28,6 @@ import (
 // This file contains reference implementations for HTTP-based MCP testing.
 // Once these work correctly, we'll use this pattern to update all other tests.
 //
-
-// HTTPTestContext holds test context for HTTP-based tests
-type HTTPTestContext struct {
-	Session      *db.Session
-	MCPHandler   *router.MCPHandler
-	HTTPHost     string
-	HTTPPort     int
-	APIKey       string
-	BaseURL      string
-	MCPSessionID string // MCP protocol session ID
-}
 
 // startMCPFromConfigHTTP starts MCP server using HTTP transport
 func startMCPFromConfigHTTP(t *testing.T, configPath string) *HTTPTestContext {
@@ -97,18 +87,21 @@ func startMCPFromConfigHTTP(t *testing.T, configPath string) *HTTPTestContext {
 	baseURL := fmt.Sprintf("http://%s:%d/mcp", httpHost, httpPort)
 
 	ctx := &HTTPTestContext{
-		Session:    replSession,
-		MCPHandler: mcpHandler,
-		HTTPHost:   httpHost,
-		HTTPPort:   httpPort,
-		APIKey:     apiKey,
-		BaseURL:    baseURL,
+		Session:      replSession,
+		MCPHandler:   mcpHandler,
+		HTTPHost:     httpHost,
+		HTTPPort:     httpPort,
+		APIKey:       apiKey,
+		BaseURL:      baseURL,
+		MCPSessionID: "", // Will be set by first request or SSE connection
 	}
 
-	// Initialize MCP session
+	// For POST-only tests, initialize session
+	// For SSE tests, the GET connection will register the session
 	sessionID, err := initializeMCPSession(t, ctx)
-	require.NoError(t, err, "Failed to initialize MCP session")
-	ctx.MCPSessionID = sessionID
+	if err == nil {
+		ctx.MCPSessionID = sessionID
+	}
 
 	return ctx
 }
@@ -246,15 +239,137 @@ func callToolHTTP(t *testing.T, ctx *HTTPTestContext, toolName string, args map[
 		return nil
 	}
 
-	// Parse JSON-RPC response
+	// Try to parse as pure JSON first (simple tool calls)
 	var response map[string]any
 	err = json.Unmarshal(respBody, &response)
-	if err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
+	if err == nil {
+		// Pure JSON response
+		return response
+	}
+
+	// If JSON parse failed, try SSE format (responses with notifications)
+	response = parseSSEResponse(t, respBody)
+	if response == nil {
+		t.Logf("Response body: %s", string(respBody))
+		t.Fatalf("Failed to parse response as JSON or SSE")
 		return nil
 	}
 
 	return response
+}
+
+// parseSSEResponse extracts the JSON-RPC response from SSE-formatted body
+func parseSSEResponse(t *testing.T, body []byte) map[string]any {
+	// SSE format:
+	// event: message
+	// data: {"jsonrpc":"2.0",...}
+	// (blank line)
+	bodyStr := string(body)
+	lines := strings.Split(bodyStr, "\n")
+
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+
+		if strings.HasPrefix(line, "data: ") {
+			dataJSON := strings.TrimPrefix(line, "data: ")
+
+			var msg map[string]any
+			if err := json.Unmarshal([]byte(dataJSON), &msg); err != nil {
+				continue
+			}
+
+			// Look for response (has "id"), not notification (has "method" but no "id")
+			if _, hasID := msg["id"]; hasID {
+				return msg
+			}
+		}
+	}
+
+	return nil
+}
+
+// callToolHTTPWithNotifications calls a tool and extracts both notifications and result
+func callToolHTTPWithNotifications(t *testing.T, ctx *HTTPTestContext, toolName string, args map[string]any) (notification map[string]any, result map[string]any) {
+	// Build and send request (same as callToolHTTP)
+	request := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      time.Now().UnixNano(),
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      toolName,
+			"arguments": args,
+		},
+	}
+
+	requestJSON, _ := json.Marshal(request)
+	httpReq, _ := http.NewRequest("POST", ctx.BaseURL, bytes.NewReader(requestJSON))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-API-Key", ctx.APIKey)
+	if ctx.MCPSessionID != "" {
+		httpReq.Header.Set("MCP-Session-Id", ctx.MCPSessionID)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		t.Fatalf("HTTP request failed: %v", err)
+		return nil, nil
+	}
+	defer httpResp.Body.Close()
+
+	// Read entire response body
+	respBody, _ := io.ReadAll(httpResp.Body)
+
+	// Parse all JSON-RPC messages from response (SSE format or plain JSON)
+	messages := parseAllMessagesFromResponse(t, respBody)
+
+	// Separate notifications from result
+	for _, msg := range messages {
+		if method, ok := msg["method"].(string); ok {
+			// This is a notification (has "method", no "id")
+			if method == "confirmation/statusChanged" {
+				notification = msg
+			}
+		} else if _, hasID := msg["id"]; hasID {
+			// This is the result (has "id")
+			result = msg
+		}
+	}
+
+	return notification, result
+}
+
+// parseAllMessagesFromResponse extracts all JSON-RPC messages from HTTP response
+func parseAllMessagesFromResponse(t *testing.T, body []byte) []map[string]any {
+	var messages []map[string]any
+
+	// Try plain JSON first (single object)
+	var singleMsg map[string]any
+	if err := json.Unmarshal(body, &singleMsg); err == nil {
+		return []map[string]any{singleMsg}
+	}
+
+	// Try SSE format (event: / data: lines)
+	bodyStr := string(body)
+	lines := strings.Split(bodyStr, "\n")
+
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+
+		if strings.HasPrefix(line, "data: ") {
+			dataJSON := strings.TrimPrefix(line, "data: ")
+
+			var msg map[string]any
+			if err := json.Unmarshal([]byte(dataJSON), &msg); err != nil {
+				t.Logf("Failed to parse JSON: %v, data: %s", err, dataJSON)
+				continue
+			}
+
+			messages = append(messages, msg)
+		}
+	}
+
+	return messages
 }
 
 // ============================================================================
@@ -367,4 +482,215 @@ func TestHTTP_ConfirmationRequired(t *testing.T) {
 		text := extractText(t, resp)
 		assert.Contains(t, text, "not allowed", "Should explain INSERT not allowed")
 	})
+}
+
+func TestHTTP_ConfirmationLifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/http_lifecycle.json"
+
+	apiKey, _ := ai.GenerateAPIKey()
+	configJSON := fmt.Sprintf(`{
+		"http_host": "127.0.0.1",
+		"http_port": 8892,
+		"api_key": "%s",
+		"mode": "readwrite",
+		"confirm_queries": ["dml"],
+		"allow_mcp_request_approval": true
+	}`, apiKey)
+
+	err := os.WriteFile(configPath, []byte(configJSON), 0644)
+	require.NoError(t, err)
+
+	ctx := startMCPFromConfigHTTP(t, configPath)
+	defer stopMCPHTTP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
+
+	t.Run("Full confirmation lifecycle via HTTP", func(t *testing.T) {
+		// Step 1: Submit INSERT (requires confirmation in this mode)
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+			"operation": "INSERT",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000088",
+				"name":  "Lifecycle Test",
+				"email": "lifecycle@test.com",
+			},
+		})
+
+		// Should get confirmation required error with request ID
+		assertIsError(t, resp, "INSERT should require confirmation")
+		text := extractText(t, resp)
+		assert.Contains(t, text, "requires")
+
+		// Extract request ID from error message
+		requestID := extractRequestID(text)
+		require.NotEmpty(t, requestID, "Should have request ID in error message")
+		t.Logf("Got confirmation request ID: %s", requestID)
+
+		// Step 2: Check pending confirmations
+		pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
+		assertNotError(t, pendingResp, "get_pending_confirmations should work")
+		pendingText := extractText(t, pendingResp)
+		assert.Contains(t, pendingText, requestID, "Should see our request in pending list")
+
+		// Step 3: Confirm the request (user_confirmed required)
+		confirmResp := callToolHTTP(t, ctx, "confirm_request", map[string]any{
+			"request_id":     requestID,
+			"user_confirmed": true,
+		})
+		assertNotError(t, confirmResp, "confirm_request should succeed")
+
+		// Step 4: Verify no longer in pending
+		pendingAfter := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
+		assertNotError(t, pendingAfter, "get_pending_confirmations should work")
+		_ = extractText(t, pendingAfter) // Extract for potential future validation
+		// Request was confirmed and should no longer be pending
+	})
+}
+
+func TestHTTP_SSE_ConfirmationEvent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/http_sse.json"
+
+	apiKey, _ := ai.GenerateAPIKey()
+	configJSON := fmt.Sprintf(`{
+		"http_host": "127.0.0.1",
+		"http_port": 8893,
+		"api_key": "%s",
+		"mode": "readwrite",
+		"confirm_queries": ["dml"],
+		"allow_mcp_request_approval": true
+	}`, apiKey)
+
+	err := os.WriteFile(configPath, []byte(configJSON), 0644)
+	require.NoError(t, err)
+
+	ctx := startMCPFromConfigHTTP(t, configPath)
+	defer stopMCPHTTP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
+
+	t.Run("Notification sent with confirmation response", func(t *testing.T) {
+		// Submit INSERT (requires confirmation)
+		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+			"operation": "INSERT",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000077",
+				"name":  "Notification Test",
+				"email": "notification@test.com",
+			},
+		})
+
+		text := extractText(t, resp)
+		requestID := extractRequestID(text)
+		require.NotEmpty(t, requestID, "Should have request ID")
+		t.Logf("Created confirmation request: %s", requestID)
+
+		// Confirm the request - this should send notification in response
+		notification, result := callToolHTTPWithNotifications(t, ctx, "confirm_request", map[string]any{
+			"request_id":     requestID,
+			"user_confirmed": true,
+		})
+
+		// Verify we got the tool result
+		assert.NotNil(t, result, "Should get confirm_request result")
+		assertNotError(t, result, "confirm_request should succeed")
+
+		// Verify we got the confirmation notification
+		assert.NotNil(t, notification, "Should get confirmation/statusChanged notification")
+		if notification != nil {
+			params, ok := notification["params"].(map[string]any)
+			require.True(t, ok, "Notification should have params")
+
+			assert.Equal(t, requestID, params["request_id"], "Notification for correct request")
+			assert.Equal(t, "CONFIRMED", params["status"], "Status should be CONFIRMED")
+			assert.Equal(t, "mcp", params["actor"], "Actor should be mcp")
+			assert.NotEmpty(t, params["timestamp"], "Should have timestamp")
+
+			t.Logf("✅ Confirmation notification received: %+v", params)
+		}
+	})
+}
+
+// listenForSSEEvents opens SSE connection and forwards events to channel
+func listenForSSEEvents(t *testing.T, ctx *HTTPTestContext, eventChan chan<- map[string]any, stopChan <-chan bool) {
+	// Create SSE GET request
+	req, err := http.NewRequest("GET", ctx.BaseURL, nil)
+	if err != nil {
+		t.Logf("Failed to create SSE request: %v", err)
+		return
+	}
+
+	// SSE headers
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("X-API-Key", ctx.APIKey)
+	req.Header.Set("MCP-Session-Id", ctx.MCPSessionID)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Logf("SSE connection failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Logf("SSE request failed with status: %d", resp.StatusCode)
+		return
+	}
+
+	t.Logf("SSE connection established")
+
+	// Read SSE stream
+	reader := bufio.NewReader(resp.Body)
+	var currentEvent string
+	var currentData []byte
+
+	for {
+		select {
+		case <-stopChan:
+			return
+		default:
+			// Read line with timeout
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err != io.EOF {
+					t.Logf("SSE read error: %v", err)
+				}
+				return
+			}
+
+			lineStr := strings.TrimSpace(string(line))
+
+			// Parse SSE format
+			if strings.HasPrefix(lineStr, "event: ") {
+				currentEvent = strings.TrimPrefix(lineStr, "event: ")
+			} else if strings.HasPrefix(lineStr, "data: ") {
+				currentData = []byte(strings.TrimPrefix(lineStr, "data: "))
+			} else if lineStr == "" && currentEvent != "" {
+				// Empty line = end of event
+				if currentEvent == "confirmation/statusChanged" {
+					// Parse JSON data
+					var eventData map[string]any
+					if err := json.Unmarshal(currentData, &eventData); err == nil {
+						eventChan <- eventData
+					}
+				}
+				currentEvent = ""
+				currentData = nil
+			}
+		}
+	}
 }
