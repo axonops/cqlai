@@ -2,11 +2,19 @@ package mcp
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	// Generate API key for status tests
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // TestGetMCPStatus_ReadonlyMode tests status in readonly mode
 func TestGetMCPStatus_ReadonlyMode(t *testing.T) {
@@ -14,11 +22,11 @@ func TestGetMCPStatus_ReadonlyMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/readonly.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/readonly.json")
+	defer stopMCPHTTP(ctx)
 	
 
-	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+	resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 	assertNotError(t, resp, "get_mcp_status should work")
 
 	text := extractText(t, resp)
@@ -66,11 +74,11 @@ func TestGetMCPStatus_AllModes(t *testing.T) {
 
 	for _, mode := range modes {
 		t.Run(mode.expectedMode, func(t *testing.T) {
-			ctx := startMCPFromConfig(t, mode.config)
-			defer stopMCP(ctx)
+			ctx := startMCPFromConfigHTTP(t, mode.config)
+			defer stopMCPHTTP(ctx)
 			
 
-			resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+			resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 			if resp != nil {
 				text := extractText(t, resp)
 				var status map[string]any
@@ -89,11 +97,11 @@ func TestGetMCPStatus_WithConfirmQueries(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_locked.json") // Has confirm_queries: ["dcl"]
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_locked.json") // Has confirm_queries: ["dcl"]
+	defer stopMCPHTTP(ctx)
 	
 
-	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+	resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 	if resp != nil {
 		text := extractText(t, resp)
 		var status map[string]any
@@ -111,11 +119,11 @@ func TestGetMCPStatus_PermissionLockdown(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba_locked.json") // Has disable_runtime_permission_changes: true
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba_locked.json") // Has disable_runtime_permission_changes: true
+	defer stopMCPHTTP(ctx)
 	
 
-	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+	resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 	if resp != nil {
 		text := extractText(t, resp)
 		var status map[string]any
@@ -133,11 +141,11 @@ func TestGetMCPStatus_FineGrainedMode(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/finegrained_skip_dql_dml.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/finegrained_skip_dql_dml.json")
+	defer stopMCPHTTP(ctx)
 	
 
-	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+	resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 	if resp != nil {
 		text := extractText(t, resp)
 		var status map[string]any
@@ -159,18 +167,18 @@ func TestGetMCPStatus_Metrics(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	ctx := startMCPFromConfig(t, "testdata/dba.json")
-	defer stopMCP(ctx)
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
+	defer stopMCPHTTP(ctx)
 	
 
 	// Make a few tool calls
-	callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+	callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 		"operation": "SELECT",
 		"keyspace":  "test_mcp",
 		"table":     "users",
 	})
 
-	callTool(t, ctx.SocketPath, "submit_query_plan", map[string]any{
+	callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 		"operation": "INSERT",
 		"keyspace":  "test_mcp",
 		"table":     "users",
@@ -182,7 +190,7 @@ func TestGetMCPStatus_Metrics(t *testing.T) {
 	})
 
 	// Check metrics
-	resp := callTool(t, ctx.SocketPath, "get_mcp_status", map[string]any{})
+	resp := callToolHTTP(t, ctx, "get_mcp_status", map[string]any{})
 	if resp != nil {
 		text := extractText(t, resp)
 		var status map[string]any

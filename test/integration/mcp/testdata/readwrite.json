@@ -1,5 +1,7 @@
 {
-  "socket_path": "/tmp/cqlai-mcp-test.sock",
+  "http_host": "127.0.0.1",
+  "http_port": 8911,
+  "api_key": "${TEST_MCP_API_KEY}",
   "log_level": "debug",
   "log_file": "/tmp/cqlai-mcp-test.log",
   "mode": "readwrite",
