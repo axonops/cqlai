@@ -63,6 +63,29 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 			wantErr: true,
 			errMsg:  "must be a valid TimeUUID",
 		},
+		{
+			name: "invalid - future timestamp (expiration bypass attack)",
+			key: func() string {
+				// Create TimeUUID with timestamp 1 year in the future
+				futureTime := time.Now().Add(365 * 24 * time.Hour)
+				timestamp := (futureTime.Unix()*1e7 + 0x01b21dd213814000)
+				uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
+				return uuid.String()
+			}(),
+			wantErr: true,
+			errMsg:  "timestamp is in the future",
+		},
+		{
+			name: "valid - timestamp with acceptable clock skew (30 seconds)",
+			key: func() string {
+				// Create TimeUUID with timestamp 30 seconds in the future (within tolerance)
+				futureTime := time.Now().Add(30 * time.Second)
+				timestamp := (futureTime.Unix()*1e7 + 0x01b21dd213814000)
+				uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
+				return uuid.String()
+			}(),
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

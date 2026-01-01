@@ -228,8 +228,17 @@ func validateAPIKeyFormat(key string) error {
 		return fmt.Errorf("API key must be a TimeUUID (UUIDv1), got UUIDv%d", uuid.Version())
 	}
 
-	// Extract and log the timestamp for audit purposes
+	// Extract timestamp
 	keyTime := uuid.Time()
+
+	// SECURITY: Reject future timestamps (prevents expiration bypass attack)
+	// Allow 1 minute clock skew tolerance
+	if keyTime.After(time.Now().Add(1 * time.Minute)) {
+		return fmt.Errorf("API key timestamp is in the future (%v) - rejected as invalid",
+			keyTime.Format(time.RFC3339))
+	}
+
+	// Log the timestamp for audit purposes
 	logger.DebugfToFile("MCP", "API key validated: TimeUUID generated at %v (age: %v)",
 		keyTime.Format(time.RFC3339), time.Since(keyTime).Round(time.Second))
 
