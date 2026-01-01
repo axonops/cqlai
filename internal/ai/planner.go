@@ -1564,6 +1564,17 @@ func renderDropType(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'type_name' required in options for DROP TYPE")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP TYPE IF EXISTS %s.%s;", plan.Keyspace, typeName), nil
+	}
 	return fmt.Sprintf("DROP TYPE %s.%s;", plan.Keyspace, typeName), nil
 }
 
@@ -1647,6 +1658,17 @@ func renderDropFunction(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'function_name' required in options for DROP FUNCTION")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP FUNCTION IF EXISTS %s.%s;", plan.Keyspace, functionName), nil
+	}
 	return fmt.Sprintf("DROP FUNCTION %s.%s;", plan.Keyspace, functionName), nil
 }
 
@@ -1725,6 +1747,17 @@ func renderDropAggregate(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'aggregate_name' required in options for DROP AGGREGATE")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP AGGREGATE IF EXISTS %s.%s;", plan.Keyspace, aggregateName), nil
+	}
 	return fmt.Sprintf("DROP AGGREGATE %s.%s;", plan.Keyspace, aggregateName), nil
 }
 
@@ -1831,6 +1864,17 @@ func renderDropMaterializedView(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'view_name' required in options for DROP MATERIALIZED VIEW")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP MATERIALIZED VIEW IF EXISTS %s.%s;", plan.Keyspace, viewName), nil
+	}
 	return fmt.Sprintf("DROP MATERIALIZED VIEW %s.%s;", plan.Keyspace, viewName), nil
 }
 
@@ -1885,6 +1929,17 @@ func renderDropRole(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'role_name' required in options for DROP ROLE")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP ROLE IF EXISTS %s;", roleName), nil
+	}
 	return fmt.Sprintf("DROP ROLE %s;", roleName), nil
 }
 
@@ -1919,6 +1974,17 @@ func renderDropUser(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'user_name' required in options for DROP USER")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
+	if ifExists {
+		return fmt.Sprintf("DROP USER IF EXISTS %s;", userName), nil
+	}
 	return fmt.Sprintf("DROP USER %s;", userName), nil
 }
 
