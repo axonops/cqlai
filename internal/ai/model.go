@@ -85,6 +85,7 @@ type AIResult struct {
 	Table          string         `json:"table,omitempty"`
 	Columns        []string       `json:"columns,omitempty"`
 	Values         map[string]any `json:"values,omitempty"`
+	ValueTypes     map[string]string `json:"value_types,omitempty"` // Phase 0: Type hints for values (col → "list<text>", "set<int>", etc.)
 	Where          []WhereClause  `json:"where,omitempty"`
 	GroupBy        []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
 	OrderBy        []OrderClause  `json:"order_by,omitempty"`

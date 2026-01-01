@@ -189,7 +189,12 @@ func renderInsert(plan *AIResult) (string, error) {
 
 	for col, val := range plan.Values {
 		columns = append(columns, col)
-		values = append(values, formatValue(val))
+		// TODO: Get type hint from plan.ValueTypes or schema
+		typeHint := ""
+		if plan.ValueTypes != nil {
+			typeHint = plan.ValueTypes[col]
+		}
+		values = append(values, formatValue(val, typeHint))
 	}
 
 	sb.WriteString(fmt.Sprintf(" (%s) VALUES (%s);",
@@ -214,7 +219,12 @@ func renderUpdate(plan *AIResult) (string, error) {
 		sb.WriteString(" SET ")
 		setClauses := make([]string, 0, len(plan.Values))
 		for col, val := range plan.Values {
-			setClauses = append(setClauses, fmt.Sprintf("%s = %s", col, formatValue(val)))
+			// TODO: Get type hint from plan.ValueTypes or schema
+			typeHint := ""
+			if plan.ValueTypes != nil {
+				typeHint = plan.ValueTypes[col]
+			}
+			setClauses = append(setClauses, fmt.Sprintf("%s = %s", col, formatValue(val, typeHint)))
 		}
 		sb.WriteString(strings.Join(setClauses, ", "))
 	}
@@ -443,29 +453,40 @@ func renderWhereClause(w WhereClause) string {
 	if opUpper == "IS NULL" || opUpper == "IS NOT NULL" {
 		return fmt.Sprintf("%s %s", w.Column, w.Operator)
 	}
-	return fmt.Sprintf("%s %s %s", w.Column, w.Operator, formatValue(w.Value))
+	// TODO: Add ValueType field to WhereClause for type hints
+	return fmt.Sprintf("%s %s %s", w.Column, w.Operator, formatValue(w.Value, ""))
 }
 
-func formatValue(v any) string {
-	switch val := v.(type) {
-	case string:
-		// Check if this looks like a UUID (8-4-4-4-12 hex format)
-		if len(val) == 36 && val[8] == '-' && val[13] == '-' && val[18] == '-' && val[23] == '-' {
-			// UUID format - don't quote
-			return val
-		}
-		// Regular string - escape single quotes and quote
-		escaped := strings.ReplaceAll(val, "'", "''")
-		return fmt.Sprintf("'%s'", escaped)
-	case []any:
-		// Handle IN clause values
-		values := make([]string, len(val))
-		for i, item := range val {
-			values[i] = formatValue(item)
-		}
-		return fmt.Sprintf("(%s)", strings.Join(values, ", "))
+// formatValue is the main entry point for formatting CQL values with optional type hints
+// typeHint examples: "text", "int", "list<text>", "set<int>", "map<text,int>", "tuple<text,int>", "blob"
+// typeHint can be "" to infer type from value (backward compatible)
+func formatValue(v any, typeHint string) string {
+	// Handle nil early
+	if v == nil {
+		return "null"
+	}
+
+	// Parse type hint to determine routing
+	baseType, elementType := parseTypeHint(typeHint)
+
+	// Route to appropriate formatter based on type hint
+	switch baseType {
+	case "list":
+		return formatList(v, elementType)
+	case "set":
+		return formatSet(v, elementType)
+	case "map":
+		keyType, valueType := parseMapTypes(typeHint)
+		return formatMap(v, keyType, valueType)
+	case "tuple":
+		return formatTuple(v)
+	case "blob":
+		return formatBlob(v)
+	case "udt", "frozen": // UDT or frozen UDT
+		return formatUDT(v, typeHint)
 	default:
-		return fmt.Sprintf("%v", val)
+		// No type hint or primitive type - infer from value
+		return formatPrimitive(v)
 	}
 }
 
@@ -1524,4 +1545,338 @@ func renderDropUser(plan *AIResult) (string, error) {
 	}
 
 	return fmt.Sprintf("DROP USER %s;", userName), nil
+}
+
+// ============================================================================
+// Phase 0: Enhanced Data Type Formatting Functions
+// ============================================================================
+//
+// These functions provide proper CQL formatting for all Cassandra data types:
+// - Lists use [] (not ())
+// - Sets use {} with deduplication
+// - Maps use {key: val} with quoted keys
+// - UDTs use {field: val} with unquoted field names
+// - Functions like uuid() pass through unquoted
+//
+// Manual testing against Cassandra 5.0.6 confirmed all syntax.
+// See: claude-notes/features/phase0_data_types_research.md
+// ============================================================================
+
+// formatPrimitive formats primitive CQL values (strings, numbers, UUIDs, booleans, null)
+func formatPrimitive(v any) string {
+	if v == nil {
+		return "null"
+	}
+
+	switch val := v.(type) {
+	case string:
+		// Check if this is a function call (uuid(), now(), etc.)
+		if isFunctionCall(val) {
+			return val // Pass through without quotes
+		}
+
+		// Check if this is a UUID (8-4-4-4-12 format)
+		if isUUID(val) {
+			return val // UUIDs not quoted
+		}
+
+		// Regular string - escape single quotes and wrap
+		escaped := strings.ReplaceAll(val, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
+
+	case bool:
+		// CQL booleans are lowercase: true, false
+		if val {
+			return "true"
+		}
+		return "false"
+
+	case int, int8, int16, int32, int64:
+		return fmt.Sprintf("%v", val)
+
+	case uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%v", val)
+
+	case float32, float64:
+		return fmt.Sprintf("%v", val)
+
+	default:
+		// Fallback for unknown types
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// isFunctionCall detects CQL function calls (uuid(), now(), toTimestamp(), etc.)
+func isFunctionCall(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	// Must end with ) and contain (
+	if !strings.HasSuffix(s, ")") || !strings.Contains(s, "(") {
+		return false
+	}
+
+	// Must not start with quotes
+	if strings.HasPrefix(s, "'") || strings.HasPrefix(s, "\"") {
+		return false
+	}
+
+	// Must not start with ( (would be tuple/IN clause)
+	if strings.HasPrefix(s, "(") {
+		return false
+	}
+
+	return true
+}
+
+// isUUID checks if string matches UUID format (8-4-4-4-12 hex pattern)
+func isUUID(s string) bool {
+	return len(s) == 36 &&
+		s[8] == '-' && s[13] == '-' && s[18] == '-' && s[23] == '-'
+}
+
+// convertToSlice converts various slice types to []any
+func convertToSlice(v any) ([]any, bool) {
+	switch val := v.(type) {
+	case []any:
+		return val, true
+	case []string:
+		result := make([]any, len(val))
+		for i, s := range val {
+			result[i] = s
+		}
+		return result, true
+	case []int:
+		result := make([]any, len(val))
+		for i, n := range val {
+			result[i] = n
+		}
+		return result, true
+	case []int64:
+		result := make([]any, len(val))
+		for i, n := range val {
+			result[i] = n
+		}
+		return result, true
+	case []float64:
+		result := make([]any, len(val))
+		for i, n := range val {
+			result[i] = n
+		}
+		return result, true
+	default:
+		return nil, false
+	}
+}
+
+// deduplicateElements removes duplicates from slice (for sets)
+func deduplicateElements(elements []any) []any {
+	if len(elements) == 0 {
+		return elements
+	}
+
+	seen := make(map[string]bool)
+	unique := make([]any, 0, len(elements))
+
+	for _, elem := range elements {
+		// Use string representation as key
+		key := fmt.Sprintf("%v", elem)
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, elem)
+		}
+	}
+
+	return unique
+}
+
+// formatList formats list literals using square brackets []
+// Example: ['item1', 'item2', 'item3']
+func formatList(v any, elementType string) string {
+	elements, ok := convertToSlice(v)
+	if !ok {
+		return "[]" // Invalid input → empty list
+	}
+
+	if len(elements) == 0 {
+		return "[]" // Empty list
+	}
+
+	formatted := make([]string, len(elements))
+	for i, elem := range elements {
+		formatted[i] = formatValue(elem, elementType) // Recursive for nested types
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(formatted, ", "))
+}
+
+// formatSet formats set literals using curly braces {}
+// Sets are deduplicated (Cassandra ensures uniqueness)
+// Example: {'item1', 'item2', 'item3'}
+func formatSet(v any, elementType string) string {
+	elements, ok := convertToSlice(v)
+	if !ok {
+		return "{}" // Invalid input → empty set
+	}
+
+	if len(elements) == 0 {
+		return "{}" // Empty set
+	}
+
+	// Deduplicate (Cassandra does this, but we do it too for correctness)
+	unique := deduplicateElements(elements)
+
+	formatted := make([]string, len(unique))
+	for i, elem := range unique {
+		formatted[i] = formatValue(elem, elementType) // Recursive
+	}
+
+	return fmt.Sprintf("{%s}", strings.Join(formatted, ", "))
+}
+
+// formatMap formats map literals for DML operations
+// Maps use {key: value} with QUOTED keys (unlike UDTs)
+// Example: {'key1': 'value1', 'key2': 'value2'}
+func formatMap(v any, keyType, valueType string) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return "{}" // Invalid input
+	}
+
+	if len(m) == 0 {
+		return "{}" // Empty map
+	}
+
+	pairs := make([]string, 0, len(m))
+	for key, value := range m {
+		// Format key and value
+		formattedKey := formatValue(key, keyType)
+		formattedValue := formatValue(value, valueType)
+
+		// Map syntax: 'key': value
+		pairs = append(pairs, fmt.Sprintf("%s: %s", formattedKey, formattedValue))
+	}
+
+	return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
+}
+
+// formatUDT formats User-Defined Type literals
+// UDTs use {field: value} with UNQUOTED field names (critical difference from maps!)
+// Example: {street: '123 Main', city: 'NYC', zip: '10001'}
+func formatUDT(v any, udtTypeName string) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return "{}" // Invalid input
+	}
+
+	if len(m) == 0 {
+		return "{}" // Empty UDT
+	}
+
+	pairs := make([]string, 0, len(m))
+	for field, value := range m {
+		// Format value (will infer type or use primitive)
+		formattedValue := formatValue(value, "")
+
+		// UDT syntax: field: value (field name NOT quoted!)
+		pairs = append(pairs, fmt.Sprintf("%s: %s", field, formattedValue))
+	}
+
+	return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
+}
+
+// formatTuple formats tuple literals using parentheses ()
+// Example: ('value1', 'value2', 'value3')
+func formatTuple(v any) string {
+	elements, ok := convertToSlice(v)
+	if !ok {
+		return "()" // Invalid input
+	}
+
+	if len(elements) == 0 {
+		return "()" // Empty tuple (may be invalid, but return it)
+	}
+
+	formatted := make([]string, len(elements))
+	for i, elem := range elements {
+		formatted[i] = formatPrimitive(elem)
+	}
+
+	return fmt.Sprintf("(%s)", strings.Join(formatted, ", "))
+}
+
+// formatBlob formats blob literals with 0x hex prefix
+// Example: 0xCAFEBABE
+func formatBlob(v any) string {
+	var hexStr string
+
+	switch val := v.(type) {
+	case string:
+		// Remove 0x prefix if present, we'll add it back
+		hexStr = strings.TrimPrefix(strings.ToUpper(val), "0X")
+		hexStr = strings.TrimPrefix(hexStr, "0x")
+	case []byte:
+		// Convert byte array to hex string
+		hexStr = fmt.Sprintf("%X", val)
+	default:
+		return "0x" // Invalid
+	}
+
+	return fmt.Sprintf("0x%s", hexStr)
+}
+
+// parseTypeHint extracts base type and element type from CQL type hint
+// Examples:
+//   "text" → ("text", "")
+//   "list<text>" → ("list", "text")
+//   "set<int>" → ("set", "int")
+func parseTypeHint(hint string) (baseType, elementType string) {
+	if hint == "" {
+		return "", ""
+	}
+
+	// Simple types (no generics)
+	if !strings.Contains(hint, "<") {
+		return hint, ""
+	}
+
+	// Collection types: list<text>, set<int>, map<text,int>, tuple<text,int>
+	openIdx := strings.Index(hint, "<")
+	closeIdx := strings.LastIndex(hint, ">")
+
+	if openIdx == -1 || closeIdx == -1 {
+		return hint, "" // Malformed, return as-is
+	}
+
+	baseType = hint[:openIdx]
+	elementType = hint[openIdx+1 : closeIdx]
+
+	return baseType, elementType
+}
+
+// parseMapTypes extracts key and value types from map type hint
+// Example: "map<text,int>" → ("text", "int")
+func parseMapTypes(hint string) (keyType, valueType string) {
+	if hint == "" {
+		return "", ""
+	}
+
+	// Extract content between < >
+	openIdx := strings.Index(hint, "<")
+	closeIdx := strings.LastIndex(hint, ">")
+
+	if openIdx == -1 || closeIdx == -1 {
+		return "", ""
+	}
+
+	types := hint[openIdx+1 : closeIdx]
+
+	// Split by comma (handles map<key,value>)
+	parts := strings.Split(types, ",")
+	if len(parts) != 2 {
+		return "", "" // Not a map or malformed
+	}
+
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 }

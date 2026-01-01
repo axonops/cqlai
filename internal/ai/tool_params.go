@@ -56,6 +56,7 @@ type SubmitQueryPlanParams struct {
 	Table          string            `json:"table,omitempty"`
 	Columns        []string          `json:"columns,omitempty"`
 	Values         map[string]any    `json:"values,omitempty"`
+	ValueTypes     map[string]string `json:"value_types,omitempty"` // Phase 0: Type hints for values
 	Where          []WhereClause     `json:"where,omitempty"`
 	OrderBy        []OrderClause     `json:"order_by,omitempty"`
 	Limit          int               `json:"limit,omitempty"`
@@ -153,6 +154,7 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		Table:          p.Table,
 		Columns:        p.Columns,
 		Values:         p.Values,
+		ValueTypes:     p.ValueTypes, // Phase 0: Pass through type hints
 		Where:          p.Where,
 		OrderBy:        p.OrderBy,
 		Limit:          p.Limit,
