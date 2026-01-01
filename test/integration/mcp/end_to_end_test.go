@@ -4,6 +4,16 @@
 package mcp_test
 
 import (
+        "os"
+        "github.com/axonops/cqlai/internal/ai"
+)
+
+func init() {
+        key, _ := ai.GenerateAPIKey()
+        os.Setenv("TEST_MCP_API_KEY", key)
+}
+
+import (
 	"bufio"
 	"encoding/json"
 	"net"
