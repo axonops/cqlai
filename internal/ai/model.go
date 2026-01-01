@@ -122,8 +122,9 @@ type AIResult struct {
 	AllowFiltering    bool           `json:"allow_filtering,omitempty"`
 
 	// For DDL operations
-	Schema  map[string]string `json:"schema,omitempty"`  // Column definitions for CREATE TABLE
-	Options map[string]any    `json:"options,omitempty"` // Table/keyspace options
+	Schema    map[string]string `json:"schema,omitempty"`  // Column definitions for CREATE TABLE
+	Options   map[string]any    `json:"options,omitempty"` // Table/keyspace options
+	Temporary bool              `json:"temporary,omitempty"` // CREATE TEMPORARY TABLE
 
 	// Metadata
 	Confidence float64 `json:"confidence"`
