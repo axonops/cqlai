@@ -1039,8 +1039,24 @@ func renderAlterTable(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'action' required in options for ALTER TABLE (ADD, DROP, RENAME, WITH)")
 	}
 
+	// Phase 5: Check for IF EXISTS at table level or action level
+	ifExists := false
+	ifNotExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("ALTER TABLE %s.%s ", plan.Keyspace, plan.Table))
+	if ifExists {
+		sb.WriteString(fmt.Sprintf("ALTER TABLE IF EXISTS %s.%s ", plan.Keyspace, plan.Table))
+	} else {
+		sb.WriteString(fmt.Sprintf("ALTER TABLE %s.%s ", plan.Keyspace, plan.Table))
+	}
 
 	switch strings.ToUpper(action) {
 	case "ADD":
@@ -1052,14 +1068,24 @@ func renderAlterTable(plan *AIResult) (string, error) {
 		if !ok || columnType == "" {
 			return "", fmt.Errorf("'column_type' required for ALTER TABLE ADD")
 		}
-		sb.WriteString(fmt.Sprintf("ADD %s %s", columnName, columnType))
+		// Phase 5: ADD can have IF NOT EXISTS
+		if ifNotExists {
+			sb.WriteString(fmt.Sprintf("ADD IF NOT EXISTS %s %s", columnName, columnType))
+		} else {
+			sb.WriteString(fmt.Sprintf("ADD %s %s", columnName, columnType))
+		}
 
 	case "DROP":
 		columnName, ok := plan.Options["column_name"].(string)
 		if !ok || columnName == "" {
 			return "", fmt.Errorf("'column_name' required for ALTER TABLE DROP")
 		}
-		sb.WriteString(fmt.Sprintf("DROP %s", columnName))
+		// Phase 5: DROP can have IF EXISTS
+		if ifExists {
+			sb.WriteString(fmt.Sprintf("DROP IF EXISTS %s", columnName))
+		} else {
+			sb.WriteString(fmt.Sprintf("DROP %s", columnName))
+		}
 
 	case "RENAME":
 		oldName, ok1 := plan.Options["old_column_name"].(string)
@@ -1067,7 +1093,12 @@ func renderAlterTable(plan *AIResult) (string, error) {
 		if !ok1 || !ok2 || oldName == "" || newName == "" {
 			return "", fmt.Errorf("'old_column_name' and 'new_column_name' required for ALTER TABLE RENAME")
 		}
-		sb.WriteString(fmt.Sprintf("RENAME %s TO %s", oldName, newName))
+		// Phase 5: RENAME can have IF EXISTS
+		if ifExists {
+			sb.WriteString(fmt.Sprintf("RENAME IF EXISTS %s TO %s", oldName, newName))
+		} else {
+			sb.WriteString(fmt.Sprintf("RENAME %s TO %s", oldName, newName))
+		}
 
 	case "WITH":
 		properties, ok := plan.Options["properties"].(map[string]interface{})
@@ -1102,8 +1133,20 @@ func renderAlterKeyspace(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'properties' map required for ALTER KEYSPACE WITH")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("ALTER KEYSPACE %s WITH ", plan.Keyspace))
+	if ifExists {
+		sb.WriteString(fmt.Sprintf("ALTER KEYSPACE IF EXISTS %s WITH ", plan.Keyspace))
+	} else {
+		sb.WriteString(fmt.Sprintf("ALTER KEYSPACE %s WITH ", plan.Keyspace))
+	}
 
 	first := true
 	for k, v := range properties {
@@ -1149,8 +1192,24 @@ func renderAlterType(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'action' required for ALTER TYPE (ADD, RENAME)")
 	}
 
+	// Phase 5: IF EXISTS for ALTER TYPE and sub-clauses
+	ifExists := false
+	ifNotExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+		if ine, ok := plan.Options["if_not_exists"].(bool); ok {
+			ifNotExists = ine
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("ALTER TYPE %s.%s ", plan.Keyspace, typeName))
+	if ifExists {
+		sb.WriteString(fmt.Sprintf("ALTER TYPE IF EXISTS %s.%s ", plan.Keyspace, typeName))
+	} else {
+		sb.WriteString(fmt.Sprintf("ALTER TYPE %s.%s ", plan.Keyspace, typeName))
+	}
 
 	switch strings.ToUpper(action) {
 	case "ADD":
@@ -1162,7 +1221,12 @@ func renderAlterType(plan *AIResult) (string, error) {
 		if !ok || fieldType == "" {
 			return "", fmt.Errorf("'field_type' required for ALTER TYPE ADD")
 		}
-		sb.WriteString(fmt.Sprintf("ADD %s %s", fieldName, fieldType))
+		// Phase 5: ADD IF NOT EXISTS
+		if ifNotExists {
+			sb.WriteString(fmt.Sprintf("ADD IF NOT EXISTS %s %s", fieldName, fieldType))
+		} else {
+			sb.WriteString(fmt.Sprintf("ADD %s %s", fieldName, fieldType))
+		}
 
 	case "RENAME":
 		oldName, ok1 := plan.Options["old_field_name"].(string)
@@ -1170,7 +1234,12 @@ func renderAlterType(plan *AIResult) (string, error) {
 		if !ok1 || !ok2 || oldName == "" || newName == "" {
 			return "", fmt.Errorf("'old_field_name' and 'new_field_name' required for ALTER TYPE RENAME")
 		}
-		sb.WriteString(fmt.Sprintf("RENAME %s TO %s", oldName, newName))
+		// Phase 5: RENAME IF EXISTS
+		if ifExists {
+			sb.WriteString(fmt.Sprintf("RENAME IF EXISTS %s TO %s", oldName, newName))
+		} else {
+			sb.WriteString(fmt.Sprintf("RENAME %s TO %s", oldName, newName))
+		}
 
 	default:
 		return "", fmt.Errorf("unsupported ALTER TYPE action: %s (must be ADD or RENAME)", action)
@@ -1186,6 +1255,14 @@ func renderAlterRole(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("'role_name' required in options for ALTER ROLE")
 	}
 
+	// Phase 5: IF EXISTS
+	ifExists := false
+	if plan.Options != nil {
+		if ie, ok := plan.Options["if_exists"].(bool); ok {
+			ifExists = ie
+		}
+	}
+
 	// Check if this is ADD_IDENTITY or DROP_IDENTITY
 	if action, ok := plan.Options["action"].(string); ok {
 		actionUpper := strings.ToUpper(action)
@@ -1196,15 +1273,25 @@ func renderAlterRole(plan *AIResult) (string, error) {
 			}
 
 			if actionUpper == "ADD_IDENTITY" {
+				if ifExists {
+					return fmt.Sprintf("ALTER ROLE IF EXISTS %s ADD IDENTITY '%s';", roleName, identity), nil
+				}
 				return fmt.Sprintf("ALTER ROLE %s ADD IDENTITY '%s';", roleName, identity), nil
 			} else {
+				if ifExists {
+					return fmt.Sprintf("ALTER ROLE IF EXISTS %s DROP IDENTITY '%s';", roleName, identity), nil
+				}
 				return fmt.Sprintf("ALTER ROLE %s DROP IDENTITY '%s';", roleName, identity), nil
 			}
 		}
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("ALTER ROLE %s WITH ", roleName))
+	if ifExists {
+		sb.WriteString(fmt.Sprintf("ALTER ROLE IF EXISTS %s WITH ", roleName))
+	} else {
+		sb.WriteString(fmt.Sprintf("ALTER ROLE %s WITH ", roleName))
+	}
 
 	// Build WITH clause from options
 	withClauses := []string{}
