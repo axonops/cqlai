@@ -1330,6 +1330,162 @@ export OFFICE_SUBNET="10.0.1.0/24"
 **Important:** Use single quotes (`'${VAR}'`) in CLI to prevent shell expansion.
 CQLAI expands the variable internally.
 
+---
+
+## API Key Management with OS Keychain
+
+### Secure Storage (Industry Standard for Local Development)
+
+Store your API key in your OS keychain, then set environment variable from keychain.
+
+**Benefits:**
+- ✅ Keys encrypted at rest by OS
+- ✅ No plaintext keys in config files or shell history
+- ✅ Industry standard practice (used by AWS CLI, kubectl, etc.)
+- ✅ Auto-loads on shell startup
+
+#### macOS (Keychain)
+
+**Store API key in Keychain:**
+```bash
+# Store key in macOS Keychain
+security add-generic-password \
+  -s "cqlai_mcp_api_key" \
+  -a "$(whoami)" \
+  -w "2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+```
+
+**Auto-load from Keychain:**
+
+Add to `~/.zshrc` or `~/.bashrc`:
+```bash
+# Load CQLAI MCP API key from macOS Keychain
+export MCP_API_KEY=$(security find-generic-password \
+  -w -s "cqlai_mcp_api_key" \
+  -a "$(whoami)" 2>/dev/null)
+```
+
+**Verify:**
+```bash
+source ~/.zshrc
+echo $MCP_API_KEY  # Should show your key
+```
+
+**Update/rotate key:**
+```bash
+# Generate new key
+NEW_KEY=$(cqlai --generate-mcp-api-key | grep "API Key:" | awk '{print $3}')
+
+# Update Keychain
+security add-generic-password \
+  -U -s "cqlai_mcp_api_key" \
+  -a "$(whoami)" \
+  -w "$NEW_KEY"
+```
+
+#### Linux (pass - Standard Unix Password Manager)
+
+**Install pass (if not installed):**
+```bash
+# Debian/Ubuntu
+sudo apt-get install pass
+
+# Arch
+sudo pacman -S pass
+
+# Initialize (first time only)
+pass init your-gpg-id
+```
+
+**Store API key:**
+```bash
+# Store key in pass
+pass insert cqlai/mcp_api_key
+# Enter key when prompted: 2ABCDEFGHIJKLMNOPQRSTUVWXYZa
+```
+
+**Auto-load from pass:**
+
+Add to `~/.bashrc` or `~/.zshrc`:
+```bash
+# Load CQLAI MCP API key from pass
+export MCP_API_KEY=$(pass show cqlai/mcp_api_key 2>/dev/null)
+```
+
+**Update/rotate key:**
+```bash
+# Generate new key
+NEW_KEY=$(cqlai --generate-mcp-api-key | grep "API Key:" | awk '{print $3}')
+
+# Update pass (will prompt for GPG passphrase)
+pass insert -e cqlai/mcp_api_key <<< "$NEW_KEY"
+```
+
+#### Windows (Credential Manager)
+
+**Store API key:**
+1. Press Windows key, search "Credential Manager"
+2. Click "Windows Credentials"
+3. Click "Add a generic credential"
+   - Internet or network address: `cqlai_mcp_api_key`
+   - User name: `your-username`
+   - Password: `2ABCDEFGHIJKLMNOPQRSTUVWXYZa`
+4. Click OK
+
+**Set Environment Variable:**
+1. Press Windows key, search "Environment Variables"
+2. Click "Edit the system environment variables"
+3. Click "Environment Variables" button
+4. Under "User variables", click "New"
+   - Variable name: `MCP_API_KEY`
+   - Variable value: `2ABCDEFGHIJKLMNOPQRSTUVWXYZa`
+5. Click OK
+
+**Note:** Windows doesn't auto-load from Credential Manager. You must manually copy the key to Environment Variables or use PowerShell script.
+
+**PowerShell auto-load (alternative):**
+```powershell
+# Add to $PROFILE
+$env:MCP_API_KEY = (cmdkey /list:cqlai_mcp_api_key | Select-String "Password").ToString().Split(":")[1].Trim()
+```
+
+#### CI/CD Systems
+
+**GitHub Actions:**
+```yaml
+env:
+  MCP_API_KEY: ${{ secrets.CQLAI_MCP_API_KEY }}
+```
+
+**GitLab CI:**
+```yaml
+variables:
+  MCP_API_KEY: $CQLAI_MCP_API_KEY  # From GitLab CI/CD variables
+```
+
+**Jenkins:**
+```groovy
+withCredentials([string(credentialsId: 'cqlai-mcp-key', variable: 'MCP_API_KEY')]) {
+  // Use $MCP_API_KEY
+}
+```
+
+**AWS Secrets Manager:**
+```bash
+# Fetch from AWS Secrets Manager
+export MCP_API_KEY=$(aws secretsmanager get-secret-value \
+  --secret-id cqlai/mcp-api-key \
+  --query SecretString --output text)
+```
+
+**HashiCorp Vault:**
+```bash
+# Fetch from Vault
+export MCP_API_KEY=$(vault kv get -field=api_key secret/cqlai/mcp)
+```
+
+---
+
 ### 3. Use Narrow IP Allowlists
 
 **Bad (entire private network):**
