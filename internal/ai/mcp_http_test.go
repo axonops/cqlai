@@ -91,14 +91,14 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test with default maxAge (30 days)
-			err := validateAPIKeyFormat(tt.key, 30*24*time.Hour)
+			err := ValidateAPIKeyFormat(tt.key, 30*24*time.Hour)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateAPIKeyFormat(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
+				t.Errorf("ValidateAPIKeyFormat(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
 				return
 			}
 			if err != nil && tt.errMsg != "" {
 				if !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("validateAPIKeyFormat(%q) error = %v, want error containing %q",
+					t.Errorf("ValidateAPIKeyFormat(%q) error = %v, want error containing %q",
 						tt.key, err, tt.errMsg)
 				}
 			}
@@ -167,14 +167,14 @@ func TestValidateAPIKeyFormat_Expiration(t *testing.T) {
 			uuid := gocql.TimeUUIDWith(timestamp, 0, []byte{0, 0, 0, 0, 0, 0})
 			key := uuid.String()
 
-			err := validateAPIKeyFormat(key, tt.maxAge)
+			err := ValidateAPIKeyFormat(key, tt.maxAge)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateAPIKeyFormat() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ValidateAPIKeyFormat() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if err != nil && tt.errMsg != "" {
 				if !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("validateAPIKeyFormat() error = %v, want error containing %q",
+					t.Errorf("ValidateAPIKeyFormat() error = %v, want error containing %q",
 						err, tt.errMsg)
 				}
 			}
@@ -345,9 +345,9 @@ func TestMaskAPIKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := maskAPIKey(tt.key)
+			got := MaskAPIKey(tt.key)
 			if got != tt.want {
-				t.Errorf("maskAPIKey(%q) = %q, want %q", tt.key, got, tt.want)
+				t.Errorf("MaskAPIKey(%q) = %q, want %q", tt.key, got, tt.want)
 			}
 		})
 	}

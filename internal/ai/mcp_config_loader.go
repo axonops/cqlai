@@ -43,7 +43,7 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		if maxAge == 0 {
 			maxAge = 30 * 24 * time.Hour // Default from DefaultMCPConfig
 		}
-		if err := validateAPIKeyFormat(expandedKey, maxAge); err != nil {
+		if err := ValidateAPIKeyFormat(expandedKey, maxAge); err != nil {
 			return nil, fmt.Errorf("invalid api_key in config: %w", err)
 		}
 		config.ApiKey = expandedKey

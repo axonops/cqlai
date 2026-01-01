@@ -214,9 +214,9 @@ func generateAPIKey() (string, error) {
 	return timeUUID.String(), nil
 }
 
-// validateAPIKeyFormat validates that a string is a valid TimeUUID (UUIDv1)
+// ValidateAPIKeyFormat validates that a string is a valid TimeUUID (UUIDv1)
 // maxAge: maximum allowed age for the key (0 = no age check)
-func validateAPIKeyFormat(key string, maxAge time.Duration) error {
+func ValidateAPIKeyFormat(key string, maxAge time.Duration) error {
 	if key == "" {
 		return fmt.Errorf("API key cannot be empty")
 	}
@@ -267,12 +267,24 @@ func (s *MCPServer) validateAPIKey(provided string) bool {
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
-// maskAPIKey masks an API key for safe logging
-func maskAPIKey(key string) string {
+// MaskAPIKey masks an API key for safe logging
+func MaskAPIKey(key string) string {
 	if len(key) <= 12 {
 		return "***"
 	}
 	return key[:8] + "..." + key[len(key)-4:]
+}
+
+// ParseTimeUUID parses an API key as a TimeUUID and returns it
+func ParseTimeUUID(key string) (gocql.UUID, error) {
+	uuid, err := gocql.ParseUUID(key)
+	if err != nil {
+		return gocql.UUID{}, fmt.Errorf("invalid UUID format: %w", err)
+	}
+	if uuid.Version() != 1 {
+		return gocql.UUID{}, fmt.Errorf("not a TimeUUID (got UUIDv%d)", uuid.Version())
+	}
+	return uuid, nil
 }
 
 // authMiddleware wraps an http.Handler with authentication and origin validation
@@ -293,7 +305,7 @@ func (s *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Log successful authentication (masked key)
-		logger.DebugfToFile("MCP", "API key validated: %s", maskAPIKey(apiKey))
+		logger.DebugfToFile("MCP", "API key validated: %s", MaskAPIKey(apiKey))
 
 		// Validate origin (DNS rebinding protection)
 		if !s.validateOrigin(r) {
@@ -392,7 +404,7 @@ func (s *MCPServer) Start() error {
 			return fmt.Errorf("failed to generate API key: %w", err)
 		}
 		s.config.ApiKey = key
-		logger.DebugfToFile("MCP", "Auto-generated API key: %s", maskAPIKey(key))
+		logger.DebugfToFile("MCP", "Auto-generated API key: %s", MaskAPIKey(key))
 
 		// Display key to user (only shown once)
 		fmt.Printf("\n=== MCP Server API Key ===\n")

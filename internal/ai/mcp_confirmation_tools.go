@@ -62,9 +62,33 @@ func (s *MCPServer) createGetMCPStatusHandler() server.ToolHandlerFunc {
 		connInfo := s.GetConnectionInfo()
 		metrics := s.GetMetrics()
 
+		// Extract API key timestamp info
+		apiKeyMasked := MaskAPIKey(config.ApiKey)
+		var apiKeyTimestamp string
+		var apiKeyAge string
+		var apiKeyExpired bool
+		if uuid, err := ParseTimeUUID(config.ApiKey); err == nil {
+			keyTime := uuid.Time()
+			keyAgeD := time.Since(keyTime)
+			apiKeyTimestamp = keyTime.Format(time.RFC3339)
+			apiKeyAge = keyAgeD.Round(time.Hour).String()
+			if config.ApiKeyMaxAge > 0 {
+				apiKeyExpired = keyAgeD > config.ApiKeyMaxAge
+			}
+		}
+
 		status := map[string]any{
 			"state":  "RUNNING",
 			"config": map[string]any{
+				"http_endpoint":                          fmt.Sprintf("http://%s:%d/mcp", config.HttpHost, config.HttpPort),
+				"http_host":                              config.HttpHost,
+				"http_port":                              config.HttpPort,
+				"api_key_masked":                         apiKeyMasked,
+				"api_key_timestamp":                      apiKeyTimestamp,
+				"api_key_age":                            apiKeyAge,
+				"api_key_max_age_days":                   int(config.ApiKeyMaxAge.Hours() / 24),
+				"api_key_expired":                        apiKeyExpired,
+				"allowed_origins":                        config.AllowedOrigins,
 				"mode":                                   string(config.Mode),
 				"preset_mode":                            config.PresetMode,
 				"confirm_queries":                        config.ConfirmQueries,

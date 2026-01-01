@@ -134,6 +134,63 @@ func (h *MCPHandler) handleStart(args []string) string {
 				config.SocketPath = args[i+1]
 				i++
 			}
+
+		// HTTP transport configuration
+		case "--http-host":
+			if i+1 < len(args) {
+				config.HttpHost = args[i+1]
+				i++
+			}
+		case "--http-port":
+			if i+1 < len(args) {
+				var port int
+				if _, err := fmt.Sscanf(args[i+1], "%d", &port); err != nil {
+					return fmt.Sprintf("Error: --http-port must be a number, got %q", args[i+1])
+				}
+				if port <= 0 || port > 65535 {
+					return fmt.Sprintf("Error: --http-port must be between 1-65535, got %d", port)
+				}
+				config.HttpPort = port
+				i++
+			}
+		case "--api-key":
+			if i+1 < len(args) {
+				apiKey := args[i+1]
+				if err := ai.ValidateAPIKeyFormat(apiKey, config.ApiKeyMaxAge); err != nil {
+					return fmt.Sprintf("Error: Invalid --api-key: %v", err)
+				}
+				config.ApiKey = apiKey
+				i++
+			}
+		case "--api-key-max-age-days":
+			if i+1 < len(args) {
+				var days float64
+				if _, err := fmt.Sscanf(args[i+1], "%f", &days); err != nil {
+					return fmt.Sprintf("Error: --api-key-max-age-days must be a number, got %q", args[i+1])
+				}
+				if days <= 0 {
+					config.ApiKeyMaxAge = 0 // Disabled
+				} else {
+					config.ApiKeyMaxAge = time.Duration(days*24) * time.Hour
+				}
+				i++
+			}
+		case "--disable-api-key-age-check":
+			config.ApiKeyMaxAge = 0
+		case "--allowed-origins":
+			if i+1 < len(args) {
+				// Parse comma-separated list of origins
+				origins := strings.Split(args[i+1], ",")
+				config.AllowedOrigins = make([]string, 0, len(origins))
+				for _, origin := range origins {
+					trimmed := strings.TrimSpace(origin)
+					if trimmed != "" {
+						config.AllowedOrigins = append(config.AllowedOrigins, trimmed)
+					}
+				}
+				i++
+			}
+
 		case "--log-level":
 			if i+1 < len(args) {
 				config.LogLevel = args[i+1]
@@ -239,13 +296,27 @@ func (h *MCPHandler) handleStart(args []string) string {
 
 	// Server details
 	sb.WriteString("Server Details:\n")
-	sb.WriteString(fmt.Sprintf("  Socket: %s\n", config.SocketPath))
+	sb.WriteString(fmt.Sprintf("  HTTP endpoint: http://%s:%d/mcp\n", config.HttpHost, config.HttpPort))
+
+	// API key with timestamp
+	apiKeyInfo := formatAPIKeyInfo(config.ApiKey, config.ApiKeyMaxAge)
+	sb.WriteString(fmt.Sprintf("  API key: %s\n", apiKeyInfo))
+
 	sb.WriteString(fmt.Sprintf("  Log level: %s\n", config.LogLevel))
 	sb.WriteString(fmt.Sprintf("  Log file: %s\n", config.LogFile))
 	sb.WriteString("  Available tools: 9 (FUZZY_SEARCH, GET_SCHEMA, LIST_KEYSPACES, LIST_TABLES, etc.)\n\n")
 
-	sb.WriteString("Claude Code can now connect via:\n")
-	sb.WriteString(fmt.Sprintf("  claude mcp add --transport stdio cqlai --scope project -- nc -U %s\n\n", config.SocketPath))
+	sb.WriteString("Claude Code can now connect via .mcp.json:\n")
+	sb.WriteString("  {\n")
+	sb.WriteString("    \"mcpServers\": {\n")
+	sb.WriteString("      \"cqlai\": {\n")
+	sb.WriteString(fmt.Sprintf("        \"url\": \"http://%s:%d/mcp\",\n", config.HttpHost, config.HttpPort))
+	sb.WriteString("        \"headers\": {\n")
+	sb.WriteString(fmt.Sprintf("          \"X-API-Key\": \"%s\"\n", config.ApiKey))
+	sb.WriteString("        }\n")
+	sb.WriteString("      }\n")
+	sb.WriteString("    }\n")
+	sb.WriteString("  }\n\n")
 
 	sb.WriteString("Use '.mcp status' to view detailed status\n")
 	sb.WriteString("Use '.mcp permissions-config mode <readonly|readwrite|dba>' to change mode dynamically\n")
@@ -317,7 +388,21 @@ func (h *MCPHandler) handleStatus() string {
 
 	// Server configuration
 	sb.WriteString("Server Configuration:\n")
-	sb.WriteString(fmt.Sprintf("  Socket: %s\n", config.SocketPath))
+	sb.WriteString(fmt.Sprintf("  HTTP endpoint: http://%s:%d/mcp\n", config.HttpHost, config.HttpPort))
+
+	// API key with timestamp
+	apiKeyInfo := formatAPIKeyInfo(config.ApiKey, config.ApiKeyMaxAge)
+	sb.WriteString(fmt.Sprintf("  API key: %s\n", apiKeyInfo))
+
+	// Allowed origins
+	if len(config.AllowedOrigins) > 0 {
+		sb.WriteString(fmt.Sprintf("  Allowed origins: %v\n", config.AllowedOrigins))
+	} else if config.HttpHost == "127.0.0.1" || config.HttpHost == "localhost" {
+		sb.WriteString("  Allowed origins: localhost only (secure default)\n")
+	} else {
+		sb.WriteString("  Allowed origins: NONE (will reject browser requests)\n")
+	}
+
 	sb.WriteString(fmt.Sprintf("  Log level: %s\n", config.LogLevel))
 	sb.WriteString(fmt.Sprintf("  Log file: %s\n", config.LogFile))
 	sb.WriteString(fmt.Sprintf("  History file: %s\n", config.HistoryFile))
@@ -606,6 +691,48 @@ func (h *MCPHandler) handleConfigSkipConfirmation(categories []string) string {
 }
 
 // formatDuration formats a time or duration for display
+// formatAPIKeyInfo formats API key information with masking and timestamp
+func formatAPIKeyInfo(apiKey string, maxAge time.Duration) string {
+	if apiKey == "" {
+		return "not set (will be auto-generated)"
+	}
+
+	// Mask the key
+	masked := ai.MaskAPIKey(apiKey)
+
+	// Extract timestamp if valid TimeUUID
+	uuid, err := ai.ParseTimeUUID(apiKey)
+	if err != nil {
+		return fmt.Sprintf("%s (invalid: %v)", masked, err)
+	}
+
+	keyTime := uuid.Time()
+	keyAge := time.Since(keyTime)
+
+	// Format the output
+	var info strings.Builder
+	info.WriteString(fmt.Sprintf("%s (generated: %s, age: %v",
+		masked,
+		keyTime.Format("2006-01-02 15:04:05"),
+		keyAge.Round(time.Hour)))
+
+	// Show expiration status
+	if maxAge > 0 {
+		remaining := maxAge - keyAge
+		if remaining < 0 {
+			info.WriteString(" ⚠️  EXPIRED")
+		} else {
+			daysRemaining := int(remaining.Hours() / 24)
+			info.WriteString(fmt.Sprintf(", expires in %d days", daysRemaining))
+		}
+	} else {
+		info.WriteString(", never expires ⚠️")
+	}
+
+	info.WriteString(")")
+	return info.String()
+}
+
 func formatDuration(t interface{}) string {
 	var d time.Duration
 
@@ -643,9 +770,22 @@ START OPTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Server Configuration:
-  --socket-path <path>         Socket path (default: /tmp/cqlai-mcp.sock)
+  --config-file <path>         Load config from JSON file
+
+HTTP Transport:
+  --http-host <host>           HTTP server host (default: 127.0.0.1)
+  --http-port <port>           HTTP server port (default: 8888)
+  --api-key <timeuuid>         TimeUUID API key (default: auto-generated)
+  --api-key-max-age-days <n>   Max API key age in days (default: 30, 0=disabled)
+  --disable-api-key-age-check  Disable age validation (SECURITY RISK)
+  --allowed-origins <list>     Comma-separated allowed origins (for non-localhost)
+
+Logging:
   --log-level <level>          Log level: debug, info, warning, error (default: info)
-  --log-file <path>            Log file path (default: /tmp/cqlai-mcp.log)
+  --log-file <path>            Log file path (default: ~/.cqlai/cqlai_mcp.log)
+
+Legacy (Deprecated):
+  --socket-path <path>         Unix socket path (deprecated, use HTTP)
 
 Security Modes (choose ONE - mutually exclusive):
 
