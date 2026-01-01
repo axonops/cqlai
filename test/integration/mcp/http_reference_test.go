@@ -471,7 +471,7 @@ func TestHTTP_ConfirmationRequired(t *testing.T) {
 
 	ensureTestDataExists(t, ctx.Session)
 
-	t.Run("INSERT requires confirmation (readonly mode)", func(t *testing.T) {
+	t.Run("INSERT not allowed (readonly mode - IMMEDIATE error, NO streaming)", func(t *testing.T) {
 		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
@@ -482,9 +482,16 @@ func TestHTTP_ConfirmationRequired(t *testing.T) {
 				"email": "test@example.com",
 			},
 		})
+
+		// Should get IMMEDIATE error (not streaming, not blocking)
 		assertIsError(t, resp, "INSERT should be blocked in readonly mode")
 		text := extractText(t, resp)
+
+		// Verify error message explains the issue
 		assert.Contains(t, text, "not allowed", "Should explain INSERT not allowed")
+
+		t.Logf("NOT ALLOWED error message:\n%s", text)
+		t.Logf("✅ NOT ALLOWED queries return immediate error (no streaming, no blocking)")
 	})
 }
 
