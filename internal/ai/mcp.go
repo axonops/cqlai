@@ -1080,8 +1080,9 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 
 		// CRITICAL: BLOCK and wait for user to confirm/deny via MCP tools
 		// This keeps the HTTP connection open (streaming)
+		// Heartbeats sent every 30 seconds to keep proxies happy
 		// User calls confirm_request or deny_request in separate request
-		status, confirmedBy, reason, err := s.WaitForConfirmation(req.ID, s.config.ConfirmationTimeout)
+		status, confirmedBy, reason, err := s.WaitForConfirmation(ctx, req.ID, s.config.ConfirmationTimeout)
 
 		if err != nil {
 			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
@@ -1565,8 +1566,9 @@ func (s *MCPServer) GetPendingConfirmations() []*ConfirmationRequest {
 
 // WaitForConfirmation blocks until a confirmation request is resolved (confirmed, denied, cancelled, or timed out)
 // This enables HTTP streaming - the connection stays open until user responds
+// Sends periodic heartbeat notifications to keep proxy connections alive
 // Returns: (status, confirmedBy, reason, error)
-func (s *MCPServer) WaitForConfirmation(requestID string, timeout time.Duration) (string, string, string, error) {
+func (s *MCPServer) WaitForConfirmation(ctx context.Context, requestID string, timeout time.Duration) (string, string, string, error) {
 	req, err := s.confirmationQueue.GetRequest(requestID)
 	if err != nil {
 		return "", "", "", err
@@ -1576,38 +1578,62 @@ func (s *MCPServer) WaitForConfirmation(requestID string, timeout time.Duration)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
+	// Heartbeat ticker (send status update every 30 seconds to keep connection alive)
+	heartbeatInterval := 30 * time.Second
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
+
 	logger.DebugfToFile("MCP", "Waiting for confirmation on request %s (timeout: %v)", requestID, timeout)
 
-	// Wait for status change or timeout
-	select {
-	case status := <-req.StatusChanged:
-		// Status changed (CONFIRMED, DENIED, or CANCELLED)
-		logger.DebugfToFile("MCP", "Confirmation request %s resolved: %s", requestID, status)
+	startWait := time.Now()
 
-		// Get updated request details
-		updatedReq, _ := s.confirmationQueue.GetRequest(requestID)
-		if updatedReq != nil {
-			return status, updatedReq.ConfirmedBy, "", nil
+	// Wait for status change, heartbeat, or timeout
+	for {
+		select {
+		case status := <-req.StatusChanged:
+			// Status changed (CONFIRMED, DENIED, or CANCELLED)
+			logger.DebugfToFile("MCP", "Confirmation request %s resolved: %s", requestID, status)
+
+			// Get updated request details
+			updatedReq, _ := s.confirmationQueue.GetRequest(requestID)
+			if updatedReq != nil {
+				return status, updatedReq.ConfirmedBy, "", nil
+			}
+			return status, "", "", nil
+
+		case <-heartbeat.C:
+			// Send heartbeat notification to keep connection alive
+			elapsed := time.Since(startWait)
+			remaining := timeout - elapsed
+
+			s.mcpServer.SendNotificationToClient(ctx, "confirmation/waiting", map[string]any{
+				"request_id":         requestID,
+				"status":             "STILL_PENDING",
+				"elapsed_seconds":    int(elapsed.Seconds()),
+				"remaining_seconds":  int(remaining.Seconds()),
+				"heartbeat":          true,
+				"message":            fmt.Sprintf("Still waiting for user response (%d seconds remaining)", int(remaining.Seconds())),
+			})
+			logger.DebugfToFile("MCP", "Sent heartbeat for request %s (elapsed: %v, remaining: %v)", requestID, elapsed.Round(time.Second), remaining.Round(time.Second))
+
+		case <-timer.C:
+			// Timeout - mark request as timed out
+			logger.DebugfToFile("MCP", "Confirmation request %s timed out after %v", requestID, timeout)
+
+			// Update status
+			s.confirmationQueue.mu.Lock()
+			req.Status = "TIMEOUT"
+			s.confirmationQueue.mu.Unlock()
+
+			// Log timeout
+			details := fmt.Sprintf("timeout_after=%v", timeout)
+			s.logConfirmationToHistory("CONFIRM_TIMEOUT", requestID, req.Query, details)
+
+			// Send timeout notification
+			s.sendConfirmationStatusEvent(requestID, "TIMEOUT", "system", "confirmation timeout exceeded")
+
+			return "TIMEOUT", "", "confirmation timeout exceeded", nil
 		}
-		return status, "", "", nil
-
-	case <-timer.C:
-		// Timeout - mark request as timed out
-		logger.DebugfToFile("MCP", "Confirmation request %s timed out after %v", requestID, timeout)
-
-		// Update status
-		s.confirmationQueue.mu.Lock()
-		req.Status = "TIMEOUT"
-		s.confirmationQueue.mu.Unlock()
-
-		// Log timeout
-		details := fmt.Sprintf("timeout_after=%v", timeout)
-		s.logConfirmationToHistory("CONFIRM_TIMEOUT", requestID, req.Query, details)
-
-		// Send SSE notification
-		s.sendConfirmationStatusEvent(requestID, "TIMEOUT", "system", "confirmation timeout exceeded")
-
-		return "TIMEOUT", "", "confirmation timeout exceeded", nil
 	}
 }
 

@@ -733,6 +733,104 @@ func TestHTTP_StreamingConfirmation(t *testing.T) {
 			t.Fatal("Timeout: Thread 1 never received response after confirmation")
 		}
 	})
+
+	t.Run("Timeout scenario with heartbeats", func(t *testing.T) {
+		// This test uses a SHORT timeout (10 seconds) to verify timeout behavior
+		// Recreate context with short timeout
+		tmpDir2 := t.TempDir()
+		configPath2 := tmpDir2 + "/short_timeout.json"
+
+		apiKey2, _ := ai.GenerateAPIKey()
+		configJSON2 := fmt.Sprintf(`{
+			"http_host": "127.0.0.1",
+			"http_port": 8895,
+			"api_key": "%s",
+			"mode": "readwrite",
+			"confirm_queries": ["dml"],
+			"confirmation_timeout_seconds": 10
+		}`, apiKey2)
+
+		os.WriteFile(configPath2, []byte(configJSON2), 0644)
+
+		ctx2 := startMCPFromConfigHTTP(t, configPath2)
+		defer stopMCPHTTP(ctx2)
+
+		ensureTestDataExists(t, ctx2.Session)
+
+		// Submit query and DON'T approve (let it timeout)
+		t.Logf("Submitting INSERT without approval (will timeout in 10s)...")
+
+		notification, resp := callToolHTTPWithNotifications(t, ctx2, "submit_query_plan", map[string]any{
+			"operation": "INSERT",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000055",
+				"name":  "Timeout Test",
+				"email": "timeout@test.com",
+			},
+		})
+
+		// Should get initial notification
+		require.NotNil(t, notification, "Should get confirmation/requested notification")
+		t.Logf("Initial notification: %v", notification["method"])
+
+		// After 10 seconds, should get TIMEOUT error
+		require.NotNil(t, resp, "Should get response after timeout")
+		assertIsError(t, resp, "Should get timeout error")
+
+		text := extractText(t, resp)
+		assert.Contains(t, text, "timed out", "Error should mention timeout")
+		t.Logf("✅ Timeout behavior works: %s", text)
+	})
+
+	t.Run("Cancel scenario", func(t *testing.T) {
+		responseChan := make(chan map[string]any, 1)
+
+		// Thread 1: Submit and wait
+		go func() {
+			notification, resp := callToolHTTPWithNotifications(t, ctx, "submit_query_plan", map[string]any{
+				"operation": "INSERT",
+				"keyspace":  "test_mcp",
+				"table":     "users",
+				"values": map[string]any{
+					"id":    "00000000-0000-0000-0000-000000000044",
+					"name":  "Cancel Test",
+					"email": "cancel@test.com",
+				},
+			})
+			_ = notification
+			responseChan <- resp
+		}()
+
+		time.Sleep(1 * time.Second)
+
+		// Get request ID
+		pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
+		pendingText := extractText(t, pendingResp)
+		requestID := extractRequestID(pendingText)
+		require.NotEmpty(t, requestID)
+		t.Logf("Found pending request: %s", requestID)
+
+		// Thread 2: CANCEL the request
+		t.Logf("Cancelling request %s...", requestID)
+		cancelResp := callToolHTTP(t, ctx, "cancel_confirmation", map[string]any{
+			"request_id": requestID,
+		})
+		assertNotError(t, cancelResp, "cancel_confirmation should succeed")
+
+		// Thread 1 should receive CANCELLED error
+		select {
+		case resp := <-responseChan:
+			assertIsError(t, resp, "Should get error for cancelled request")
+			text := extractText(t, resp)
+			assert.Contains(t, text, "cancel", "Error should mention cancellation")
+			t.Logf("✅ Cancel message: %s", text)
+
+		case <-time.After(5 * time.Second):
+			t.Fatal("Timeout waiting for cancel response")
+		}
+	})
 }
 
 // listenForSSEEvents opens SSE connection and forwards events to channel
