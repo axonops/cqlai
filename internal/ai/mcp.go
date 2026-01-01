@@ -1054,8 +1054,8 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 			"timeout_seconds": int(s.config.ConfirmationTimeout.Seconds()),
 			"timeout_message": fmt.Sprintf("Request will timeout in %d minutes", timeoutMinutes),
 			"approval_workflow": map[string]any{
-				"step_1": fmt.Sprintf("Ask the user: 'Do you want to execute this %s query: %s?'",
-					opInfo.RiskLevel, query),
+				"step_1": fmt.Sprintf("Ask the user: 'This is a %s risk %s operation (%s). Do you want to execute this query: %s?'",
+					opInfo.RiskLevel, string(opInfo.Category), opInfo.Description, query),
 				"step_2": "If user says YES: Call confirm_request tool with user_confirmed=true",
 				"step_3": "If user says NO: Call deny_request tool with reason",
 				"important": "NEVER approve dangerous operations without explicit user consent",
