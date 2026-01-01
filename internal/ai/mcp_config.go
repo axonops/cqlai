@@ -130,7 +130,11 @@ func (c *MCPServerConfig) GetConfigSnapshot() MCPConfigSnapshot {
 		PresetMode:                      c.PresetMode,
 		ConfirmQueries:                  append([]string(nil), c.ConfirmQueries...),   // Copy slice
 		SkipConfirmation:                append([]string(nil), c.SkipConfirmation...), // Copy slice
-		SocketPath:                      c.SocketPath,
+		SocketPath:                      c.SocketPath,                                  // Deprecated
+		HttpHost:                        c.HttpHost,
+		HttpPort:                        c.HttpPort,
+		ApiKey:                          c.ApiKey,
+		AllowedOrigins:                  append([]string(nil), c.AllowedOrigins...), // Copy slice
 		LogLevel:                        c.LogLevel,
 		DisableRuntimePermissionChanges: c.DisableRuntimePermissionChanges,
 		AllowMCPRequestApproval:         c.AllowMCPRequestApproval,
@@ -147,7 +151,11 @@ type MCPConfigSnapshot struct {
 	PresetMode                      string
 	ConfirmQueries                  []string
 	SkipConfirmation                []string
-	SocketPath                      string
+	SocketPath                      string // Deprecated - will be removed
+	HttpHost                        string
+	HttpPort                        int
+	ApiKey                          string
+	AllowedOrigins                  []string
 	LogLevel                        string
 	DisableRuntimePermissionChanges bool
 	AllowMCPRequestApproval         bool

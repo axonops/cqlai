@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -23,9 +24,28 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 	// Create MCPServerConfig from JSON
 	config := DefaultMCPConfig()
 
-	// Socket path
+	// Socket path (deprecated - will be removed)
 	if sp, ok := jsonConfig["socket_path"].(string); ok && sp != "" {
 		config.SocketPath = sp
+	}
+
+	// HTTP transport configuration
+	if host, ok := jsonConfig["http_host"].(string); ok && host != "" {
+		config.HttpHost = host
+	}
+	if port, ok := jsonConfig["http_port"].(float64); ok && port > 0 {
+		config.HttpPort = int(port)
+	}
+	if apiKey, ok := jsonConfig["api_key"].(string); ok && apiKey != "" {
+		config.ApiKey = expandEnvVar(apiKey) // Support ${VAR} and ${VAR:-default}
+	}
+	if origins, ok := jsonConfig["allowed_origins"].([]interface{}); ok && len(origins) > 0 {
+		config.AllowedOrigins = make([]string, len(origins))
+		for i, o := range origins {
+			if str, ok := o.(string); ok {
+				config.AllowedOrigins[i] = str
+			}
+		}
 	}
 
 	// Log level
@@ -105,4 +125,41 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 	}
 
 	return config, nil
+}
+
+// expandEnvVar expands environment variables in configuration values
+// Supports syntax: ${VAR} or ${VAR:-default}
+func expandEnvVar(value string) string {
+	if !strings.Contains(value, "${") {
+		return value
+	}
+
+	start := strings.Index(value, "${")
+	end := strings.Index(value[start:], "}")
+	if start == -1 || end == -1 {
+		return value
+	}
+	end += start // Adjust to absolute position
+
+	varExpr := value[start+2 : end]
+	varName := varExpr
+	defaultValue := ""
+
+	// Check for ${VAR:-default} syntax
+	if idx := strings.Index(varExpr, ":-"); idx != -1 {
+		varName = varExpr[:idx]
+		defaultValue = varExpr[idx+2:]
+	}
+
+	envValue := os.Getenv(varName)
+	if envValue == "" {
+		envValue = defaultValue
+	}
+
+	// Recursively expand in case there are multiple variables
+	result := value[:start] + envValue + value[end+1:]
+	if strings.Contains(result, "${") {
+		return expandEnvVar(result)
+	}
+	return result
 }
