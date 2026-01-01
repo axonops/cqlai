@@ -115,6 +115,15 @@ func renderSelect(plan *AIResult) (string, error) {
 
 	// SELECT clause
 	sb.WriteString("SELECT ")
+
+	// Phase 1: SELECT modifiers (DISTINCT, JSON)
+	if plan.SelectJSON {
+		sb.WriteString("JSON ")
+	}
+	if plan.Distinct {
+		sb.WriteString("DISTINCT ")
+	}
+
 	if len(plan.Columns) == 0 {
 		sb.WriteString("*")
 	} else {

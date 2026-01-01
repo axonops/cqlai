@@ -62,6 +62,12 @@ type SubmitQueryPlanParams struct {
 	// Phase 1: USING clauses
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds
+
+	// Phase 1: SELECT modifiers
+	Distinct       bool `json:"distinct,omitempty"`     // SELECT DISTINCT
+	SelectJSON     bool `json:"select_json,omitempty"`  // SELECT JSON
+	PerPartitionLimit int `json:"per_partition_limit,omitempty"` // PER PARTITION LIMIT
+
 	OrderBy        []OrderClause     `json:"order_by,omitempty"`
 	Limit          int               `json:"limit,omitempty"`
 	AllowFiltering bool              `json:"allow_filtering,omitempty"`
@@ -162,6 +168,8 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		Where:          p.Where,
 		UsingTTL:       p.UsingTTL,       // Phase 1
 		UsingTimestamp: p.UsingTimestamp, // Phase 1
+		Distinct:       p.Distinct,        // Phase 1
+		SelectJSON:     p.SelectJSON,      // Phase 1
 		OrderBy:        p.OrderBy,
 		Limit:          p.Limit,
 		AllowFiltering: p.AllowFiltering,

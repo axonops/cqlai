@@ -811,3 +811,115 @@ func TestRenderDelete_WithTimestamp(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderSelect_Distinct tests SELECT DISTINCT clause
+func TestRenderSelect_Distinct(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "SELECT DISTINCT single column",
+			plan: &AIResult{
+				Operation: "SELECT",
+				Table:     "users",
+				Columns:   []string{"name"},
+				Distinct:  true,
+			},
+			want:    "SELECT DISTINCT name FROM users;",
+			wantErr: false,
+		},
+		{
+			name: "SELECT DISTINCT multiple columns",
+			plan: &AIResult{
+				Operation: "SELECT",
+				Table:     "users",
+				Columns:   []string{"name", "email"},
+				Distinct:  true,
+			},
+			want:    "SELECT DISTINCT name, email FROM users;",
+			wantErr: false,
+		},
+		{
+			name: "SELECT without DISTINCT",
+			plan: &AIResult{
+				Operation: "SELECT",
+				Table:     "users",
+				Columns:   []string{"name"},
+				Distinct:  false,
+			},
+			want:    "SELECT name FROM users;",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderSelect_JSON tests SELECT JSON clause
+func TestRenderSelect_JSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		plan    *AIResult
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "SELECT JSON",
+			plan: &AIResult{
+				Operation:  "SELECT",
+				Table:      "users",
+				SelectJSON: true,
+			},
+			want:    "SELECT JSON * FROM users;",
+			wantErr: false,
+		},
+		{
+			name: "SELECT JSON with columns",
+			plan: &AIResult{
+				Operation:  "SELECT",
+				Table:      "users",
+				Columns:    []string{"id", "name"},
+				SelectJSON: true,
+			},
+			want:    "SELECT JSON id, name FROM users;",
+			wantErr: false,
+		},
+		{
+			name: "SELECT JSON DISTINCT combined",
+			plan: &AIResult{
+				Operation:  "SELECT",
+				Table:      "users",
+				Columns:    []string{"id"},
+				SelectJSON: true,
+				Distinct:   true,
+			},
+			want:    "SELECT JSON DISTINCT id FROM users;",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderCQL(tt.plan)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Contains(t, got, tt.want)
+			}
+		})
+	}
+}

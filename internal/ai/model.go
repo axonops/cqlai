@@ -91,6 +91,11 @@ type AIResult struct {
 	// Phase 1: USING clauses for DML operations
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds (INSERT, UPDATE)
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds (INSERT, UPDATE, DELETE)
+
+	// Phase 1: SELECT modifiers
+	Distinct   bool `json:"distinct,omitempty"`    // SELECT DISTINCT
+	SelectJSON bool `json:"select_json,omitempty"` // SELECT JSON
+
 	GroupBy        []string       `json:"group_by,omitempty"` // GROUP BY columns (must be primary key columns in order)
 	OrderBy        []OrderClause  `json:"order_by,omitempty"`
 	Limit          int            `json:"limit,omitempty"`
