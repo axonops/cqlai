@@ -4,19 +4,10 @@
 package mcp_test
 
 import (
-        "os"
-        "github.com/axonops/cqlai/internal/ai"
-)
-
-func init() {
-        key, _ := ai.GenerateAPIKey()
-        os.Setenv("TEST_MCP_API_KEY", key)
-}
-
-import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -25,6 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	key, _ := ai.GenerateAPIKey()
+	os.Setenv("TEST_MCP_API_KEY", key)
+}
 
 // TestMCPEndToEnd_FullProtocol tests the complete MCP protocol flow
 func TestMCPEndToEnd_FullProtocol(t *testing.T) {
