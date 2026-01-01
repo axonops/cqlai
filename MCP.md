@@ -837,46 +837,258 @@ CQLAI MCP implements multiple security layers:
 
 ## Confirmation Workflow
 
-### How It Works
+### Overview
 
-1. **Query Submission**: AI submits query via `submit_query_plan`
-2. **Permission Check**: System checks if operation allowed in current mode
-3. **Danger Assessment**: Classifies query danger level (DELETE, DROP, TRUNCATE, etc. are dangerous)
-4. **Confirmation Decision**:
-   - **Allowed + Not Dangerous**: Execute immediately
-   - **Allowed + Dangerous**: Create confirmation request, return request_id
-   - **Not Allowed**: Return permission denied error with hints
+CQLAI uses **HTTP streaming** for confirmation workflows. When a dangerous query requires user approval, the HTTP connection **stays open** and streams multiple messages until the user responds.
 
-5. **Approval Options**:
-   - **MCP Tool** (if enabled): `confirm_request` or `deny_request` with user_confirmed=true
-   - **REPL Command**: `.mcp confirm <request_id>` or `.mcp deny <request_id>`
-   - **Timeout**: Request expires after confirmation_timeout_seconds (default: 300s)
+### Three Response Patterns
 
-6. **Execution**: After approval, query executes and returns results
+#### 1. Allowed, No Confirmation (SELECT, DESCRIBE, LIST)
 
-### Example Flow
+**Behavior:** Single response, no streaming
+```
+Request: submit_query_plan (SELECT * FROM users)
+Response (immediate):
+{
+  "id": 123,
+  "result": {
+    "status": "executed",
+    "query": "SELECT * FROM users;",
+    "rows_returned": 42
+  }
+}
+Connection closes (<1 second)
+```
+
+#### 2. NOT ALLOWED (Policy Block)
+
+**Behavior:** Single error response, no streaming
+```
+Request: submit_query_plan (INSERT in readonly mode)
+Response (immediate):
+{
+  "id": 123,
+  "error": {
+    "message": "Operation not allowed in readonly mode\n
+                 Suggestion: You might be able to use update_mcp_permissions
+                 tool with mode='readwrite' (confirm with the user first),
+                 or restart the MCP server with different permissions"
+  }
+}
+Connection closes (<1 second)
+```
+
+**Note:** Message adapts based on `disable_runtime_permission_changes`:
+- **If runtime changes allowed:** Suggests `update_mcp_permissions` tool (with user confirmation) OR restart
+- **If runtime changes disabled:** Only suggests restart
+
+#### 3. NEEDS CONFIRMATION (Allowed But Requires Approval)
+
+**Behavior:** HTTP streaming, connection stays open, multiple messages
+
+**Example:** INSERT in readwrite mode with `--confirm-queries dml`
 
 ```
-User: "Delete all inactive users"
-  ↓
-AI: Calls submit_query_plan({operation: DELETE, where: [...]})
-  ↓
-MCP: DELETE is DML (allowed in readwrite) but DANGEROUS
-  ↓
-MCP: Returns error with request_id=req_001
-  ↓
-AI: Asks user "This will delete users. Approve?"
-  ↓
-User: "Yes"
-  ↓
-AI: Calls confirm_request({request_id: "req_001", user_confirmed: true})
-  ↓
-MCP: Checks allow_mcp_request_approval=true, user_confirmed=true
-  ↓
-MCP: Executes DELETE, returns rows_affected=15
-  ↓
-History: Logs CONFIRM_REQUESTED, CONFIRM_APPROVED, QUERY
+Request: submit_query_plan (INSERT INTO users...)
+Connection: STAYS OPEN (streaming)
+
+Message 1 (Immediate - before blocking):
+{
+  "method": "confirmation/requested",
+  "params": {
+    "request_id": "req_001",
+    "query": "INSERT INTO users (id, name) VALUES (...);",
+    "operation_info": {
+      "type": "DML",
+      "operation": "INSERT",
+      "description": "Insert data",
+      "risk_level": "MEDIUM"
+    },
+    "timeout_seconds": 300,
+    "timeout_message": "Request will timeout in 5 minutes",
+    "approval_workflow": {
+      "step_1": "Ask the user: 'This is a MEDIUM risk DML operation (Insert data). Do you want to execute this query: INSERT INTO users...?'",
+      "step_2": "If user says YES: Call confirm_request tool with user_confirmed=true",
+      "step_3": "If user says NO: Call deny_request tool with reason",
+      "important": "NEVER approve dangerous operations without explicit user consent"
+    },
+    "tools": {
+      "approve": {
+        "tool": "confirm_request",
+        "request_id": "req_001",
+        "user_confirmed": true,
+        "must_ask_user": "You MUST ask the user first..."
+      },
+      "deny": {
+        "tool": "deny_request",
+        "request_id": "req_001"
+      }
+    }
+  }
+}
+
+[Optional: Heartbeats every 30 seconds if wait is long]
+Heartbeat message:
+{
+  "method": "confirmation/waiting",
+  "params": {
+    "request_id": "req_001",
+    "status": "STILL_PENDING",
+    "elapsed_seconds": 30,
+    "remaining_seconds": 270,
+    "heartbeat": true,
+    "message": "Still waiting for user response (270 seconds remaining)"
+  }
+}
+
+[User approves via separate request: confirm_request tool]
+
+Message 2 (After approval):
+{
+  "method": "confirmation/statusChanged",
+  "params": {
+    "request_id": "req_001",
+    "status": "CONFIRMED",
+    "actor": "mcp",
+    "timestamp": "2026-01-01T12:00:00Z"
+  }
+}
+
+Message 3 (Final result):
+{
+  "id": 123,
+  "result": {
+    "status": "executed",
+    "query": "INSERT INTO users...",
+    "execution_time_ms": 2
+  }
+}
+
+Connection closes
 ```
+
+**Key Points:**
+- ✅ **ONE HTTP connection** for entire workflow
+- ✅ **Connection stays open** (blocks) until user responds or timeout
+- ✅ **3 messages minimum** (requested → statusChanged → result)
+- ✅ **Heartbeats** every 30 seconds keep proxy connections alive
+- ✅ **Parallel safe** - each waiting query = lightweight goroutine (2-8 KB)
+
+### Confirmation Outcomes
+
+#### Outcome 1: User Confirms (Success)
+
+```
+Message 1: confirmation/requested (initial)
+Message 2: confirmation/statusChanged (status=CONFIRMED)
+Message 3: Result (query executed successfully)
+```
+
+#### Outcome 2: User Denies
+
+```
+Message 1: confirmation/requested (initial)
+[User denies via deny_request tool]
+Message 2: confirmation/statusChanged (status=DENIED)
+Message 3: Error {"message": "Query denied by mcp: user rejected operation"}
+```
+
+#### Outcome 3: User Cancels
+
+```
+Message 1: confirmation/requested (initial)
+[User cancels via cancel_confirmation tool]
+Message 2: confirmation/statusChanged (status=CANCELLED)
+Message 3: Error {"message": "Query cancelled by mcp"}
+```
+
+#### Outcome 4: Timeout (No Response)
+
+```
+Message 1: confirmation/requested (initial)
+[Wait 30s] Heartbeat: "270 seconds remaining"
+[Wait 60s] Heartbeat: "240 seconds remaining"
+...
+[Wait 300s] Timeout!
+Message 2: confirmation/statusChanged (status=TIMEOUT)
+Message 3: Error {"message": "Confirmation timed out after 5m - query not executed"}
+```
+
+### How Streaming Works (Technical)
+
+**Concurrent Execution:**
+```
+Thread 1 (Claude's request):
+  1. Calls submit_query_plan (INSERT)
+  2. Receives initial "confirmation/requested" notification
+  3. HTTP connection BLOCKS (waits)
+  4. (User is prompted)
+  5. Receives "confirmation/statusChanged" notification
+  6. Receives final result
+  7. Connection closes
+
+Thread 2 (Approval request):
+  1. User says "Yes"
+  2. Claude calls confirm_request with user_confirmed=true
+  3. Signals Thread 1 to continue
+  4. Returns success
+```
+
+**Benefits:**
+- ✅ **No polling** - Claude gets instant notification when approved
+- ✅ **Better UX** - Single continuous conversation
+- ✅ **Scalable** - 1,000 concurrent waits = ~25 MB RAM, 0% CPU
+- ✅ **Proxy-safe** - Heartbeats keep connections alive
+
+### Example: User Approves DELETE
+
+```
+User: "Delete all test data"
+  ↓
+Claude: Calls submit_query_plan (DELETE FROM users WHERE name LIKE 'test%')
+  ↓
+Connection stays OPEN, receives Message 1:
+  - Request ID: req_001
+  - Query: "DELETE FROM users WHERE name LIKE 'test%'"
+  - Risk: HIGH
+  - Type: DML (Delete data)
+  ↓
+Claude: Asks user "This is a HIGH risk DML operation (Delete data). Execute: DELETE FROM users WHERE name LIKE 'test%'?"
+  ↓
+User: "Yes, delete test data"
+  ↓
+Claude: Calls confirm_request (separate request) with user_confirmed=true
+  ↓
+Original connection receives Message 2:
+  - Status: CONFIRMED
+  ↓
+Original connection receives Message 3:
+  - Query executed
+  - Rows affected: 15
+  ↓
+Connection closes
+```
+
+**Total time:** ~1-2 seconds (instant after user approves)
+
+### Old Pattern (Pre-HTTP, Deprecated)
+
+**Socket-based (deprecated):**
+1. submit_query_plan → Error with req_001 → Connection closes
+2. confirm_request → Marks approved → Connection closes
+3. How to get results? (Had to poll or re-submit)
+
+**Problems:**
+- ❌ Multiple disconnected requests
+- ❌ Polling required
+- ❌ EOF errors with netcat
+- ❌ No streaming
+
+**New HTTP pattern:**
+- ✅ Single connection
+- ✅ Streaming notifications
+- ✅ Results on same connection
+- ✅ No polling needed
 
 ---
 
