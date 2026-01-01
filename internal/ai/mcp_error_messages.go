@@ -66,8 +66,11 @@ func CreateConfirmationRequiredError(opInfo OperationInfo, config MCPConfigSnaps
 
 // generatePermissionDeniedHints suggests how to enable blocked operations
 func generatePermissionDeniedHints(opInfo OperationInfo, config MCPConfigSnapshot) *ConfigurationHints {
+	// Check if runtime changes are allowed
+	canUpdateRuntime := !config.DisableRuntimePermissionChanges
+
 	hints := &ConfigurationHints{
-		CanUpdateRuntime: true,
+		CanUpdateRuntime: canUpdateRuntime,
 	}
 
 	if config.Mode == ConfigModePreset {
@@ -77,26 +80,47 @@ func generatePermissionDeniedHints(opInfo OperationInfo, config MCPConfigSnapsho
 			if opInfo.Category == CategoryDML || opInfo.Category == CategoryFILE {
 				hints.Message = "This operation requires readwrite or dba mode"
 				hints.SuggestedModes = []string{"readwrite", "dba"}
-				hints.UpdateCommandExample = "Use update_mcp_permissions tool with mode='readwrite'"
+
+				if canUpdateRuntime {
+					hints.UpdateCommandExample = "You might be able to use update_mcp_permissions tool with mode='readwrite' (confirm with the user first), or restart the MCP server with different permissions"
+				} else {
+					hints.UpdateCommandExample = "Runtime permission changes are disabled. You need to restart the MCP server with mode='readwrite' or mode='dba'"
+				}
 			} else if opInfo.Category == CategoryDDL || opInfo.Category == CategoryDCL {
 				hints.Message = "This operation requires dba mode"
 				hints.SuggestedModes = []string{"dba"}
-				hints.UpdateCommandExample = "Use update_mcp_permissions tool with mode='dba'"
+
+				if canUpdateRuntime {
+					hints.UpdateCommandExample = "You might be able to use update_mcp_permissions tool with mode='dba' (confirm with the user first), or restart the MCP server with different permissions"
+				} else {
+					hints.UpdateCommandExample = "Runtime permission changes are disabled. You need to restart the MCP server with mode='dba'"
+				}
 			}
 
 		case "readwrite":
 			if opInfo.Category == CategoryDDL || opInfo.Category == CategoryDCL {
 				hints.Message = "This operation requires dba mode"
 				hints.SuggestedModes = []string{"dba"}
-				hints.UpdateCommandExample = "Use update_mcp_permissions tool with mode='dba'"
+
+				if canUpdateRuntime {
+					hints.UpdateCommandExample = "You might be able to use update_mcp_permissions tool with mode='dba' (confirm with the user first), or restart the MCP server with different permissions"
+				} else {
+					hints.UpdateCommandExample = "Runtime permission changes are disabled. You need to restart the MCP server with mode='dba'"
+				}
 			}
 		}
 	} else {
 		// Fine-grained mode - suggest adding category to skip list
 		hints.Message = fmt.Sprintf("Add %s to skip-confirmation list to allow this operation", opInfo.Category)
 		hints.SuggestedSkipList = append(config.SkipConfirmation, string(opInfo.Category))
-		hints.UpdateCommandExample = fmt.Sprintf("Use update_mcp_permissions tool with skip_confirmation='%s'",
-			strings.Join(hints.SuggestedSkipList, ","))
+
+		if canUpdateRuntime {
+			hints.UpdateCommandExample = fmt.Sprintf("You might be able to use update_mcp_permissions tool with skip_confirmation='%s' (confirm with the user first), or restart the MCP server with different skip_confirmation list",
+				strings.Join(hints.SuggestedSkipList, ","))
+		} else {
+			hints.UpdateCommandExample = fmt.Sprintf("Runtime permission changes are disabled. You need to restart the MCP server with skip_confirmation='%s'",
+				strings.Join(hints.SuggestedSkipList, ","))
+		}
 	}
 
 	return hints

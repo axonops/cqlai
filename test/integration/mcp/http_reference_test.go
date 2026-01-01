@@ -493,6 +493,49 @@ func TestHTTP_ConfirmationRequired(t *testing.T) {
 		t.Logf("NOT ALLOWED error message:\n%s", text)
 		t.Logf("✅ NOT ALLOWED queries return immediate error (no streaming, no blocking)")
 	})
+
+	t.Run("NOT ALLOWED with runtime changes disabled", func(t *testing.T) {
+		// Create config with runtime changes disabled
+		tmpDir2 := t.TempDir()
+		configPath2 := tmpDir2 + "/readonly_locked.json"
+
+		apiKey2, _ := ai.GenerateAPIKey()
+		configJSON2 := fmt.Sprintf(`{
+			"http_host": "127.0.0.1",
+			"http_port": 8896,
+			"api_key": "%s",
+			"mode": "readonly",
+			"disable_runtime_permission_changes": true
+		}`, apiKey2)
+
+		os.WriteFile(configPath2, []byte(configJSON2), 0644)
+		ctx2 := startMCPFromConfigHTTP(t, configPath2)
+		defer stopMCPHTTP(ctx2)
+
+		ensureTestDataExists(t, ctx2.Session)
+
+		resp := callToolHTTP(t, ctx2, "submit_query_plan", map[string]any{
+			"operation": "INSERT",
+			"keyspace":  "test_mcp",
+			"table":     "users",
+			"values": map[string]any{
+				"id":    "00000000-0000-0000-0000-000000000098",
+				"name":  "Locked Test",
+				"email": "locked@example.com",
+			},
+		})
+
+		assertIsError(t, resp, "INSERT should be blocked")
+		text := extractText(t, resp)
+
+		// Should mention that runtime changes are disabled
+		assert.Contains(t, text, "Runtime permission changes are disabled")
+		assert.Contains(t, text, "restart the MCP server")
+		assert.NotContains(t, text, "update_mcp_permissions tool", "Should NOT suggest tool when disabled")
+
+		t.Logf("NOT ALLOWED (locked) message:\n%s", text)
+		t.Logf("✅ Error message adapts based on whether runtime changes allowed")
+	})
 }
 
 func TestHTTP_ConfirmationLifecycle(t *testing.T) {
