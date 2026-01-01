@@ -1050,28 +1050,67 @@ CQLAI includes a built-in MCP server that enables AI assistants like **Claude Co
 
 ### Quick Start
 
+**1. Generate API Key:**
 ```bash
-# In CQLAI, start MCP server
+cqlai --generate-mcp-api-key
+# Save the generated KSUID key
+```
+
+**2. Start MCP Server:**
+```bash
+# In CQLAI console
 .mcp start --dba_mode
 
 # Or with custom configuration
 .mcp start --config-file ~/.cqlai/mcp_config.json
 ```
 
-Then configure Claude Code/Desktop to connect to the MCP server.
+**3. Configure Claude Code (.mcp.json):**
+```json
+{
+  "mcpServers": {
+    "cqlai": {
+      "url": "http://127.0.0.1:8888/mcp",
+      "headers": {
+        "X-API-Key": "your-ksuid-key-here"
+      }
+    }
+  }
+}
+```
+
+**Transport:** HTTP with KSUID authentication (secure, no polling, streaming confirmations)
 
 ### Security Model
 
-The MCP server implements defense-in-depth security:
+The MCP server implements **4-layer defense-in-depth security**:
 
-1. **Permission Modes**: readonly, readwrite, or dba
-2. **Confirmation Requirements**: Dangerous queries require approval
-3. **User Confirmation Flag**: Tools require explicit user consent
-4. **Request Approval Gate**: Optional MCP tool approval (disabled by default)
-5. **Runtime Lockdown**: Prevent configuration changes
-6. **Complete Audit Trail**: All operations logged to history file
+**Transport Security:**
+1. **KSUID API Keys**: 128-bit cryptographically secure keys with expiration
+2. **Origin Validation**: DNS rebinding protection with subdomain attack prevention
+3. **IP Allowlisting**: Default localhost-only (supports CIDR notation)
+4. **Required Headers**: Proxy verification and custom security markers
 
-**Default**: Secure (readonly mode, MCP approval disabled)
+**Application Security:**
+5. **Permission Modes**: readonly, readwrite, or dba
+6. **Confirmation Requirements**: Dangerous queries require approval
+7. **User Confirmation Flag**: Tools require explicit user consent
+8. **Request Approval Gate**: Optional MCP tool approval (disabled by default)
+9. **Runtime Lockdown**: Prevent configuration changes
+10. **Complete Audit Trail**: All operations logged to history file
+
+**Streaming Confirmations:**
+- HTTP connection stays open (no polling)
+- Real-time notifications when approved/denied
+- Full context (query text, risk level, operation description)
+
+**Default**: Secure (localhost-only, readonly mode, 30-day key expiration)
+
+**Comprehensive Security Guide**: See [MCP_SECURITY.md](MCP_SECURITY.md) for:
+- Complete threat models
+- Deployment scenarios (local, remote, proxy)
+- Keychain integration (macOS/Linux/Windows)
+- CI/CD examples (GitHub Actions, AWS Secrets Manager, Vault)
 
 ### Documentation
 
