@@ -94,6 +94,11 @@ type AIResult struct {
 	// Phase 2: Collection operations (lists, sets, maps)
 	CollectionOps map[string]CollectionOp `json:"collection_ops,omitempty"` // col → operation details
 
+	// Phase 3: Lightweight Transactions (LWTs)
+	IfNotExists  bool          `json:"if_not_exists,omitempty"` // INSERT IF NOT EXISTS
+	IfExists     bool          `json:"if_exists,omitempty"`     // UPDATE/DELETE IF EXISTS
+	IfConditions []WhereClause `json:"if_conditions,omitempty"` // UPDATE/DELETE IF col = val
+
 	// Phase 1: USING clauses for DML operations
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds (INSERT, UPDATE)
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds (INSERT, UPDATE, DELETE)

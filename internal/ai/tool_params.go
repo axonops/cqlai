@@ -65,6 +65,11 @@ type SubmitQueryPlanParams struct {
 	// Phase 2: Collection operations
 	CollectionOps map[string]CollectionOp `json:"collection_ops,omitempty"`
 
+	// Phase 3: Lightweight Transactions
+	IfNotExists  bool          `json:"if_not_exists,omitempty"`
+	IfExists     bool          `json:"if_exists,omitempty"`
+	IfConditions []WhereClause `json:"if_conditions,omitempty"`
+
 	// Phase 1: USING clauses
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds
@@ -178,6 +183,9 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		Where:          p.Where,
 		CounterOps:        p.CounterOps,        // Phase 2
 		CollectionOps:     p.CollectionOps,     // Phase 2
+		IfNotExists:       p.IfNotExists,       // Phase 3
+		IfExists:          p.IfExists,          // Phase 3
+		IfConditions:      p.IfConditions,      // Phase 3
 		UsingTTL:          p.UsingTTL,          // Phase 1
 		UsingTimestamp:    p.UsingTimestamp,    // Phase 1
 		Distinct:          p.Distinct,          // Phase 1

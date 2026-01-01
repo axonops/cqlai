@@ -252,6 +252,11 @@ func renderInsert(plan *AIResult) (string, error) {
 		strings.Join(columns, ", "),
 		strings.Join(values, ", ")))
 
+	// Phase 3: IF NOT EXISTS clause (before USING)
+	if plan.IfNotExists {
+		sb.WriteString(" IF NOT EXISTS")
+	}
+
 	// Phase 1: USING clause (TTL and/or TIMESTAMP)
 	usingClauses := []string{}
 	if plan.UsingTTL > 0 {
@@ -383,6 +388,18 @@ func renderUpdate(plan *AIResult) (string, error) {
 	}
 	sb.WriteString(strings.Join(conditions, " AND "))
 
+	// Phase 3: IF EXISTS or IF conditions (after WHERE)
+	if plan.IfExists {
+		sb.WriteString(" IF EXISTS")
+	} else if len(plan.IfConditions) > 0 {
+		sb.WriteString(" IF ")
+		ifConds := make([]string, 0, len(plan.IfConditions))
+		for _, c := range plan.IfConditions {
+			ifConds = append(ifConds, renderWhereClause(c))
+		}
+		sb.WriteString(strings.Join(ifConds, " AND "))
+	}
+
 	sb.WriteString(";")
 	return sb.String(), nil
 }
@@ -420,6 +437,18 @@ func renderDelete(plan *AIResult) (string, error) {
 		conditions = append(conditions, renderWhereClause(w))
 	}
 	sb.WriteString(strings.Join(conditions, " AND "))
+
+	// Phase 3: IF EXISTS or IF conditions (after WHERE)
+	if plan.IfExists {
+		sb.WriteString(" IF EXISTS")
+	} else if len(plan.IfConditions) > 0 {
+		sb.WriteString(" IF ")
+		ifConds := make([]string, 0, len(plan.IfConditions))
+		for _, c := range plan.IfConditions {
+			ifConds = append(ifConds, renderWhereClause(c))
+		}
+		sb.WriteString(strings.Join(ifConds, " AND "))
+	}
 
 	sb.WriteString(";")
 	return sb.String(), nil
