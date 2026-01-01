@@ -1042,15 +1042,32 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		// This tells Claude the request is pending and provides context
 		timeoutMinutes := int(s.config.ConfirmationTimeout.Minutes())
 		s.mcpServer.SendNotificationToClient(ctx, "confirmation/requested", map[string]any{
-			"request_id":       req.ID,
-			"status":           "PENDING",
-			"query":            query,
-			"operation":        params.Operation,
-			"timeout_seconds":  int(s.config.ConfirmationTimeout.Seconds()),
-			"timeout_message":  fmt.Sprintf("Request will timeout in %d minutes", timeoutMinutes),
-			"how_to_approve":   fmt.Sprintf("Use confirm_request tool with request_id=%s and user_confirmed=true", req.ID),
-			"how_to_deny":      fmt.Sprintf("Use deny_request tool with request_id=%s", req.ID),
-			"pending_tool_tip": "You can query pending confirmations with get_pending_confirmations tool",
+			"request_id":      req.ID,
+			"status":          "PENDING",
+			"query":           query,
+			"operation":       params.Operation,
+			"timeout_seconds": int(s.config.ConfirmationTimeout.Seconds()),
+			"timeout_message": fmt.Sprintf("Request will timeout in %d minutes", timeoutMinutes),
+			"approval_workflow": map[string]any{
+				"step_1": "Ask the user: 'Do you want to execute this query?'",
+				"step_2": "If user says YES: Call confirm_request tool with user_confirmed=true",
+				"step_3": "If user says NO: Call deny_request tool with reason",
+				"important": "NEVER approve dangerous operations without explicit user consent",
+			},
+			"tools": map[string]any{
+				"approve": map[string]any{
+					"tool":              "confirm_request",
+					"request_id":        req.ID,
+					"user_confirmed":    true,
+					"must_ask_user":     "You MUST ask the user first. Set user_confirmed=true only after user explicitly approves.",
+				},
+				"deny": map[string]any{
+					"tool":       "deny_request",
+					"request_id": req.ID,
+					"reason":     "User declined the operation",
+				},
+			},
+			"query_tool_tip": "Use get_pending_confirmations to see all pending requests",
 		})
 
 		logger.DebugfToFile("MCP", "Sent 'waiting for confirmation' notification for %s - now blocking", req.ID)
