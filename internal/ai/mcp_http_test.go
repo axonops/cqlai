@@ -627,9 +627,9 @@ func TestExpandEnvVar(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := expandEnvVar(tt.input)
+			got := ExpandEnvVar(tt.input)
 			if got != tt.want {
-				t.Errorf("expandEnvVar(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("ExpandEnvVar(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

@@ -158,10 +158,12 @@ func (h *MCPHandler) handleStart(args []string) string {
 		case "--api-key":
 			if i+1 < len(args) {
 				apiKey := args[i+1]
-				if err := ai.ValidateAPIKeyFormat(apiKey, config.ApiKeyMaxAge); err != nil {
+				// Support environment variable expansion: ${VAR} or ${VAR:-default}
+				expandedKey := ai.ExpandEnvVar(apiKey)
+				if err := ai.ValidateAPIKeyFormat(expandedKey, config.ApiKeyMaxAge); err != nil {
 					return fmt.Sprintf("Error: Invalid --api-key: %v", err)
 				}
-				config.ApiKey = apiKey
+				config.ApiKey = expandedKey
 				i++
 			}
 		case "--api-key-max-age-days":

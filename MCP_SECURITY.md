@@ -211,6 +211,31 @@ subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 | Expiration bypass | ✅ | Future timestamps rejected |
 | MAC address tracking | ✅ | KSUID has no MAC (unlike TimeUUID) |
 
+### Environment Variable Support
+
+API keys support environment variable expansion in **both** JSON config and CLI flags:
+
+**JSON config file:**
+```json
+{
+  "api_key": "${MCP_API_KEY}",
+  "api_key_max_age_days": 30
+}
+```
+
+**CLI flag (inside CQLAI console):**
+```bash
+# Variable name can be anything (not just MCP_API_KEY)
+export MY_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+.mcp start --api-key='${MY_KEY}'
+
+# With default value:
+.mcp start --api-key='${MY_KEY:-2DefaultKeyIfNotSet1234567}'
+```
+
+**Important:** Use single quotes (`'${VAR}'`) in CLI to prevent shell expansion.
+CQLAI will expand the variable internally.
+
 ### Example Configuration
 
 **High security (7-day expiration):**
@@ -1218,17 +1243,31 @@ server {
 }
 ```
 
-**Good (environment variable):**
+**Good (environment variable - JSON config):**
 ```json
 {
   "api_key": "${MCP_API_KEY}"
 }
 ```
 
-Set environment variable:
+Set environment variable (name can be anything):
 ```bash
 export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+# or
+export CQLAI_MCP_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+# or
+export MY_SECRET_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
 ```
+
+**Good (environment variable - CLI flag inside CQLAI):**
+```bash
+export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+# Inside CQLAI console:
+.mcp start --api-key='${MCP_API_KEY}'
+```
+
+**Note:** Use single quotes (`'${VAR}'`) to prevent shell expansion.
+CQLAI expands the variable internally.
 
 ### 3. Use Narrow IP Allowlists
 
@@ -1257,15 +1296,41 @@ Only 256 IPs allowed.
 }
 ```
 
-**Generate new key monthly:**
+**Generate new key (before expiration):**
 ```bash
-# Inside CQLAI console
-.mcp generate-api-key
+# Method 1: Command-line (recommended for automation)
+cqlai --generate-mcp-api-key
 
-# Update config with new key
-# Restart MCP server
+# Method 2: Inside CQLAI console
+.mcp generate-api-key
+```
+
+**Update config with new key:**
+```bash
+# Update config file with new key
+# OR update environment variable:
+export MCP_API_KEY="new-key-here"
+
+# Then restart MCP server (if running):
 .mcp stop
-.mcp start --api-key=<new-key>
+.mcp start
+```
+
+**Automated rotation script:**
+```bash
+#!/bin/bash
+# rotate-mcp-key.sh - Run monthly via cron
+
+# Generate new key
+NEW_KEY=$(cqlai --generate-mcp-api-key | grep "API Key:" | awk '{print $3}')
+
+# Store in secret manager (example: AWS Secrets Manager)
+aws secretsmanager update-secret \
+  --secret-id cqlai/mcp-api-key \
+  --secret-string "$NEW_KEY"
+
+# Or update env file
+echo "MCP_API_KEY=$NEW_KEY" > ~/.cqlai/.env
 ```
 
 ### 5. Use Required Headers with Proxies
@@ -1513,10 +1578,42 @@ Required Headers: None
 
 ### Generate New API Key
 
+**Method 1: Command-line (Before Starting CQLAI):**
 ```bash
-# Inside CQLAI console
+# Generate key without running CQLAI
+cqlai --generate-mcp-api-key
+
+# Output:
+═══════════════════════════════════════════════════════════
+  MCP API Key Generated
+═══════════════════════════════════════════════════════════
+
+API Key: 2ABCDEFGHIJKLMNOPQRSTUVWXYZa
+
+Key Details:
+  Format:     KSUID (K-Sortable Unique ID)
+  Length:     27 characters (base62 encoding)
+  Generated:  2026-01-01 10:00:00 UTC
+  Entropy:    128 bits of cryptographically secure random data
+
+[... usage instructions ...]
+```
+
+**Use cases:**
+- Initial setup (before first run)
+- CI/CD pipelines
+- Secret management systems (Vault, AWS Secrets Manager)
+- Team distribution (generate and share securely)
+
+**Method 2: Inside CQLAI Console:**
+```bash
+# When CQLAI is already running
 .mcp generate-api-key
 ```
+
+**Use cases:**
+- Key rotation during session
+- Quick regeneration while working
 
 ### Check Current Security Configuration
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/batch"
 	"github.com/axonops/cqlai/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -64,6 +65,7 @@ func main() {
 	// MCP server flags
 	pflag.BoolVar(&mcpStart, "mcpstart", false, "Automatically start MCP server after connection")
 	pflag.StringVar(&mcpConfigFile, "mcpconfig", "", "Path to MCP configuration JSON file")
+	generateMCPAPIKey := pflag.Bool("generate-mcp-api-key", false, "Generate a new KSUID API key and exit")
 
 	// Version and help flags
 	pflag.BoolVarP(&version, "version", "v", false, "Print version and exit")
@@ -82,6 +84,12 @@ func main() {
 	// Handle version flag
 	if version {
 		fmt.Printf("cqlai version %s\n", Version)
+		os.Exit(0)
+	}
+
+	// Handle generate-mcp-api-key flag
+	if *generateMCPAPIKey {
+		handleGenerateMCPAPIKey()
 		os.Exit(0)
 	}
 
@@ -273,4 +281,77 @@ func isTerminal() bool {
 		return true // Assume terminal if we can't stat
 	}
 	return fileInfo.Mode()&os.ModeCharDevice != 0
+}
+
+// handleGenerateMCPAPIKey generates and displays a new MCP API key
+func handleGenerateMCPAPIKey() {
+	// Generate new KSUID
+	key, err := ai.GenerateAPIKey()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating API key: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Extract timestamp for display
+	id, err := ai.ParseKSUID(key)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing generated key: %v\n", err)
+		os.Exit(1)
+	}
+	keyTime := id.Time()
+
+	// Display key and usage instructions
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println("  MCP API Key Generated")
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println()
+	fmt.Printf("API Key: %s\n", key)
+	fmt.Println()
+	fmt.Println("Key Details:")
+	fmt.Println("  Format:     KSUID (K-Sortable Unique ID)")
+	fmt.Println("  Length:     27 characters (base62 encoding)")
+	fmt.Printf("  Generated:  %s\n", keyTime.Format("2006-01-02 15:04:05 MST"))
+	fmt.Println("  Entropy:    128 bits of cryptographically secure random data")
+	fmt.Println("  Timestamp:  Embedded for expiration support")
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println("  Usage Instructions")
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println()
+	fmt.Println("Option 1: JSON Config File (~/.cqlai/.mcp.json)")
+	fmt.Println("─────────────────────────────────────────────────────────")
+	fmt.Println("{")
+	fmt.Printf("  \"api_key\": \"%s\",\n", key)
+	fmt.Println("  \"http_host\": \"127.0.0.1\",")
+	fmt.Println("  \"http_port\": 8888")
+	fmt.Println("}")
+	fmt.Println()
+	fmt.Println("Option 2: Environment Variable (Recommended for Security)")
+	fmt.Println("─────────────────────────────────────────────────────────")
+	fmt.Printf("export MCP_API_KEY=\"%s\"\n", key)
+	fmt.Println()
+	fmt.Println("Then in config file:")
+	fmt.Println("{")
+	fmt.Println("  \"api_key\": \"${MCP_API_KEY}\",")
+	fmt.Println("  \"http_host\": \"127.0.0.1\",")
+	fmt.Println("  \"http_port\": 8888")
+	fmt.Println("}")
+	fmt.Println()
+	fmt.Println("Option 3: CLI Flag (Inside CQLAI Console)")
+	fmt.Println("─────────────────────────────────────────────────────────")
+	fmt.Printf(".mcp start --api-key=%s\n", key)
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println("  Security Notes")
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println()
+	fmt.Println("• This key will NOT be shown again - save it securely")
+	fmt.Println("• Default expiration: 30 days (configurable)")
+	fmt.Println("• Store in password manager or secret management system")
+	fmt.Println("• For CI/CD: Use secret injection (GitHub Secrets, etc.)")
+	fmt.Println("• Rotate keys regularly for security")
+	fmt.Println()
+	fmt.Println("See MCP_SECURITY.md for comprehensive security documentation")
+	fmt.Println()
 }

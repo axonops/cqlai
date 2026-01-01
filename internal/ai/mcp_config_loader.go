@@ -37,7 +37,7 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.HttpPort = int(port)
 	}
 	if apiKey, ok := jsonConfig["api_key"].(string); ok && apiKey != "" {
-		expandedKey := expandEnvVar(apiKey) // Support ${VAR} and ${VAR:-default}
+		expandedKey := ExpandEnvVar(apiKey) // Support ${VAR} and ${VAR:-default}
 		// Validate with maxAge from config (use default if not set yet)
 		maxAge := config.ApiKeyMaxAge
 		if maxAge == 0 {
@@ -145,9 +145,9 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 	return config, nil
 }
 
-// expandEnvVar expands environment variables in configuration values
+// ExpandEnvVar expands environment variables in configuration values
 // Supports syntax: ${VAR} or ${VAR:-default}
-func expandEnvVar(value string) string {
+func ExpandEnvVar(value string) string {
 	if !strings.Contains(value, "${") {
 		return value
 	}
@@ -177,7 +177,7 @@ func expandEnvVar(value string) string {
 	// Recursively expand in case there are multiple variables
 	result := value[:start] + envValue + value[end+1:]
 	if strings.Contains(result, "${") {
-		return expandEnvVar(result)
+		return ExpandEnvVar(result)
 	}
 	return result
 }
