@@ -4,7 +4,7 @@
 
 CQLAI includes a Model Context Protocol (MCP) server that enables AI assistants like Claude Code and Claude Desktop to interact with Apache Cassandra databases. The MCP server provides a comprehensive API for querying, managing schemas, and administering Cassandra clusters with built-in permission controls and confirmation workflows for dangerous operations.
 
-**Current Status**: The MCP server uses Unix domain sockets for communication. This will be migrated to stdin/stdout (stdio) transport in an upcoming version for better stability and compatibility.
+**Current Status**: The MCP server uses HTTP transport for communication with KSUID-based API key authentication and defense-in-depth security.
 
 ---
 
@@ -46,17 +46,32 @@ CQLAI includes a Model Context Protocol (MCP) server that enables AI assistants 
 
 ### 2. Configure Claude Code/Desktop
 
-**Note**: Socket transport is being migrated to stdio. Current setup:
+**HTTP Transport Configuration:**
 
-```bash
-# Add to Claude Code MCP configuration
-claude mcp add --transport stdio cqlai --scope project -- nc -U /tmp/cqlai-mcp.sock
+Create or edit `.mcp.json` in your project or global config:
+
+```json
+{
+  "mcpServers": {
+    "cqlai": {
+      "url": "http://127.0.0.1:8888/mcp",
+      "headers": {
+        "X-API-Key": "${MCP_API_KEY}"
+      }
+    }
+  }
+}
 ```
 
-**Future (stdio transport)**:
+**Set your API key** (see "Generate API Key" section below):
 ```bash
-# Will change to direct stdio communication (more stable)
-claude mcp add cqlai --scope project -- cqlai --mcp-stdio
+export MCP_API_KEY="2ABCDEFGHIJKLMNOPQRSTUVWXYZa"
+```
+
+**Or use OS keychain** (recommended):
+```bash
+# macOS
+export MCP_API_KEY=$(security find-generic-password -w -s "cqlai_mcp_api_key" -a "$(whoami)" 2>/dev/null)
 ```
 
 ### 3. Check Status
@@ -80,8 +95,6 @@ Use the get_mcp_status tool
 3. **Runtime Updates** (via `update_mcp_permissions` tool, if enabled)
 
 ### Configuration File Format
-
-**Note:** Socket transport is deprecated. Use HTTP transport instead (see below).
 
 ```json
 {
@@ -621,7 +634,9 @@ Starts the MCP server.
 
 **Configuration**:
 - `--config-file <path>` - Load configuration from JSON file
-- `--socket-path <path>` - Unix socket path (default: /tmp/cqlai-mcp.sock)
+- `--http-host <host>` - HTTP server host (default: 127.0.0.1)
+- `--http-port <port>` - HTTP server port (default: 8888)
+- `--api-key <ksuid>` - KSUID API key (default: auto-generated)
 - `--log-level <level>` - Logging level (debug, info, warn, error)
 - `--log-file <path>` - Log file path (default: ~/.cqlai/cqlai_mcp.log)
 
@@ -655,7 +670,7 @@ Shows MCP server status including:
 - Current state (RUNNING/STOPPED)
 - Permission configuration
 - Cassandra connection details
-- Server configuration (socket, logs, history)
+- Server configuration (HTTP endpoint, logs, history)
 - Metrics (total requests, success rate, tool usage)
 
 ### `.mcp pending`
@@ -1071,25 +1086,6 @@ Connection closes
 
 **Total time:** ~1-2 seconds (instant after user approves)
 
-### Old Pattern (Pre-HTTP, Deprecated)
-
-**Socket-based (deprecated):**
-1. submit_query_plan → Error with req_001 → Connection closes
-2. confirm_request → Marks approved → Connection closes
-3. How to get results? (Had to poll or re-submit)
-
-**Problems:**
-- ❌ Multiple disconnected requests
-- ❌ Polling required
-- ❌ EOF errors with netcat
-- ❌ No streaming
-
-**New HTTP pattern:**
-- ✅ Single connection
-- ✅ Streaming notifications
-- ✅ Results on same connection
-- ✅ No polling needed
-
 ---
 
 ## Troubleshooting
@@ -1117,11 +1113,6 @@ Connection closes
 - **Cause**: INSERT without values parameter
 - **Fix**: Add values object to submit_query_plan
 
-**Socket EOF errors**
-- **Cause**: netcat (nc) instability with rapid requests (known issue)
-- **Status**: Socket transport being replaced with stdio
-- **Workaround**: Avoid rapid successive requests, wait for stdio migration
-
 **"Failed to open history file"**
 - **Cause**: Permission denied on history directory
 - **Fix**: Ensure ~/.cqlai directory exists and is writable
@@ -1135,7 +1126,10 @@ Connection closes
 
 ```json
 {
-  "socket_path": "/tmp/dev-mcp.sock",
+  "http_host": "127.0.0.1",
+  "http_port": 8888,
+  "api_key": "${MCP_API_KEY}",
+  "api_key_max_age_days": 30,
   "mode": "readwrite",
   "confirm_queries": ["dml"],
   "log_level": "debug",
@@ -1148,7 +1142,12 @@ Connection closes
 
 ```json
 {
-  "socket_path": "/var/run/cqlai-mcp.sock",
+  "http_host": "0.0.0.0",
+  "http_port": 8888,
+  "api_key": "${MCP_API_KEY}",
+  "api_key_max_age_days": 7,
+  "ip_allowlist": ["${OFFICE_SUBNET}"],
+  "allowed_origins": ["${ALLOWED_ORIGIN}"],
   "mode": "readonly",
   "log_level": "info",
   "log_file": "/var/log/cqlai/mcp.log",
@@ -1164,7 +1163,10 @@ Connection closes
 
 ```json
 {
-  "socket_path": "/tmp/test-mcp.sock",
+  "http_host": "127.0.0.1",
+  "http_port": 8889,
+  "api_key": "${MCP_API_KEY}",
+  "api_key_max_age_days": 1,
   "mode": "dba",
   "log_level": "debug",
   "history_file": "/tmp/test_mcp_history",
@@ -1234,26 +1236,6 @@ All 9 Cassandra resource types supported:
 
 ---
 
-## Migration Notice
-
-### Current: Unix Domain Sockets
-
-The MCP server currently communicates via Unix domain sockets using netcat (nc) as transport. This approach has known stability issues with rapid successive requests due to netcat's broken EOF handling.
-
-**Known Issue**: Tests pass individually but may encounter EOF errors when running in rapid succession.
-
-### Future: stdio Transport
-
-The MCP server is being migrated to use stdin/stdout (stdio) transport for improved stability and reliability. This will eliminate the netcat dependency and provide better compatibility across systems.
-
-**Timeline**: Next release
-
-**Impact**: Configuration will change from socket_path to stdio parameters
-
-**Backward Compatibility**: Socket version will remain available for those who need it
-
----
-
 ## FAQ
 
 **Q: Can AI approve dangerous queries without asking me?**
@@ -1269,7 +1251,7 @@ A: Yes, via update_mcp_permissions tool, unless disable_runtime_permission_chang
 A: Check ~/.cqlai/cqlai_mcp_history (complete audit trail)
 
 **Q: Can I use MCP with multiple Cassandra clusters?**
-A: Start separate CQLAI instances with different socket paths, one per cluster
+A: Start separate CQLAI instances with different HTTP ports, one per cluster (e.g., :8888, :8889)
 
 **Q: What's the difference between confirm_request (MCP) and .mcp confirm (REPL)?**
 A: Both approve requests. MCP tool requires allow_mcp_request_approval=true. REPL command always works.
