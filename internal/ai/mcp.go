@@ -3,9 +3,7 @@ package ai
 import (
 	"compress/gzip"
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -206,13 +205,35 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 // HTTP Authentication and Security
 // ============================================================================
 
-// generateAPIKey generates a cryptographically secure API key
+// generateAPIKey generates a time-based UUID API key
+// Uses Cassandra's TimeUUID (UUIDv1) which embeds timestamp for future expiration support
 func generateAPIKey() (string, error) {
-	bytes := make([]byte, 32) // 256 bits
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	timeUUID := gocql.TimeUUID()
+	return timeUUID.String(), nil
+}
+
+// validateAPIKeyFormat validates that a string is a valid TimeUUID (UUIDv1)
+func validateAPIKeyFormat(key string) error {
+	if key == "" {
+		return fmt.Errorf("API key cannot be empty")
 	}
-	return "sk_local_" + base64.URLEncoding.EncodeToString(bytes)[:32], nil
+
+	uuid, err := gocql.ParseUUID(key)
+	if err != nil {
+		return fmt.Errorf("API key must be a valid TimeUUID (UUIDv1 format): %w", err)
+	}
+
+	// MUST be TimeUUID (version 1)
+	if uuid.Version() != 1 {
+		return fmt.Errorf("API key must be a TimeUUID (UUIDv1), got UUIDv%d", uuid.Version())
+	}
+
+	// Extract and log the timestamp for audit purposes
+	keyTime := uuid.Time()
+	logger.DebugfToFile("MCP", "API key validated: TimeUUID generated at %v (age: %v)",
+		keyTime.Format(time.RFC3339), time.Since(keyTime).Round(time.Second))
+
+	return nil
 }
 
 // validateAPIKey validates the provided API key using constant-time comparison

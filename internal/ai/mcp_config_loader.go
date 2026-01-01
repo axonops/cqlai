@@ -37,7 +37,11 @@ func LoadMCPConfigFromFile(filePath string) (*MCPServerConfig, error) {
 		config.HttpPort = int(port)
 	}
 	if apiKey, ok := jsonConfig["api_key"].(string); ok && apiKey != "" {
-		config.ApiKey = expandEnvVar(apiKey) // Support ${VAR} and ${VAR:-default}
+		expandedKey := expandEnvVar(apiKey) // Support ${VAR} and ${VAR:-default}
+		if err := validateAPIKeyFormat(expandedKey); err != nil {
+			return nil, fmt.Errorf("invalid api_key in config: %w", err)
+		}
+		config.ApiKey = expandedKey
 	}
 	if origins, ok := jsonConfig["allowed_origins"].([]interface{}); ok && len(origins) > 0 {
 		config.AllowedOrigins = make([]string, len(origins))
