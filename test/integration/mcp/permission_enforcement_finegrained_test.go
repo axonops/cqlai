@@ -33,9 +33,9 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 		assertNotError(t, resp, "SELECT should work without confirmation")
 	})
 
-	// DML should require confirmation
+	// DML should require confirmation (streaming - will block waiting)
 	t.Run("INSERT_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "INSERT",
 			"keyspace":  "test_mcp",
 			"table":     "users",
@@ -45,13 +45,11 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 				"email": "test@example.com",
 			},
 		})
-		assertIsError(t, resp, "INSERT should require confirmation")
-		assertContains(t, resp, "requires")
 	})
 
-	// DDL should require confirmation
+	// DDL should require confirmation (streaming - will block waiting)
 	t.Run("CREATE_requires_confirmation", func(t *testing.T) {
-		resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+		assertRequiresConfirmation(t, ctx, "submit_query_plan", map[string]any{
 			"operation": "CREATE",
 			"keyspace":  "test_mcp",
 			"table":     "test_logs_skipdql",
@@ -64,7 +62,6 @@ func TestFineGrained_SkipDQL(t *testing.T) {
 				"message":   "text",
 			},
 		})
-		assertIsError(t, resp, "CREATE should require confirmation")
 	})
 }
 

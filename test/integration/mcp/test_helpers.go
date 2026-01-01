@@ -302,6 +302,40 @@ func extractRequestID(text string) string {
 	}
 	return ""
 }
+
+// assertRequiresConfirmation verifies a query requires confirmation by submitting it
+// in a goroutine, checking pending list, and cancelling to cleanup
+func assertRequiresConfirmation(t *testing.T, ctx *HTTPTestContext, toolName string, args map[string]any) {
+	done := make(chan bool)
+
+	// Submit query in goroutine (will block if confirmation needed)
+	go func() {
+		callToolHTTP(t, ctx, toolName, args)
+		done <- true
+	}()
+
+	// Give it time to create confirmation request
+	time.Sleep(500 * time.Millisecond)
+
+	// Check pending confirmations
+	pendingResp := callToolHTTP(t, ctx, "get_pending_confirmations", map[string]any{})
+	assertNotError(t, pendingResp, "get_pending should work")
+	text := extractText(t, pendingResp)
+	assert.Contains(t, text, "req_", "Should have pending confirmation request")
+
+	// Cancel to unblock goroutine
+	requestID := extractRequestID(text)
+	if requestID != "" {
+		callToolHTTP(t, ctx, "cancel_confirmation", map[string]any{"request_id": requestID})
+	}
+
+	// Wait for goroutine
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Log("Warning: Goroutine may still be running")
+	}
+}
 func buildOperationParams(operation, keyspace, table string) map[string]any {
 	// Parse compound operations like "LIST ROLES" -> operation="LIST", options={"object_type":"ROLES"}
 	parts := strings.Fields(operation)
