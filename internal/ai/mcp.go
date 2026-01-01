@@ -1476,6 +1476,128 @@ func parseSubmitQueryPlanParams(args map[string]any) (SubmitQueryPlanParams, err
 		params.Options = opts
 	}
 
+	// Phase 0: value_types (for proper collection formatting)
+	if valueTypes, ok := args["value_types"].(map[string]interface{}); ok {
+		params.ValueTypes = make(map[string]string)
+		for k, v := range valueTypes {
+			if vStr, ok := v.(string); ok {
+				params.ValueTypes[k] = vStr
+			}
+		}
+	}
+
+	// Phase 1: USING clauses
+	if ttl, ok := args["using_ttl"].(float64); ok {
+		params.UsingTTL = int(ttl)
+	} else if ttl, ok := args["using_ttl"].(int); ok {
+		params.UsingTTL = ttl
+	}
+
+	if ts, ok := args["using_timestamp"].(float64); ok {
+		params.UsingTimestamp = int64(ts)
+	} else if ts, ok := args["using_timestamp"].(int64); ok {
+		params.UsingTimestamp = ts
+	}
+
+	// Phase 1: SELECT modifiers
+	if distinct, ok := args["distinct"].(bool); ok {
+		params.Distinct = distinct
+	}
+	if selectJSON, ok := args["select_json"].(bool); ok {
+		params.SelectJSON = selectJSON
+	}
+	if ppl, ok := args["per_partition_limit"].(float64); ok {
+		params.PerPartitionLimit = int(ppl)
+	} else if ppl, ok := args["per_partition_limit"].(int); ok {
+		params.PerPartitionLimit = ppl
+	}
+
+	// Phase 1: INSERT JSON
+	if insertJSON, ok := args["insert_json"].(bool); ok {
+		params.InsertJSON = insertJSON
+	}
+	if jsonValue, ok := args["json_value"].(string); ok {
+		params.JSONValue = jsonValue
+	}
+
+	// Phase 2: Counter operations
+	if counterOps, ok := args["counter_ops"].(map[string]interface{}); ok {
+		params.CounterOps = make(map[string]string)
+		for k, v := range counterOps {
+			if vStr, ok := v.(string); ok {
+				params.CounterOps[k] = vStr
+			}
+		}
+	}
+
+	// Phase 2: Collection operations
+	if collOps, ok := args["collection_ops"].(map[string]interface{}); ok {
+		params.CollectionOps = make(map[string]CollectionOp)
+		for colName, opData := range collOps {
+			if opMap, ok := opData.(map[string]interface{}); ok {
+				op := CollectionOp{}
+				if operation, ok := opMap["operation"].(string); ok {
+					op.Operation = operation
+				}
+				if value, ok := opMap["value"]; ok {
+					op.Value = value
+				}
+				if valueType, ok := opMap["value_type"].(string); ok {
+					op.ValueType = valueType
+				}
+				if index, ok := opMap["index"].(float64); ok {
+					idx := int(index)
+					op.Index = &idx
+				}
+				if key, ok := opMap["key"]; ok {
+					op.Key = key
+				}
+				params.CollectionOps[colName] = op
+			}
+		}
+	}
+
+	// Phase 3: LWT clauses
+	if ifNotExists, ok := args["if_not_exists"].(bool); ok {
+		params.IfNotExists = ifNotExists
+	}
+	if ifExists, ok := args["if_exists"].(bool); ok {
+		params.IfExists = ifExists
+	}
+	if ifConds, ok := args["if_conditions"].([]interface{}); ok {
+		params.IfConditions = make([]WhereClause, len(ifConds))
+		for i, c := range ifConds {
+			if condMap, ok := c.(map[string]interface{}); ok {
+				wc := WhereClause{}
+				if col, ok := condMap["column"].(string); ok {
+					wc.Column = col
+				}
+				if op, ok := condMap["operator"].(string); ok {
+					wc.Operator = op
+				}
+				if val, ok := condMap["value"]; ok {
+					wc.Value = val
+				}
+				params.IfConditions[i] = wc
+			}
+		}
+	}
+
+	// Phase 4: BATCH operations
+	if batchType, ok := args["batch_type"].(string); ok {
+		params.BatchType = batchType
+	}
+	if batchStmts, ok := args["batch_statements"].([]interface{}); ok {
+		params.BatchStatements = make([]AIResult, len(batchStmts))
+		for i, stmt := range batchStmts {
+			if stmtMap, ok := stmt.(map[string]interface{}); ok {
+				// Recursively parse each batch statement as a query plan
+				stmtParams, _ := parseSubmitQueryPlanParams(stmtMap)
+				params.BatchStatements[i] = *stmtParams.ToQueryPlan()
+			}
+		}
+	}
+
 	return params, nil
 }
 
