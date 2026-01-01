@@ -190,6 +190,49 @@ func (h *MCPHandler) handleStart(args []string) string {
 				}
 				i++
 			}
+		case "--ip-allowlist":
+			if i+1 < len(args) {
+				// Parse comma-separated list of IPs/CIDRs
+				ips := strings.Split(args[i+1], ",")
+				config.IpAllowlist = make([]string, 0, len(ips))
+				for _, ip := range ips {
+					trimmed := strings.TrimSpace(ip)
+					if trimmed != "" {
+						config.IpAllowlist = append(config.IpAllowlist, trimmed)
+					}
+				}
+				i++
+			}
+		case "--ip-allowlist-disabled":
+			config.IpAllowlistDisabled = true
+		case "--audit-http-headers":
+			if i+1 < len(args) {
+				// Parse comma-separated list of headers
+				headers := strings.Split(args[i+1], ",")
+				config.AuditHttpHeaders = make([]string, 0, len(headers))
+				for _, header := range headers {
+					trimmed := strings.TrimSpace(header)
+					if trimmed != "" {
+						config.AuditHttpHeaders = append(config.AuditHttpHeaders, trimmed)
+					}
+				}
+				i++
+			}
+		case "--require-headers":
+			if i+1 < len(args) {
+				// Parse comma-separated list of header:value pairs
+				pairs := strings.Split(args[i+1], ",")
+				config.RequiredHeaders = make(map[string]string)
+				for _, pair := range pairs {
+					parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+					if len(parts) == 2 {
+						headerName := strings.TrimSpace(parts[0])
+						headerValue := strings.TrimSpace(parts[1])
+						config.RequiredHeaders[headerName] = headerValue
+					}
+				}
+				i++
+			}
 
 		case "--log-level":
 			if i+1 < len(args) {
@@ -779,6 +822,15 @@ HTTP Transport:
   --api-key-max-age-days <n>   Max API key age in days (default: 30, 0=disabled)
   --disable-api-key-age-check  Disable age validation (SECURITY RISK)
   --allowed-origins <list>     Comma-separated allowed origins (for non-localhost)
+
+Security (Defense-in-Depth):
+  --ip-allowlist <list>        IP/CIDR allowlist (default: 127.0.0.1)
+                               Examples: "203.0.113.10,10.0.1.0/24"
+  --ip-allowlist-disabled      Disable IP checking (SECURITY RISK)
+  --audit-http-headers <list>  Headers to log (default: X-Forwarded-For,User-Agent)
+                               Use "ALL" to log all headers
+  --require-headers <list>     Required header:value pairs
+                               Examples: "X-Proxy-Verified:true,X-Request-ID:^req_.*"
 
 Logging:
   --log-level <level>          Log level: debug, info, warning, error (default: info)
