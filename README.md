@@ -71,6 +71,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
     - [OpenRouter](#openrouter-multiple-models)
     - [Mock Provider](#mock-provider-for-testing)
 - [🤖 AI-Powered Query Generation](#-ai-powered-query-generation)
+- [🔌 MCP Server (Model Context Protocol)](#-mcp-server-model-context-protocol)
 - [📦 Apache Parquet Support](#-apache-parquet-support)
 - [⚠️ Known Limitations](#️-known-limitations)
 - [🔨 Development](#-development)
@@ -97,10 +98,11 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - Apache Parquet format support for efficient data interchange
 - Tab completion for CQL keywords, tables, columns, and keyspaces
 - **Optional**: AI-powered query generation ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/))
+- **Optional**: MCP server for Claude Code/Desktop integration (20 tools, complete Cassandra administration)
 
 ### Coming Soon
 - Enhanced AI context awareness
-- Cassandra MCP service
+- BATCH operation support
 - Additional performance optimizations
 
 We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls).
@@ -1029,6 +1031,59 @@ Configure your preferred AI provider in `cqlai.json`:
 - **Dangerous operation warnings**: DROP, DELETE, TRUNCATE operations show warnings
 - **Confirmation required**: Destructive operations require additional confirmation
 - **Schema validation**: Queries are validated against your current schema
+
+---
+
+## 🔌 MCP Server (Model Context Protocol)
+
+CQLAI includes a built-in MCP server that enables AI assistants like **Claude Code** and **Claude Desktop** to interact with Cassandra databases. The MCP server provides a comprehensive API for querying, schema management, and database administration with robust security controls.
+
+### Key Features
+
+- **20 MCP Tools**: Complete Cassandra administration via AI
+- **37 CQL Operations**: SELECT, INSERT, UPDATE, DELETE, ALTER, CREATE INDEX, GRANT, and more
+- **Permission System**: 6-category classification (DQL, DML, DDL, DCL, SESSION, FILE)
+- **Confirmation Workflows**: Dangerous queries require user approval
+- **Query History**: Complete audit trail with lifecycle event logging
+- **Trace Analysis**: Performance analysis via Cassandra traces
+- **Security Controls**: Multiple layers including permission modes, confirmation requirements, and approval gates
+
+### Quick Start
+
+```bash
+# In CQLAI, start MCP server
+.mcp start --dba_mode
+
+# Or with custom configuration
+.mcp start --config-file ~/.cqlai/mcp_config.json
+```
+
+Then configure Claude Code/Desktop to connect to the MCP server.
+
+### Security Model
+
+The MCP server implements defense-in-depth security:
+
+1. **Permission Modes**: readonly, readwrite, or dba
+2. **Confirmation Requirements**: Dangerous queries require approval
+3. **User Confirmation Flag**: Tools require explicit user consent
+4. **Request Approval Gate**: Optional MCP tool approval (disabled by default)
+5. **Runtime Lockdown**: Prevent configuration changes
+6. **Complete Audit Trail**: All operations logged to history file
+
+**Default**: Secure (readonly mode, MCP approval disabled)
+
+### Documentation
+
+**Complete MCP documentation**: See [MCP.md](MCP.md) for:
+- All 20 MCP tools with examples
+- Configuration reference (JSON and CLI)
+- Security best practices
+- Confirmation workflows
+- History file format
+- Troubleshooting guide
+
+---
 
 ## 📦 Apache Parquet Support
 
