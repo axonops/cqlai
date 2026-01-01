@@ -99,6 +99,10 @@ type AIResult struct {
 	IfExists     bool          `json:"if_exists,omitempty"`     // UPDATE/DELETE IF EXISTS
 	IfConditions []WhereClause `json:"if_conditions,omitempty"` // UPDATE/DELETE IF col = val
 
+	// Phase 4: BATCH operations
+	BatchType       string     `json:"batch_type,omitempty"`       // "LOGGED", "UNLOGGED", "COUNTER"
+	BatchStatements []AIResult `json:"batch_statements,omitempty"` // Statements in the batch
+
 	// Phase 1: USING clauses for DML operations
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds (INSERT, UPDATE)
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds (INSERT, UPDATE, DELETE)

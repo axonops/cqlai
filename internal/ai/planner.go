@@ -1354,9 +1354,53 @@ func renderUse(plan *AIResult) (string, error) {
 
 // renderBatch generates BATCH statements
 func renderBatch(plan *AIResult) (string, error) {
-	// BATCH is complex - requires multiple statements
-	// For now, return error indicating not yet supported
-	return "", fmt.Errorf("BATCH operations not yet supported in query builder - use raw CQL")
+	// Validate we have statements
+	if len(plan.BatchStatements) == 0 {
+		return "", fmt.Errorf("BATCH requires at least one statement")
+	}
+
+	var sb strings.Builder
+
+	// BEGIN BATCH (with type)
+	batchType := strings.ToUpper(plan.BatchType)
+	switch batchType {
+	case "UNLOGGED":
+		sb.WriteString("BEGIN UNLOGGED BATCH")
+	case "COUNTER":
+		sb.WriteString("BEGIN COUNTER BATCH")
+	case "LOGGED", "":
+		sb.WriteString("BEGIN BATCH")
+	default:
+		return "", fmt.Errorf("invalid batch type: %s (must be LOGGED, UNLOGGED, or COUNTER)", plan.BatchType)
+	}
+	sb.WriteString("\n")
+
+	// USING TIMESTAMP (batch-level)
+	if plan.UsingTimestamp > 0 {
+		sb.WriteString(fmt.Sprintf("USING TIMESTAMP %d\n", plan.UsingTimestamp))
+	}
+
+	// Render each statement in the batch
+	for i, stmt := range plan.BatchStatements {
+		// Recursively render the statement
+		cql, err := RenderCQL(&stmt)
+		if err != nil {
+			return "", fmt.Errorf("error rendering batch statement %d: %w", i+1, err)
+		}
+
+		// Remove trailing semicolon (batch doesn't need them)
+		cql = strings.TrimSuffix(strings.TrimSpace(cql), ";")
+
+		// Indent statement
+		sb.WriteString("  ")
+		sb.WriteString(cql)
+		sb.WriteString("\n")
+	}
+
+	// APPLY BATCH
+	sb.WriteString("APPLY BATCH;")
+
+	return sb.String(), nil
 }
 
 // renderCreateIndex generates CREATE INDEX statements

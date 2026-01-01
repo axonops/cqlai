@@ -70,6 +70,10 @@ type SubmitQueryPlanParams struct {
 	IfExists     bool          `json:"if_exists,omitempty"`
 	IfConditions []WhereClause `json:"if_conditions,omitempty"`
 
+	// Phase 4: BATCH operations
+	BatchType       string     `json:"batch_type,omitempty"`
+	BatchStatements []AIResult `json:"batch_statements,omitempty"`
+
 	// Phase 1: USING clauses
 	UsingTTL       int   `json:"using_ttl,omitempty"`       // TTL in seconds
 	UsingTimestamp int64 `json:"using_timestamp,omitempty"` // Timestamp in microseconds
@@ -186,6 +190,8 @@ func (p SubmitQueryPlanParams) ToQueryPlan() *AIResult {
 		IfNotExists:       p.IfNotExists,       // Phase 3
 		IfExists:          p.IfExists,          // Phase 3
 		IfConditions:      p.IfConditions,      // Phase 3
+		BatchType:         p.BatchType,         // Phase 4
+		BatchStatements:   p.BatchStatements,   // Phase 4
 		UsingTTL:          p.UsingTTL,          // Phase 1
 		UsingTimestamp:    p.UsingTimestamp,    // Phase 1
 		Distinct:          p.Distinct,          // Phase 1
