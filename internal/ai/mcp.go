@@ -1038,6 +1038,23 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 		details := fmt.Sprintf("operation=%s category=%s dangerous=%v", params.Operation, opInfo.Category, classification.IsDangerous)
 		s.logConfirmationToHistory("CONFIRM_REQUESTED", req.ID, query, details)
 
+		// Send initial notification on stream: "waiting for confirmation"
+		// This tells Claude the request is pending and provides context
+		timeoutMinutes := int(s.config.ConfirmationTimeout.Minutes())
+		s.mcpServer.SendNotificationToClient(ctx, "confirmation/requested", map[string]any{
+			"request_id":       req.ID,
+			"status":           "PENDING",
+			"query":            query,
+			"operation":        params.Operation,
+			"timeout_seconds":  int(s.config.ConfirmationTimeout.Seconds()),
+			"timeout_message":  fmt.Sprintf("Request will timeout in %d minutes", timeoutMinutes),
+			"how_to_approve":   fmt.Sprintf("Use confirm_request tool with request_id=%s and user_confirmed=true", req.ID),
+			"how_to_deny":      fmt.Sprintf("Use deny_request tool with request_id=%s", req.ID),
+			"pending_tool_tip": "You can query pending confirmations with get_pending_confirmations tool",
+		})
+
+		logger.DebugfToFile("MCP", "Sent 'waiting for confirmation' notification for %s - now blocking", req.ID)
+
 		// CRITICAL: BLOCK and wait for user to confirm/deny via MCP tools
 		// This keeps the HTTP connection open (streaming)
 		// User calls confirm_request or deny_request in separate request

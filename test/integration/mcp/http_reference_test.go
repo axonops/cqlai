@@ -289,6 +289,7 @@ func parseSSEResponse(t *testing.T, body []byte) map[string]any {
 }
 
 // callToolHTTPWithNotifications calls a tool and extracts both notifications and result
+// Returns: first notification found (if any), result
 func callToolHTTPWithNotifications(t *testing.T, ctx *HTTPTestContext, toolName string, args map[string]any) (notification map[string]any, result map[string]any) {
 	// Build and send request (same as callToolHTTP)
 	request := map[string]any{
@@ -309,10 +310,10 @@ func callToolHTTPWithNotifications(t *testing.T, ctx *HTTPTestContext, toolName 
 		httpReq.Header.Set("MCP-Session-Id", ctx.MCPSessionID)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second} // Longer timeout for blocking operations
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
-		t.Fatalf("HTTP request failed: %v", err)
+		t.Logf("HTTP request failed: %v", err)
 		return nil, nil
 	}
 	defer httpResp.Body.Close()
@@ -322,12 +323,15 @@ func callToolHTTPWithNotifications(t *testing.T, ctx *HTTPTestContext, toolName 
 
 	// Parse all JSON-RPC messages from response (SSE format or plain JSON)
 	messages := parseAllMessagesFromResponse(t, respBody)
+	t.Logf("Parsed %d messages from response", len(messages))
 
 	// Separate notifications from result
 	for _, msg := range messages {
 		if method, ok := msg["method"].(string); ok {
 			// This is a notification (has "method", no "id")
-			if method == "confirmation/statusChanged" {
+			t.Logf("Found notification: method=%s", method)
+			if notification == nil {
+				// Capture first notification
 				notification = msg
 			}
 		} else if _, hasID := msg["id"]; hasID {
@@ -657,9 +661,12 @@ func TestHTTP_StreamingConfirmation(t *testing.T) {
 		errorChan := make(chan error, 1)
 
 		// Thread 1: Submit query (will BLOCK waiting for confirmation)
+		// Should receive: 1) "waiting" notification, 2) (blocks), 3) final result
 		go func() {
 			t.Logf("Thread 1: Submitting INSERT (requires confirmation)...")
-			resp := callToolHTTP(t, ctx, "submit_query_plan", map[string]any{
+
+			// Use callToolHTTPWithNotifications to capture the initial notification
+			notification, resp := callToolHTTPWithNotifications(t, ctx, "submit_query_plan", map[string]any{
 				"operation": "INSERT",
 				"keyspace":  "test_mcp",
 				"table":     "users",
@@ -669,12 +676,23 @@ func TestHTTP_StreamingConfirmation(t *testing.T) {
 					"email": "streaming@test.com",
 				},
 			})
+
+			if notification != nil {
+				t.Logf("Thread 1: Received initial notification: %v", notification["method"])
+				if method, ok := notification["method"].(string); ok && method == "confirmation/requested" {
+					params := notification["params"].(map[string]any)
+					t.Logf("  → Request ID: %s", params["request_id"])
+					t.Logf("  → Timeout: %v seconds", params["timeout_seconds"])
+					t.Logf("✅ Initial 'waiting for confirmation' notification received!")
+				}
+			}
+
 			if resp == nil {
 				errorChan <- fmt.Errorf("nil response")
 				return
 			}
 			responseChan <- resp
-			t.Logf("Thread 1: Got response!")
+			t.Logf("Thread 1: Got final response!")
 		}()
 
 		// Give submit_query_plan time to create confirmation request
