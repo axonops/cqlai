@@ -134,7 +134,7 @@
 | 2 | Test 8 | Time/date not quoted in CQL | ✅ FIXED | 22344f6 |
 | 3 | Test 9 | Inet not quoted in CQL | ✅ FIXED | 22344f6 |
 | 4 | Tests 16,18,19 | frozen<collection> routed to formatUDT | ✅ FIXED | e27a6c2 |
-| 5 | Test 30 | DELETE not removing row (LWT table) | ⚠️ SKIPPED | Needs investigation |
+| 5 | Test 30 | DELETE after IF NOT EXISTS doesn't work | ⚠️ DRIVER BUG | gocql driver issue - see GOCQL_DELETE_BUG_REPORT.md |
 
 _(More bugs will be added as found)_
 

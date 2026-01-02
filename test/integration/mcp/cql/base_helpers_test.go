@@ -152,7 +152,14 @@ func callMCPTool(ctx *CQLTestContext, toolName string, args map[string]any) map[
 
 // submitQueryPlanMCP submits a query plan via MCP submit_query_plan tool
 func submitQueryPlanMCP(ctx *CQLTestContext, args map[string]any) map[string]any {
-	return callMCPTool(ctx, "submit_query_plan", args)
+	result := callMCPTool(ctx, "submit_query_plan", args)
+
+	// Log the operation for debugging
+	if op, ok := args["operation"].(string); ok {
+		ctx.T.Logf("MCP Operation: %s on table %s.%s", op, args["keyspace"], args["table"])
+	}
+
+	return result
 }
 
 // ============================================================================

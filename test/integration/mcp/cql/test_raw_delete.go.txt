@@ -1,0 +1,92 @@
+//go:build integration
+// +build integration
+
+package cql
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/stretchr/testify/require"
+)
+
+// TestRawGoCQLDelete tests DELETE using ONLY the raw gocql driver
+// This isolates whether the issue is in gocql itself or our code
+func TestRawGoCQLDelete(t *testing.T) {
+	// 1. Create cluster connection (raw gocql)
+	cluster := gocql.NewCluster("127.0.0.1:9042")
+	cluster.Authenticator = gocql.PasswordAuthenticator{
+		Username: "cassandra",
+		Password: "cassandra",
+	}
+	cluster.Timeout = 10 * time.Second
+	cluster.ConnectTimeout = 10 * time.Second
+	cluster.Consistency = gocql.LocalOne
+
+	// 2. Create session (raw gocql)
+	session, err := cluster.CreateSession()
+	require.NoError(t, err, "Failed to create gocql session")
+	defer session.Close()
+
+	ks := "raw_delete_test"
+	testID := 999
+
+	// 3. Setup (raw CQL)
+	err = session.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", ks)).Exec()
+	require.NoError(t, err)
+
+	err = session.Query(fmt.Sprintf(`CREATE KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`, ks)).Exec()
+	require.NoError(t, err)
+
+	err = session.Query(fmt.Sprintf(`CREATE TABLE %s.lwt_test (id int PRIMARY KEY, data text, version int)`, ks)).Exec()
+	require.NoError(t, err)
+
+	t.Log("✅ Keyspace and table created")
+
+	// 4. INSERT with IF NOT EXISTS (exactly like Test 30)
+	insertQuery := fmt.Sprintf(`INSERT INTO %s.lwt_test (id, data, version) VALUES (?, ?, ?) IF NOT EXISTS`, ks)
+	err = session.Query(insertQuery, testID, "first insert", 1).Exec()
+	require.NoError(t, err, "INSERT IF NOT EXISTS should succeed")
+
+	t.Log("✅ INSERT IF NOT EXISTS executed")
+
+	// 5. Verify INSERT worked
+	var id int
+	var data string
+	var version int
+	iter := session.Query(fmt.Sprintf("SELECT id, data, version FROM %s.lwt_test WHERE id = ?", ks), testID).Iter()
+	found := iter.Scan(&id, &data, &version)
+	iter.Close()
+
+	require.True(t, found, "Row should exist after INSERT")
+	require.Equal(t, testID, id)
+	require.Equal(t, "first insert", data)
+	require.Equal(t, 1, version)
+
+	t.Logf("✅ Row verified: id=%d, data='%s', version=%d", id, data, version)
+
+	// 6. DELETE (exactly like Test 30)
+	deleteQuery := fmt.Sprintf(`DELETE FROM %s.lwt_test WHERE id = ?`, ks)
+	t.Logf("Executing DELETE: %s with id=%d", deleteQuery, testID)
+
+	err = session.Query(deleteQuery, testID).Exec()
+	require.NoError(t, err, "DELETE should succeed")
+
+	t.Log("✅ DELETE executed (no error from gocql)")
+
+	// 7. Verify DELETE worked
+	iter = session.Query(fmt.Sprintf("SELECT id FROM %s.lwt_test WHERE id = ?", ks), testID).Iter()
+	found = iter.Scan(&id)
+	iter.Close()
+
+	if found {
+		t.Fatalf("❌ BUG REPRODUCED: Row STILL EXISTS after DELETE! id=%d", id)
+	}
+
+	t.Log("✅ DELETE worked - row removed")
+
+	// 8. Cleanup
+	session.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", ks)).Exec()
+}
