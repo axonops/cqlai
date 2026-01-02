@@ -444,7 +444,7 @@ func renderDelete(plan *AIResult) (string, error) {
 	sb.WriteString(" WHERE ")
 	conditions := make([]string, 0, len(plan.Where))
 	for _, w := range plan.Where {
-		conditions = append(conditions, renderWhereClause(w))
+		conditions = append(conditions, renderWhereClauseWithTypes(w, plan.ValueTypes))
 	}
 	sb.WriteString(strings.Join(conditions, " AND "))
 
@@ -669,8 +669,40 @@ func renderWhereClause(w WhereClause) string {
 		column = fmt.Sprintf("TOKEN(%s)", w.Column)
 	}
 
-	// TODO: Add ValueType field to WhereClause for type hints
+	// No type hint available in old signature
 	return fmt.Sprintf("%s %s %s", column, w.Operator, formatValue(w.Value, ""))
+}
+
+// renderWhereClauseWithTypes renders WHERE clause with type hints from ValueTypes map
+func renderWhereClauseWithTypes(w WhereClause, valueTypes map[string]string) string {
+	// Handle IS NULL and IS NOT NULL
+	opUpper := strings.ToUpper(w.Operator)
+	if opUpper == "IS NULL" || opUpper == "IS NOT NULL" {
+		return fmt.Sprintf("%s %s", w.Column, w.Operator)
+	}
+
+	// Handle tuple notation
+	if len(w.Columns) > 0 && len(w.Values) > 0 {
+		left := fmt.Sprintf("(%s)", strings.Join(w.Columns, ", "))
+		right := formatTuple(w.Values)
+		return fmt.Sprintf("%s %s %s", left, w.Operator, right)
+	}
+
+	// Handle TOKEN() wrapper
+	column := w.Column
+	if w.IsToken {
+		column = fmt.Sprintf("TOKEN(%s)", w.Column)
+	}
+
+	// Get type hint for this column from ValueTypes map
+	typeHint := ""
+	if valueTypes != nil {
+		if hint, ok := valueTypes[w.Column]; ok {
+			typeHint = hint
+		}
+	}
+
+	return fmt.Sprintf("%s %s %s", column, w.Operator, formatValue(w.Value, typeHint))
 }
 
 // formatValue is the main entry point for formatting CQL values with optional type hints
