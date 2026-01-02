@@ -687,6 +687,9 @@ func formatValue(v any, typeHint string) string {
 	switch baseType {
 	case "list":
 		return formatList(v, elementType)
+	case "vector":
+		// Vector uses same syntax as list: [1.0, 2.0, 3.0]
+		return formatList(v, elementType)
 	case "set":
 		return formatSet(v, elementType)
 	case "map":

@@ -278,6 +278,32 @@ func TestMCP_PrimitiveTypes_Duration(t *testing.T) {
 	t.Log("✅ duration via MCP")
 }
 
+// TestMCP_PrimitiveTypes_Vector tests vector type (Cassandra 5.0+)
+func TestMCP_PrimitiveTypes_Vector(t *testing.T) {
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	defer stopMCPHTTP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
+
+	args := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  "type_test",
+		"table":     "all_types",
+		"values": map[string]any{
+			"id":         3009,
+			"vector_col": []float64{1.5, 2.5, 3.5},
+		},
+		"value_types": map[string]any{
+			"vector_col": "vector<float,3>",
+		},
+	}
+
+	result := callToolHTTP(t, ctx, "submit_query_plan", args)
+	assertNotError(t, result, "INSERT with vector should succeed")
+
+	t.Log("✅ vector via MCP")
+}
+
 // TestMCP_ComplexTypes_UDT tests user-defined types via MCP
 func TestMCP_ComplexTypes_UDT(t *testing.T) {
 	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
