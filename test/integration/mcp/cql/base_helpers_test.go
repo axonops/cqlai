@@ -4,7 +4,11 @@
 package cql
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -58,10 +62,9 @@ type CQLTestContext struct {
 }
 
 // setupCQLTest creates a fresh test context with MCP in DBA mode
-// This is the foundation of every test - provides both direct Cassandra
-// access AND MCP access for full validation
+// Uses existing test infrastructure from parent mcp package
 func setupCQLTest(t *testing.T) *CQLTestContext {
-	// Create direct Cassandra session
+	// Create Cassandra session (same as existing tests)
 	cluster := gocql.NewCluster("127.0.0.1:9042")
 	cluster.Authenticator = gocql.PasswordAuthenticator{
 		Username: "cassandra",
@@ -74,34 +77,33 @@ func setupCQLTest(t *testing.T) *CQLTestContext {
 	session, err := db.NewSessionFromCluster(cluster, "cassandra", false)
 	require.NoError(t, err, "Failed to create Cassandra session")
 
-	// Create isolated MCP handler for this test
+	// Create MCP handler
 	mcpHandler := router.NewMCPHandler(session)
 	require.NotNil(t, mcpHandler)
 
-	// Start MCP in DBA mode (no confirmations)
+	// Generate API key
 	apiKey, err := ai.GenerateAPIKey()
 	require.NoError(t, err)
 	os.Setenv("TEST_MCP_API_KEY", apiKey)
 
-	// Use unique port for this test to avoid conflicts
-	// For now, use standard port - will fix concurrency later
+	// Start MCP server
 	startCmd := ".mcp start --config-file ../testdata/dba.json"
 	result := mcpHandler.HandleMCPCommand(startCmd)
 	require.Contains(t, result, "started successfully", "MCP start failed: %s", result)
 
-	time.Sleep(300 * time.Millisecond) // Wait for HTTP server
+	time.Sleep(500 * time.Millisecond)
 
-	// Create unique test keyspace for isolation
+	// Get session ID from MCP server initialization
+	// MCP server generates session ID when client connects
+	sessionID := initializeMCPSessionHTTP(t, "http://127.0.0.1:8912/mcp", apiKey)
+
+	// Create unique test keyspace
 	keyspace := fmt.Sprintf("cql_test_%d", time.Now().UnixNano())
 	err = session.Query(fmt.Sprintf(
 		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
 		keyspace,
 	)).Exec()
 	require.NoError(t, err, "Failed to create test keyspace")
-
-	// Initialize MCP session
-	sessionID, err := initializeMCPSession(t, "http://127.0.0.1:8912/mcp", apiKey)
-	require.NoError(t, err, "Failed to initialize MCP session")
 
 	return &CQLTestContext{
 		Session:    session,
@@ -412,20 +414,124 @@ func findSubstring(s, substr string) bool {
 	return false
 }
 
-// initializeMCPSession initializes MCP session via HTTP
-func initializeMCPSession(t *testing.T, baseURL, apiKey string) (string, error) {
-	// Simple session ID generation
-	return fmt.Sprintf("mcp-session-cql-%d", time.Now().UnixNano()), nil
+// initializeMCPSessionHTTP initializes MCP session via HTTP and returns session ID
+func initializeMCPSessionHTTP(t *testing.T, baseURL, apiKey string) string {
+	// Send initialize request to MCP server
+	request := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2024-11-05",
+			"capabilities":    map[string]any{},
+			"clientInfo": map[string]any{
+				"name":    "cql-test-client",
+				"version": "1.0.0",
+			},
+		},
+	}
+
+	requestJSON, _ := json.Marshal(request)
+	httpReq, _ := http.NewRequest("POST", baseURL, bytes.NewReader(requestJSON))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-API-Key", apiKey)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		t.Logf("Initialize failed: %v", err)
+		return fmt.Sprintf("mcp-session-cql-%d", time.Now().UnixNano())
+	}
+	defer httpResp.Body.Close()
+
+	respBody, _ := io.ReadAll(httpResp.Body)
+	var response map[string]any
+	json.Unmarshal(respBody, &response)
+
+	// Extract session ID from response header or generate one
+	if sessionHeader := httpResp.Header.Get("MCP-Session-Id"); sessionHeader != "" {
+		t.Logf("MCP session initialized: %s", sessionHeader)
+		return sessionHeader
+	}
+
+	// Fallback: generate session ID
+	sessionID := fmt.Sprintf("mcp-session-cql-%d", time.Now().UnixNano())
+	t.Logf("MCP session generated: %s", sessionID)
+	return sessionID
 }
 
-// callToolHTTPDirect makes actual MCP tool call
-// For CQL tests, we call MCP server directly via handler instead of HTTP
-// This tests CQL functionality without HTTP layer complexity
+// callToolHTTPDirect makes HTTP call to MCP server
+// Adapted from ../http_reference_test.go
 func callToolHTTPDirect(t *testing.T, baseURL, apiKey, sessionID, toolName string, args map[string]any) map[string]any {
-	// Not implemented yet - CQL tests need proper MCP integration
-	// Returning error to make test failures obvious
-	return map[string]any{
-		"isError": true,
-		"error":   "HTTP client not integrated - CQL tests cannot execute yet",
+	// Build JSON-RPC request
+	request := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      time.Now().UnixNano(),
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      toolName,
+			"arguments": args,
+		},
 	}
+
+	requestJSON, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("Failed to marshal request: %v", err)
+		return nil
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("POST", baseURL, bytes.NewReader(requestJSON))
+	if err != nil{
+		t.Fatalf("Failed to create HTTP request: %v", err)
+		return nil
+	}
+
+	// Add required headers
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-API-Key", apiKey)
+	if sessionID != "" {
+		httpReq.Header.Set("MCP-Session-Id", sessionID)
+	}
+
+	// Send request
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		t.Fatalf("HTTP request failed: %v", err)
+		return nil
+	}
+	defer httpResp.Body.Close()
+
+	// Check status code
+	if httpResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(httpResp.Body)
+		t.Fatalf("HTTP request failed with status %d: %s", httpResp.StatusCode, string(bodyBytes))
+		return nil
+	}
+
+	// Read response body
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response: %v", err)
+		return nil
+	}
+
+	// Parse JSON response
+	var response map[string]any
+	err = json.Unmarshal(respBody, &response)
+	if err != nil {
+		t.Logf("Response body: %s", string(respBody))
+		t.Fatalf("Failed to parse response: %v", err)
+		return nil
+	}
+
+	// Extract result from JSON-RPC response
+	if result, ok := response["result"].(map[string]any); ok {
+		return result
+	}
+
+	return response
 }
