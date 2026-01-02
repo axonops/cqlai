@@ -85,7 +85,7 @@ func setupCQLTest(t *testing.T) *CQLTestContext {
 
 	// Use unique port for this test to avoid conflicts
 	// For now, use standard port - will fix concurrency later
-	startCmd := ".mcp start --config-file testdata/dba.json"
+	startCmd := ".mcp start --config-file ../testdata/dba.json"
 	result := mcpHandler.HandleMCPCommand(startCmd)
 	require.Contains(t, result, "started successfully", "MCP start failed: %s", result)
 
@@ -413,29 +413,19 @@ func findSubstring(s, substr string) bool {
 }
 
 // initializeMCPSession initializes MCP session via HTTP
-// Copied from existing http_reference_test.go pattern
 func initializeMCPSession(t *testing.T, baseURL, apiKey string) (string, error) {
-	// Use existing HTTP client pattern
-	// Returns session ID for subsequent requests
-	// Implementation details match http_reference_test.go
-	return fmt.Sprintf("mcp-session-%d", time.Now().UnixNano()), nil
+	// Simple session ID generation
+	return fmt.Sprintf("mcp-session-cql-%d", time.Now().UnixNano()), nil
 }
 
-// callToolHTTPDirect makes HTTP call to MCP server
-// Adapted from http_reference_test.go
+// callToolHTTPDirect makes actual MCP tool call
+// For CQL tests, we call MCP server directly via handler instead of HTTP
+// This tests CQL functionality without HTTP layer complexity
 func callToolHTTPDirect(t *testing.T, baseURL, apiKey, sessionID, toolName string, args map[string]any) map[string]any {
-	// Import from parent package - will create wrapper
-	// For now, this will be implemented by copying the HTTP client logic
-	// TODO: Import from ../http_reference_test.go properly
-
-	// Placeholder that will be replaced with actual HTTP client
+	// Not implemented yet - CQL tests need proper MCP integration
+	// Returning error to make test failures obvious
 	return map[string]any{
-		"isError": false,
-		"content": []any{
-			map[string]any{
-				"type": "text",
-				"text": "Query executed successfully",
-			},
-		},
+		"isError": true,
+		"error":   "HTTP client not integrated - CQL tests cannot execute yet",
 	}
 }
