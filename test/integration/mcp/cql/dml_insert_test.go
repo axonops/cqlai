@@ -2384,6 +2384,13 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 	assert.Equal(t, "first insert", rows[0]["data"], "Data should be unchanged (IF NOT EXISTS failed)")
 	assert.Equal(t, 1, rows[0]["version"], "Version should be unchanged")
 
+	// **CRITICAL: Wait after IF NOT EXISTS before DELETE**
+	// LWT (Lightweight Transactions) use Paxos consensus
+	// Need delay for commit to be fully visible before DELETE
+	t.Log("⏳ Waiting 5 seconds for LWT commit to complete...")
+	time.Sleep(5 * time.Second)
+	t.Log("✅ Wait complete")
+
 	// 6. DELETE via MCP
 	deleteArgs := map[string]any{
 		"operation": "DELETE",
@@ -2412,22 +2419,10 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
 
-	// 7. VALIDATE DELETE
-	// KNOWN ISSUE: gocql driver bug - DELETE doesn't work after IF NOT EXISTS
-	// See GOCQL_DELETE_BUG_REPORT.md for full details and standalone reproduction
-	//
-	// Bug confirmed:
-	// - Reproduced with pure gocql driver (no our code)
-	// - Reproduced with Python cassandra-driver (same bug)
-	// - Manual DELETE via cqlsh works immediately
-	// - This is a driver bug, not our bug
-	//
-	// For this test: Skip DELETE validation
-	t.Log("⚠️  SKIPPING DELETE validation - known gocql driver bug")
-	t.Log("    DELETE after IF NOT EXISTS doesn't work in gocql/Python drivers")
-	t.Log("    Manual cqlsh DELETE works. See GOCQL_DELETE_BUG_REPORT.md")
+	// 7. VALIDATE DELETE (with LWT delay, this should work)
+	validateRowNotExists(ctx, "lwt_test", testID)
 
-	t.Log("✅ Test 30: INSERT IF NOT EXISTS - INSERT verified (DELETE skipped - driver bug)")
+	t.Log("✅ Test 30: INSERT IF NOT EXISTS - Full validation with LWT delay")
 }
 
 // ============================================================================
