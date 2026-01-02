@@ -2515,3 +2515,67 @@ func TestRawGoCQLDelete(t *testing.T) {
 //
 // ============================================================================
 
+
+// ============================================================================
+// Tests 31-35: Edge Cases and Complex Schemas
+// ============================================================================
+
+// TestDML_Insert_31_EmptyCollections tests INSERT with empty list, set, map
+func TestDML_Insert_31_EmptyCollections(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "empty_coll", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.empty_coll (
+			id int PRIMARY KEY,
+			el list<int>,
+			es set<text>,
+			em map<text,int>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 31000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "empty_coll",
+		"values": map[string]any{
+			"id": testID,
+			"el": []int{},
+			"es": []string{},
+			"em": map[string]int{},
+		},
+		"value_types": map[string]any{
+			"el": "list<int>",
+			"es": "set<text>",
+			"em": "map<text,int>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT empty collections should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.empty_coll WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	// DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "empty_coll",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "empty_coll", testID)
+
+	t.Log("✅ Test 31: Empty collections verified")
+}
