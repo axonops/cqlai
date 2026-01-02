@@ -796,6 +796,81 @@ func TestMCP_BatchWithTimestamp(t *testing.T) {
 	t.Log("✅ BATCH USING TIMESTAMP via MCP")
 }
 
+// TestMCP_BatchWithLWT_SinglePartition tests valid single-partition LWT batch
+func TestMCP_BatchWithLWT_SinglePartition(t *testing.T) {
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	defer stopMCPHTTP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
+
+	// All statements target same partition key (id = 2200)
+	args := map[string]any{
+		"operation":  "BATCH",
+		"batch_type": "LOGGED",
+		"batch_statements": []map[string]any{
+			{
+				"operation":     "INSERT",
+				"keyspace":      "cqlai_test",
+				"table":         "users",
+				"values":        map[string]any{"id": 2200, "name": "LWTBatch"},
+				"if_not_exists": true, // LWT conditional
+			},
+			{
+				"operation": "UPDATE",
+				"keyspace":  "cqlai_test",
+				"table":     "users",
+				"values":    map[string]any{"email": "lwtbatch@test.com"},
+				"where":     []map[string]any{{"column": "id", "operator": "=", "value": 2200}},
+				// Same partition key (id = 2200)
+			},
+		},
+	}
+
+	result := callToolHTTP(t, ctx, "submit_query_plan", args)
+	assertNotError(t, result, "Single-partition LWT batch should succeed")
+
+	t.Log("✅ BATCH with LWT (single-partition) via MCP")
+}
+
+// TestMCP_BatchWithLWT_MultiPartition tests invalid multi-partition LWT batch
+func TestMCP_BatchWithLWT_MultiPartition(t *testing.T) {
+	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	defer stopMCPHTTP(ctx)
+
+	ensureTestDataExists(t, ctx.Session)
+
+	// Statements target DIFFERENT partition keys (2201 vs 2202) - should be rejected
+	args := map[string]any{
+		"operation":  "BATCH",
+		"batch_type": "LOGGED",
+		"batch_statements": []map[string]any{
+			{
+				"operation":     "INSERT",
+				"keyspace":      "cqlai_test",
+				"table":         "users",
+				"values":        map[string]any{"id": 2201, "name": "Invalid1"},
+				"if_not_exists": true, // LWT conditional
+			},
+			{
+				"operation": "INSERT",
+				"keyspace":  "cqlai_test",
+				"table":     "users",
+				"values":    map[string]any{"id": 2202, "name": "Invalid2"},
+				// Different partition key!
+			},
+		},
+	}
+
+	result := callToolHTTP(t, ctx, "submit_query_plan", args)
+	// Should get an error from our validation
+	assertIsError(t, result, "Multi-partition LWT batch should be rejected")
+
+	errorText := extractText(t, result)
+	assert.Contains(t, errorText, "cannot span multiple partitions", "Error should explain partition constraint")
+
+	t.Log("✅ BATCH with LWT multi-partition validation works via MCP")
+}
+
 // ============================================================================
 // Phase 5: DDL with IF Clauses via MCP
 // ============================================================================
