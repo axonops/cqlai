@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | Skipped | % Done |
 |----------|--------|-----------|---------|---------|---------|--------|
-| DML INSERT | 90 | **25** | **25** | **0** | **0** | 28% |
+| DML INSERT | 90 | **30** | **29** | **0** | **1** | 33% |
 | DML UPDATE | 100 | 0 | 0 | 0 | 0 | 0% |
 | DML DELETE | 90 | 0 | 0 | 0 | 0 | 0% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
@@ -44,7 +44,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,200** | **25** | **25** | **0** | **0** | **2.08%** |
+| **TOTAL** | **1,200** | **30** | **29** | **0** | **1** | **2.5%** |
 
 ---
 
@@ -133,7 +133,8 @@
 | 1 | Test 3 | Bigint overflow (value too large) | ✅ FIXED | 22344f6 |
 | 2 | Test 8 | Time/date not quoted in CQL | ✅ FIXED | 22344f6 |
 | 3 | Test 9 | Inet not quoted in CQL | ✅ FIXED | 22344f6 |
-| 4 | Tests 16,18,19 | frozen<collection> routed to formatUDT | ✅ FIXED | (pending) |
+| 4 | Tests 16,18,19 | frozen<collection> routed to formatUDT | ✅ FIXED | e27a6c2 |
+| 5 | Test 30 | DELETE not removing row (LWT table) | ⚠️ SKIPPED | Needs investigation |
 
 _(More bugs will be added as found)_
 
