@@ -34,11 +34,9 @@ func startMCPFromConfigHTTP(t *testing.T, configPath string) *HTTPTestContext {
 	replSession, err := createTestREPLSession(t)
 	require.NoError(t, err)
 
-	// Init MCP handler
-	err = router.InitMCPHandler(replSession)
-	require.NoError(t, err)
-
-	mcpHandler := router.GetMCPHandler()
+	// Create isolated MCP handler for this test (not singleton)
+	// This allows tests to run concurrently without interfering
+	mcpHandler := router.NewMCPHandler(replSession)
 	require.NotNil(t, mcpHandler)
 
 	// Extract HTTP config from JSON file
@@ -186,11 +184,12 @@ func stopMCPHTTP(ctx *HTTPTestContext) {
 	}
 	if ctx.MCPHandler != nil {
 		ctx.MCPHandler.HandleMCPCommand(".mcp stop")
+		// Wait longer for HTTP server to fully shutdown to prevent port conflicts
+		time.Sleep(500 * time.Millisecond)
 	}
 	if ctx.Session != nil {
 		ctx.Session.Close()
 	}
-	time.Sleep(100 * time.Millisecond) // Brief pause for HTTP server to shutdown
 }
 
 // callToolHTTP calls MCP tool via HTTP

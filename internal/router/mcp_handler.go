@@ -27,6 +27,15 @@ func InitMCPHandler(session *db.Session) error {
 	return nil
 }
 
+// NewMCPHandler creates a new MCP handler instance (for testing)
+// This allows tests to have isolated instances without affecting the global singleton
+func NewMCPHandler(session *db.Session) *MCPHandler {
+	return &MCPHandler{
+		replSession: session,
+		mcpServer:   nil,
+	}
+}
+
 // GetMCPHandler returns the singleton MCP handler
 func GetMCPHandler() *MCPHandler {
 	return mcpHandlerInstance
