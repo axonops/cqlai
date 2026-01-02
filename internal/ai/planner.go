@@ -698,6 +698,15 @@ func formatValue(v any, typeHint string) string {
 		return formatBlob(v)
 	case "udt", "frozen": // UDT or frozen UDT
 		return formatUDT(v, typeHint)
+	case "tinyint", "smallint", "int", "bigint", "varint", "decimal":
+		// Integer types: handle JSON marshaling as float64
+		return formatInteger(v, baseType)
+	case "float", "double":
+		// Floating point types: handle JSON marshaling
+		return formatFloat(v, baseType)
+	case "duration", "date", "time", "timestamp", "inet":
+		// Special types that accept string literals but WITHOUT quotes
+		return formatSpecialType(v, baseType)
 	default:
 		// No type hint or primitive type - infer from value
 		return formatPrimitive(v)
@@ -2213,6 +2222,68 @@ func formatPrimitive(v any) string {
 
 	default:
 		// Fallback for unknown types
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// formatInteger formats integer types, handling JSON float64 marshaling
+// When large integers come through JSON, they're unmarshaled as float64
+// We need to format them as integers without decimal points
+func formatInteger(v any, intType string) string {
+	switch val := v.(type) {
+	case float64:
+		// JSON unmarshaled large int as float - format as integer (no decimal)
+		// %.0f formats with zero decimal places
+		return fmt.Sprintf("%.0f", val)
+	case float32:
+		return fmt.Sprintf("%.0f", val)
+	case int, int8, int16, int32, int64:
+		return fmt.Sprintf("%v", val)
+	case uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%v", val)
+	case string:
+		// If integer/decimal is passed as string, return as-is (assume valid)
+		// This is common for decimal types where precision matters
+		return val
+	default:
+		// Fallback
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// formatFloat formats floating point types (float, double)
+// Handles JSON marshaling and ensures proper CQL formatting
+func formatFloat(v any, floatType string) string {
+	switch val := v.(type) {
+	case float64:
+		return fmt.Sprintf("%v", val)
+	case float32:
+		return fmt.Sprintf("%v", val)
+	case int, int8, int16, int32, int64:
+		// Integer passed for float column - format with decimal
+		return fmt.Sprintf("%v", val)
+	case uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%v", val)
+	case string:
+		// Float passed as string - return as-is (assume valid)
+		return val
+	default:
+		// Fallback
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// formatSpecialType formats special CQL types that accept literals WITHOUT quotes
+// These include: duration, date, time, timestamp, inet
+// Example: duration literal: 12h30m (not '12h30m')
+// Example: inet literal: 192.168.1.1 (not '192.168.1.1')
+func formatSpecialType(v any, typeName string) string {
+	switch val := v.(type) {
+	case string:
+		// Return unquoted string literal
+		return val
+	default:
+		// Fallback - convert to string without quotes
 		return fmt.Sprintf("%v", val)
 	}
 }
