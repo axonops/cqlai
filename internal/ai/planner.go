@@ -240,12 +240,13 @@ func renderInsert(plan *AIResult) (string, error) {
 
 	for col, val := range plan.Values {
 		columns = append(columns, col)
-		// TODO: Get type hint from plan.ValueTypes or schema
+		// Get type hint from plan.ValueTypes
 		typeHint := ""
 		if plan.ValueTypes != nil {
 			typeHint = plan.ValueTypes[col]
 		}
-		values = append(values, formatValue(val, typeHint))
+		// Use WithContext to support nested type hints (e.g., col.field -> type)
+		values = append(values, formatValueWithContext(val, typeHint, plan.ValueTypes, col))
 	}
 
 	sb.WriteString(fmt.Sprintf(" (%s) VALUES (%s)",
@@ -369,12 +370,13 @@ func renderUpdate(plan *AIResult) (string, error) {
 	// Regular value updates (non-counters, non-collections)
 	if len(plan.Values) > 0 {
 		for col, val := range plan.Values {
-			// TODO: Get type hint from plan.ValueTypes or schema
+			// Get type hint from plan.ValueTypes
 			typeHint := ""
 			if plan.ValueTypes != nil {
 				typeHint = plan.ValueTypes[col]
 			}
-			setClauses = append(setClauses, fmt.Sprintf("%s = %s", col, formatValue(val, typeHint)))
+			// Use WithContext for nested type hint support
+			setClauses = append(setClauses, fmt.Sprintf("%s = %s", col, formatValueWithContext(val, typeHint, plan.ValueTypes, col)))
 		}
 	}
 
@@ -674,7 +676,17 @@ func renderWhereClause(w WhereClause) string {
 // formatValue is the main entry point for formatting CQL values with optional type hints
 // typeHint examples: "text", "int", "list<text>", "set<int>", "map<text,int>", "tuple<text,int>", "blob"
 // typeHint can be "" to infer type from value (backward compatible)
+//
+// For nested types (UDTs containing UDTs, UDTs with collections), use formatValueWithContext
+// which accepts a valueTypes map for field-level type hints
 func formatValue(v any, typeHint string) string {
+	return formatValueWithContext(v, typeHint, nil, "")
+}
+
+// formatValueWithContext formats CQL values with support for nested type hints
+// valueTypes: map of field paths to types (e.g., "info.addr" -> "frozen<address>")
+// fieldPath: current path in the nesting hierarchy (e.g., "info.home_addr")
+func formatValueWithContext(v any, typeHint string, valueTypes map[string]string, fieldPath string) string {
 	// Handle nil early
 	if v == nil {
 		return "null"
@@ -686,21 +698,21 @@ func formatValue(v any, typeHint string) string {
 	// Route to appropriate formatter based on type hint
 	switch baseType {
 	case "list":
-		return formatList(v, elementType)
+		return formatListWithContext(v, elementType, valueTypes, fieldPath)
 	case "vector":
 		// Vector uses same syntax as list: [1.0, 2.0, 3.0]
-		return formatList(v, elementType)
+		return formatListWithContext(v, elementType, valueTypes, fieldPath)
 	case "set":
-		return formatSet(v, elementType)
+		return formatSetWithContext(v, elementType, valueTypes, fieldPath)
 	case "map":
 		keyType, valueType := parseMapTypes(typeHint)
-		return formatMap(v, keyType, valueType)
+		return formatMapWithContext(v, keyType, valueType, valueTypes, fieldPath)
 	case "tuple":
 		return formatTuple(v)
 	case "blob":
 		return formatBlob(v)
 	case "udt", "frozen": // UDT or frozen UDT
-		return formatUDT(v, typeHint)
+		return formatUDTWithContext(v, typeHint, valueTypes, fieldPath)
 	case "tinyint", "smallint", "int", "bigint", "varint", "decimal":
 		// Integer types: handle JSON marshaling as float64
 		return formatInteger(v, baseType)
@@ -2379,6 +2391,11 @@ func deduplicateElements(elements []any) []any {
 // formatList formats list literals using square brackets []
 // Example: ['item1', 'item2', 'item3']
 func formatList(v any, elementType string) string {
+	return formatListWithContext(v, elementType, nil, "")
+}
+
+// formatListWithContext formats list literals with support for nested type hints
+func formatListWithContext(v any, elementType string, valueTypes map[string]string, fieldPath string) string {
 	elements, ok := convertToSlice(v)
 	if !ok {
 		return "[]" // Invalid input → empty list
@@ -2390,7 +2407,8 @@ func formatList(v any, elementType string) string {
 
 	formatted := make([]string, len(elements))
 	for i, elem := range elements {
-		formatted[i] = formatValue(elem, elementType) // Recursive for nested types
+		// For list elements, we don't extend the path (elements don't have field names)
+		formatted[i] = formatValueWithContext(elem, elementType, valueTypes, fieldPath)
 	}
 
 	return fmt.Sprintf("[%s]", strings.Join(formatted, ", "))
@@ -2400,6 +2418,10 @@ func formatList(v any, elementType string) string {
 // Sets are deduplicated (Cassandra ensures uniqueness)
 // Example: {'item1', 'item2', 'item3'}
 func formatSet(v any, elementType string) string {
+	return formatSetWithContext(v, elementType, nil, "")
+}
+
+func formatSetWithContext(v any, elementType string, valueTypes map[string]string, fieldPath string) string {
 	elements, ok := convertToSlice(v)
 	if !ok {
 		return "{}" // Invalid input → empty set
@@ -2414,7 +2436,7 @@ func formatSet(v any, elementType string) string {
 
 	formatted := make([]string, len(unique))
 	for i, elem := range unique {
-		formatted[i] = formatValue(elem, elementType) // Recursive
+		formatted[i] = formatValueWithContext(elem, elementType, valueTypes, fieldPath)
 	}
 
 	return fmt.Sprintf("{%s}", strings.Join(formatted, ", "))
@@ -2424,6 +2446,11 @@ func formatSet(v any, elementType string) string {
 // Maps use {key: value} with QUOTED keys (unlike UDTs)
 // Example: {'key1': 'value1', 'key2': 'value2'}
 func formatMap(v any, keyType, valueType string) string {
+	return formatMapWithContext(v, keyType, valueType, nil, "")
+}
+
+// formatMapWithContext formats map literals with support for nested type hints
+func formatMapWithContext(v any, keyType, valueType string, valueTypes map[string]string, fieldPath string) string {
 	m, ok := v.(map[string]any)
 	if !ok {
 		return "{}" // Invalid input
@@ -2435,9 +2462,9 @@ func formatMap(v any, keyType, valueType string) string {
 
 	pairs := make([]string, 0, len(m))
 	for key, value := range m {
-		// Format key and value
-		formattedKey := formatValue(key, keyType)
-		formattedValue := formatValue(value, valueType)
+		// Format key and value - for nested maps, recurse on value
+		formattedKey := formatValueWithContext(key, keyType, valueTypes, fieldPath)
+		formattedValue := formatValueWithContext(value, valueType, valueTypes, fieldPath)
 
 		// Map syntax: 'key': value
 		pairs = append(pairs, fmt.Sprintf("%s: %s", formattedKey, formattedValue))
@@ -2450,6 +2477,12 @@ func formatMap(v any, keyType, valueType string) string {
 // UDTs use {field: value} with UNQUOTED field names (critical difference from maps!)
 // Example: {street: '123 Main', city: 'NYC', zip: '10001'}
 func formatUDT(v any, udtTypeName string) string {
+	return formatUDTWithContext(v, udtTypeName, nil, "")
+}
+
+// formatUDTWithContext formats UDT literals with support for nested type hints
+// Uses valueTypes map to resolve field types via dotted notation (e.g., "info.addr" -> "frozen<address>")
+func formatUDTWithContext(v any, udtTypeName string, valueTypes map[string]string, fieldPath string) string {
 	m, ok := v.(map[string]any)
 	if !ok {
 		return "{}" // Invalid input
@@ -2461,8 +2494,24 @@ func formatUDT(v any, udtTypeName string) string {
 
 	pairs := make([]string, 0, len(m))
 	for field, value := range m {
-		// Format value (will infer type or use primitive)
-		formattedValue := formatValue(value, "")
+		// Build path for this field (e.g., "info.home_addr")
+		var currentPath string
+		if fieldPath != "" {
+			currentPath = fieldPath + "." + field
+		} else {
+			currentPath = field
+		}
+
+		// Look up field type hint from valueTypes map
+		fieldType := ""
+		if valueTypes != nil {
+			if ft, ok := valueTypes[currentPath]; ok {
+				fieldType = ft
+			}
+		}
+
+		// Format value with field type hint and propagate path for further nesting
+		formattedValue := formatValueWithContext(value, fieldType, valueTypes, currentPath)
 
 		// UDT syntax: field: value (field name NOT quoted!)
 		pairs = append(pairs, fmt.Sprintf("%s: %s", field, formattedValue))
@@ -2557,13 +2606,36 @@ func parseMapTypes(hint string) (keyType, valueType string) {
 
 	types := hint[openIdx+1 : closeIdx]
 
-	// Split by comma (handles map<key,value>)
-	parts := strings.Split(types, ",")
-	if len(parts) != 2 {
-		return "", "" // Not a map or malformed
+	// Find comma at depth 0 (not inside nested <...>)
+	// Handles nested types like map<text, map<text, int>>
+	depth := 0
+	commaIdx := -1
+	for i, ch := range types {
+		switch ch {
+		case '<', '(', '[', '{':
+			depth++
+		case '>', ')', ']', '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				commaIdx = i
+				break // Found the top-level comma
+			}
+		}
+		// If we found comma at depth 0, break early
+		if commaIdx != -1 {
+			break
+		}
 	}
 
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	if commaIdx == -1 {
+		return "", "" // No comma found at top level
+	}
+
+	keyType = strings.TrimSpace(types[:commaIdx])
+	valueType = strings.TrimSpace(types[commaIdx+1:])
+
+	return keyType, valueType
 }
 
 // validateBatchLWTConstraint validates that batches with LWTs only target a single partition
