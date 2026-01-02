@@ -1517,6 +1517,12 @@ func renderBatch(plan *AIResult) (string, error) {
 		return "", fmt.Errorf("BATCH requires at least one statement")
 	}
 
+	// Phase 4: Validate single-partition constraint for LWT batches
+	// If any statement has IF clause, ALL statements must target same partition key
+	if err := validateBatchLWTConstraint(plan.BatchStatements); err != nil {
+		return "", err
+	}
+
 	var sb strings.Builder
 
 	// BEGIN BATCH (with type)
@@ -2484,4 +2490,82 @@ func parseMapTypes(hint string) (keyType, valueType string) {
 	}
 
 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+}
+
+// validateBatchLWTConstraint validates that batches with LWTs only target a single partition
+// Cassandra requirement: "Batch with conditions cannot span multiple partitions"
+func validateBatchLWTConstraint(statements []AIResult) error {
+	// Check if any statement has an IF clause
+	hasCondition := false
+	for _, stmt := range statements {
+		if stmt.IfNotExists || stmt.IfExists || len(stmt.IfConditions) > 0 {
+			hasCondition = true
+			break
+		}
+	}
+
+	// If no conditions, no validation needed
+	if !hasCondition {
+		return nil
+	}
+
+	// Extract partition keys from all statements
+	// For proper validation, we need to identify which column/value is the partition key
+	type partitionInfo struct {
+		table string
+		key   any
+	}
+
+	var partitions []partitionInfo
+
+	for _, stmt := range statements {
+		var pi partitionInfo
+		pi.table = stmt.Table
+
+		switch strings.ToUpper(stmt.Operation) {
+		case "INSERT":
+			// For INSERT, partition key is typically "id" or first column in Values
+			// Without schema, we make best effort: check if "id" exists
+			if id, ok := stmt.Values["id"]; ok {
+				pi.key = id
+			} else {
+				// Cannot determine partition key - skip validation for this statement
+				// (will fail at Cassandra if wrong)
+				continue
+			}
+
+		case "UPDATE", "DELETE":
+			// For UPDATE/DELETE, partition key is in WHERE clause
+			// Assume first WHERE condition is partition key
+			if len(stmt.Where) > 0 {
+				pi.key = stmt.Where[0].Value
+			} else {
+				// No WHERE clause - this will fail anyway
+				continue
+			}
+		}
+
+		partitions = append(partitions, pi)
+	}
+
+	// Validate all statements target the same partition
+	if len(partitions) > 1 {
+		first := partitions[0]
+		for i := 1; i < len(partitions); i++ {
+			current := partitions[i]
+
+			// Check table matches
+			if current.table != first.table {
+				return fmt.Errorf("BATCH with conditions cannot span multiple tables - batch contains: %s and %s", first.table, current.table)
+			}
+
+			// Check partition key matches
+			if current.key != first.key {
+				return fmt.Errorf("BATCH with conditions cannot span multiple partitions - partition keys differ: %v and %v", first.key, current.key)
+			}
+		}
+	}
+
+	// Validation passed
+	return nil
 }
