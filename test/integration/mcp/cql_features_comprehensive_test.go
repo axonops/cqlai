@@ -801,7 +801,8 @@ func TestMCP_BatchWithTimestamp(t *testing.T) {
 // ============================================================================
 
 func TestMCP_CreateIndexIfNotExists(t *testing.T) {
-	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	// CREATE INDEX requires DBA permissions
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
 	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
@@ -825,7 +826,8 @@ func TestMCP_CreateIndexIfNotExists(t *testing.T) {
 }
 
 func TestMCP_CreateCustomIndex(t *testing.T) {
-	ctx := startMCPFromConfigHTTP(t, "testdata/readwrite.json")
+	// CREATE INDEX requires DBA permissions
+	ctx := startMCPFromConfigHTTP(t, "testdata/dba.json")
 	defer stopMCPHTTP(ctx)
 
 	ensureTestDataExists(t, ctx.Session)
