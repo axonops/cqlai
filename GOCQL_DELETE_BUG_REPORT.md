@@ -1,10 +1,14 @@
-# gocql Driver Bug: DELETE doesn't work after INSERT IF NOT EXISTS
+# LWT Timing Issue: DELETE requires delay after INSERT IF NOT EXISTS
 
 ## Summary
 
-DELETE statements via the gocql driver return success (nil error) but do not actually delete rows from Cassandra when those rows were inserted using `IF NOT EXISTS`.
+DELETE statements immediately after `INSERT IF NOT EXISTS` return success but do not actually delete the row. This affects **both** gocql (Go) and cassandra-driver (Python).
 
-Manual DELETE via cqlsh works correctly on the same rows.
+**Root Cause:** LWT (Lightweight Transactions) use Paxos consensus. The commit needs ~5 seconds to complete before subsequent operations can see/modify the row.
+
+**Workaround:** Add 5 second delay between IF NOT EXISTS and DELETE.
+
+**Regular INSERT (no LWT):** DELETE works immediately - no delay needed.
 
 ## Environment
 
@@ -14,9 +18,53 @@ Manual DELETE via cqlsh works correctly on the same rows.
 - **Cassandra Setup:** Single node, LocalOne consistency
 - **Authentication:** Username/password (cassandra/cassandra)
 
+## Test Results (ACTUAL RUN)
+
+### Go Driver (gocql)
+
+```
+Test 1 (Regular INSERT):           ✅ DELETE works immediately
+Test 2 (IF NOT EXISTS, no delay):  ❌ DELETE fails (row remains)
+Test 3 (IF NOT EXISTS, 5s delay):  ✅ DELETE works
+```
+
+### Python Driver (cassandra-driver)
+
+```
+Test 1 (Regular INSERT):           ✅ DELETE works immediately
+Test 2 (IF NOT EXISTS, no delay):  ❌ DELETE fails (row remains)
+Test 3 (IF NOT EXISTS, 5s delay):  ✅ DELETE works
+```
+
+**Both drivers show identical behavior - this is an LWT timing issue.**
+
+---
+
 ## Reproduction
 
-### Standalone Go Program
+### Go Program (Comprehensive - Tests all 3 scenarios)
+
+See `/tmp/gocql_lwt_delete_reproduction.go` for full source.
+
+Output when run:
+```
+Test 1 (Regular INSERT):           ✅ DELETE works
+Test 2 (IF NOT EXISTS, no delay):  ❌ DELETE fails
+Test 3 (IF NOT EXISTS, 5s delay):  ✅ DELETE works
+```
+
+### Python Program (Comprehensive - Tests all 3 scenarios)
+
+See `/tmp/python_lwt_delete_reproduction.py` for full source.
+
+Output when run:
+```
+Test 1 (Regular INSERT):           ✅ DELETE works
+Test 2 (IF NOT EXISTS, no delay):  ❌ DELETE fails
+Test 3 (IF NOT EXISTS, 5s delay):  ✅ DELETE works
+```
+
+### Minimal Go Program
 
 ```go
 package main
