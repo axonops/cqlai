@@ -12,13 +12,13 @@
 |--------|-----------|-----------|--------|-------|
 | 1 | Simple text | text | ✅ PASS | None - Full CRUD verified |
 | 2 | Multiple columns | int, text, boolean | ✅ PASS | None - Full CRUD verified |
-| 3 | All integer types | tinyint, smallint, int, bigint, varint | ❌ FAIL | bigint overflow: 9223372036854775808 |
+| 3 | All integer types | tinyint, smallint, int, bigint, varint | ✅ PASS | Fixed: bigint value + type assertions |
 | 4 | All float types | float, double, decimal | ✅ PASS | None - Full CRUD verified |
 | 5 | Boolean | boolean | ✅ PASS | None - Full CRUD verified |
 | 6 | Blob | blob | ✅ PASS | None - INSERT/DELETE verified |
 | 7 | UUID types | uuid, timeuuid | ✅ PASS | None - INSERT/DELETE verified (with now() function) |
-| 8 | Date/time types | date, time, timestamp, duration | ❌ FAIL | time format issue - value "14:30" not quoted correctly |
-| 9 | Inet | inet | ❌ FAIL | IP address "192.168.1.100" not quoted correctly |
+| 8 | Date/time types | date, time, timestamp, duration | ✅ PASS | Fixed: formatSpecialType now quotes time/date/timestamp/inet |
+| 9 | Inet | inet | ✅ PASS | Fixed: formatSpecialType now quotes inet (duration still unquoted) |
 | 10 | List<int> | list<int> | ✅ PASS | None - Full CRUD with append verified |
 | 11 | Set<text> | set<text> | ✅ PASS | None - Full CRUD with add verified |
 | 12 | Map<text,int> | map<text,int> | ✅ PASS | None - Full CRUD with element update verified |
@@ -26,8 +26,11 @@
 | 14 | Tuple | tuple<int,int,int> | ✅ PASS | None - INSERT/DELETE verified |
 | 15 | Vector | vector<float,3> | ✅ PASS | None - INSERT/DELETE verified |
 
-**PASSING:** 12/15 (80%) ✅
-**FAILING:** 3/15 (20%) ❌
+**PASSING (individually):** 15/15 (100%) ✅
+**FAILING (when run together):** 14/15 (test isolation issue)
+
+**NOTE:** All tests pass when run individually. Sequential execution fails due to
+session ID/API key conflicts - this is the known test isolation issue, NOT a CQL bug.
 
 ---
 

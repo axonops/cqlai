@@ -2288,18 +2288,26 @@ func formatFloat(v any, floatType string) string {
 	}
 }
 
-// formatSpecialType formats special CQL types that accept literals WITHOUT quotes
-// These include: duration, date, time, timestamp, inet
-// Example: duration literal: 12h30m (not '12h30m')
-// Example: inet literal: 192.168.1.1 (not '192.168.1.1')
+// formatSpecialType formats special CQL types
+// These types accept string literals WITH quotes (confirmed via manual Cassandra testing)
+// Examples: time '14:30:00', inet '192.168.1.1', date '2024-01-15'
+// Duration is an exception - no quotes needed: 12h30m
 func formatSpecialType(v any, typeName string) string {
 	switch val := v.(type) {
 	case string:
-		// Return unquoted string literal
-		return val
+		// Duration doesn't need quotes: 12h30m, 1h, 30m
+		if typeName == "duration" {
+			return val
+		}
+		// All others need quotes: time, date, timestamp, inet
+		escaped := strings.ReplaceAll(val, "'", "''")
+		return fmt.Sprintf("'%s'", escaped)
 	default:
-		// Fallback - convert to string without quotes
-		return fmt.Sprintf("%v", val)
+		// Fallback - convert to string with quotes
+		if typeName == "duration" {
+			return fmt.Sprintf("%v", val)
+		}
+		return fmt.Sprintf("'%v'", val)
 	}
 }
 
