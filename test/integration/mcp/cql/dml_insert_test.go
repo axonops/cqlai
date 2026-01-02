@@ -1656,7 +1656,393 @@ func TestDML_Insert_20_MapWithFrozenSetValues(t *testing.T) {
 }
 
 // ============================================================================
-// Summary: First 20 DML INSERT Tests Complete
+// Tests 21-25: Nested UDTs and Collections in UDTs
+// ============================================================================
+//
+// CRITICAL: UDTs inside UDTs must be frozen
+// Collections inside UDTs can be non-frozen (unless they nest further)
+//
+// Based on: c5-nesting-mtx.md research
+// ============================================================================
+
+// TestDML_Insert_21_NestedUDT tests UDT containing another UDT
+// person {name text, addr frozen<address>}
+func TestDML_Insert_21_NestedUDT(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TYPEs
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.address (
+			street text,
+			city text,
+			zip text
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	err = ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.person (
+			name text,
+			home_addr frozen<address>
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	// 2. CREATE TABLE
+	err = createTable(ctx, "people", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.people (
+			id int PRIMARY KEY,
+			info frozen<person>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 21000
+	testPerson := map[string]any{
+		"name": "Alice",
+		"home_addr": map[string]string{
+			"street": "123 Main St",
+			"city":   "NYC",
+			"zip":    "10001",
+		},
+	}
+
+	// 3. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "people",
+		"values": map[string]any{
+			"id":   testID,
+			"info": testPerson,
+		},
+		"value_types": map[string]any{
+			"info":           "frozen<person>",
+			"info.home_addr": "frozen<address>", // Nested UDT type hint
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT nested UDT should succeed")
+
+	// 4. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.people WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve nested UDT data")
+
+	// 5. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "people",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6. VALIDATE DELETE
+	validateRowNotExists(ctx, "people", testID)
+
+	t.Log("✅ Test 21: Nested UDT (person with address) - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_22_UDTWithListField tests UDT containing list field
+func TestDML_Insert_22_UDTWithListField(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TYPE with list field
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.contact (
+			name text,
+			phones list<text>
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	// 2. CREATE TABLE
+	err = createTable(ctx, "contacts", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.contacts (
+			id int PRIMARY KEY,
+			info frozen<contact>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 22000
+	testContact := map[string]any{
+		"name":   "Bob",
+		"phones": []string{"555-1111", "555-2222"},
+	}
+
+	// 3. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "contacts",
+		"values": map[string]any{
+			"id":   testID,
+			"info": testContact,
+		},
+		"value_types": map[string]any{
+			"info":        "frozen<contact>",
+			"info.phones": "list<text>", // List inside UDT
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT UDT with list should succeed")
+
+	// 4. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.contacts WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve UDT with list")
+
+	// 5. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "contacts",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6. VALIDATE DELETE
+	validateRowNotExists(ctx, "contacts", testID)
+
+	t.Log("✅ Test 22: UDT with list field - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_23_UDTWithSetField tests UDT containing set field
+func TestDML_Insert_23_UDTWithSetField(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TYPE with set field
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.user_profile (
+			name text,
+			tags set<text>
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	// 2. CREATE TABLE
+	err = createTable(ctx, "profiles", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.profiles (
+			id int PRIMARY KEY,
+			profile frozen<user_profile>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 23000
+	testProfile := map[string]any{
+		"name": "Charlie",
+		"tags": []string{"developer", "admin", "verified"},
+	}
+
+	// 3. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "profiles",
+		"values": map[string]any{
+			"id":      testID,
+			"profile": testProfile,
+		},
+		"value_types": map[string]any{
+			"profile":      "frozen<user_profile>",
+			"profile.tags": "set<text>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT UDT with set should succeed")
+
+	// 4. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.profiles WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve UDT with set")
+
+	// 5. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "profiles",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6. VALIDATE DELETE
+	validateRowNotExists(ctx, "profiles", testID)
+
+	t.Log("✅ Test 23: UDT with set field - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_24_UDTWithMapField tests UDT containing map field
+func TestDML_Insert_24_UDTWithMapField(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TYPE with map field
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.config (
+			name text,
+			settings map<text,text>
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	// 2. CREATE TABLE
+	err = createTable(ctx, "configs", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.configs (
+			id int PRIMARY KEY,
+			cfg frozen<config>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 24000
+	testConfig := map[string]any{
+		"name": "AppConfig",
+		"settings": map[string]string{
+			"theme": "dark",
+			"lang":  "en",
+		},
+	}
+
+	// 3. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "configs",
+		"values": map[string]any{
+			"id":  testID,
+			"cfg": testConfig,
+		},
+		"value_types": map[string]any{
+			"cfg":          "frozen<config>",
+			"cfg.settings": "map<text,text>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT UDT with map should succeed")
+
+	// 4. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.configs WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve UDT with map")
+
+	// 5. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "configs",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6. VALIDATE DELETE
+	validateRowNotExists(ctx, "configs", testID)
+
+	t.Log("✅ Test 24: UDT with map field - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_25_ListOfFrozenUDT tests list<frozen<udt>>
+func TestDML_Insert_25_ListOfFrozenUDT(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TYPE
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.location (
+			street text,
+			city text
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	// 2. CREATE TABLE
+	err = createTable(ctx, "addresses", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.addresses (
+			id int PRIMARY KEY,
+			locations list<frozen<location>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 25000
+	testLocations := []map[string]string{
+		{"street": "123 Main St", "city": "NYC"},
+		{"street": "456 Oak Ave", "city": "SF"},
+	}
+
+	// 3. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "addresses",
+		"values": map[string]any{
+			"id":        testID,
+			"locations": testLocations,
+		},
+		"value_types": map[string]any{
+			"locations": "list<frozen<location>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT list<frozen<udt>> should succeed")
+
+	// 4. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.addresses WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve list of UDTs")
+
+	// 5. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "addresses",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6. VALIDATE DELETE
+	validateRowNotExists(ctx, "addresses", testID)
+
+	t.Log("✅ Test 25: list<frozen<location>> - INSERT/DELETE verified")
+}
+
+// ============================================================================
+// Summary: First 25 DML INSERT Tests Complete
 // ============================================================================
 //
 // Tests 1-15 demonstrate the complete validation pattern:

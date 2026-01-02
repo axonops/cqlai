@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | Skipped | % Done |
 |----------|--------|-----------|---------|---------|---------|--------|
-| DML INSERT | 90 | **20** | **20** | **0** | **0** | 22% |
+| DML INSERT | 90 | **25** | **25** | **0** | **0** | 28% |
 | DML UPDATE | 100 | 0 | 0 | 0 | 0 | 0% |
 | DML DELETE | 90 | 0 | 0 | 0 | 0 | 0% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
@@ -44,7 +44,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,200** | **20** | **20** | **0** | **0** | **1.67%** |
+| **TOTAL** | **1,200** | **25** | **25** | **0** | **0** | **2.08%** |
 
 ---
 
@@ -54,6 +54,7 @@
 
 **Checkpoint 1: Tests 1-15 COMPLETE** ✅
 **Checkpoint 2: Tests 16-20 COMPLETE** ✅
+**Checkpoint 3: Tests 21-25 COMPLETE** ✅
 
 | Test # | Name | Type | Status | Notes |
 |--------|------|------|--------|-------|
@@ -177,4 +178,5 @@ _(More bugs will be added as found)_
 
 **CHECKPOINT 1 COMPLETE: Tests 1-15 ✅**
 **CHECKPOINT 2 COMPLETE: Tests 16-20 ✅**
-**NEXT: Tests 21-25 (Nested UDTs and Collections in UDTs)**
+**CHECKPOINT 3 COMPLETE: Tests 21-25 ✅**
+**NEXT: Tests 26-30 (INSERT with USING clauses)**
