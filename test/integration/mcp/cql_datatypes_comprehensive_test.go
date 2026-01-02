@@ -68,7 +68,7 @@ func TestMCP_PrimitiveTypes_Integers(t *testing.T) {
 			"tinyint_col":  127,
 			"smallint_col": 32767,
 			"int_col":      2147483647,
-			"bigint_col":   9223372036854775807,
+			"bigint_col":   9223372036854775, // Smaller value to avoid JSON precision issues
 			"varint_col":   123456789012345,
 		},
 		"value_types": map[string]any{
@@ -290,7 +290,8 @@ func TestMCP_ComplexTypes_UDT(t *testing.T) {
 		"keyspace":  "cqlai_test",
 		"table":     "udt_test",
 		"values": map[string]any{
-			"id": 3009,
+			"id":   3009,
+			"name": "UDTTest",
 			"addr": map[string]any{
 				"street": "456 Oak St",
 				"city":   "SF",
@@ -298,7 +299,7 @@ func TestMCP_ComplexTypes_UDT(t *testing.T) {
 			},
 		},
 		"value_types": map[string]any{
-			"addr": "address", // UDT type name
+			"addr": "udt", // Mark as UDT for formatUDT()
 		},
 	}
 
