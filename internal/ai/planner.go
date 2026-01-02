@@ -711,7 +711,27 @@ func formatValueWithContext(v any, typeHint string, valueTypes map[string]string
 		return formatTuple(v)
 	case "blob":
 		return formatBlob(v)
-	case "udt", "frozen": // UDT or frozen UDT
+	case "frozen":
+		// frozen<X> - extract X and format appropriately
+		// If X is collection (list/set/map), format as collection
+		// If X is UDT, format as UDT
+		if elementType != "" {
+			innerBase, innerElement := parseTypeHint(elementType)
+			switch innerBase {
+			case "list":
+				return formatListWithContext(v, innerElement, valueTypes, fieldPath)
+			case "set":
+				return formatSetWithContext(v, innerElement, valueTypes, fieldPath)
+			case "map":
+				innerKey, innerVal := parseMapTypes(elementType)
+				return formatMapWithContext(v, innerKey, innerVal, valueTypes, fieldPath)
+			default:
+				// Frozen UDT
+				return formatUDTWithContext(v, typeHint, valueTypes, fieldPath)
+			}
+		}
+		return formatUDTWithContext(v, typeHint, valueTypes, fieldPath)
+	case "udt":
 		return formatUDTWithContext(v, typeHint, valueTypes, fieldPath)
 	case "tinyint", "smallint", "int", "bigint", "varint", "decimal":
 		// Integer types: handle JSON marshaling as float64

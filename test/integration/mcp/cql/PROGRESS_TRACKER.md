@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | Skipped | % Done |
 |----------|--------|-----------|---------|---------|---------|--------|
-| DML INSERT | 90 | **15** | **15** | **0** | **0** | 17% |
+| DML INSERT | 90 | **20** | **20** | **0** | **0** | 22% |
 | DML UPDATE | 100 | 0 | 0 | 0 | 0 | 0% |
 | DML DELETE | 90 | 0 | 0 | 0 | 0 | 0% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
@@ -44,7 +44,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,200** | **15** | **15** | **0** | **0** | **1.25%** |
+| **TOTAL** | **1,200** | **20** | **20** | **0** | **0** | **1.67%** |
 
 ---
 
@@ -53,6 +53,7 @@
 ### DML INSERT Tests (File: dml_insert_test.go)
 
 **Checkpoint 1: Tests 1-15 COMPLETE** ✅
+**Checkpoint 2: Tests 16-20 COMPLETE** ✅
 
 | Test # | Name | Type | Status | Notes |
 |--------|------|------|--------|-------|
@@ -80,18 +81,22 @@
 
 ## Next Batch
 
-### Checkpoint 2: Tests 16-20 (Nested Collections with Frozen)
+### Checkpoint 2: Tests 16-20 COMPLETE ✅
 
 **Target:** 5 tests
 **Focus:** Nested collections following Cassandra 5 frozen rules
 
 | Test # | Name | Type | Status | Notes |
 |--------|------|------|--------|-------|
-| 16 | List of frozen lists | list<frozen<list<int>>> | 📋 TODO | CRITICAL: Inner frozen |
-| 17 | List of frozen sets | list<frozen<set<text>>> | 📋 TODO | CRITICAL: Inner frozen |
-| 18 | Set of frozen lists | set<frozen<list<int>>> | 📋 TODO | CRITICAL: Inner frozen |
-| 19 | Map with frozen list values | map<text,frozen<list<int>>> | 📋 TODO | CRITICAL: Value frozen |
-| 20 | Map with frozen set values | map<text,frozen<set<int>>> | 📋 TODO | CRITICAL: Value frozen |
+| 16 | List of frozen lists | list<frozen<list<int>>> | ✅ PASS | Fixed frozen routing bug |
+| 17 | List of frozen sets | list<frozen<set<text>>> | ✅ PASS | Full CRUD verified |
+| 18 | Set of frozen lists | set<frozen<list<int>>> | ✅ PASS | Fixed frozen routing bug |
+| 19 | Map with frozen list values | map<text,frozen<list<int>>> | ✅ PASS | Fixed frozen routing bug |
+| 20 | Map with frozen set values | map<text,frozen<set<int>>> | ✅ PASS | Full CRUD verified |
+
+**Bug Fixed:**
+- frozen<collection> was routing to formatUDT instead of formatCollection
+- Fixed by checking inner type of frozen<X> and routing appropriately
 
 **After completing tests 16-20:**
 - Run all individually
@@ -127,6 +132,7 @@
 | 1 | Test 3 | Bigint overflow (value too large) | ✅ FIXED | 22344f6 |
 | 2 | Test 8 | Time/date not quoted in CQL | ✅ FIXED | 22344f6 |
 | 3 | Test 9 | Inet not quoted in CQL | ✅ FIXED | 22344f6 |
+| 4 | Tests 16,18,19 | frozen<collection> routed to formatUDT | ✅ FIXED | (pending) |
 
 _(More bugs will be added as found)_
 
@@ -170,4 +176,5 @@ _(More bugs will be added as found)_
 ---
 
 **CHECKPOINT 1 COMPLETE: Tests 1-15 ✅**
-**NEXT: Tests 16-20 (Nested Collections)**
+**CHECKPOINT 2 COMPLETE: Tests 16-20 ✅**
+**NEXT: Tests 21-25 (Nested UDTs and Collections in UDTs)**

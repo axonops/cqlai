@@ -1270,7 +1270,393 @@ func TestDML_Insert_15_Vector(t *testing.T) {
 }
 
 // ============================================================================
-// Summary: First 15 DML INSERT Tests Complete
+// Tests 16-20: Nested Collections with Proper Frozen Syntax
+// ============================================================================
+//
+// CRITICAL: Per Cassandra 5 rules, collections inside collections MUST freeze
+// the inner collection. These tests verify correct frozen syntax.
+//
+// Based on: c5-nesting-mtx.md research
+// ============================================================================
+
+// TestDML_Insert_16_ListOfFrozenList tests list<frozen<list<int>>>
+// CRITICAL: Inner list MUST be frozen per Cassandra rules
+func TestDML_Insert_16_ListOfFrozenList(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TABLE with proper frozen syntax
+	err := createTable(ctx, "nested_list", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.nested_list (
+			id int PRIMARY KEY,
+			data list<frozen<list<int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err, "Table creation should succeed")
+
+	testID := 16000
+	testData := [][]int{{1, 2}, {3, 4}, {5, 6}}
+
+	// 2. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "nested_list",
+		"values": map[string]any{
+			"id":   testID,
+			"data": testData,
+		},
+		"value_types": map[string]any{
+			"data": "list<frozen<list<int>>>", // CRITICAL: Correct frozen syntax
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT list<frozen<list<int>>> should succeed")
+
+	// 3. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id, data FROM %s.nested_list WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve nested list from Cassandra")
+	assert.Equal(t, testID, rows[0]["id"])
+
+	// Validate nested structure
+	if nestedList, ok := rows[0]["data"].([][]int); ok {
+		assert.Equal(t, testData, nestedList, "Nested list should match exactly")
+	}
+
+	// 4. SELECT via MCP
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "nested_list",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
+
+	// 5. UPDATE via MCP (frozen collection - must replace entirely)
+	updateData := [][]int{{10, 20}, {30, 40}}
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "nested_list",
+		"values": map[string]any{
+			"data": updateData,
+		},
+		"value_types": map[string]any{
+			"data": "list<frozen<list<int>>>",
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, updateResult, "UPDATE should succeed")
+
+	// 6. VALIDATE UPDATE
+	rows = validateInCassandra(ctx,
+		fmt.Sprintf("SELECT data FROM %s.nested_list WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	if nestedList, ok := rows[0]["data"].([][]int); ok {
+		assert.Equal(t, updateData, nestedList, "Updated nested list should match")
+	}
+
+	// 7. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "nested_list",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 8. VALIDATE DELETE
+	validateRowNotExists(ctx, "nested_list", testID)
+
+	t.Log("✅ Test 16: list<frozen<list<int>>> - Full CRUD verified")
+}
+
+// TestDML_Insert_17_ListOfFrozenSet tests list<frozen<set<text>>>
+func TestDML_Insert_17_ListOfFrozenSet(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TABLE
+	err := createTable(ctx, "list_of_sets", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.list_of_sets (
+			id int PRIMARY KEY,
+			data list<frozen<set<text>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 17000
+	// List of sets - each set is a distinct element
+	testData := [][]string{
+		{"alice", "bob"},
+		{"charlie", "diana"},
+	}
+
+	// 2. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_of_sets",
+		"values": map[string]any{
+			"id":   testID,
+			"data": testData,
+		},
+		"value_types": map[string]any{
+			"data": "list<frozen<set<text>>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT list<frozen<set<text>>> should succeed")
+
+	// 3. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id, data FROM %s.list_of_sets WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve data from Cassandra")
+
+	// 4. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_of_sets",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5. VALIDATE DELETE
+	validateRowNotExists(ctx, "list_of_sets", testID)
+
+	t.Log("✅ Test 17: list<frozen<set<text>>> - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_18_SetOfFrozenList tests set<frozen<list<int>>>
+func TestDML_Insert_18_SetOfFrozenList(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TABLE
+	err := createTable(ctx, "set_of_lists", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_of_lists (
+			id int PRIMARY KEY,
+			data set<frozen<list<int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 18000
+	// Set of lists - each list is unique in the set
+	testData := [][]int{
+		{1, 2, 3},
+		{4, 5, 6},
+	}
+
+	// 2. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_of_lists",
+		"values": map[string]any{
+			"id":   testID,
+			"data": testData,
+		},
+		"value_types": map[string]any{
+			"data": "set<frozen<list<int>>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT set<frozen<list<int>>> should succeed")
+
+	// 3. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.set_of_lists WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve data from Cassandra")
+
+	// 4. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_of_lists",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5. VALIDATE DELETE
+	validateRowNotExists(ctx, "set_of_lists", testID)
+
+	t.Log("✅ Test 18: set<frozen<list<int>>> - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_19_MapWithFrozenListValues tests map<text,frozen<list<int>>>
+func TestDML_Insert_19_MapWithFrozenListValues(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TABLE
+	err := createTable(ctx, "map_of_lists", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_of_lists (
+			id int PRIMARY KEY,
+			data map<text,frozen<list<int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 19000
+	testData := map[string][]int{
+		"group1": {1, 2, 3},
+		"group2": {4, 5, 6},
+	}
+
+	// 2. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_of_lists",
+		"values": map[string]any{
+			"id":   testID,
+			"data": testData,
+		},
+		"value_types": map[string]any{
+			"data": "map<text,frozen<list<int>>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT map<text,frozen<list<int>>> should succeed")
+
+	// 3. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id, data FROM %s.map_of_lists WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve map from Cassandra")
+	assert.Equal(t, testID, rows[0]["id"])
+
+	if mapData, ok := rows[0]["data"].(map[string][]int); ok {
+		assert.Len(t, mapData, 2, "Map should have 2 entries")
+	}
+
+	// 4. SELECT via MCP
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_of_lists",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
+
+	// 5. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_of_lists",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6. VALIDATE DELETE
+	validateRowNotExists(ctx, "map_of_lists", testID)
+
+	t.Log("✅ Test 19: map<text,frozen<list<int>>> - INSERT/DELETE verified")
+}
+
+// TestDML_Insert_20_MapWithFrozenSetValues tests map<text,frozen<set<int>>>
+func TestDML_Insert_20_MapWithFrozenSetValues(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// 1. CREATE TABLE
+	err := createTable(ctx, "map_of_sets", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_of_sets (
+			id int PRIMARY KEY,
+			data map<text,frozen<set<int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 20000
+	testData := map[string][]int{
+		"set1": {10, 20, 30},
+		"set2": {40, 50, 60},
+	}
+
+	// 2. INSERT via MCP
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_of_sets",
+		"values": map[string]any{
+			"id":   testID,
+			"data": testData,
+		},
+		"value_types": map[string]any{
+			"data": "map<text,frozen<set<int>>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT map<text,frozen<set<int>>> should succeed")
+
+	// 3. VALIDATE in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.map_of_sets WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1, "Should retrieve data from Cassandra")
+
+	// 4. DELETE via MCP
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_of_sets",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5. VALIDATE DELETE
+	validateRowNotExists(ctx, "map_of_sets", testID)
+
+	t.Log("✅ Test 20: map<text,frozen<set<int>>> - INSERT/DELETE verified")
+}
+
+// ============================================================================
+// Summary: First 20 DML INSERT Tests Complete
 // ============================================================================
 //
 // Tests 1-15 demonstrate the complete validation pattern:
