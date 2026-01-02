@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | Skipped | % Done |
 |----------|--------|-----------|---------|---------|---------|--------|
-| DML INSERT | 90 | **30** | **29** | **0** | **1** | 33% |
+| DML INSERT | 90 | **30** | **30** | **0** | **0** | 33% |
 | DML UPDATE | 100 | 0 | 0 | 0 | 0 | 0% |
 | DML DELETE | 90 | 0 | 0 | 0 | 0 | 0% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
@@ -44,7 +44,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,200** | **30** | **29** | **0** | **1** | **2.5%** |
+| **TOTAL** | **1,200** | **30** | **30** | **0** | **0** | **2.5%** |
 
 ---
 
@@ -134,7 +134,7 @@
 | 2 | Test 8 | Time/date not quoted in CQL | ✅ FIXED | 22344f6 |
 | 3 | Test 9 | Inet not quoted in CQL | ✅ FIXED | 22344f6 |
 | 4 | Tests 16,18,19 | frozen<collection> routed to formatUDT | ✅ FIXED | e27a6c2 |
-| 5 | Test 30 | DELETE after IF NOT EXISTS doesn't work | ⚠️ DRIVER BUG | gocql driver issue - see GOCQL_DELETE_BUG_REPORT.md |
+| 5 | Test 30 | DELETE after IF NOT EXISTS timing | ✅ FIXED | Added 5s delay for LWT Paxos - see GOCQL_DELETE_BUG_REPORT.md |
 
 _(More bugs will be added as found)_
 
