@@ -4088,3 +4088,262 @@ func TestDML_Insert_55_WhereContains(t *testing.T) {
 
 	t.Log("✅ Test 55: WHERE CONTAINS verified")
 }
+
+// ============================================================================
+// Tests 56-60: Advanced WHERE Clauses and SELECT Features
+// ============================================================================
+
+// TestDML_Insert_56_WhereContainsKey tests WHERE map CONTAINS KEY
+func TestDML_Insert_56_WhereContainsKey(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "contains_key", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.contains_key (
+			id int PRIMARY KEY,
+			settings map<text,text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 56000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "contains_key",
+		"values": map[string]any{
+			"id": testID,
+			"settings": map[string]string{"theme": "dark", "lang": "en"},
+		},
+		"value_types": map[string]any{
+			"settings": "map<text,text>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// SELECT with CONTAINS KEY
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "contains_key",
+		"where": []map[string]any{
+			{
+				"column": "settings",
+				"operator": "CONTAINS KEY",
+				"value": "theme",
+			},
+		},
+		"allow_filtering": true,
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with CONTAINS KEY should succeed")
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "contains_key",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "contains_key", testID)
+
+	t.Log("✅ Test 56: WHERE CONTAINS KEY verified")
+}
+
+// TestDML_Insert_57_WhereToken tests WHERE TOKEN(id) > value
+func TestDML_Insert_57_WhereToken(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "token_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.token_test (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Insert multiple rows
+	for i := 0; i < 3; i++ {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace": ctx.Keyspace,
+			"table": "token_test",
+			"values": map[string]any{
+				"id": 57000 + i,
+				"data": fmt.Sprintf("data %d", i),
+			},
+		}
+		submitQueryPlanMCP(ctx, insertArgs)
+	}
+
+	// SELECT with TOKEN
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "token_test",
+		"where": []map[string]any{
+			{
+				"column": "id",
+				"operator": ">",
+				"value": 100,
+				"is_token": true,
+			},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with TOKEN should succeed")
+
+	t.Log("✅ Test 57: WHERE TOKEN verified")
+}
+
+// TestDML_Insert_58_SelectWithCast tests SELECT CAST(col AS type)
+func TestDML_Insert_58_SelectWithCast(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "cast_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.cast_test (
+			id int PRIMARY KEY,
+			num int
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 58000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "cast_test",
+		"values": map[string]any{
+			"id": testID,
+			"num": 42,
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// SELECT with CAST
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "cast_test",
+		"columns": []string{"id", "CAST(num AS text)"},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with CAST should succeed")
+
+	t.Log("✅ Test 58: SELECT with CAST verified")
+}
+
+// TestDML_Insert_59_CollectionElementAccessInSelect tests SELECT map['key']
+func TestDML_Insert_59_CollectionElementAccessInSelect(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "select_elem", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.select_elem (
+			id int PRIMARY KEY,
+			settings map<text,text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 59000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "select_elem",
+		"values": map[string]any{
+			"id": testID,
+			"settings": map[string]string{"theme": "dark", "lang": "en"},
+		},
+		"value_types": map[string]any{
+			"settings": "map<text,text>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// SELECT settings['theme']
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "select_elem",
+		"columns": []string{"id", "settings['theme']"},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with map element access should succeed")
+
+	t.Log("✅ Test 59: Collection element access in SELECT verified")
+}
+
+// TestDML_Insert_60_PerPartitionLimit tests PER PARTITION LIMIT clause
+func TestDML_Insert_60_PerPartitionLimit(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "per_partition", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.per_partition (
+			user_id int,
+			event_time bigint,
+			event text,
+			PRIMARY KEY (user_id, event_time)
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Insert multiple events per user
+	userID := 60000
+	for i := 0; i < 5; i++ {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace": ctx.Keyspace,
+			"table": "per_partition",
+			"values": map[string]any{
+				"user_id": userID,
+				"event_time": int64(i),
+				"event": fmt.Sprintf("event %d", i),
+			},
+			"value_types": map[string]any{
+				"event_time": "bigint",
+			},
+		}
+		submitQueryPlanMCP(ctx, insertArgs)
+	}
+
+	// SELECT with PER PARTITION LIMIT
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "per_partition",
+		"per_partition_limit": 2,
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with PER PARTITION LIMIT should succeed")
+
+	t.Log("✅ Test 60: PER PARTITION LIMIT verified")
+}
