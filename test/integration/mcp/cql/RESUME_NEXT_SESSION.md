@@ -1,35 +1,127 @@
 # Resume Prompt for Next Session - CQL Test Suite
 
-**Use this prompt to resume work on the comprehensive CQL test suite.**
+**Use this EXACT prompt to resume work on the comprehensive CQL test suite.**
 
 ---
 
-## Quick Start
+## RESUME PROMPT (Copy This Exactly)
 
 ```
 Continue implementing comprehensive CQL test suite for CQLAI MCP server.
 
+I am continuing a systematic test implementation that has been very successful.
+We've completed 90 DML INSERT tests with full validation and found/fixed 5 bugs.
+
 CURRENT STATE:
 - Branch: feature/mcp_datatypes
-- Status: DML INSERT suite COMPLETE (90/90 tests passing)
+- Status: DML INSERT suite COMPLETE (90/90 tests, 100% passing)
 - Progress: 90/1,200 tests (7.5%)
 - Tag: session-complete-90-insert-tests
+- Token budget: 546K remaining
 
-READ THESE FILES FIRST (in order):
-1. test/integration/mcp/cql/PROGRESS_TRACKER.md - Shows exactly where we are
-2. test/integration/mcp/cql/FINAL_SESSION_SUMMARY.md - What was accomplished
-3. test/integration/mcp/cql/BUGS_FOUND_AND_FIXED.md - All bugs and fixes
-4. test/integration/mcp/cql/LWT_TESTING_GUIDELINES.md - CRITICAL: How to handle LWT
-5. test/integration/mcp/cql/README.md - Test suite structure
-6. claude-notes/cql-complete-test-suite.md - Full blueprint (1,200+ tests)
+CRITICAL: READ ALL THESE FILES IN ORDER BEFORE STARTING:
 
-VERIFY CURRENT STATE:
-Run this to confirm all 90 INSERT tests still pass:
-  go test ./test/integration/mcp/cql -tags=integration -run "TestDML_Insert" -v
+Phase 1 - Understanding the Blueprint (MUST READ):
+1. claude-notes/cql-complete-test-suite.md - Master blueprint defining ALL 1,200+ tests
+2. claude-notes/cql-implementation-guide.md - 20+ reusable test patterns
+3. claude-notes/test-suite-summary.md - 8-week execution roadmap
+4. claude-notes/c5-nesting-cql.md - Cassandra 5 nesting rules (CRITICAL for frozen keyword)
+5. claude-notes/c5-nesting-mtx.md - Complete nesting test matrix
 
-NEXT TASK: Start DML UPDATE test suite (100 tests planned)
-Create: test/integration/mcp/cql/dml_update_test.go
+Phase 2 - Understanding Current Progress (MUST READ):
+6. test/integration/mcp/cql/PROGRESS_TRACKER.md - Real-time progress (90/1,200 done)
+7. test/integration/mcp/cql/FINAL_SESSION_SUMMARY.md - Last session accomplishments
+8. test/integration/mcp/cql/BUGS_FOUND_AND_FIXED.md - 5 bugs found and how they were fixed
+
+Phase 3 - Critical Testing Rules (MUST READ):
+9. test/integration/mcp/cql/LWT_TESTING_GUIDELINES.md - LWT vs non-LWT separation (CRITICAL!)
+10. test/integration/mcp/cql/README.md - Test suite structure and principles
+
+Phase 4 - Analysis and Context:
+11. claude-notes/cql_test_matrix.md - Analysis of existing 73 tests
+12. claude-notes/cql_coverage_gaps.md - 479 lines of gap analysis
+
+Phase 5 - Implementation Reference:
+13. test/integration/mcp/cql/dml_insert_test.go - 90 completed tests to use as template
+
+VERIFY INFRASTRUCTURE:
+Run ONE test to confirm everything works:
+  cd /Users/johnny/Development/cqlai
+  git checkout feature/mcp_datatypes
+  go test ./test/integration/mcp/cql -tags=integration -run "^TestDML_Insert_01_" -v
+
+Should complete in ~4 seconds and show:
+  ✅ Test 1: Simple text - Full CRUD cycle verified
+  --- PASS: TestDML_Insert_01_SimpleText
+
+NEXT TASK: Create DML UPDATE test suite
+File: test/integration/mcp/cql/dml_update_test.go
+Target: Start with tests 1-25 (first checkpoint)
+Blueprint: claude-notes/cql-complete-test-suite.md section "DML UPDATE Tests"
 ```
+
+---
+
+## WHY These Documents Matter
+
+### claude-notes/cql-complete-test-suite.md (1,200+ tests defined)
+**CRITICAL** - This is the master plan. Every test case is pre-defined with:
+- What to test
+- Expected behavior
+- Edge cases to cover
+- Error conditions
+
+**For UPDATE suite:** Section defines all 100 UPDATE tests:
+- Tests 1-10: Basic updates
+- Tests 11-20: Collection operations
+- Tests 21-30: WHERE clauses
+- Tests 31-40: USING clauses
+- Tests 41-50: LWT updates
+- Tests 51-60: Complex types
+- Tests 61-70: Counters
+- Tests 71-80: BATCH
+- Tests 81-90: Edge cases
+- Tests 91-100: Advanced features
+
+**Follow this blueprint - don't improvise.**
+
+### claude-notes/cql-implementation-guide.md (20+ patterns)
+**CRITICAL** - Provides reusable patterns:
+- How to test collection operations
+- How to test LWT operations
+- How to test BATCH operations
+- Error testing patterns
+- Round-trip testing patterns
+
+**Use these patterns - don't reinvent.**
+
+### claude-notes/c5-nesting-cql.md + c5-nesting-mtx.md
+**CRITICAL** - Cassandra 5 nesting rules:
+- Collections inside collections MUST freeze inner collection
+- UDTs inside collections MUST be frozen
+- Collections inside UDTs can be non-frozen
+- Proper frozen keyword usage
+
+**We found bugs by not following these initially - don't repeat mistakes.**
+
+### test/integration/mcp/cql/LWT_TESTING_GUIDELINES.md
+**CRITICAL** - LWT/non-LWT separation:
+- LWT tests use DELETE IF EXISTS (not regular DELETE)
+- Non-LWT tests use regular DELETE (not IF EXISTS)
+- NEVER mix them
+- NO delays as workarounds
+
+**This took hours to discover - don't skip.**
+
+### test/integration/mcp/cql/BUGS_FOUND_AND_FIXED.md
+**Important** - Understand what bugs were found:
+- Bigint overflow in JSON
+- Time/date/inet quoting
+- frozen<collection> routing
+- WHERE clause type hints
+- LWT mixing issues
+
+**These will likely affect UPDATE tests too - be aware.**
 
 ---
 
@@ -198,9 +290,15 @@ See: `test/integration/mcp/cql/LWT_TESTING_GUIDELINES.md`
 
 ## Next: DML UPDATE Test Suite
 
-### Create File: `test/integration/mcp/cql/dml_update_test.go`
+### Source Material: claude-notes/cql-complete-test-suite.md
 
-**Target:** 100 UPDATE tests covering:
+**IMPORTANT:** Don't improvise the test list. The blueprint already defines all 100 UPDATE tests.
+
+**Location in blueprint:** Search for "DML UPDATE Tests (100 tests)" section
+
+**File to create:** `test/integration/mcp/cql/dml_update_test.go`
+
+**Tests defined in blueprint:**
 
 **Tests 1-10:** Basic UPDATE operations
 - Single column update
@@ -449,17 +547,65 @@ cat test/integration/mcp/cql/PROGRESS_TRACKER.md | grep "DML INSERT"
 
 ---
 
-## Blueprint Reference
+## Blueprint Reference (MANDATORY READING)
 
-**Full test blueprint:** `claude-notes/cql-complete-test-suite.md`
+### claude-notes/cql-complete-test-suite.md (THE MASTER PLAN)
 
-**DML UPDATE section:** Tests 1-100 defined with:
-- What to test
-- Expected behavior
-- Edge cases
-- Error cases
+This document defines ALL 1,200+ tests. DO NOT improvise.
 
-**Follow the blueprint but adapt based on bugs found.**
+**Structure:**
+- 22 test files defined
+- Every test case detailed
+- Success criteria for each
+- Error conditions specified
+
+**For UPDATE suite:**
+- Find section: "File 2: dml_update_test.go (100 tests)"
+- Tests 1-100 are pre-defined
+- Follow the list exactly
+- Adapt implementation based on bugs found in INSERT suite
+
+### claude-notes/cql-implementation-guide.md (PATTERNS)
+
+**20+ reusable patterns** including:
+- roundTripTest() pattern
+- Collection operation testing
+- LWT operation testing
+- Error assertion patterns
+- Negative test patterns
+
+**Use these patterns - they're proven to work.**
+
+### claude-notes/c5-nesting-cql.md & c5-nesting-mtx.md (NESTING RULES)
+
+**Cassandra 5 frozen keyword rules:**
+- `list<frozen<list<int>>>` ✅ (inner frozen)
+- `list<list<int>>` ❌ (invalid)
+- `list<frozen<address>>` ✅ (UDT in collection must be frozen)
+- UDT with `phones list<text>` ✅ (collection in UDT can be non-frozen)
+
+**We found 3 bugs by not following these - these are CRITICAL.**
+
+### claude-notes/test-suite-summary.md (ROADMAP)
+
+**8-week execution plan:**
+- Week 1-2: DML tests (INSERT/UPDATE/DELETE) ← We're here
+- Week 3-4: DDL tests (Tables, Indexes, Types)
+- Week 5-6: DQL tests (SELECT variants)
+- Week 7-8: DCL tests and edge cases
+
+**Helps understand scope and pacing.**
+
+### claude-notes/cql_coverage_gaps.md (GAP ANALYSIS)
+
+**479 lines analyzing what's missing in existing tests:**
+- Only 15% validation depth
+- Only 7% round-trip testing
+- 0% DELETE validation
+- Missing nested collection tests
+- Missing WHERE clause variants
+
+**This is why we built the new suite - don't repeat these mistakes.**
 
 ---
 
