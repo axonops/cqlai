@@ -2815,3 +2815,286 @@ func TestDML_Insert_35_CompositePartitionKey(t *testing.T) {
 
 	t.Log("✅ Test 35: Composite partition key verified")
 }
+
+// ============================================================================
+// Tests 36-40: BATCH, Counters, and More Nesting
+// ============================================================================
+
+// TestDML_Insert_36_BatchMultipleInserts tests BATCH with multiple INSERT statements
+func TestDML_Insert_36_BatchMultipleInserts(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "batch_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.batch_test (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// BATCH with 3 INSERTs
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_type": "LOGGED",
+		"batch_statements": []map[string]any{
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_test",
+				"values": map[string]any{"id": 36001, "data": "batch row 1"},
+			},
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_test",
+				"values": map[string]any{"id": 36002, "data": "batch row 2"},
+			},
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_test",
+				"values": map[string]any{"id": 36003, "data": "batch row 3"},
+			},
+		},
+	}
+
+	batchResult := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, batchResult, "BATCH should succeed")
+
+	// Verify all 3 rows
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT COUNT(*) FROM %s.batch_test", ctx.Keyspace))
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 36: BATCH multiple INSERTs verified")
+}
+
+// TestDML_Insert_37_CounterColumn tests counter type operations
+func TestDML_Insert_37_CounterColumn(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "counters", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.counters (
+			id text PRIMARY KEY,
+			views counter,
+			clicks counter
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	counterID := "page_1"
+
+	// UPDATE counter (counters can only be updated, not inserted with values)
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "counters",
+		"counter_ops": map[string]any{
+			"views": "+10",
+			"clicks": "+5",
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": counterID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, updateResult, "Counter UPDATE should succeed")
+
+	// Verify counters
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.counters WHERE id = ?", ctx.Keyspace),
+		counterID)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 37: Counter operations verified")
+}
+
+// TestDML_Insert_38_SetOfFrozenUDT tests set<frozen<udt>>
+func TestDML_Insert_38_SetOfFrozenUDT(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.tag (
+			name text,
+			value int
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	err = createTable(ctx, "set_udt", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_udt (
+			id int PRIMARY KEY,
+			tags set<frozen<tag>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 38000
+	testTags := []map[string]any{
+		{"name": "priority", "value": 1},
+		{"name": "category", "value": 2},
+	}
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "set_udt",
+		"values": map[string]any{
+			"id": testID,
+			"tags": testTags,
+		},
+		"value_types": map[string]any{
+			"tags": "set<frozen<tag>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT set<frozen<udt>> should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.set_udt WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "set_udt",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "set_udt", testID)
+
+	t.Log("✅ Test 38: set<frozen<udt>> verified")
+}
+
+// TestDML_Insert_39_MapWithFrozenUDTValues tests map<text,frozen<udt>>
+func TestDML_Insert_39_MapWithFrozenUDTValues(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.employee (
+			name text,
+			dept text
+		)
+	`, ctx.Keyspace)).Exec()
+	require.NoError(t, err)
+
+	err = createTable(ctx, "map_udt", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_udt (
+			id int PRIMARY KEY,
+			employees map<text,frozen<employee>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 39000
+	testEmployees := map[string]map[string]string{
+		"emp1": {"name": "Alice", "dept": "Engineering"},
+		"emp2": {"name": "Bob", "dept": "Sales"},
+	}
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "map_udt",
+		"values": map[string]any{
+			"id": testID,
+			"employees": testEmployees,
+		},
+		"value_types": map[string]any{
+			"employees": "map<text,frozen<employee>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT map<text,frozen<udt>> should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.map_udt WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "map_udt",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "map_udt", testID)
+
+	t.Log("✅ Test 39: map<text,frozen<employee>> verified")
+}
+
+// TestDML_Insert_40_TripleNesting tests list<frozen<list<frozen<list<int>>>>>
+func TestDML_Insert_40_TripleNesting(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "triple_nest", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.triple_nest (
+			id int PRIMARY KEY,
+			data list<frozen<list<frozen<list<int>>>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 40000
+	testData := [][][]int{
+		{{1, 2}, {3, 4}},
+		{{5, 6}, {7, 8}},
+	}
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "triple_nest",
+		"values": map[string]any{
+			"id": testID,
+			"data": testData,
+		},
+		"value_types": map[string]any{
+			"data": "list<frozen<list<frozen<list<int>>>>>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT triple nesting should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.triple_nest WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "triple_nest",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "triple_nest", testID)
+
+	t.Log("✅ Test 40: Triple nesting list<frozen<list<frozen<list<int>>>>> verified")
+}
