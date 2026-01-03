@@ -3098,3 +3098,352 @@ func TestDML_Insert_40_TripleNesting(t *testing.T) {
 
 	t.Log("✅ Test 40: Triple nesting list<frozen<list<frozen<list<int>>>>> verified")
 }
+
+// ============================================================================
+// Tests 41-45: Special Characters, Collection Operations
+// ============================================================================
+
+// TestDML_Insert_41_SpecialCharacters tests text with quotes, newlines, special chars
+func TestDML_Insert_41_SpecialCharacters(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "special_chars", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.special_chars (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 41000
+	specialText := "Text with 'single quotes', \"double quotes\", \nNewlines\n, and\ttabs"
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "special_chars",
+		"values": map[string]any{
+			"id": testID,
+			"data": specialText,
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT special chars should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id, data FROM %s.special_chars WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "special_chars",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "special_chars", testID)
+
+	t.Log("✅ Test 41: Special characters verified")
+}
+
+// TestDML_Insert_42_UnicodeEmoji tests Unicode and emoji
+func TestDML_Insert_42_UnicodeEmoji(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "unicode_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.unicode_test (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 42000
+	unicodeText := "Hello 世界 🚀 Emoji test 🎉"
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "unicode_test",
+		"values": map[string]any{
+			"id": testID,
+			"data": unicodeText,
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT Unicode/emoji should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.unicode_test WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "unicode_test",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "unicode_test", testID)
+
+	t.Log("✅ Test 42: Unicode/emoji verified")
+}
+
+// TestDML_Insert_43_MapWithIntKeys tests map<int,text> (non-text keys)
+func TestDML_Insert_43_MapWithIntKeys(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "map_int_keys", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_int_keys (
+			id int PRIMARY KEY,
+			data map<int,text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 43000
+	testMap := map[int]string{
+		1: "first",
+		2: "second",
+		3: "third",
+	}
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "map_int_keys",
+		"values": map[string]any{
+			"id": testID,
+			"data": testMap,
+		},
+		"value_types": map[string]any{
+			"data": "map<int,text>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT map<int,text> should succeed")
+
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.map_int_keys WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "map_int_keys",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "map_int_keys", testID)
+
+	t.Log("✅ Test 43: map<int,text> verified")
+}
+
+// TestDML_Insert_44_MultipleSetOperations tests set add and remove
+func TestDML_Insert_44_MultipleSetOperations(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "set_ops", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_ops (
+			id int PRIMARY KEY,
+			tags set<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 44000
+
+	// INSERT with initial set
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "set_ops",
+		"values": map[string]any{
+			"id": testID,
+			"tags": []string{"tag1", "tag2"},
+		},
+		"value_types": map[string]any{
+			"tags": "set<text>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// UPDATE: Add to set
+	updateArgs1 := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "set_ops",
+		"collection_ops": map[string]any{
+			"tags": map[string]any{
+				"operation": "add",
+				"value": []string{"tag3", "tag4"},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs1)
+	assertNoMCPError(ctx.T, updateResult, "Set add should succeed")
+
+	// Verify 4 tags
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT tags FROM %s.set_ops WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	if tags, ok := rows[0]["tags"].([]string); ok {
+		assert.Len(t, tags, 4, "Should have 4 tags after add")
+	}
+
+	// UPDATE: Remove from set
+	updateArgs2 := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "set_ops",
+		"collection_ops": map[string]any{
+			"tags": map[string]any{
+				"operation": "remove",
+				"value": []string{"tag1"},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult2 := submitQueryPlanMCP(ctx, updateArgs2)
+	assertNoMCPError(ctx.T, updateResult2, "Set remove should succeed")
+
+	// Verify 3 tags
+	rows = validateInCassandra(ctx,
+		fmt.Sprintf("SELECT tags FROM %s.set_ops WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	if tags, ok := rows[0]["tags"].([]string); ok {
+		assert.Len(t, tags, 3, "Should have 3 tags after remove")
+	}
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "set_ops",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "set_ops", testID)
+
+	t.Log("✅ Test 44: Set add/remove operations verified")
+}
+
+// TestDML_Insert_45_MapElementAccess tests map element update
+func TestDML_Insert_45_MapElementAccess(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "map_elem", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_elem (
+			id int PRIMARY KEY,
+			config map<text,int>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 45000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "map_elem",
+		"values": map[string]any{
+			"id": testID,
+			"config": map[string]int{"a": 1, "b": 2},
+		},
+		"value_types": map[string]any{
+			"config": "map<text,int>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// UPDATE map element: config['a'] = 100
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "map_elem",
+		"collection_ops": map[string]any{
+			"config": map[string]any{
+				"operation": "set_element",
+				"key": "a",
+				"value": 100,
+				"value_type": "int",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, updateResult, "Map element update should succeed")
+
+	// Verify map['a'] = 100
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT config FROM %s.map_elem WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	if config, ok := rows[0]["config"].(map[string]int); ok {
+		assert.Equal(t, 100, config["a"], "Map element should be updated")
+	}
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "map_elem",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "map_elem", testID)
+
+	t.Log("✅ Test 45: Map element access verified")
+}
