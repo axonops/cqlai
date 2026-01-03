@@ -34,6 +34,8 @@ func main() {
 	}
 	cluster.Consistency = gocql.LocalOne
 	cluster.SerialConsistency = gocql.Serial // CRITICAL: Set serial consistency for LWT
+	cluster.DisableInitialHostLookup = false
+	cluster.WriteCoalesceWaitTime = 0 // Use server-side timestamps, not client-side
 	cluster.Timeout = 10 * time.Second
 
 	session, err := cluster.CreateSession()

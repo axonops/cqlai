@@ -34,8 +34,16 @@ print()
 
 # Connect
 auth = PlainTextAuthProvider(username='cassandra', password='cassandra')
-cluster = Cluster(['127.0.0.1'], port=9042, auth_provider=auth)
+# Use server-side timestamps by setting use_client_timestamp=False
+cluster = Cluster(
+    ['127.0.0.1'],
+    port=9042,
+    auth_provider=auth
+)
 session = cluster.connect()
+
+# Use server-side timestamps (don't send client timestamps)
+session.use_client_timestamp = False
 
 # CRITICAL: Set serial consistency for LWT operations
 session.default_serial_consistency_level = ConsistencyLevel.SERIAL
