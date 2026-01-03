@@ -183,9 +183,9 @@ func main() {
 	}
 	fmt.Printf("   ✅ Row verified: id=%d\n", id)
 
-	// **WAIT 5 SECONDS FOR PAXOS CONSENSUS**
-	fmt.Println("2. ⏳ Waiting 5 seconds for LWT Paxos consensus to complete...")
-	time.Sleep(5 * time.Second)
+	// **WAIT 1 SECOND FOR PAXOS CONSENSUS**
+	fmt.Println("2. ⏳ Waiting 1 second for LWT Paxos consensus to complete...")
+	time.Sleep(1 * time.Second)
 	fmt.Println("   ✅ Wait complete")
 
 	// DELETE after delay
@@ -221,7 +221,7 @@ func main() {
 	fmt.Println("Test 3 (IF NOT EXISTS, 5s delay):  ✅ DELETE works")
 	fmt.Println()
 	fmt.Println("CONCLUSION:")
-	fmt.Println("DELETE after INSERT IF NOT EXISTS requires ~5 second delay")
+	fmt.Println("DELETE after INSERT IF NOT EXISTS requires a delay")
 	fmt.Println("for Paxos consensus to complete. Without delay, DELETE")
 	fmt.Println("returns success but doesn't actually delete the row.")
 	fmt.Println()

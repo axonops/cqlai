@@ -150,9 +150,9 @@ if not rows:
     exit(1)
 print(f"   ✅ Row verified: id={rows[0].id}")
 
-# **WAIT 5 SECONDS FOR PAXOS CONSENSUS**
-print("2. ⏳ Waiting 5 seconds for LWT Paxos consensus to complete...")
-time.sleep(5)
+# **WAIT 1 SECOND FOR PAXOS CONSENSUS**
+print("2. ⏳ Waiting 1 second for LWT Paxos consensus to complete...")
+time.sleep(1)
 print("   ✅ Wait complete")
 
 # DELETE after delay
