@@ -2384,45 +2384,35 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 	assert.Equal(t, "first insert", rows[0]["data"], "Data should be unchanged (IF NOT EXISTS failed)")
 	assert.Equal(t, 1, rows[0]["version"], "Version should be unchanged")
 
-	// **CRITICAL: Wait after IF NOT EXISTS before DELETE**
-	// LWT (Lightweight Transactions) use Paxos consensus
-	// Need delay for commit to be fully visible before DELETE
-	t.Log("⏳ Waiting 1 second for LWT commit to complete...")
-	time.Sleep(1 * time.Second)
-	t.Log("✅ Wait complete")
+	// **CRITICAL: LWT and non-LWT operation mixing**
+	// When using LWT operations (IF NOT EXISTS, IF EXISTS, IF conditions),
+	// Paxos uses a hybrid-logical clock that is separate from regular operations.
+	// Mixing LWT with non-LWT on the same data causes timing issues because
+	// the clocks are not interchangeable.
+	//
+	// SOLUTION: Use LWT for DELETE too (DELETE IF EXISTS) instead of regular DELETE
+	// This keeps all operations in the Paxos clock domain.
+	//
+	// DO NOT use delays as workarounds - use consistent LWT operations throughout.
 
-	// 6. DELETE via MCP
+	// 6. DELETE via MCP (use IF EXISTS to stay in LWT/Paxos domain)
 	deleteArgs := map[string]any{
 		"operation": "DELETE",
 		"keyspace":  ctx.Keyspace,
 		"table":     "lwt_test",
+		"if_exists": true, // CRITICAL: Use IF EXISTS for LWT consistency
 		"where": []map[string]any{
 			{"column": "id", "operator": "=", "value": testID},
 		},
 	}
 
-	t.Logf("INVESTIGATION: About to call DELETE via MCP")
-	t.Logf("INVESTIGATION: DELETE args: %+v", deleteArgs)
-
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
-
-	t.Logf("INVESTIGATION: DELETE result: %+v", deleteResult)
-
-	// Check what MCP returned
-	if content, ok := deleteResult["content"].([]any); ok {
-		for _, c := range content {
-			if contentMap, ok := c.(map[string]any); ok {
-				t.Logf("INVESTIGATION: MCP response content: %+v", contentMap)
-			}
-		}
-	}
-
-	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+	assertNoMCPError(ctx.T, deleteResult, "DELETE IF EXISTS should succeed")
 
 	// 7. VALIDATE DELETE (with LWT delay, this should work)
 	validateRowNotExists(ctx, "lwt_test", testID)
 
-	t.Log("✅ Test 30: INSERT IF NOT EXISTS - Full validation with LWT delay")
+	t.Log("✅ Test 30: INSERT IF NOT EXISTS with DELETE IF EXISTS (LWT consistency)")
 }
 
 // ============================================================================
@@ -4509,7 +4499,6 @@ func TestDML_Insert_63_UpdateIfExists(t *testing.T) {
 	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
 
 	// Wait for LWT
-	time.Sleep(5 * time.Second)
 
 	// UPDATE IF EXISTS
 	updateArgs := map[string]any{
