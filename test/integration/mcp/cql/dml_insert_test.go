@@ -3857,8 +3857,9 @@ func TestDML_Insert_52_ListElementUpdateByIndex(t *testing.T) {
 	t.Log("✅ Test 52: List element update by index verified")
 }
 
-// TestDML_Insert_53_UDTFieldUpdate tests UDT field update (udt.field = value)
-func TestDML_Insert_53_UDTFieldUpdate(t *testing.T) {
+// TestDML_Insert_53_FrozenUDTFieldUpdate_ExpectError tests that updating frozen UDT fields is correctly rejected
+// This is EXPECTED to error - frozen UDTs cannot have individual fields updated
+func TestDML_Insert_53_FrozenUDTFieldUpdate_ExpectError(t *testing.T) {
 	ctx := setupCQLTest(t)
 	defer teardownCQLTest(ctx)
 
@@ -3917,17 +3918,30 @@ func TestDML_Insert_53_UDTFieldUpdate(t *testing.T) {
 		},
 	}
 
-	_ = submitQueryPlanMCP(ctx, updateArgs)
-	// EXPECTED: Frozen UDT fields cannot be updated individually
-	// This is Cassandra limitation - must replace entire UDT
-	// Test documents that this feature is NOT supported for frozen UDTs
-	t.Log("⚠️  UDT field update not supported for frozen UDTs (Cassandra limitation)")
-	t.Skip("Frozen UDT fields cannot be updated - must replace entire UDT")
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 
+	// **EXPECTED: This should return an ERROR**
+	// Frozen UDT fields cannot be updated individually - this is Cassandra behavior
+	// Test verifies we correctly receive and propagate the error
+	assertMCPError(ctx.T, updateResult, "frozen", "Should error when trying to update frozen UDT field")
+
+	// Log the actual error message for visibility
+	if content, ok := updateResult["content"].([]any); ok {
+		for _, c := range content {
+			if contentMap, ok := c.(map[string]any); ok {
+				if text, ok := contentMap["text"].(string); ok {
+					t.Logf("✅ Error message: %s", text)
+					assert.Contains(t, text, "frozen", "Error should mention 'frozen'")
+				}
+			}
+		}
+	}
+
+	// Verify original data unchanged in Cassandra (update was rejected)
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.udt_update WHERE id = ?", ctx.Keyspace),
 		testID)
-	require.Len(t, rows, 1)
+	require.Len(t, rows, 1, "Original row should still exist unchanged")
 
 	deleteArgs := map[string]any{
 		"operation": "DELETE",
@@ -3943,7 +3957,7 @@ func TestDML_Insert_53_UDTFieldUpdate(t *testing.T) {
 
 	validateRowNotExists(ctx, "udt_update", testID)
 
-	t.Log("✅ Test 53: UDT field update verified")
+	t.Log("✅ Test 53: Frozen UDT field update correctly rejected with proper error")
 }
 
 // TestDML_Insert_54_MapMergeOperation tests map merge
