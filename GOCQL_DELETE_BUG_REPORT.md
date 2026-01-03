@@ -1,14 +1,16 @@
-# LWT Timing Issue: DELETE requires delay after INSERT IF NOT EXISTS
+# LWT and Non-LWT Operation Mixing - NOT A BUG
 
 ## Summary
 
-DELETE statements immediately after `INSERT IF NOT EXISTS` return success but do not actually delete the row. This affects **both** gocql (Go) and cassandra-driver (Python).
+**This is NOT a driver bug - it's expected Cassandra behavior when mixing LWT and non-LWT operations.**
 
-**Root Cause:** LWT (Lightweight Transactions) use Paxos consensus. The commit needs ~5 seconds to complete before subsequent operations can see/modify the row.
+DELETE after `INSERT IF NOT EXISTS` appears to fail because LWT operations use Paxos consensus with a separate hybrid-logical clock from regular operations.
 
-**Workaround:** Add 5 second delay between IF NOT EXISTS and DELETE.
+**Root Cause:** Mixing LWT (Paxos clock) with non-LWT (regular timestamp clock) on the same data.
 
-**Regular INSERT (no LWT):** DELETE works immediately - no delay needed.
+**Solution:** Use LWT consistently - `DELETE IF EXISTS` after `INSERT IF NOT EXISTS`.
+
+**NOT a solution:** Adding delays (workaround that hides the real issue).
 
 ## Environment
 
@@ -36,7 +38,15 @@ Test 2 (IF NOT EXISTS, no delay):  ❌ DELETE fails (row remains)
 Test 3 (IF NOT EXISTS, 5s delay):  ✅ DELETE works
 ```
 
-**Both drivers show identical behavior - this is an LWT timing issue.**
+**Both drivers show identical behavior - this is expected when mixing LWT and non-LWT.**
+
+**SOLUTION (No delays needed):**
+```
+Test 1 (Regular INSERT + DELETE):       ✅ Works (both non-LWT)
+Test 2 (IF NOT EXISTS + DELETE IF EXISTS): ✅ Works (both LWT)
+```
+
+**Mixing LWT and non-LWT is unsafe** - use consistent operation types.
 
 ---
 
