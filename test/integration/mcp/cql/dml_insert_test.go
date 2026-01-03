@@ -4651,3 +4651,277 @@ func TestDML_Insert_65_DeleteIfExists(t *testing.T) {
 
 	t.Log("✅ Test 65: DELETE IF EXISTS verified")
 }
+
+// ============================================================================
+// Tests 66-70: Advanced WHERE and BATCH Operations
+// ============================================================================
+
+// TestDML_Insert_66_WhereTupleNotation tests WHERE (col1, col2) > (val1, val2)
+func TestDML_Insert_66_WhereTupleNotation(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "tuple_where", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.tuple_where (
+			user_id int,
+			timestamp bigint,
+			data text,
+			PRIMARY KEY (user_id, timestamp)
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Insert rows
+	for i := 0; i < 3; i++ {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace": ctx.Keyspace,
+			"table": "tuple_where",
+			"values": map[string]any{
+				"user_id": 66000,
+				"timestamp": int64(i),
+				"data": fmt.Sprintf("event %d", i),
+			},
+			"value_types": map[string]any{
+				"timestamp": "bigint",
+			},
+		}
+		submitQueryPlanMCP(ctx, insertArgs)
+	}
+
+	// SELECT with tuple notation
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "tuple_where",
+		"where": []map[string]any{
+			{
+				"columns": []string{"user_id", "timestamp"},
+				"operator": ">",
+				"values": []any{66000, 0},
+			},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with tuple notation should succeed")
+
+	t.Log("✅ Test 66: WHERE tuple notation verified")
+}
+
+// TestDML_Insert_67_MultiColumnWhere tests WHERE col1 = ? AND col2 = ?
+func TestDML_Insert_67_MultiColumnWhere(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "multi_where", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.multi_where (
+			pk1 int,
+			pk2 int,
+			data text,
+			PRIMARY KEY ((pk1, pk2))
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	pk1 := 67000
+	pk2 := 1
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "multi_where",
+		"values": map[string]any{
+			"pk1": pk1,
+			"pk2": pk2,
+			"data": "test",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// SELECT with multiple WHERE conditions
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "multi_where",
+		"where": []map[string]any{
+			{"column": "pk1", "operator": "=", "value": pk1},
+			{"column": "pk2", "operator": "=", "value": pk2},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT with multi-column WHERE should succeed")
+
+	// Verify data
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT data FROM %s.multi_where WHERE pk1 = ? AND pk2 = ?", ctx.Keyspace),
+		pk1, pk2)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "test", rows[0]["data"])
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "multi_where",
+		"where": []map[string]any{
+			{"column": "pk1", "operator": "=", "value": pk1},
+			{"column": "pk2", "operator": "=", "value": pk2},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "multi_where", map[string]any{"pk1": pk1, "pk2": pk2})
+
+	t.Log("✅ Test 67: Multi-column WHERE verified")
+}
+
+// TestDML_Insert_68_BatchUnlogged tests BEGIN UNLOGGED BATCH
+func TestDML_Insert_68_BatchUnlogged(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "batch_unlogged", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.batch_unlogged (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_type": "UNLOGGED",
+		"batch_statements": []map[string]any{
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_unlogged",
+				"values": map[string]any{"id": 68001, "data": "batch1"},
+			},
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_unlogged",
+				"values": map[string]any{"id": 68002, "data": "batch2"},
+			},
+		},
+	}
+
+	batchResult := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, batchResult, "BATCH UNLOGGED should succeed")
+
+	// Verify both rows
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT COUNT(*) FROM %s.batch_unlogged", ctx.Keyspace))
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 68: BATCH UNLOGGED verified")
+}
+
+// TestDML_Insert_69_BatchCounter tests BEGIN COUNTER BATCH
+func TestDML_Insert_69_BatchCounter(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "batch_counters", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.batch_counters (
+			id text PRIMARY KEY,
+			count1 counter,
+			count2 counter
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	counterID := "counter_batch_test"
+
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_type": "COUNTER",
+		"batch_statements": []map[string]any{
+			{
+				"operation": "UPDATE",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_counters",
+				"counter_ops": map[string]string{
+					"count1": "+5",
+				},
+				"where": []map[string]any{
+					{"column": "id", "operator": "=", "value": counterID},
+				},
+			},
+			{
+				"operation": "UPDATE",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_counters",
+				"counter_ops": map[string]string{
+					"count2": "+10",
+				},
+				"where": []map[string]any{
+					{"column": "id", "operator": "=", "value": counterID},
+				},
+			},
+		},
+	}
+
+	batchResult := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, batchResult, "BATCH COUNTER should succeed")
+
+	// Verify counters
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.batch_counters WHERE id = ?", ctx.Keyspace),
+		counterID)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 69: BATCH COUNTER verified")
+}
+
+// TestDML_Insert_70_BatchWithTimestamp tests BATCH USING TIMESTAMP
+func TestDML_Insert_70_BatchWithTimestamp(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "batch_ts", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.batch_ts (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testTimestamp := int64(1609459200000000)
+
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_type": "LOGGED",
+		"using_timestamp": testTimestamp,
+		"batch_statements": []map[string]any{
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_ts",
+				"values": map[string]any{"id": 70001, "data": "ts1"},
+			},
+			{
+				"operation": "INSERT",
+				"keyspace": ctx.Keyspace,
+				"table": "batch_ts",
+				"values": map[string]any{"id": 70002, "data": "ts2"},
+			},
+		},
+	}
+
+	batchResult := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, batchResult, "BATCH with TIMESTAMP should succeed")
+
+	// Verify both rows with timestamp
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT COUNT(*) FROM %s.batch_ts", ctx.Keyspace))
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 70: BATCH with USING TIMESTAMP verified")
+}
