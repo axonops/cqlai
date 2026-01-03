@@ -270,46 +270,48 @@ for _, w := range plan.Where {
 
 ---
 
-## Bug 6: Frozen UDT Field Update ⚠️ CASSANDRA LIMITATION
+## Bug 6: Frozen UDT Field Update ✅ ERROR VALIDATION TEST
 
 ### What It Is
-**Not a bug in our code** - Cassandra doesn't allow updating individual fields of frozen UDTs.
+**Not a bug** - This is correct Cassandra behavior that we now TEST.
 
-### Error Message
+Cassandra doesn't allow updating individual fields of frozen UDTs. Our code correctly receives and propagates this error.
+
+### Error Message (Expected and Verified)
 ```
-Test 53:
 Invalid operation (info.age = 31) for frozen UDT column info
 ```
 
-### How Found
-- Test 53 (UDT field update) failed
-- Attempted: `UPDATE table SET info.age = 31`
-- Cassandra rejected it
+### What Test 53 Does
+**Test renamed:** `TestDML_Insert_53_FrozenUDTFieldUpdate_ExpectError`
 
-### What We Learned
-**Frozen UDTs are immutable at the field level.**
+**Test validates:**
+1. ✅ INSERT frozen UDT succeeds
+2. ✅ Attempt to UPDATE individual field
+3. ✅ Receive error from Cassandra
+4. ✅ Error message contains "frozen"
+5. ✅ Original data unchanged in Cassandra
+6. ✅ DELETE cleanup works
 
-You can:
+**This is PROPER error testing** - validates we handle invalid operations correctly.
+
+### Cassandra Behavior
+**Frozen UDTs are immutable at field level:**
 ```sql
--- ✅ Replace entire UDT
+-- ✅ Valid: Replace entire UDT
 UPDATE table SET info = {name: 'Alice', age: 31} WHERE id = 1;
 
--- ❌ Update individual field
+-- ❌ Invalid: Update individual field
 UPDATE table SET info.age = 31 WHERE id = 1;
-```
-
-### Fix Applied
-**File:** `test/integration/mcp/cql/dml_insert_test.go`
-```go
-// Test 53: Document the limitation
-t.Log("⚠️  UDT field update not supported for frozen UDTs (Cassandra limitation)")
-t.Skip("Frozen UDT fields cannot be updated - must replace entire UDT")
+-- Returns: "Invalid operation for frozen UDT column"
 ```
 
 ### Current Status
-⚠️ **DOCUMENTED** - Not a bug, it's Cassandra behavior
-✅ Test 53 marked as SKIP with clear explanation
-✅ This is expected and correct behavior
+✅ **TEST PASSING** - Validates error handling
+✅ Test 53 is now a negative test (expects error)
+✅ Error message verified: Contains "frozen UDT"
+✅ Original data verified unchanged after failed update
+✅ This is how it SHOULD work
 
 ---
 
@@ -322,7 +324,7 @@ t.Skip("Frozen UDT fields cannot be updated - must replace entire UDT")
 | 3 | frozen<collection> routing | Tests 16,18,19 | Code fix | ✅ FIXED | e27a6c2 |
 | 4 | LWT Paxos timing | Test 30 | Add delay | ✅ FIXED | 0a1beed |
 | 5 | WHERE type hints | Test 34 | Code fix | ✅ FIXED | 3633a1b |
-| 6 | Frozen UDT field update | Test 53 | Document | ⚠️ CASSANDRA | N/A |
+| 6 | Frozen UDT field update | Test 53 | Error test | ✅ PASSING | 62a97a2 |
 
 ---
 
