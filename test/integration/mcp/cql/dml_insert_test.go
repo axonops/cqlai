@@ -2387,8 +2387,8 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 	// **CRITICAL: Wait after IF NOT EXISTS before DELETE**
 	// LWT (Lightweight Transactions) use Paxos consensus
 	// Need delay for commit to be fully visible before DELETE
-	t.Log("⏳ Waiting 5 seconds for LWT commit to complete...")
-	time.Sleep(5 * time.Second)
+	t.Log("⏳ Waiting 1 second for LWT commit to complete...")
+	time.Sleep(1 * time.Second)
 	t.Log("✅ Wait complete")
 
 	// 6. DELETE via MCP
