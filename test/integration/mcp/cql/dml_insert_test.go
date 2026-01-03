@@ -4347,3 +4347,307 @@ func TestDML_Insert_60_PerPartitionLimit(t *testing.T) {
 
 	t.Log("✅ Test 60: PER PARTITION LIMIT verified")
 }
+
+// ============================================================================
+// Tests 61-65: Final INSERT Test Coverage
+// ============================================================================
+
+// TestDML_Insert_61_AggregateCount tests SELECT COUNT(*)
+func TestDML_Insert_61_AggregateCount(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "count_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.count_test (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Insert 10 rows
+	for i := 0; i < 10; i++ {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace": ctx.Keyspace,
+			"table": "count_test",
+			"values": map[string]any{
+				"id": 61000 + i,
+				"data": fmt.Sprintf("row %d", i),
+			},
+		}
+		submitQueryPlanMCP(ctx, insertArgs)
+	}
+
+	// SELECT COUNT(*)
+	selectArgs := map[string]any{
+		"operation": "SELECT",
+		"keyspace": ctx.Keyspace,
+		"table": "count_test",
+		"columns": []string{"COUNT(*)"},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, selectResult, "SELECT COUNT(*) should succeed")
+
+	t.Log("✅ Test 61: SELECT COUNT(*) verified")
+}
+
+// TestDML_Insert_62_MultipleUpdateOperations tests chained UPDATEs
+func TestDML_Insert_62_MultipleUpdateOperations(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "multi_update", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.multi_update (
+			id int PRIMARY KEY,
+			text_col text,
+			int_col int
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 62000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "multi_update",
+		"values": map[string]any{
+			"id": testID,
+			"text_col": "original",
+			"int_col": 1,
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// UPDATE both columns
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "multi_update",
+		"values": map[string]any{
+			"text_col": "updated",
+			"int_col": 2,
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, updateResult, "UPDATE should succeed")
+
+	// Verify both updated
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT text_col, int_col FROM %s.multi_update WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "updated", rows[0]["text_col"])
+	assert.Equal(t, 2, rows[0]["int_col"])
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "multi_update",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "multi_update", testID)
+
+	t.Log("✅ Test 62: Multiple UPDATE operations verified")
+}
+
+// TestDML_Insert_63_UpdateIfExists tests UPDATE IF EXISTS (LWT)
+func TestDML_Insert_63_UpdateIfExists(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "update_if_exists", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.update_if_exists (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 63000
+
+	// INSERT first
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "update_if_exists",
+		"values": map[string]any{
+			"id": testID,
+			"data": "original",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// Wait for LWT
+	time.Sleep(5 * time.Second)
+
+	// UPDATE IF EXISTS
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "update_if_exists",
+		"values": map[string]any{
+			"data": "updated",
+		},
+		"if_exists": true,
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, updateResult, "UPDATE IF EXISTS should succeed")
+
+	// Verify
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT data FROM %s.update_if_exists WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "updated", rows[0]["data"])
+
+	time.Sleep(5 * time.Second) // LWT delay before DELETE
+
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "update_if_exists",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	validateRowNotExists(ctx, "update_if_exists", testID)
+
+	t.Log("✅ Test 63: UPDATE IF EXISTS verified")
+}
+
+// TestDML_Insert_64_UpdateIfCondition tests UPDATE IF col = value
+func TestDML_Insert_64_UpdateIfCondition(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "update_if_cond", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.update_if_cond (
+			id int PRIMARY KEY,
+			data text,
+			version int
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 64000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "update_if_cond",
+		"values": map[string]any{
+			"id": testID,
+			"data": "v1",
+			"version": 1,
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	time.Sleep(5 * time.Second) // LWT delay
+
+	// UPDATE IF version = 1
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace": ctx.Keyspace,
+		"table": "update_if_cond",
+		"values": map[string]any{
+			"data": "v2",
+			"version": 2,
+		},
+		"if_conditions": []map[string]any{
+			{"column": "version", "operator": "=", "value": 1},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, updateResult, "UPDATE IF condition should succeed")
+
+	// Verify
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT version FROM %s.update_if_cond WHERE id = ?", ctx.Keyspace),
+		testID)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 2, rows[0]["version"])
+
+	t.Log("✅ Test 64: UPDATE IF condition verified")
+}
+
+// TestDML_Insert_65_DeleteIfExists tests DELETE IF EXISTS
+func TestDML_Insert_65_DeleteIfExists(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := createTable(ctx, "delete_if_exists", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.delete_if_exists (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	testID := 65000
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace": ctx.Keyspace,
+		"table": "delete_if_exists",
+		"values": map[string]any{
+			"id": testID,
+			"data": "will be deleted",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	time.Sleep(5 * time.Second) // LWT delay
+
+	// DELETE IF EXISTS
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace": ctx.Keyspace,
+		"table": "delete_if_exists",
+		"if_exists": true,
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE IF EXISTS should succeed")
+
+	// Verify deleted
+	validateRowNotExists(ctx, "delete_if_exists", testID)
+
+	t.Log("✅ Test 65: DELETE IF EXISTS verified")
+}
