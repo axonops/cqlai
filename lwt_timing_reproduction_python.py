@@ -22,6 +22,7 @@ Expected Results:
 import time
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
+from cassandra import ConsistencyLevel
 
 print("═══════════════════════════════════════════════════════")
 print("  LWT Paxos Timing Issue Reproduction (Python Driver)")
@@ -35,6 +36,9 @@ print()
 auth = PlainTextAuthProvider(username='cassandra', password='cassandra')
 cluster = Cluster(['127.0.0.1'], port=9042, auth_provider=auth)
 session = cluster.connect()
+
+# CRITICAL: Set serial consistency for LWT operations
+session.default_serial_consistency_level = ConsistencyLevel.SERIAL
 
 ks = "lwt_timing_test_python"
 

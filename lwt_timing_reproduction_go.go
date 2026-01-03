@@ -33,6 +33,7 @@ func main() {
 		Password: "cassandra",
 	}
 	cluster.Consistency = gocql.LocalOne
+	cluster.SerialConsistency = gocql.Serial // CRITICAL: Set serial consistency for LWT
 	cluster.Timeout = 10 * time.Second
 
 	session, err := cluster.CreateSession()
