@@ -2,11 +2,12 @@
 
 **Date:** 2026-01-04
 **Updated:** 2026-01-04 (Added primary key and BATCH validation scenarios)
-**Original Blueprint Target:** 90 tests
-**Revised Blueprint Target:** 170 tests (added 80 critical scenarios)
-**Actually Implemented:** 78 tests
-**Missing:** 92 tests (54.1% gap)
-**Status:** ⚠️ MAJOR GAPS - Additional scenarios identified
+**Original Blueprint Target:** 90 test scenarios
+**Revised Blueprint Target:** 141 test scenarios (added 51 critical scenarios)
+**Test Functions Implemented:** 78 functions
+**Scenarios Actually Tested:** ~45 scenarios
+**Missing Scenarios:** 96 tests (68.1% gap)
+**Status:** ⚠️ MAJOR GAPS - Additional critical scenarios identified
 
 ---
 
@@ -583,10 +584,10 @@ for id in [78000, 79000, 80000, ..., 90000] {
 
 ## UPDATED SUMMARY
 
-**Total Missing:** 92 tests broken down as:
+**Total Missing:** 96 tests broken down as:
 
-| Category | Original Gap | New Gaps | Total Missing |
-|----------|--------------|----------|---------------|
+| Category | From Original 90 | Newly Identified | Total Missing |
+|----------|------------------|------------------|---------------|
 | Bind Markers | 10 | 0 | 10 |
 | INSERT JSON | 8 | 0 | 8 |
 | Error Scenarios | 7 | 10 | 17 |
@@ -595,16 +596,17 @@ for id in [78000, 79000, 80000, ..., 90000] {
 | Collections | 3 | 0 | 3 |
 | UDTs | 2 | 0 | 2 |
 | Primitives | 2 | 0 | 2 |
+| Edge Cases | 3 | 0 | 3 |
 | Primary Key Validation | 0 | 15 | 15 |
-| BATCH Validation | 0 | 10 | 10 |
+| BATCH Validation | 0 | 21 | 21 |
 | Static Columns | 0 | 5 | 5 |
-| **TOTAL** | **45** | **47** | **92** |
+| **TOTAL** | **45** | **51** | **96** |
 
-**Actual coverage:** 78 implemented / 170 total = **45.9%**
+**Actual coverage:** 45 scenarios tested / 141 total scenarios = **31.9%**
 
 ---
 
-**Next step:** Implement all 92 missing tests to achieve 100% INSERT coverage
+**Next step:** Implement all 96 missing tests to achieve 100% INSERT coverage
 
-**See:** `CQL_TEST_ADDENDUM_PRIMARY_KEYS_AND_BATCH.md` for detailed test scenarios
+**See:** `CQL_TEST_ADDENDUM_PRIMARY_KEYS_AND_BATCH.md` for detailed test scenarios (51 new tests documented)
 
