@@ -1658,8 +1658,12 @@ func renderBatch(plan *AIResult) (string, error) {
 			return "", fmt.Errorf("error rendering batch statement %d: %w", i+1, err)
 		}
 
-		// Remove trailing semicolon (batch doesn't need them)
-		cql = strings.TrimSuffix(strings.TrimSpace(cql), ";")
+		// Keep semicolon (required for valid CQL when compacted to single line)
+		cql = strings.TrimSpace(cql)
+		// Ensure semicolon is present
+		if !strings.HasSuffix(cql, ";") {
+			cql += ";"
+		}
 
 		// Indent statement
 		sb.WriteString("  ")
