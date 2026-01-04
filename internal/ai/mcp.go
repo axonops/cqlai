@@ -1423,6 +1423,23 @@ func parseSubmitQueryPlanParams(args map[string]any) (SubmitQueryPlanParams, err
 				if val, ok := whereMap["value"]; ok {
 					wc.Value = val
 				}
+				// Handle "values" (plural) for IN operator and tuple notation
+				if vals, ok := whereMap["values"].([]interface{}); ok {
+					wc.Values = vals
+				}
+				// Handle is_token for TOKEN() wrapper
+				if isToken, ok := whereMap["is_token"].(bool); ok {
+					wc.IsToken = isToken
+				}
+				// Handle columns (plural) for tuple notation
+				if cols, ok := whereMap["columns"].([]interface{}); ok {
+					wc.Columns = make([]string, len(cols))
+					for j, c := range cols {
+						if colStr, ok := c.(string); ok {
+							wc.Columns[j] = colStr
+						}
+					}
+				}
 				params.Where[i] = wc
 			}
 		}

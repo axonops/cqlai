@@ -699,6 +699,16 @@ func renderWhereClause(w WhereClause) string {
 		column = fmt.Sprintf("TOKEN(%s)", w.Column)
 	}
 
+	// Handle IN operator with multiple values
+	if opUpper == "IN" && len(w.Values) > 0 {
+		// Format each value in the list
+		formattedValues := make([]string, len(w.Values))
+		for i, val := range w.Values {
+			formattedValues[i] = formatValue(val, "")
+		}
+		return fmt.Sprintf("%s IN (%s)", column, strings.Join(formattedValues, ", "))
+	}
+
 	// No type hint available in old signature
 	return fmt.Sprintf("%s %s %s", column, w.Operator, formatValue(w.Value, ""))
 }
@@ -730,6 +740,16 @@ func renderWhereClauseWithTypes(w WhereClause, valueTypes map[string]string) str
 		if hint, ok := valueTypes[w.Column]; ok {
 			typeHint = hint
 		}
+	}
+
+	// Handle IN operator with multiple values
+	if opUpper == "IN" && len(w.Values) > 0 {
+		// Format each value in the list
+		formattedValues := make([]string, len(w.Values))
+		for i, val := range w.Values {
+			formattedValues[i] = formatValue(val, typeHint)
+		}
+		return fmt.Sprintf("%s IN (%s)", column, strings.Join(formattedValues, ", "))
 	}
 
 	return fmt.Sprintf("%s %s %s", column, w.Operator, formatValue(w.Value, typeHint))

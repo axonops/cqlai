@@ -5,6 +5,7 @@ package cql
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -3962,7 +3963,12 @@ func TestDML_Insert_47_WhereInClause(t *testing.T) {
 				"data": fmt.Sprintf("data %d", id),
 			},
 		}
-		submitQueryPlanMCP(ctx, insertArgs)
+		insertResult := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, insertResult, fmt.Sprintf("INSERT row %d should succeed", id))
+
+		// ASSERT Generated INSERT CQL (columns alphabetically: data, id)
+		expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.where_in (data, id) VALUES ('data %d', %d);", ctx.Keyspace, id, id)
+		assertCQLEquals(t, insertResult, expectedInsertCQL, fmt.Sprintf("INSERT CQL for row %d should be correct", id))
 	}
 
 	// SELECT with IN clause
@@ -3980,26 +3986,6 @@ func TestDML_Insert_47_WhereInClause(t *testing.T) {
 	}
 
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
-	// May not be implemented yet - check if it works or skip
-	if content, ok := selectResult["content"].([]any); ok {
-		for _, c := range content {
-			if cmap, ok := c.(map[string]any); ok {
-				if text, ok := cmap["text"].(string); ok {
-					if contains := func(s, substr string) bool {
-						for i := 0; i <= len(s)-len(substr); i++ {
-							if s[i:i+len(substr)] == substr {
-								return true
-							}
-						}
-						return false
-					}; contains(text, "not implemented") || contains(text, "not supported") {
-						t.Skip("WHERE IN not implemented yet - skipping")
-					}
-				}
-			}
-		}
-	}
-
 	assertNoMCPError(ctx.T, selectResult, "SELECT with IN should succeed")
 
 	// ASSERT Generated SELECT CQL
