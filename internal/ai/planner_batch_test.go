@@ -37,12 +37,12 @@ func TestRenderBatch_Logged(t *testing.T) {
 	assert.Contains(t, got, "APPLY BATCH")
 	assert.Contains(t, got, "INSERT INTO users")
 	assert.Contains(t, got, "UPDATE users")
-	// Statements should NOT have semicolons inside batch
+	// Statements MUST have semicolons for valid CQL
 	lines := strings.Split(got, "\n")
 	for i, line := range lines {
 		if i > 0 && i < len(lines)-1 { // Skip BEGIN and APPLY lines
 			if strings.Contains(line, "INSERT") || strings.Contains(line, "UPDATE") {
-				assert.NotContains(t, line, ";", "Batch statements should not have semicolons")
+				assert.Contains(t, line, ";", "Batch statements MUST have semicolons for valid CQL")
 			}
 		}
 	}

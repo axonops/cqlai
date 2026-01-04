@@ -39,3 +39,25 @@ func TestRenderSelect_WhereContainsKey(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, got, "WHERE settings CONTAINS KEY 'theme'")
 }
+
+// TestRenderSelect_WhereIN tests WHERE IN operator with multiple values
+func TestRenderSelect_WhereIN(t *testing.T) {
+	plan := &AIResult{
+		Operation: "SELECT",
+		Table:     "users",
+		Where: []WhereClause{
+			{
+				Column:   "id",
+				Operator: "IN",
+				Values:   []any{1, 2, 3},
+			},
+		},
+	}
+
+	got, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	assert.Contains(t, got, "WHERE id IN (1, 2, 3)")
+}
+
+// Note: TestRenderSelect_WhereToken and TestRenderSelect_WhereTuple already exist
+// in planner_advanced_test.go - no need to duplicate here

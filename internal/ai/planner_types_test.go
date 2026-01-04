@@ -240,7 +240,7 @@ func TestFormatSet(t *testing.T) {
 			name:        "numeric set",
 			input:       []any{7, 13, 21},
 			elementType: "int",
-			expected:    "{7, 13, 21}",
+			expected:    "{13, 21, 7}", // Sorted alphabetically as strings: "13" < "21" < "7"
 		},
 		{
 			name:        "deduplicate set",

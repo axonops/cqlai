@@ -1092,7 +1092,8 @@ func TestRenderUpdate_SetAdd(t *testing.T) {
 	}
 	got, err := RenderCQL(plan)
 	assert.NoError(t, err)
-	assert.Contains(t, got, "tags = tags + {'new_tag', 'another_tag'}")
+	// Set elements are now sorted alphabetically: another_tag, new_tag
+	assert.Contains(t, got, "tags = tags + {'another_tag', 'new_tag'}")
 }
 
 // TestRenderUpdate_SetRemove tests set remove operation
