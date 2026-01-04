@@ -209,8 +209,9 @@ _(More bugs will be added as found)_
 **NEW REQUIREMENT:** All tests MUST assert EXACT generated CQL
 
 **Progress on CQL assertions:**
-- ✅ Tests 1-30: CQL assertions added and passing (38.5% complete)
-- ⏳ Tests 31-78: Need CQL assertions (61.5% remaining)
+- ✅ Tests 1-78: CQL assertions added and passing (100% complete)
+- ✅ 167 total CQL assertions across all tests
+- ✅ All tests pass in 273 seconds
 
 **Changes made:**
 - ✅ Deterministic CQL rendering (internal/ai/planner.go)
