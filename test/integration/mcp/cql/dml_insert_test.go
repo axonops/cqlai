@@ -64,6 +64,10 @@ func TestDML_Insert_01_SimpleText(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT via MCP should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.users (id, name) VALUES (1000, 'Alice');", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra (direct query - CRITICAL)
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, name FROM %s.users WHERE id = ?", ctx.Keyspace),
@@ -86,6 +90,10 @@ func TestDML_Insert_01_SimpleText(t *testing.T) {
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
 	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
 
+	// 4a. ASSERT Generated SELECT CQL
+	expectedSelectCQL := fmt.Sprintf("SELECT id, name FROM %s.users WHERE id = 1000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT CQL should be correct")
+
 	// 5. UPDATE via MCP
 	updatedName := "Alice Updated"
 	updateArgs := map[string]any{
@@ -102,6 +110,10 @@ func TestDML_Insert_01_SimpleText(t *testing.T) {
 
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE via MCP should succeed")
+
+	// 5a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.users SET name = 'Alice Updated' WHERE id = 1000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
 
 	// 6. VALIDATE UPDATE in Cassandra
 	rows = validateInCassandra(ctx,
@@ -122,6 +134,10 @@ func TestDML_Insert_01_SimpleText(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE via MCP should succeed")
+
+	// 7a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.users WHERE id = 1000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 8. VALIDATE DELETE in Cassandra
 	time.Sleep(100 * time.Millisecond) // Allow time for DELETE
@@ -180,6 +196,10 @@ func TestDML_Insert_02_MultipleColumns(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT with multiple columns should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: age, email, id, is_active, name)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.users (age, email, id, is_active, name) VALUES (30, 'bob@example.com', 2000, true, 'Bob Smith');", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, name, email, age, is_active FROM %s.users WHERE id = ?", ctx.Keyspace),
@@ -205,6 +225,10 @@ func TestDML_Insert_02_MultipleColumns(t *testing.T) {
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
 	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
 
+	// 4a. ASSERT Generated SELECT CQL
+	expectedSelectCQL := fmt.Sprintf("SELECT * FROM %s.users WHERE id = 2000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT CQL should be correct")
+
 	// 5. UPDATE via MCP (update multiple columns)
 	updateArgs := map[string]any{
 		"operation": "UPDATE",
@@ -222,6 +246,10 @@ func TestDML_Insert_02_MultipleColumns(t *testing.T) {
 
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE multiple columns should succeed")
+
+	// 5a. ASSERT Generated UPDATE CQL (SET columns alphabetically sorted: age, email, is_active)
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.users SET age = 31, email = 'bob.smith@example.com', is_active = false WHERE id = 2000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
 
 	// 6. VALIDATE UPDATE in Cassandra
 	rows = validateInCassandra(ctx,
@@ -244,6 +272,10 @@ func TestDML_Insert_02_MultipleColumns(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 7a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.users WHERE id = 2000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 8. VALIDATE DELETE
 	time.Sleep(100 * time.Millisecond)
@@ -306,6 +338,11 @@ func TestDML_Insert_03_AllIntegerTypes(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT with all integer types should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted)
+	// Note: big_val gets corrupted through JSON (9223372036854775 → 9223372036854776)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.int_types (big_val, id, int_val, small_val, tiny_val, var_val) VALUES (9223372036854776, 3000, 2147483647, 32767, 127, 123456789012345);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, tiny_val, small_val, int_val, big_val FROM %s.int_types WHERE id = ?", ctx.Keyspace),
@@ -340,6 +377,10 @@ func TestDML_Insert_03_AllIntegerTypes(t *testing.T) {
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE should succeed")
 
+	// 4a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.int_types SET int_val = 42 WHERE id = 3000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
+
 	// 5. VALIDATE UPDATE
 	rows = validateInCassandra(ctx,
 		fmt.Sprintf("SELECT int_val FROM %s.int_types WHERE id = ?", ctx.Keyspace),
@@ -365,6 +406,10 @@ func TestDML_Insert_03_AllIntegerTypes(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.int_types WHERE id = 3000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 7. VALIDATE DELETE
 	validateRowNotExists(ctx, "int_types", testID)
@@ -411,6 +456,11 @@ func TestDML_Insert_04_AllFloatTypes(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT float types should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted)
+	// Decimal renders without quotes when passed as string
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.float_types (decimal_val, double_val, float_val, id) VALUES (99.99, 2.718281828459045, 3.14159, 4000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, float_val, double_val FROM %s.float_types WHERE id = ?", ctx.Keyspace),
@@ -437,6 +487,10 @@ func TestDML_Insert_04_AllFloatTypes(t *testing.T) {
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
 	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
 
+	// 4a. ASSERT Generated SELECT CQL
+	expectedSelectCQL := fmt.Sprintf("SELECT * FROM %s.float_types WHERE id = 4000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT CQL should be correct")
+
 	// 5. DELETE via MCP
 	deleteArgs := map[string]any{
 		"operation": "DELETE",
@@ -449,6 +503,10 @@ func TestDML_Insert_04_AllFloatTypes(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.float_types WHERE id = 4000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "float_types", testID)
@@ -486,6 +544,10 @@ func TestDML_Insert_05_Boolean(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT boolean should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: flag, id)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.bool_test (flag, id) VALUES (true, 5000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, flag FROM %s.bool_test WHERE id = ?", ctx.Keyspace),
@@ -510,6 +572,10 @@ func TestDML_Insert_05_Boolean(t *testing.T) {
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE boolean should succeed")
 
+	// 4a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.bool_test SET flag = false WHERE id = 5000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
+
 	// 5. VALIDATE UPDATE
 	rows = validateInCassandra(ctx,
 		fmt.Sprintf("SELECT flag FROM %s.bool_test WHERE id = ?", ctx.Keyspace),
@@ -529,6 +595,10 @@ func TestDML_Insert_05_Boolean(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.bool_test WHERE id = 5000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 7. VALIDATE DELETE
 	validateRowNotExists(ctx, "bool_test", testID)
@@ -570,6 +640,10 @@ func TestDML_Insert_06_Blob(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT blob should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: data, id)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.blob_test (data, id) VALUES (0xCAFEBABE, 6000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data FROM %s.blob_test WHERE id = ?", ctx.Keyspace),
@@ -595,6 +669,10 @@ func TestDML_Insert_06_Blob(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.blob_test WHERE id = 6000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "blob_test", testID)
@@ -640,6 +718,10 @@ func TestDML_Insert_07_UUIDTypes(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT UUID types should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: created, id, reference)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.uuid_test (created, id, reference) VALUES (now(), 550e8400-e29b-41d4-a716-446655440000, f47ac10b-58cc-4372-a567-0e02b2c3d479);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, reference FROM %s.uuid_test WHERE id = ?", ctx.Keyspace),
@@ -662,6 +744,10 @@ func TestDML_Insert_07_UUIDTypes(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.uuid_test WHERE id = 550e8400-e29b-41d4-a716-446655440000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	rows = validateInCassandra(ctx,
@@ -714,6 +800,10 @@ func TestDML_Insert_08_DateTimeTypes(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT date/time types should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: date_val, dur_val, id, time_val, ts_val)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.datetime_test (date_val, dur_val, id, time_val, ts_val) VALUES ('2024-01-15', 12h30m, 8000, '14:30:00', '2024-01-15T14:30:00Z');", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.datetime_test WHERE id = ?", ctx.Keyspace),
@@ -732,6 +822,10 @@ func TestDML_Insert_08_DateTimeTypes(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.datetime_test WHERE id = 8000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "datetime_test", testID)
@@ -773,6 +867,10 @@ func TestDML_Insert_09_Inet(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT inet should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: id, ip_addr)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.inet_test (id, ip_addr) VALUES (9000, '192.168.1.100');", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, ip_addr FROM %s.inet_test WHERE id = ?", ctx.Keyspace),
@@ -792,6 +890,10 @@ func TestDML_Insert_09_Inet(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.inet_test WHERE id = 9000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "inet_test", testID)
@@ -833,6 +935,10 @@ func TestDML_Insert_10_ListCollection(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT list should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: id, scores)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.list_test (id, scores) VALUES (10000, [95, 87, 92, 88]);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, scores FROM %s.list_test WHERE id = ?", ctx.Keyspace),
@@ -858,6 +964,10 @@ func TestDML_Insert_10_ListCollection(t *testing.T) {
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
 	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
 
+	// 4a. ASSERT Generated SELECT CQL
+	expectedSelectCQL := fmt.Sprintf("SELECT * FROM %s.list_test WHERE id = 10000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT CQL should be correct")
+
 	// 5. UPDATE via MCP (append to list)
 	updateArgs := map[string]any{
 		"operation": "UPDATE",
@@ -877,6 +987,10 @@ func TestDML_Insert_10_ListCollection(t *testing.T) {
 
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE list append should succeed")
+
+	// 5a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.list_test SET scores = scores + [100] WHERE id = 10000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
 
 	// 6. VALIDATE UPDATE
 	rows = validateInCassandra(ctx,
@@ -899,6 +1013,10 @@ func TestDML_Insert_10_ListCollection(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 7a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.list_test WHERE id = 10000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 8. VALIDATE DELETE
 	validateRowNotExists(ctx, "list_test", testID)
@@ -940,6 +1058,10 @@ func TestDML_Insert_11_SetCollection(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT set should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically sorted: id, tags; set elements sorted: admin, premium, verified)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.set_test (id, tags) VALUES (11000, {'admin', 'premium', 'verified'});", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, tags FROM %s.set_test WHERE id = ?", ctx.Keyspace),
@@ -972,6 +1094,10 @@ func TestDML_Insert_11_SetCollection(t *testing.T) {
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE set add should succeed")
 
+	// 4a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.set_test SET tags = tags + {'new_tag'} WHERE id = 11000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
+
 	// 5. VALIDATE UPDATE
 	rows = validateInCassandra(ctx,
 		fmt.Sprintf("SELECT tags FROM %s.set_test WHERE id = ?", ctx.Keyspace),
@@ -993,6 +1119,10 @@ func TestDML_Insert_11_SetCollection(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.set_test WHERE id = 11000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 7. VALIDATE DELETE
 	validateRowNotExists(ctx, "set_test", testID)
@@ -1037,6 +1167,10 @@ func TestDML_Insert_12_MapCollection(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT map should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: id, settings; map keys alphabetically: limit, threshold)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.map_test (id, settings) VALUES (12000, {'limit': 50, 'threshold': 100});", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, settings FROM %s.map_test WHERE id = ?", ctx.Keyspace),
@@ -1072,6 +1206,10 @@ func TestDML_Insert_12_MapCollection(t *testing.T) {
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE map element should succeed")
 
+	// 4a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.map_test SET settings['threshold'] = 200 WHERE id = 12000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
+
 	// 5. VALIDATE UPDATE
 	rows = validateInCassandra(ctx,
 		fmt.Sprintf("SELECT settings FROM %s.map_test WHERE id = ?", ctx.Keyspace),
@@ -1093,6 +1231,10 @@ func TestDML_Insert_12_MapCollection(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 6a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.map_test WHERE id = 12000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 7. VALIDATE DELETE
 	validateRowNotExists(ctx, "map_test", testID)
@@ -1148,6 +1290,10 @@ func TestDML_Insert_13_SimpleUDT(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT UDT should succeed")
 
+	// 3a. ASSERT Generated INSERT CQL (columns alphabetically: addr, id; UDT fields alphabetically: city, street, zip)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.udt_test (addr, id) VALUES ({city: 'NYC', street: '123 Main St', zip: '10001'}, 13000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 4. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.udt_test WHERE id = ?", ctx.Keyspace),
@@ -1166,6 +1312,10 @@ func TestDML_Insert_13_SimpleUDT(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.udt_test WHERE id = 13000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "udt_test", testID)
@@ -1207,6 +1357,10 @@ func TestDML_Insert_14_Tuple(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT tuple should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: coords, id)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.tuple_test (coords, id) VALUES ((10, 20, 30), 14000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.tuple_test WHERE id = ?", ctx.Keyspace),
@@ -1225,6 +1379,10 @@ func TestDML_Insert_14_Tuple(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.tuple_test WHERE id = 14000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "tuple_test", testID)
@@ -1266,6 +1424,10 @@ func TestDML_Insert_15_Vector(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT vector should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: embedding, id)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.vector_test (embedding, id) VALUES ([1.5, 2.5, 3.5], 15000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.vector_test WHERE id = ?", ctx.Keyspace),
@@ -1284,6 +1446,10 @@ func TestDML_Insert_15_Vector(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.vector_test WHERE id = 15000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "vector_test", testID)
@@ -1336,6 +1502,10 @@ func TestDML_Insert_16_ListOfFrozenList(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT list<frozen<list<int>>> should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.nested_list (data, id) VALUES ([[1, 2], [3, 4], [5, 6]], 16000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data FROM %s.nested_list WHERE id = ?", ctx.Keyspace),
@@ -1361,6 +1531,10 @@ func TestDML_Insert_16_ListOfFrozenList(t *testing.T) {
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
 	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
 
+	// 4a. ASSERT Generated SELECT CQL
+	expectedSelectCQL := fmt.Sprintf("SELECT * FROM %s.nested_list WHERE id = 16000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT CQL should be correct")
+
 	// 5. UPDATE via MCP (frozen collection - must replace entirely)
 	updateData := [][]int{{10, 20}, {30, 40}}
 	updateArgs := map[string]any{
@@ -1380,6 +1554,10 @@ func TestDML_Insert_16_ListOfFrozenList(t *testing.T) {
 
 	updateResult := submitQueryPlanMCP(ctx, updateArgs)
 	assertNoMCPError(ctx.T, updateResult, "UPDATE should succeed")
+
+	// 5a. ASSERT Generated UPDATE CQL
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.nested_list SET data = [[10, 20], [30, 40]] WHERE id = 16000;", ctx.Keyspace)
+	assertCQLEquals(t, updateResult, expectedUpdateCQL, "UPDATE CQL should be correct")
 
 	// 6. VALIDATE UPDATE
 	rows = validateInCassandra(ctx,
@@ -1402,6 +1580,10 @@ func TestDML_Insert_16_ListOfFrozenList(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 7a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.nested_list WHERE id = 16000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 8. VALIDATE DELETE
 	validateRowNotExists(ctx, "nested_list", testID)
@@ -1447,6 +1629,10 @@ func TestDML_Insert_17_ListOfFrozenSet(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT list<frozen<set<text>>> should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; set elements sorted alphabetically)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.list_of_sets (data, id) VALUES ([{'alice', 'bob'}, {'charlie', 'diana'}], 17000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data FROM %s.list_of_sets WHERE id = ?", ctx.Keyspace),
@@ -1465,6 +1651,10 @@ func TestDML_Insert_17_ListOfFrozenSet(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.list_of_sets WHERE id = 17000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "list_of_sets", testID)
@@ -1510,6 +1700,10 @@ func TestDML_Insert_18_SetOfFrozenList(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT set<frozen<list<int>>> should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; set elements sorted alphabetically)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.set_of_lists (data, id) VALUES ({[1, 2, 3], [4, 5, 6]}, 18000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.set_of_lists WHERE id = ?", ctx.Keyspace),
@@ -1528,6 +1722,10 @@ func TestDML_Insert_18_SetOfFrozenList(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.set_of_lists WHERE id = 18000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "set_of_lists", testID)
@@ -1572,6 +1770,10 @@ func TestDML_Insert_19_MapWithFrozenListValues(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT map<text,frozen<list<int>>> should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; map keys alphabetically: group1, group2)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.map_of_lists (data, id) VALUES ({'group1': [1, 2, 3], 'group2': [4, 5, 6]}, 19000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data FROM %s.map_of_lists WHERE id = ?", ctx.Keyspace),
@@ -1596,6 +1798,10 @@ func TestDML_Insert_19_MapWithFrozenListValues(t *testing.T) {
 	selectResult := submitQueryPlanMCP(ctx, selectArgs)
 	assertNoMCPError(ctx.T, selectResult, "SELECT via MCP should succeed")
 
+	// 4a. ASSERT Generated SELECT CQL
+	expectedSelectCQL := fmt.Sprintf("SELECT * FROM %s.map_of_lists WHERE id = 19000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT CQL should be correct")
+
 	// 5. DELETE via MCP
 	deleteArgs := map[string]any{
 		"operation": "DELETE",
@@ -1608,6 +1814,10 @@ func TestDML_Insert_19_MapWithFrozenListValues(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.map_of_lists WHERE id = 19000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "map_of_lists", testID)
@@ -1652,6 +1862,10 @@ func TestDML_Insert_20_MapWithFrozenSetValues(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT map<text,frozen<set<int>>> should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; map keys alphabetically: set1, set2; set elements sorted)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.map_of_sets (data, id) VALUES ({'set1': {10, 20, 30}, 'set2': {40, 50, 60}}, 20000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.map_of_sets WHERE id = ?", ctx.Keyspace),
@@ -1670,6 +1884,10 @@ func TestDML_Insert_20_MapWithFrozenSetValues(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.map_of_sets WHERE id = 20000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "map_of_sets", testID)
@@ -1748,6 +1966,10 @@ func TestDML_Insert_21_NestedUDT(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT nested UDT should succeed")
 
+	// 3a. ASSERT Generated INSERT CQL (columns alphabetically: id, info; person fields alphabetically: home_addr, name; address fields alphabetically: city, street, zip)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.people (id, info) VALUES (21000, {home_addr: {city: 'NYC', street: '123 Main St', zip: '10001'}, name: 'Alice'});", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 4. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.people WHERE id = ?", ctx.Keyspace),
@@ -1766,6 +1988,10 @@ func TestDML_Insert_21_NestedUDT(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.people WHERE id = 21000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "people", testID)
@@ -1820,6 +2046,10 @@ func TestDML_Insert_22_UDTWithListField(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT UDT with list should succeed")
 
+	// 3a. ASSERT Generated INSERT CQL (columns alphabetically: id, info; contact fields alphabetically: name, phones)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.contacts (id, info) VALUES (22000, {name: 'Bob', phones: ['555-1111', '555-2222']});", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 4. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.contacts WHERE id = ?", ctx.Keyspace),
@@ -1838,6 +2068,10 @@ func TestDML_Insert_22_UDTWithListField(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.contacts WHERE id = 22000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "contacts", testID)
@@ -1892,6 +2126,10 @@ func TestDML_Insert_23_UDTWithSetField(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT UDT with set should succeed")
 
+	// 3a. ASSERT Generated INSERT CQL (columns alphabetically: id, profile; user_profile fields alphabetically: name, tags; set elements sorted alphabetically)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.profiles (id, profile) VALUES (23000, {name: 'Charlie', tags: {'admin', 'developer', 'verified'}});", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 4. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.profiles WHERE id = ?", ctx.Keyspace),
@@ -1910,6 +2148,10 @@ func TestDML_Insert_23_UDTWithSetField(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.profiles WHERE id = 23000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "profiles", testID)
@@ -1967,6 +2209,10 @@ func TestDML_Insert_24_UDTWithMapField(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT UDT with map should succeed")
 
+	// 3a. ASSERT Generated INSERT CQL (columns alphabetically: cfg, id; config fields alphabetically: name, settings; map keys alphabetically: lang, theme)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.configs (cfg, id) VALUES ({name: 'AppConfig', settings: {'lang': 'en', 'theme': 'dark'}}, 24000);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 4. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.configs WHERE id = ?", ctx.Keyspace),
@@ -1985,6 +2231,10 @@ func TestDML_Insert_24_UDTWithMapField(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.configs WHERE id = 24000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "configs", testID)
@@ -2038,6 +2288,10 @@ func TestDML_Insert_25_ListOfFrozenUDT(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT list<frozen<udt>> should succeed")
 
+	// 3a. ASSERT Generated INSERT CQL (columns alphabetically: id, locations; location fields alphabetically: city, street)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.addresses (id, locations) VALUES (25000, [{city: 'NYC', street: '123 Main St'}, {city: 'SF', street: '456 Oak Ave'}]);", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 4. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id FROM %s.addresses WHERE id = ?", ctx.Keyspace),
@@ -2056,6 +2310,10 @@ func TestDML_Insert_25_ListOfFrozenUDT(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 5a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.addresses WHERE id = 25000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 6. VALIDATE DELETE
 	validateRowNotExists(ctx, "addresses", testID)
@@ -2098,6 +2356,10 @@ func TestDML_Insert_26_UsingTTL(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT with USING TTL should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; with USING TTL clause)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.ttl_test (data, id) VALUES ('expires in 300 seconds', 26000) USING TTL 300;", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data, TTL(data) FROM %s.ttl_test WHERE id = ?", ctx.Keyspace),
@@ -2122,6 +2384,10 @@ func TestDML_Insert_26_UsingTTL(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.ttl_test WHERE id = 26000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "ttl_test", testID)
@@ -2161,6 +2427,10 @@ func TestDML_Insert_27_UsingTimestamp(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT with USING TIMESTAMP should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; with USING TIMESTAMP clause)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.ts_test (data, id) VALUES ('timestamped data', 27000) USING TIMESTAMP 1609459200000000;", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data, WRITETIME(data) FROM %s.ts_test WHERE id = ?", ctx.Keyspace),
@@ -2184,6 +2454,10 @@ func TestDML_Insert_27_UsingTimestamp(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.ts_test WHERE id = 27000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "ts_test", testID)
@@ -2225,6 +2499,10 @@ func TestDML_Insert_28_UsingTTLAndTimestamp(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT with USING TTL AND TIMESTAMP should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id; with USING TTL AND TIMESTAMP clauses)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.ttl_ts_test (data, id) VALUES ('data with TTL and timestamp', 28000) USING TTL 600 AND TIMESTAMP 1609459200000000;", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, TTL(data), WRITETIME(data) FROM %s.ttl_ts_test WHERE id = ?", ctx.Keyspace),
@@ -2251,6 +2529,10 @@ func TestDML_Insert_28_UsingTTLAndTimestamp(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.ttl_ts_test WHERE id = 28000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "ttl_ts_test", testID)
@@ -2288,6 +2570,10 @@ func TestDML_Insert_29_InsertJSON(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "INSERT JSON should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (INSERT JSON syntax)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.json_test JSON '{\"id\": 29000, \"name\": \"JSON User\", \"age\": 25}';", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, name, age FROM %s.json_test WHERE id = ?", ctx.Keyspace),
@@ -2309,6 +2595,10 @@ func TestDML_Insert_29_InsertJSON(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// 4a. ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.json_test WHERE id = 29000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 5. VALIDATE DELETE
 	validateRowNotExists(ctx, "json_test", testID)
@@ -2350,6 +2640,10 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 	insertResult := submitQueryPlanMCP(ctx, insertArgs)
 	assertNoMCPError(ctx.T, insertResult, "First INSERT IF NOT EXISTS should succeed")
 
+	// 2a. ASSERT Generated INSERT CQL (columns alphabetically: data, id, version; with IF NOT EXISTS clause)
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.lwt_test (data, id, version) VALUES ('first insert', 30000, 1) IF NOT EXISTS;", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
 	// 3. VALIDATE in Cassandra
 	rows := validateInCassandra(ctx,
 		fmt.Sprintf("SELECT id, data, version FROM %s.lwt_test WHERE id = ?", ctx.Keyspace),
@@ -2375,6 +2669,10 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 	// Should succeed (CQL executes) but [applied] = false
 	// For now, just check it doesn't error
 	assertNoMCPError(ctx.T, insertResult2, "Second INSERT IF NOT EXISTS should execute")
+
+	// 4a. ASSERT Generated second INSERT CQL (columns alphabetically: data, id, version; with IF NOT EXISTS clause)
+	expectedInsertCQL2 := fmt.Sprintf("INSERT INTO %s.lwt_test (data, id, version) VALUES ('second insert', 30000, 2) IF NOT EXISTS;", ctx.Keyspace)
+	assertCQLEquals(t, insertResult2, expectedInsertCQL2, "Second INSERT CQL should be correct")
 
 	// 5. VALIDATE data unchanged (first insert still there)
 	rows = validateInCassandra(ctx,
@@ -2408,6 +2706,10 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 
 	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
 	assertNoMCPError(ctx.T, deleteResult, "DELETE IF EXISTS should succeed")
+
+	// 6a. ASSERT Generated DELETE CQL (with IF EXISTS clause for LWT consistency)
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.lwt_test WHERE id = 30000 IF EXISTS;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
 
 	// 7. VALIDATE DELETE (with LWT delay, this should work)
 	validateRowNotExists(ctx, "lwt_test", testID)

@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -234,12 +235,17 @@ func renderInsert(plan *AIResult) (string, error) {
 		sb.WriteString(plan.Table)
 	}
 
-	// Column names
+	// Column names - SORT ALPHABETICALLY for deterministic output
 	columns := make([]string, 0, len(plan.Values))
-	values := make([]string, 0, len(plan.Values))
-
-	for col, val := range plan.Values {
+	for col := range plan.Values {
 		columns = append(columns, col)
+	}
+	sort.Strings(columns) // CRITICAL: Make output deterministic
+
+	// Build values in same sorted order as columns
+	values := make([]string, 0, len(columns))
+	for _, col := range columns {
+		val := plan.Values[col]
 		// Get type hint from plan.ValueTypes
 		typeHint := ""
 		if plan.ValueTypes != nil {
@@ -303,8 +309,16 @@ func renderUpdate(plan *AIResult) (string, error) {
 	setClauses := make([]string, 0)
 
 	// Phase 2: Counter operations (counter = counter + N)
+	// SORT counter columns for deterministic output
 	if len(plan.CounterOps) > 0 {
-		for col, delta := range plan.CounterOps {
+		counterCols := make([]string, 0, len(plan.CounterOps))
+		for col := range plan.CounterOps {
+			counterCols = append(counterCols, col)
+		}
+		sort.Strings(counterCols)
+
+		for _, col := range counterCols {
+			delta := plan.CounterOps[col]
 			// Validate delta format (+N or -N)
 			if !strings.HasPrefix(delta, "+") && !strings.HasPrefix(delta, "-") {
 				return "", fmt.Errorf("counter operation must be increment (+N) or decrement (-N), got: %s", delta)
@@ -318,8 +332,16 @@ func renderUpdate(plan *AIResult) (string, error) {
 	}
 
 	// Phase 2: Collection operations (list append/prepend, set add/remove, map merge, element updates)
+	// SORT collection columns for deterministic output
 	if len(plan.CollectionOps) > 0 {
-		for col, op := range plan.CollectionOps {
+		collCols := make([]string, 0, len(plan.CollectionOps))
+		for col := range plan.CollectionOps {
+			collCols = append(collCols, col)
+		}
+		sort.Strings(collCols)
+
+		for _, col := range collCols {
+			op := plan.CollectionOps[col]
 			switch op.Operation {
 			case "append":
 				// list = list + [values]
@@ -368,8 +390,16 @@ func renderUpdate(plan *AIResult) (string, error) {
 	}
 
 	// Regular value updates (non-counters, non-collections)
+	// SORT value columns for deterministic output
 	if len(plan.Values) > 0 {
-		for col, val := range plan.Values {
+		valueCols := make([]string, 0, len(plan.Values))
+		for col := range plan.Values {
+			valueCols = append(valueCols, col)
+		}
+		sort.Strings(valueCols)
+
+		for _, col := range valueCols {
+			val := plan.Values[col]
 			// Get type hint from plan.ValueTypes
 			typeHint := ""
 			if plan.ValueTypes != nil {
@@ -2494,10 +2524,14 @@ func formatSetWithContext(v any, elementType string, valueTypes map[string]strin
 	// Deduplicate (Cassandra does this, but we do it too for correctness)
 	unique := deduplicateElements(elements)
 
+	// Format each element
 	formatted := make([]string, len(unique))
 	for i, elem := range unique {
 		formatted[i] = formatValueWithContext(elem, elementType, valueTypes, fieldPath)
 	}
+
+	// SORT set elements alphabetically for deterministic output
+	sort.Strings(formatted)
 
 	return fmt.Sprintf("{%s}", strings.Join(formatted, ", "))
 }
@@ -2520,10 +2554,26 @@ func formatMapWithContext(v any, keyType, valueType string, valueTypes map[strin
 		return "{}" // Empty map
 	}
 
-	pairs := make([]string, 0, len(m))
-	for key, value := range m {
+	// SORT map keys alphabetically for deterministic output
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, fmt.Sprintf("%v", key))
+	}
+	sort.Strings(keys)
+
+	pairs := make([]string, 0, len(keys))
+	for _, keyStr := range keys {
+		// Find the actual key value in the map
+		var value any
+		for k, v := range m {
+			if fmt.Sprintf("%v", k) == keyStr {
+				value = v
+				break
+			}
+		}
+
 		// Format key and value - for nested maps, recurse on value
-		formattedKey := formatValueWithContext(key, keyType, valueTypes, fieldPath)
+		formattedKey := formatValueWithContext(keyStr, keyType, valueTypes, fieldPath)
 		formattedValue := formatValueWithContext(value, valueType, valueTypes, fieldPath)
 
 		// Map syntax: 'key': value
@@ -2552,8 +2602,17 @@ func formatUDTWithContext(v any, udtTypeName string, valueTypes map[string]strin
 		return "{}" // Empty UDT
 	}
 
-	pairs := make([]string, 0, len(m))
-	for field, value := range m {
+	// SORT UDT fields alphabetically for deterministic output
+	fields := make([]string, 0, len(m))
+	for field := range m {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+
+	pairs := make([]string, 0, len(fields))
+	for _, field := range fields {
+		value := m[field]
+
 		// Build path for this field (e.g., "info.home_addr")
 		var currentPath string
 		if fieldPath != "" {

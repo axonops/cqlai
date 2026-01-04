@@ -2,9 +2,29 @@
 
 **Purpose:** Complete, systematic testing of ALL CQL functionality through the CQLAI MCP server
 
-**Status:** Work in Progress
+**Status:** Work in Progress (78 INSERT tests complete)
 **Target:** 1,200+ tests covering 100% of Cassandra 5.0.6 CQL specification
 **Approach:** Systematic, test-driven, with full validation at every step
+
+---
+
+## ⚠️ CRITICAL: TestMain Pattern (Bug Fix - 2026-01-04)
+
+**ALL test files in this directory share a single MCP server started in `TestMain()`.**
+
+**DO NOT:**
+- ❌ Call `.mcp start` in individual tests
+- ❌ Call `.mcp stop` in teardown functions
+- ❌ Generate new API keys per test
+
+**DO:**
+- ✅ Use shared `sharedMCPHandler`, `sharedAPIKey` from `base_helpers_test.go`
+- ✅ Create unique keyspace per test for isolation
+- ✅ Drop keyspace in teardown (not stop server)
+
+**Why:** Starting server per test causes port conflicts and "401 invalid API key" errors. Only the first test would pass.
+
+**Verified:** All 78 INSERT tests now pass sequentially with this fix.
 
 ---
 
@@ -46,11 +66,28 @@ test/integration/mcp/cql/
 
 1. ✅ **Start in DBA mode** - No confirmation prompts (testing CQL, not permissions)
 2. ✅ **Execute operation via MCP** - Test the MCP interface
-3. ✅ **Validate in Cassandra directly** - Direct query, assert exact data match
-4. ✅ **Test round-trip via MCP** - INSERT→SELECT→UPDATE→DELETE all via MCP
-5. ✅ **Verify state changes** - Confirm UPDATE/DELETE actually modified Cassandra
-6. ✅ **Test error cases** - What should fail and why
-7. ✅ **Clean up properly** - No state pollution between tests
+3. ✅ **ASSERT exact generated CQL** - Verify query builder generates correct CQL (MANDATORY - Added 2026-01-04)
+4. ✅ **Validate in Cassandra directly** - Direct query, assert exact data match
+5. ✅ **Test round-trip via MCP** - INSERT→SELECT→UPDATE→DELETE all via MCP
+6. ✅ **Verify state changes** - Confirm UPDATE/DELETE actually modified Cassandra
+7. ✅ **Test error cases** - What should fail and why
+8. ✅ **Clean up properly** - No state pollution between tests
+
+### CQL Assertion Pattern (MANDATORY)
+
+**After EVERY submitQueryPlanMCP() call:**
+```go
+result := submitQueryPlanMCP(ctx, args)
+assertNoMCPError(t, result, "Operation should succeed")
+
+// MANDATORY: Assert exact CQL
+expectedCQL := "INSERT INTO ks.table (id, name) VALUES (1, 'Alice');"
+assertCQLEquals(t, result, expectedCQL, "Generated CQL must match exactly")
+```
+
+**Why:** Execution success doesn't prove CQL is correct. We must verify the exact CQL generated.
+
+**See:** Test 1 (TestDML_Insert_01_SimpleText) for complete example.
 
 ---
 
@@ -184,19 +221,58 @@ Based on analysis:
 
 ## How to Run
 
+### Prerequisites
 ```bash
-# Run all CQL tests
-go test ./test/integration/mcp/cql -tags=integration -v
+# 1. Start Cassandra container
+podman start cassandra-test
+sleep 25  # Wait for startup
 
-# Run specific category
-go test ./test/integration/mcp/cql -tags=integration -run "TestDML_Insert" -v
+# 2. Verify Cassandra is ready
+podman exec cassandra-test cqlsh -u cassandra -p cassandra -e "SELECT release_version FROM system.local"
+# Should show: 5.0.6
 
-# Run single test
-go test ./test/integration/mcp/cql -tags=integration -run "TestDML_Insert_SimpleText" -v
-
-# Run with Cassandra validation only (faster)
-go test ./test/integration/mcp/cql -tags=integration -short -v
+# 3. Clear test cache (ALWAYS do this before running)
+go clean -testcache
 ```
+
+### Run Commands
+
+**CRITICAL: Always use `-p 1` flag (sequential execution required)**
+
+```bash
+# Run all INSERT tests (78 tests, ~4-5 minutes)
+go test ./test/integration/mcp/cql -tags=integration -run "^TestDML_Insert_" -v -p 1
+
+# Run specific test
+go test ./test/integration/mcp/cql -tags=integration -run "^TestDML_Insert_01_" -v -p 1
+
+# Run range of tests (tests 1-15)
+go test ./test/integration/mcp/cql -tags=integration -run "^TestDML_Insert_(0[1-9]|1[0-5])_" -v -p 1
+
+# Run specific category (when UPDATE/DELETE tests are added)
+go test ./test/integration/mcp/cql -tags=integration -run "^TestDML_Update_" -v -p 1
+```
+
+### Required Flags
+
+- `-tags=integration` — Required (tests won't build without it)
+- `-v` — Verbose output (recommended to see progress)
+- `-p 1` — **REQUIRED** (sequential execution, we don't support parallel)
+
+### Expected Results
+
+**Successful run shows:**
+```
+MCP session initialized: mcp-session-XXXX  ✅ (success)
+```
+
+**Failed run shows:**
+```
+MCP session generated: mcp-session-cql-XXX  ❌ (fallback - indicates problem)
+HTTP request failed with status 401: invalid API key  ❌
+```
+
+If you see the failed pattern, TestMain pattern is not working correctly.
 
 ---
 

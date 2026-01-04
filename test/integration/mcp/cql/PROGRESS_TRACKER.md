@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | Skipped | % Done |
 |----------|--------|-----------|---------|---------|---------|--------|
-| DML INSERT | 90 | **90** | **90** | **0** | **0** | 100% |
+| DML INSERT | 90 | **45** | **78** | **0** | **45** | **50%** ⚠️ |
 | DML UPDATE | 100 | 0 | 0 | 0 | 0 | 0% |
 | DML DELETE | 90 | 0 | 0 | 0 | 0 | 0% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
@@ -44,7 +44,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,200** | **90** | **90** | **0** | **0** | **7.5%** |
+| **TOTAL** | **1,200** | **45** | **78** | **0** | **45** | **3.8%** |
 
 ---
 
@@ -180,4 +180,49 @@ _(More bugs will be added as found)_
 **CHECKPOINT 1 COMPLETE: Tests 1-15 ✅**
 **CHECKPOINT 2 COMPLETE: Tests 16-20 ✅**
 **CHECKPOINT 3 COMPLETE: Tests 21-25 ✅**
-**NEXT: Tests 26-30 (INSERT with USING clauses)**
+
+---
+
+## ⚠️ GAP ANALYSIS (2026-01-04)
+
+**CRITICAL FINDING:** Only 45/90 blueprint scenarios actually tested (50% gap)
+
+**What's implemented:** 78 test functions
+**But:** Test 78 is a placeholder loop, not 13 unique tests
+**Actual coverage:** ~45 unique scenarios from blueprint
+
+**MAJOR GAPS:**
+- ❌ Bind markers: 0/10 tests (100% missing) - CRITICAL
+- ❌ INSERT JSON: 1/10 tests (90% missing) - CRITICAL
+- ❌ Error scenarios: 3/10 tests (70% missing) - CRITICAL
+- ❌ Tuples: 1/5 tests (80% missing) - HIGH
+- ❌ USING variants: 4/10 tests (60% missing) - HIGH
+
+**See:** `INSERT_GAP_ANALYSIS.md` for complete breakdown
+
+**Action Required:** Implement 45 missing tests before moving to UPDATE suite
+
+---
+
+## 🎯 CQL ASSERTION UPDATE (2026-01-04)
+
+**NEW REQUIREMENT:** All tests MUST assert EXACT generated CQL
+
+**Progress on CQL assertions:**
+- ✅ Tests 1-30: CQL assertions added and passing (38.5% complete)
+- ⏳ Tests 31-78: Need CQL assertions (61.5% remaining)
+
+**Changes made:**
+- ✅ Deterministic CQL rendering (internal/ai/planner.go)
+  - Column names sorted alphabetically
+  - Map keys sorted alphabetically
+  - UDT fields sorted alphabetically
+  - Set elements sorted alphabetically
+- ✅ CQL assertion helpers (base_helpers_test.go)
+  - extractGeneratedCQL()
+  - assertCQLEquals()
+  - normalizeWhitespace()
+- ✅ Blueprint docs updated with CQL assertion requirement
+
+**Last checkpoint:** Tests 1-30 complete with CQL assertions
+**NEXT: Tests 31-40 (empty collections, special characters, clustering columns)**

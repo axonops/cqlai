@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,11 +44,76 @@ import (
 // - Cassandra 5.0.6 specification
 // ============================================================================
 
-func init() {
-	// Generate test API key for CQL tests
-	key, _ := ai.GenerateAPIKey()
-	os.Setenv("TEST_MCP_API_KEY_CQL", key)
-	os.Setenv("TEST_MCP_API_KEY", key)
+// Shared test infrastructure (initialized once in TestMain)
+var (
+	sharedMCPHandler *router.MCPHandler
+	sharedAPIKey     string
+	sharedBaseURL    = "http://127.0.0.1:8912/mcp"
+)
+
+// TestMain sets up and tears down shared test infrastructure
+func TestMain(m *testing.M) {
+	// Setup: Start MCP server ONCE for all tests
+	exitCode := func() int {
+		// Create Cassandra session
+		cluster := gocql.NewCluster("127.0.0.1:9042")
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: "cassandra",
+			Password: "cassandra",
+		}
+		cluster.Timeout = 10 * time.Second
+		cluster.ConnectTimeout = 10 * time.Second
+		cluster.Consistency = gocql.LocalOne
+
+		session, err := db.NewSessionFromCluster(cluster, "cassandra", false)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create Cassandra session: %v\n", err)
+			return 1
+		}
+		defer session.Close()
+
+		// Create MCP handler (shared across all tests)
+		sharedMCPHandler = router.NewMCPHandler(session)
+		if sharedMCPHandler == nil {
+			fmt.Fprintf(os.Stderr, "Failed to create MCP handler\n")
+			return 1
+		}
+
+		// Generate API key ONCE
+		sharedAPIKey, err = ai.GenerateAPIKey()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to generate API key: %v\n", err)
+			return 1
+		}
+		os.Setenv("TEST_MCP_API_KEY", sharedAPIKey)
+
+		// Start MCP server ONCE
+		startCmd := ".mcp start --config-file ../testdata/dba.json"
+		result := sharedMCPHandler.HandleMCPCommand(startCmd)
+		if !contains(result, "started successfully") {
+			fmt.Fprintf(os.Stderr, "MCP start failed: %s\n", result)
+			return 1
+		}
+
+		time.Sleep(500 * time.Millisecond)
+
+		// Run all tests
+		code := m.Run()
+
+		// Cleanup: Stop MCP server ONCE
+		sharedMCPHandler.HandleMCPCommand(".mcp stop")
+		time.Sleep(300 * time.Millisecond)
+
+		return code
+	}()
+
+	os.Exit(exitCode)
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			findSubstring(s, substr)))
 }
 
 // CQLTestContext holds everything needed for a CQL test
@@ -62,9 +128,9 @@ type CQLTestContext struct {
 }
 
 // setupCQLTest creates a fresh test context with MCP in DBA mode
-// Uses existing test infrastructure from parent mcp package
+// Uses shared MCP server (started once in TestMain)
 func setupCQLTest(t *testing.T) *CQLTestContext {
-	// Create Cassandra session (same as existing tests)
+	// Create Cassandra session for this test
 	cluster := gocql.NewCluster("127.0.0.1:9042")
 	cluster.Authenticator = gocql.PasswordAuthenticator{
 		Username: "cassandra",
@@ -77,27 +143,14 @@ func setupCQLTest(t *testing.T) *CQLTestContext {
 	session, err := db.NewSessionFromCluster(cluster, "cassandra", false)
 	require.NoError(t, err, "Failed to create Cassandra session")
 
-	// Create MCP handler
-	mcpHandler := router.NewMCPHandler(session)
-	require.NotNil(t, mcpHandler)
-
-	// Generate API key
-	apiKey, err := ai.GenerateAPIKey()
-	require.NoError(t, err)
-	os.Setenv("TEST_MCP_API_KEY", apiKey)
-
-	// Start MCP server
-	startCmd := ".mcp start --config-file ../testdata/dba.json"
-	result := mcpHandler.HandleMCPCommand(startCmd)
-	require.Contains(t, result, "started successfully", "MCP start failed: %s", result)
-
-	time.Sleep(500 * time.Millisecond)
+	// Use shared MCP handler and API key (started once in TestMain)
+	require.NotNil(t, sharedMCPHandler, "Shared MCP handler not initialized")
+	require.NotEmpty(t, sharedAPIKey, "Shared API key not initialized")
 
 	// Get session ID from MCP server initialization
-	// MCP server generates session ID when client connects
-	sessionID := initializeMCPSessionHTTP(t, "http://127.0.0.1:8912/mcp", apiKey)
+	sessionID := initializeMCPSessionHTTP(t, sharedBaseURL, sharedAPIKey)
 
-	// Create unique test keyspace
+	// Create unique test keyspace for isolation
 	keyspace := fmt.Sprintf("cql_test_%d", time.Now().UnixNano())
 	err = session.Query(fmt.Sprintf(
 		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
@@ -107,9 +160,9 @@ func setupCQLTest(t *testing.T) *CQLTestContext {
 
 	return &CQLTestContext{
 		Session:    session,
-		MCPHandler: mcpHandler,
-		BaseURL:    "http://127.0.0.1:8912/mcp",
-		APIKey:     apiKey,
+		MCPHandler: sharedMCPHandler,
+		BaseURL:    sharedBaseURL,
+		APIKey:     sharedAPIKey,
 		SessionID:  sessionID,
 		Keyspace:   keyspace,
 		T:          t,
@@ -117,6 +170,7 @@ func setupCQLTest(t *testing.T) *CQLTestContext {
 }
 
 // teardownCQLTest cleans up test context
+// NOTE: Does NOT stop MCP server (shared across all tests, stopped in TestMain)
 func teardownCQLTest(ctx *CQLTestContext) {
 	if ctx == nil {
 		return
@@ -127,16 +181,13 @@ func teardownCQLTest(ctx *CQLTestContext) {
 		ctx.Session.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", ctx.Keyspace)).Exec()
 	}
 
-	// Stop MCP
-	if ctx.MCPHandler != nil {
-		ctx.MCPHandler.HandleMCPCommand(".mcp stop")
-		time.Sleep(300 * time.Millisecond)
-	}
-
-	// Close session
+	// Close session (each test has its own session)
 	if ctx.Session != nil {
 		ctx.Session.Close()
 	}
+
+	// NOTE: Do NOT stop MCP server here - it's shared across all tests
+	// and will be stopped once in TestMain cleanup
 }
 
 // ============================================================================
@@ -151,15 +202,79 @@ func callMCPTool(ctx *CQLTestContext, toolName string, args map[string]any) map[
 }
 
 // submitQueryPlanMCP submits a query plan via MCP submit_query_plan tool
+// Returns full MCP response including the generated CQL query
 func submitQueryPlanMCP(ctx *CQLTestContext, args map[string]any) map[string]any {
 	result := callMCPTool(ctx, "submit_query_plan", args)
 
-	// Log the operation for debugging
+	// Log the operation AND generated CQL for debugging
 	if op, ok := args["operation"].(string); ok {
 		ctx.T.Logf("MCP Operation: %s on table %s.%s", op, args["keyspace"], args["table"])
 	}
 
+	// Extract and log the generated CQL
+	if cql, ok := extractGeneratedCQL(result); ok {
+		ctx.T.Logf("Generated CQL: %s", cql)
+	} else {
+		ctx.T.Logf("WARNING: Generated CQL not found in response")
+	}
+
 	return result
+}
+
+// extractGeneratedCQL extracts the "query" field from MCP response
+// Returns (cql, true) if found, ("", false) if not found
+func extractGeneratedCQL(response map[string]any) (string, bool) {
+	// Check direct query field
+	if query, ok := response["query"].(string); ok {
+		return query, true
+	}
+
+	// Check in content array (MCP wraps response in content blocks)
+	if content, ok := response["content"].([]any); ok {
+		for _, c := range content {
+			if contentMap, ok := c.(map[string]any); ok {
+				if contentMap["type"] == "text" {
+					if text, ok := contentMap["text"].(string); ok {
+						// Text contains JSON string - parse it
+						var parsedData map[string]any
+						if err := json.Unmarshal([]byte(text), &parsedData); err == nil {
+							// Extract query from parsed JSON
+							if query, ok := parsedData["query"].(string); ok {
+								return query, true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return "", false
+}
+
+// assertCQLEquals asserts the generated CQL EXACTLY matches expected CQL
+// CRITICAL: This validates we're generating correct CQL, not just that execution works
+// Uses exact string match after normalizing whitespace
+func assertCQLEquals(t *testing.T, response map[string]any, expectedCQL string, message string) {
+	actualCQL, found := extractGeneratedCQL(response)
+
+	if !found {
+		t.Fatalf("%s - Generated CQL not found in MCP response", message)
+	}
+
+	// Normalize whitespace for comparison (allows formatting differences)
+	actualNorm := normalizeWhitespace(actualCQL)
+	expectedNorm := normalizeWhitespace(expectedCQL)
+
+	assert.Equal(t, expectedNorm, actualNorm, "%s - Generated CQL must match exactly", message)
+}
+
+// normalizeWhitespace normalizes whitespace for CQL comparison
+// Removes extra spaces, tabs, newlines to allow flexible formatting
+func normalizeWhitespace(s string) string {
+	// Replace multiple spaces/tabs/newlines with single space
+	normalized := strings.Join(strings.Fields(s), " ")
+	return strings.TrimSpace(normalized)
 }
 
 // ============================================================================
