@@ -1,0 +1,27 @@
+Continue implementing CQLAI cluster metadata manager.
+
+I am implementing a cluster metadata manager in internal/cluster/ package that wraps Apache Cassandra gocql driver's metadata capabilities.
+
+REQUIREMENTS:
+Read claude-notes/cluster-metadata-requirements.md for complete requirements.
+
+CONTEXT:
+This is needed to unblock 34 CQL test scenarios that require schema awareness (primary key validation, BATCH cross-partition detection, static column semantics).
+
+RESUME FILE:
+Read RESUME_PROMPT_CLUSTER_METADATA.md for complete context and implementation plan.
+
+BRANCH:
+feature/mcp_datatypes
+
+IMPLEMENTATION STEPS:
+1. Read requirements in claude-notes/cluster-metadata-requirements.md
+2. Design package based on requirements
+3. Implement internal/cluster/ package
+4. Write 5 integration tests (schema retrieval, refresh, CREATE/DROP, composite keys, clustering keys)
+5. All integration tests must pass
+6. Integrate into query planner
+7. Verify first schema-dependent test works
+
+SUCCESS CRITERIA:
+All 5 integration tests pass, schema lookups work, can validate primary keys in planner.
