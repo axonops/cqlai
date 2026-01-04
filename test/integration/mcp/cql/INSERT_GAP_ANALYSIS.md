@@ -590,17 +590,19 @@ for id in [78000, 79000, 80000, ..., 90000] {
 |----------|------------------|------------------|---------------|
 | Bind Markers | 10 | 0 | 10 |
 | INSERT JSON | 8 | 0 | 8 |
-| Error Scenarios | 7 | 10 | 17 |
+| Error Scenarios | 4 | 10 | 14 |
+| Upsert/Boundary Tests | 6 | 0 | 6 |
 | Tuples | 4 | 0 | 4 |
 | USING Variants | 6 | 0 | 6 |
 | Collections | 3 | 0 | 3 |
 | UDTs | 2 | 0 | 2 |
 | Primitives | 2 | 0 | 2 |
-| Edge Cases | 3 | 0 | 3 |
 | Primary Key Validation | 0 | 15 | 15 |
 | BATCH Validation | 0 | 21 | 21 |
 | Static Columns | 0 | 5 | 5 |
 | **TOTAL** | **45** | **51** | **96** |
+
+**Note:** "Duplicate keys" moved from error scenarios to upsert/boundary tests (it's correct behavior, not an error)
 
 **Actual coverage:** 45 scenarios tested / 141 total scenarios = **31.9%**
 
