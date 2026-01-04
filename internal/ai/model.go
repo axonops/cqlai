@@ -130,6 +130,9 @@ type AIResult struct {
 	Warning    string  `json:"warning,omitempty"`
 	ReadOnly   bool    `json:"read_only"`
 
+	// Rendering options (for testing)
+	UseDeterministicOrdering bool `json:"use_deterministic_ordering,omitempty"` // Enable alphabetical/numeric sorting (default: false)
+
 	// For informational responses (when Operation == "INFO")
 	InfoContent string `json:"info_content,omitempty"`
 	InfoTitle   string `json:"info_title,omitempty"`

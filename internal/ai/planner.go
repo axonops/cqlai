@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -235,12 +236,13 @@ func renderInsert(plan *AIResult) (string, error) {
 		sb.WriteString(plan.Table)
 	}
 
-	// Column names - SORT ALPHABETICALLY for deterministic output
+	// Column names - SORT ALPHABETICALLY for deterministic output (if enabled)
 	columns := make([]string, 0, len(plan.Values))
 	for col := range plan.Values {
 		columns = append(columns, col)
 	}
-	sort.Strings(columns) // CRITICAL: Make output deterministic
+	// Always sort for now - we'll make this configurable when it becomes a performance issue
+	sort.Strings(columns)
 
 	// Build values in same sorted order as columns
 	values := make([]string, 0, len(columns))
@@ -2554,8 +2556,8 @@ func formatSetWithContext(v any, elementType string, valueTypes map[string]strin
 		formatted[i] = formatValueWithContext(elem, elementType, valueTypes, fieldPath)
 	}
 
-	// SORT set elements alphabetically for deterministic output
-	sort.Strings(formatted)
+	// SORT set elements for deterministic output (type-aware: numeric or lexicographic)
+	sortStringsNumericAware(formatted, isNumericType(elementType))
 
 	return fmt.Sprintf("{%s}", strings.Join(formatted, ", "))
 }
@@ -2578,12 +2580,12 @@ func formatMapWithContext(v any, keyType, valueType string, valueTypes map[strin
 		return "{}" // Empty map
 	}
 
-	// SORT map keys alphabetically for deterministic output
+	// SORT map keys for deterministic output (type-aware: numeric or lexicographic)
 	keys := make([]string, 0, len(m))
 	for key := range m {
 		keys = append(keys, fmt.Sprintf("%v", key))
 	}
-	sort.Strings(keys)
+	sortStringsNumericAware(keys, isNumericType(keyType))
 
 	pairs := make([]string, 0, len(keys))
 	for _, keyStr := range keys {
@@ -2857,4 +2859,46 @@ func validateBatchLWTConstraint(statements []AIResult) error {
 
 	// Validation passed
 	return nil
+}
+
+// ============================================================================
+// Type-Aware Sorting Helpers (Added 2026-01-04)
+// ============================================================================
+
+// isNumericType checks if a CQL type is numeric
+func isNumericType(typeName string) bool {
+	switch typeName {
+	case "int", "bigint", "smallint", "tinyint", "varint",
+		"float", "double", "decimal",
+		"counter":
+		return true
+	default:
+		return false
+	}
+}
+
+// sortStringsNumericAware sorts strings, using numeric comparison for numeric types
+// For numeric types: sorts 7 < 13 < 21 (numerically)
+// For text types: sorts "a" < "b" < "z" (lexicographically)
+func sortStringsNumericAware(strs []string, isNumeric bool) {
+	if !isNumeric {
+		// Lexicographic sort (current behavior)
+		sort.Strings(strs)
+		return
+	}
+
+	// Numeric sort - parse as float64 for comparison
+	sort.Slice(strs, func(i, j int) bool {
+		// Try to parse as numbers
+		numI, errI := strconv.ParseFloat(strs[i], 64)
+		numJ, errJ := strconv.ParseFloat(strs[j], 64)
+
+		// If both parse successfully, compare numerically
+		if errI == nil && errJ == nil {
+			return numI < numJ
+		}
+
+		// Fallback to lexicographic if parse fails
+		return strs[i] < strs[j]
+	})
 }
