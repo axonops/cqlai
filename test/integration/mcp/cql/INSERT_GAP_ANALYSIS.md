@@ -1,10 +1,12 @@
 # DML INSERT Tests - Gap Analysis
 
 **Date:** 2026-01-04
-**Blueprint Target:** 90 tests
+**Updated:** 2026-01-04 (Added primary key and BATCH validation scenarios)
+**Original Blueprint Target:** 90 tests
+**Revised Blueprint Target:** 170 tests (added 80 critical scenarios)
 **Actually Implemented:** 78 tests
-**Missing:** 12 tests (13.3% gap)
-**Status:** ⚠️ INCOMPLETE - Gaps identified
+**Missing:** 92 tests (54.1% gap)
+**Status:** ⚠️ MAJOR GAPS - Additional scenarios identified
 
 ---
 
@@ -522,7 +524,87 @@ for id in [78000, 79000, 80000, ..., 90000] {
 
 **Gaps confirmed:** 45/90 tests missing (50%)
 
-**Recommendation:** Implement the 35 CRITICAL/HIGH priority missing tests before proceeding to UPDATE suite.
+**Recommendation:** Implement all 92 missing tests before proceeding to UPDATE suite.
 
-**Next step:** Shall I create detailed test implementations for the missing tests, starting with bind markers (10 tests)?
+---
+
+## NEWLY IDENTIFIED GAPS (Added 2026-01-04)
+
+### Primary Key Validation (15 tests) - CRITICAL
+
+**INSERT Primary Key (3 tests):**
+- Full PK (valid)
+- Missing partition key (error)
+- Missing clustering keys (error)
+
+**UPDATE Primary Key (5 tests):**
+- Full PK (valid)
+- Partial PK with regular column (error)
+- Partial PK with static column (valid)
+- Missing partition key (error)
+- Range update (error)
+
+**DELETE Primary Key (7 tests):**
+- Full PK - row delete (valid)
+- Partition key only - partition delete (valid)
+- Partition key + range (valid)
+- Partition key + IN (valid)
+- Missing partition key (error)
+- No WHERE clause (error)
+- Static column with partial PK (valid)
+
+### BATCH Validation (10 tests) - CRITICAL
+
+**Counter Mixing (2 tests):**
+- Mix counter/non-counter (error)
+- COUNTER BATCH with regular table (error)
+
+**Cross-Partition Detection (4 tests):**
+- Cross-partition warning
+- Single-partition (no warning)
+- LWT cross-partition (error)
+- Composite partition key validation
+
+**Mixed DML (4 tests):**
+- INSERT + UPDATE + DELETE
+- Multiple tables same partition
+- Different operations same partition
+- TTL across statements
+
+### Static Column Operations (5 tests) - HIGH
+
+- UPDATE static with partial PK (valid)
+- UPDATE regular with partial PK (error)
+- Mix static/regular with partial PK (error)
+- INSERT static column
+- DELETE static column
+
+---
+
+## UPDATED SUMMARY
+
+**Total Missing:** 92 tests broken down as:
+
+| Category | Original Gap | New Gaps | Total Missing |
+|----------|--------------|----------|---------------|
+| Bind Markers | 10 | 0 | 10 |
+| INSERT JSON | 8 | 0 | 8 |
+| Error Scenarios | 7 | 10 | 17 |
+| Tuples | 4 | 0 | 4 |
+| USING Variants | 6 | 0 | 6 |
+| Collections | 3 | 0 | 3 |
+| UDTs | 2 | 0 | 2 |
+| Primitives | 2 | 0 | 2 |
+| Primary Key Validation | 0 | 15 | 15 |
+| BATCH Validation | 0 | 10 | 10 |
+| Static Columns | 0 | 5 | 5 |
+| **TOTAL** | **45** | **47** | **92** |
+
+**Actual coverage:** 78 implemented / 170 total = **45.9%**
+
+---
+
+**Next step:** Implement all 92 missing tests to achieve 100% INSERT coverage
+
+**See:** `CQL_TEST_ADDENDUM_PRIMARY_KEYS_AND_BATCH.md` for detailed test scenarios
 
