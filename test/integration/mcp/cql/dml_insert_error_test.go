@@ -86,10 +86,11 @@ func TestDML_Insert_ERR_01a_TableCreatedInSeparateSession(t *testing.T) {
 
 	result1 := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Should get error
-	assertMCPError(ctx.T, result1, "table", "First attempt should fail - table doesn't exist")
+	// Assert EXACT error message for non-existent table
+	expectedError1 := fmt.Sprintf("Query execution failed: query failed: table %s does not exist", tableName)
+	assertMCPErrorMessageExact(ctx.T, result1, expectedError1, "First attempt should fail with exact table not found error")
 
-	t.Log("Step 1: ✅ INSERT into non-existent table failed as expected")
+	t.Log("Step 1: ✅ INSERT into non-existent table failed as expected (exact error)")
 
 	// 2. Create table in SEPARATE session (NOT the MCP session)
 	// This simulates another user/connection creating the table
@@ -165,9 +166,9 @@ func TestDML_Insert_ERR_02_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: missing partition key column: device_id (required for INSERT)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error")
+	// Assert EXACT validation error message (improved to list ALL partition keys)
+	expectedError := "Query validation failed: missing partition key column(s): device_id. Include all partition keys: user_id, device_id (required for INSERT)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get helpful error listing all partition keys")
 
 	// Verify no data was inserted
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.pk_test", ctx.Keyspace))
@@ -211,10 +212,9 @@ func TestDML_Insert_ERR_03_MissingClusteringKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Assert EXACT validation error message
-	// Note: Validation reports first missing clustering key found
-	expectedError := "Query validation failed: missing clustering key column: month (required for INSERT)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing clustering key error")
+	// Assert EXACT validation error message (improved to list ALL clustering keys in order)
+	expectedError := "Query validation failed: missing clustering key column(s): month, day. Include all clustering keys in order: year, month, day (required for INSERT)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get helpful error listing all clustering keys in order")
 
 	// Verify no data was inserted
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.ck_test", ctx.Keyspace))

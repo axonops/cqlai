@@ -42,18 +42,38 @@ func ValidateInsertPlan(plan *AIResult, metadata cluster.MetadataManager) error 
 
 	// Validate all partition keys are present
 	pkNames := tableMeta.GetPartitionKeyNames()
+	var missingPKs []string
 	for _, pkName := range pkNames {
 		if _, exists := plan.Values[pkName]; !exists {
-			return fmt.Errorf("missing partition key column: %s (required for INSERT)", pkName)
+			missingPKs = append(missingPKs, pkName)
 		}
+	}
+	if len(missingPKs) > 0 {
+		if len(pkNames) == 1 {
+			return fmt.Errorf("missing partition key column: %s (required for INSERT)", missingPKs[0])
+		}
+		// Multiple partition keys - list all required keys for clarity
+		return fmt.Errorf("missing partition key column(s): %s. Include all partition keys: %s (required for INSERT)",
+			strings.Join(missingPKs, ", "),
+			strings.Join(pkNames, ", "))
 	}
 
 	// Validate all clustering keys are present
 	ckNames := tableMeta.GetClusteringKeyNames()
+	var missingCKs []string
 	for _, ckName := range ckNames {
 		if _, exists := plan.Values[ckName]; !exists {
-			return fmt.Errorf("missing clustering key column: %s (required for INSERT)", ckName)
+			missingCKs = append(missingCKs, ckName)
 		}
+	}
+	if len(missingCKs) > 0 {
+		if len(ckNames) == 1 {
+			return fmt.Errorf("missing clustering key column: %s (required for INSERT)", missingCKs[0])
+		}
+		// Multiple clustering keys - list all required keys for clarity
+		return fmt.Errorf("missing clustering key column(s): %s. Include all clustering keys in order: %s (required for INSERT)",
+			strings.Join(missingCKs, ", "),
+			strings.Join(ckNames, ", "))
 	}
 
 	return nil
@@ -118,18 +138,36 @@ func ValidateUpdatePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 
 		// Validate all partition keys present in WHERE
 		pkNames := tableMeta.GetPartitionKeyNames()
+		var missingPKs []string
 		for _, pkName := range pkNames {
 			if !whereColumns[pkName] {
-				return fmt.Errorf("missing partition key in WHERE clause: %s (required for UPDATE)", pkName)
+				missingPKs = append(missingPKs, pkName)
 			}
+		}
+		if len(missingPKs) > 0 {
+			if len(pkNames) == 1 {
+				return fmt.Errorf("missing partition key in WHERE clause: %s (required for UPDATE)", missingPKs[0])
+			}
+			return fmt.Errorf("missing partition key column(s) in WHERE clause: %s. Include all partition keys: %s (required for UPDATE)",
+				strings.Join(missingPKs, ", "),
+				strings.Join(pkNames, ", "))
 		}
 
 		// Validate all clustering keys present in WHERE
 		ckNames := tableMeta.GetClusteringKeyNames()
+		var missingCKs []string
 		for _, ckName := range ckNames {
 			if !whereColumns[ckName] {
-				return fmt.Errorf("missing clustering key in WHERE clause: %s (required for UPDATE of regular columns)", ckName)
+				missingCKs = append(missingCKs, ckName)
 			}
+		}
+		if len(missingCKs) > 0 {
+			if len(ckNames) == 1 {
+				return fmt.Errorf("missing clustering key in WHERE clause: %s (required for UPDATE of regular columns)", missingCKs[0])
+			}
+			return fmt.Errorf("missing clustering key column(s) in WHERE clause: %s. Include all clustering keys in order: %s (required for UPDATE of regular columns)",
+				strings.Join(missingCKs, ", "),
+				strings.Join(ckNames, ", "))
 		}
 	} else {
 		// Updating static columns only - just need partition key
@@ -144,10 +182,19 @@ func ValidateUpdatePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 		}
 
 		pkNames := tableMeta.GetPartitionKeyNames()
+		var missingPKs []string
 		for _, pkName := range pkNames {
 			if !whereColumns[pkName] {
-				return fmt.Errorf("missing partition key in WHERE clause: %s (required for UPDATE)", pkName)
+				missingPKs = append(missingPKs, pkName)
 			}
+		}
+		if len(missingPKs) > 0 {
+			if len(pkNames) == 1 {
+				return fmt.Errorf("missing partition key in WHERE clause: %s (required for UPDATE)", missingPKs[0])
+			}
+			return fmt.Errorf("missing partition key column(s) in WHERE clause: %s. Include all partition keys: %s (required for UPDATE)",
+				strings.Join(missingPKs, ", "),
+				strings.Join(pkNames, ", "))
 		}
 		// Clustering keys NOT required for static column updates
 	}
