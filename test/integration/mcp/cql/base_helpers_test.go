@@ -657,3 +657,59 @@ func callToolHTTPDirect(t *testing.T, baseURL, apiKey, sessionID, toolName strin
 
 	return response
 }
+
+// ============================================================================
+// Enhanced Error Assertion Helpers (for exact error message validation)
+// ============================================================================
+
+// extractMCPErrorMessage extracts the actual error message text from MCP error response
+// Returns empty string if not an error response
+func extractMCPErrorMessage(response map[string]any) string {
+	if response == nil {
+		return ""
+	}
+
+	// Check isError flag
+	if isError, ok := response["isError"].(bool); !ok || !isError {
+		return ""
+	}
+
+	// Extract error text from content array
+	if content, ok := response["content"].([]any); ok {
+		for _, c := range content {
+			if contentMap, ok := c.(map[string]any); ok {
+				if text, ok := contentMap["text"].(string); ok {
+					return text
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// assertMCPErrorMessageExact asserts the EXACT error message (like assertCQLEquals for CQL)
+// This ensures we're getting the RIGHT error, not just any error
+func assertMCPErrorMessageExact(t *testing.T, response map[string]any, expectedError string, message string) {
+	if response == nil {
+		t.Fatalf("%s - MCP response is nil", message)
+	}
+
+	// Verify it's an error response
+	if isError, ok := response["isError"].(bool); !ok || !isError {
+		t.Fatalf("%s - Expected error response but got success: %+v", message, response)
+	}
+
+	// Extract actual error message
+	actualError := extractMCPErrorMessage(response)
+	if actualError == "" {
+		t.Fatalf("%s - Error response but no error text found: %+v", message, response)
+	}
+
+	// Normalize whitespace for comparison (like CQL assertions)
+	actualNorm := normalizeWhitespace(actualError)
+	expectedNorm := normalizeWhitespace(expectedError)
+
+	assert.Equal(t, expectedNorm, actualNorm, "%s - Error message must match exactly", message)
+}
+

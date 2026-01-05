@@ -165,6 +165,10 @@ func TestDML_Insert_ERR_02_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
+	// Extract and log the actual error message
+	actualError := extractMCPErrorMessage(result)
+	t.Logf("Actual error message: %s", actualError)
+
 	// Should get validation error BEFORE CQL generation
 	assertMCPError(ctx.T, result, "partition key", "Should fail - missing partition key")
 	assertMCPError(ctx.T, result, "device_id", "Error should mention missing column")
