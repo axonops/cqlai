@@ -171,9 +171,14 @@ func buildStartCommandFromConfig(config map[string]any, socketPath string) strin
 // ensureTestDataExists verifies test_mcp keyspace and users table exist
 // Call this at start of test functions that need the test data
 func ensureTestDataExists(t *testing.T, session *db.Session) {
-	// Simply ensure table exists with IF NOT EXISTS (idempotent)
-	// This is safer than checking first - avoids extra queries
-	err := session.Query("CREATE TABLE IF NOT EXISTS test_mcp.users (id uuid PRIMARY KEY, email text, name text, created_at timestamp, role text, is_active boolean)").Exec()
+	// Create test_mcp keyspace if it doesn't exist
+	err := session.Query("CREATE KEYSPACE IF NOT EXISTS test_mcp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}").Exec()
+	if err != nil {
+		t.Logf("Warning: CREATE KEYSPACE test_mcp failed: %v (may already exist)", err)
+	}
+
+	// Create table in test_mcp keyspace
+	err = session.Query("CREATE TABLE IF NOT EXISTS test_mcp.users (id uuid PRIMARY KEY, email text, name text, created_at timestamp, role text, is_active boolean)").Exec()
 	if err != nil {
 		t.Logf("Warning: CREATE TABLE IF NOT EXISTS failed: %v (table may already exist)", err)
 	}
