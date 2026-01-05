@@ -262,3 +262,105 @@ func TestDML_Insert_ERR_04_TypeMismatch(t *testing.T) {
 
 	t.Log("✅ Test ERR_04: Type mismatch test executed (planner doesn't validate types yet)")
 }
+
+// TestDML_Insert_ERR_05_FrozenUDTFieldUpdate tests that updating frozen UDT fields is correctly rejected
+// This is EXPECTED to error - frozen UDTs cannot have individual fields updated
+// Moved from Test 53 to error file for better organization
+func TestDML_Insert_ERR_05_FrozenUDTFieldUpdate(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	err := ctx.Session.Query(fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.person (
+			name text,
+			age int
+		)
+	`, ctx.Keyspace)).Exec()
+	assert.NoError(ctx.T, err)
+
+	err = createTable(ctx, "udt_update", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.udt_update (
+			id int PRIMARY KEY,
+			info frozen<person>
+		)
+	`, ctx.Keyspace))
+	assert.NoError(ctx.T, err)
+
+	testID := 53000
+
+	// INSERT with frozen UDT
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "udt_update",
+		"values": map[string]any{
+			"id": testID,
+			"info": map[string]any{
+				"name": "Alice",
+				"age":  30,
+			},
+		},
+		"value_types": map[string]any{
+			"info": "frozen<person>",
+		},
+	}
+
+	insertResult := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, insertResult, "INSERT should succeed")
+
+	// ASSERT Generated INSERT CQL
+	expectedInsertCQL := fmt.Sprintf("INSERT INTO %s.udt_update (id, info) VALUES (53000, {age: 30, name: 'Alice'});", ctx.Keyspace)
+	assertCQLEquals(t, insertResult, expectedInsertCQL, "INSERT CQL should be correct")
+
+	// Attempt to update frozen UDT field: info.age = 31
+	// This should fail - frozen UDTs cannot have individual fields updated
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "udt_update",
+		"collection_ops": map[string]any{
+			"info": map[string]any{
+				"operation":  "set_field",
+				"key":        "age", // Field name
+				"value":      31,
+				"value_type": "int",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	updateResult := submitQueryPlanMCP(ctx, updateArgs)
+
+	// Should get error - frozen UDT fields cannot be updated
+	assertMCPError(ctx.T, updateResult, "frozen", "Should error when trying to update frozen UDT field")
+
+	// Verify original data unchanged in Cassandra
+	rows := validateInCassandra(ctx,
+		fmt.Sprintf("SELECT id FROM %s.udt_update WHERE id = ?", ctx.Keyspace),
+		testID)
+	assert.Len(ctx.T, rows, 1, "Original row should still exist unchanged")
+
+	// Cleanup
+	deleteArgs := map[string]any{
+		"operation": "DELETE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "udt_update",
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": testID},
+		},
+	}
+
+	deleteResult := submitQueryPlanMCP(ctx, deleteArgs)
+	assertNoMCPError(ctx.T, deleteResult, "DELETE should succeed")
+
+	// ASSERT Generated DELETE CQL
+	expectedDeleteCQL := fmt.Sprintf("DELETE FROM %s.udt_update WHERE id = 53000;", ctx.Keyspace)
+	assertCQLEquals(t, deleteResult, expectedDeleteCQL, "DELETE CQL should be correct")
+
+	validateRowNotExists(ctx, "udt_update", testID)
+
+	t.Log("✅ ERR_05: Frozen UDT field update correctly rejected with error")
+}
+
