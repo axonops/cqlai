@@ -8968,6 +8968,261 @@ func TestDML_Insert_135_UnicodeAllLanguages(t *testing.T) {
 	t.Log("✅ Test 135: Unicode all languages validated")
 }
 
+// TestDML_Insert_136_DecimalPrecision tests decimal with very high precision
+func TestDML_Insert_136_DecimalPrecision(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "decimal_precision", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.decimal_precision (
+			id int PRIMARY KEY,
+			exact_value decimal
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT decimal with very high precision (pass as string to preserve)
+	preciseValue := "3.141592653589793238462643383279502884197"
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "decimal_precision",
+		"values": map[string]any{
+			"id":          136000,
+			"exact_value": preciseValue,
+		},
+		"value_types": map[string]any{
+			"exact_value": "decimal",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with high-precision decimal should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.decimal_precision (exact_value, id) VALUES (%s, 136000);", ctx.Keyspace, preciseValue)
+	assertCQLEquals(t, result, expectedCQL, "Decimal precision CQL should be correct")
+
+	// Verify data exists
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT exact_value FROM %s.decimal_precision WHERE id = ?", ctx.Keyspace), 136000)
+	require.Len(t, rows, 1)
+	assert.NotNil(t, rows[0]["exact_value"])
+
+	t.Log("✅ Test 136: Decimal high precision validated")
+}
+
+// TestDML_Insert_137_CounterDecrement tests counter decrement operation
+func TestDML_Insert_137_CounterDecrement(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create counter table
+	err := createTable(ctx, "counter_dec", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.counter_dec (
+			id text PRIMARY KEY,
+			count counter
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Increment counter first
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "counter_dec",
+		"counter_ops": map[string]any{
+			"count": "+10",
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": "item1"},
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Counter increment should succeed")
+
+	// Verify count is 10
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT count FROM %s.counter_dec WHERE id = ?", ctx.Keyspace), "item1")
+	require.Len(t, rows, 1)
+	if count, ok := rows[0]["count"].(int64); ok {
+		assert.Equal(t, int64(10), count)
+	}
+
+	// Now decrement
+	updateArgs["counter_ops"] = map[string]any{
+		"count": "-3",
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Counter decrement should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.counter_dec SET count = count - 3 WHERE id = 'item1';", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Counter decrement CQL should be correct")
+
+	// Verify count is 7
+	rows = validateInCassandra(ctx, fmt.Sprintf("SELECT count FROM %s.counter_dec WHERE id = ?", ctx.Keyspace), "item1")
+	require.Len(t, rows, 1)
+	if count, ok := rows[0]["count"].(int64); ok {
+		assert.Equal(t, int64(7), count, "Counter should be 7 after decrement")
+	}
+
+	t.Log("✅ Test 137: Counter decrement operation validated")
+}
+
+// TestDML_Insert_138_MultipleCounters tests table with multiple counter columns
+func TestDML_Insert_138_MultipleCounters(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create counter table with multiple counters
+	err := createTable(ctx, "multi_counter", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.multi_counter (
+			id text PRIMARY KEY,
+			views counter,
+			clicks counter,
+			shares counter
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Update multiple counters in one operation
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "multi_counter",
+		"counter_ops": map[string]any{
+			"views":  "+5",
+			"clicks": "+2",
+			"shares": "+1",
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": "article1"},
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Multiple counter updates should succeed")
+
+	// Verify all counters updated
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT views, clicks, shares FROM %s.multi_counter WHERE id = ?", ctx.Keyspace), "article1")
+	require.Len(t, rows, 1)
+
+	if views, ok := rows[0]["views"].(int64); ok {
+		assert.Equal(t, int64(5), views)
+	}
+	if clicks, ok := rows[0]["clicks"].(int64); ok {
+		assert.Equal(t, int64(2), clicks)
+	}
+	if shares, ok := rows[0]["shares"].(int64); ok {
+		assert.Equal(t, int64(1), shares)
+	}
+
+	t.Log("✅ Test 138: Multiple counters validated")
+}
+
+// TestDML_Insert_139_VectorSimilarity tests vector for similarity search use case
+func TestDML_Insert_139_VectorSimilarity(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table for vector similarity search
+	err := createTable(ctx, "embeddings", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.embeddings (
+			doc_id int PRIMARY KEY,
+			embedding vector<float, 384>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Create 384-dimensional embedding vector (common for sentence transformers)
+	embedding := make([]interface{}, 384)
+	for i := 0; i < 384; i++ {
+		embedding[i] = float64(i) * 0.01 // Simple pattern for testing
+	}
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "embeddings",
+		"values": map[string]any{
+			"doc_id":    139000,
+			"embedding": embedding,
+		},
+		"value_types": map[string]any{
+			"embedding": "vector<float,384>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT 384D embedding vector should succeed")
+
+	// Verify vector stored
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT embedding FROM %s.embeddings WHERE doc_id = ?", ctx.Keyspace), 139000)
+	require.Len(t, rows, 1)
+
+	if vec, ok := rows[0]["embedding"].([]interface{}); ok {
+		assert.Len(t, vec, 384, "Vector should have 384 dimensions")
+	}
+
+	t.Log("✅ Test 139: Vector similarity search use case validated")
+}
+
+// TestDML_Insert_140_UDTPartialFields tests UDT with only some fields specified
+func TestDML_Insert_140_UDTPartialFields(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create UDT
+	err := createTable(ctx, "contact_udt", fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.contact_info (
+			email text,
+			phone text,
+			address text,
+			city text,
+			country text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Create table
+	err = createTable(ctx, "partial_udt", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.partial_udt (
+			id int PRIMARY KEY,
+			contact frozen<contact_info>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT UDT with only email and phone (other fields NULL)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "partial_udt",
+		"values": map[string]any{
+			"id": 140000,
+			"contact": map[string]any{
+				"email": "test@example.com",
+				"phone": "555-1234",
+				// address, city, country omitted (will be NULL)
+			},
+		},
+		"value_types": map[string]any{
+			"contact": "frozen<contact_info>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT UDT with partial fields should succeed")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT contact FROM %s.partial_udt WHERE id = ?", ctx.Keyspace), 140000)
+	require.Len(t, rows, 1)
+	assert.NotNil(t, rows[0]["contact"])
+
+	t.Log("✅ Test 140: UDT with partial fields validated")
+}
+
 // ============================================================================
-// MILESTONE: 135 INSERT Tests Complete! (95.7% of 141 target)
+// MILESTONE: 140 INSERT Tests Complete! (99.3% of 141 target)
 // ============================================================================
