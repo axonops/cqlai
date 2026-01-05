@@ -1,59 +1,79 @@
 # Outstanding Work - TODO Items
 
-**Date:** 2026-01-05
+**Date:** 2026-01-05 (Session 2 update)
 **Branch:** feature/mcp_datatypes
 
 ---
 
-## Duplicate Tests (Need Cleanup)
+## Session 2 Summary
 
-### BATCH Tests Duplicated
+### Tests Added: 87-110 (24 tests)
+- All tests passing ✅
+- No skipped tests ✅
+- Bugs fixed immediately ✅
 
-**Status:** Tests exist in BOTH dml_insert_test.go AND dml_batch_test.go
+### Bugs Fixed This Session
+1. ✅ Bug 6: frozen<tuple> not handled in frozen type switch (Test 87)
+2. ✅ Bug 7: isFunctionCall matched strings with parentheses (Test 90)
+3. ✅ MCP error reporting now includes generated CQL
 
-**Duplicates:**
-- Test 36 (BatchMultipleInserts) → dml_batch_test.go::Batch_01
-- Test 68 (BatchUnlogged) → dml_batch_test.go::Batch_02
-- Test 69 (BatchCounter) → dml_batch_test.go::Batch_03
-- Test 70 (BatchWithTimestamp) → dml_batch_test.go::Batch_04
-- Test 71 (BatchWithLWT) → dml_batch_test.go::Batch_05
+---
+
+## Current Test Status
+
+**File: dml_insert_test.go**
+- 110 INSERT tests (Tests 1-110)
+- 5 BATCH duplicates (Tests 36, 68-71) - still need deletion
+
+**Error Test Files:**
+- dml_insert_error_test.go: 14 error tests (100% ✅)
+- dml_update_error_test.go: 3 error tests (100% ✅)
+- dml_delete_error_test.go: 2 error tests (100% ✅)
+- dml_batch_error_test.go: 2 error tests (100% ✅)
+
+**Other DML Files:**
+- dml_update_test.go: 2 tests
+- dml_delete_test.go: 5 tests
+- dml_batch_test.go: 10 tests
+
+**Total: 149 tests**
+
+---
+
+## Outstanding Work
+
+### 1. Duplicate BATCH Tests (Still Need Cleanup)
+
+**Status:** Tests 36, 68-71 exist in BOTH files
 
 **Action needed:**
 - Delete tests 36, 68, 69, 70, 71 from dml_insert_test.go
-- Add renumbering comments where they were removed
+- Renumber subsequent tests
 - Verify all tests still pass
-- Commit cleanup
 
-**Comments added:** ✅ All 5 tests now have "NOTE: DUPLICATED" comments
+### 2. Remaining INSERT Tests (31 tests to reach 141)
 
----
+**Categories needing more tests:**
+- USING clause edge cases (3 more)
+- More error scenarios (several)
+- Bind markers (10 tests - low priority per user)
+- Additional edge cases
 
-## Test File Organization
+### 3. DEFAULT UNSET Support
 
-**Current state:**
-- dml_insert_test.go: 78 tests (including 5 BATCH duplicates)
-- dml_insert_error_test.go: 6 error tests
-- dml_update_error_test.go: 3 error tests
-- dml_delete_error_test.go: 2 error tests
-- dml_batch_test.go: 6 BATCH tests
-- dml_batch_error_test.go: 2 BATCH error tests
-
-**After cleanup:**
-- dml_insert_test.go: 73 tests (remove 5 BATCH duplicates)
-- Error files: 13 error tests
-- dml_batch_test.go: 6 BATCH tests
-
-**Total after cleanup:** 92 tests (73 + 13 + 6)
+**Status:** Not yet implemented
+- INSERT JSON DEFAULT UNSET clause not supported
+- Currently only DEFAULT NULL works
 
 ---
 
-## Priority After Cleanup
+## Next Session Priorities
 
-1. **Remove duplicate BATCH tests** (high priority - affects test count)
-2. **Primary key validation tests** (8 more success scenarios)
-3. **More BATCH validation tests** (cross-partition detection, etc.)
-4. **Bind marker tests** (10 tests)
-5. **INSERT JSON tests** (8 tests)
+1. **Continue INSERT tests** to reach 141 (22% remaining)
+2. **Expand UPDATE tests** from 2/100 (98% remaining)
+3. **Expand DELETE tests** from 5/60 (92% remaining)
+4. **Expand BATCH tests** from 10/22 (54% remaining)
+5. **Clean up BATCH duplicates** when convenient
 
 ---
 
