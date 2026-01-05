@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package cql_features
+package mcp
 
 import (
 	"fmt"
