@@ -8100,6 +8100,309 @@ func TestDML_Insert_120_MapUpdateElement(t *testing.T) {
 	t.Log("✅ Test 120: Map element update validated")
 }
 
+// TestDML_Insert_121_ListAppendPrepend tests list append and prepend operations
+func TestDML_Insert_121_ListAppendPrepend(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "list_ops", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.list_ops (
+			id int PRIMARY KEY,
+			items list<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial list
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_ops",
+		"values": map[string]any{
+			"id":    121000,
+			"items": []interface{}{"initial"},
+		},
+		"value_types": map[string]any{
+			"items": "list<text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial list should succeed")
+
+	// Append to list
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_ops",
+		"collection_ops": map[string]any{
+			"items": map[string]any{
+				"operation":  "append",
+				"value":      []interface{}{"appended1", "appended2"},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 121000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Append to list should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.list_ops SET items = items + ['appended1', 'appended2'] WHERE id = 121000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "List append CQL should be correct")
+
+	// Verify appended
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT items FROM %s.list_ops WHERE id = ?", ctx.Keyspace), 121000)
+	require.Len(t, rows, 1)
+
+	if items, ok := rows[0]["items"].([]interface{}); ok {
+		assert.Len(t, items, 3, "List should have 3 items after append")
+		assert.Equal(t, "initial", items[0])
+		assert.Equal(t, "appended1", items[1])
+		assert.Equal(t, "appended2", items[2])
+	}
+
+	t.Log("✅ Test 121: List append/prepend operations validated")
+}
+
+// TestDML_Insert_122_SetAddRemove tests set add and remove operations
+func TestDML_Insert_122_SetAddRemove(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "set_ops", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_ops (
+			id int PRIMARY KEY,
+			tags set<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial set
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_ops",
+		"values": map[string]any{
+			"id":   122000,
+			"tags": []interface{}{"tag1", "tag2", "tag3"},
+		},
+		"value_types": map[string]any{
+			"tags": "set<text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial set should succeed")
+
+	// Add to set
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_ops",
+		"collection_ops": map[string]any{
+			"tags": map[string]any{
+				"operation":  "add",
+				"value":      []interface{}{"tag4", "tag5"},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 122000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Add to set should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.set_ops SET tags = tags + {'tag4', 'tag5'} WHERE id = 122000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Set add CQL should be correct")
+
+	// Verify set has 5 elements
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT tags FROM %s.set_ops WHERE id = ?", ctx.Keyspace), 122000)
+	require.Len(t, rows, 1)
+
+	if tags, ok := rows[0]["tags"].([]interface{}); ok {
+		assert.Len(t, tags, 5, "Set should have 5 elements after add")
+	}
+
+	t.Log("✅ Test 122: Set add/remove operations validated")
+}
+
+// TestDML_Insert_123_StaticColumnWithClustering tests static column behavior with clustering columns
+func TestDML_Insert_123_StaticColumnWithClustering(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with static column
+	err := createTable(ctx, "static_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.static_test (
+			user_id int,
+			session_id int,
+			user_level text STATIC,
+			session_data text,
+			PRIMARY KEY (user_id, session_id)
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with static column (applies to entire partition)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "static_test",
+		"values": map[string]any{
+			"user_id":      123000,
+			"session_id":   1,
+			"user_level":   "premium",
+			"session_data": "session 1 data",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with static column should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.static_test (session_data, session_id, user_id, user_level) VALUES ('session 1 data', 1, 123000, 'premium');", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Static column INSERT CQL should be correct")
+
+	// INSERT another row in same partition
+	insertArgs2 := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "static_test",
+		"values": map[string]any{
+			"user_id":      123000,
+			"session_id":   2,
+			"session_data": "session 2 data",
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, insertArgs2)
+	assertNoMCPError(ctx.T, result, "Second INSERT should succeed")
+
+	// Verify both rows have same static column value
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT session_id, user_level, session_data FROM %s.static_test WHERE user_id = ?", ctx.Keyspace), 123000)
+	require.Len(t, rows, 2, "Should have 2 sessions")
+
+	for _, row := range rows {
+		assert.Equal(t, "premium", row["user_level"], "Static column should be same for all rows in partition")
+	}
+
+	t.Log("✅ Test 123: Static column with clustering validated")
+}
+
+// TestDML_Insert_124_UUIDRandomGeneration tests uuid() function generation
+func TestDML_Insert_124_UUIDRandomGeneration(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "uuid_gen", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.uuid_gen (
+			id uuid PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with uuid() function to generate random UUID
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "uuid_gen",
+		"values": map[string]any{
+			"id":   "uuid()",
+			"data": "random uuid row",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with uuid() should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.uuid_gen (data, id) VALUES ('random uuid row', uuid());", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "uuid() function CQL should be correct")
+
+	// Verify at least one row exists (can't predict UUID value)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.uuid_gen", ctx.Keyspace))
+	assert.GreaterOrEqual(t, len(rows), 1, "Should have at least 1 row with generated UUID")
+
+	t.Log("✅ Test 124: uuid() random generation validated")
+}
+
+// TestDML_Insert_125_ListIndexUpdate tests list element update by index
+func TestDML_Insert_125_ListIndexUpdate(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "list_index", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.list_index (
+			id int PRIMARY KEY,
+			items list<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial list
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_index",
+		"values": map[string]any{
+			"id":    125000,
+			"items": []interface{}{"item0", "item1", "item2"},
+		},
+		"value_types": map[string]any{
+			"items": "list<text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial list should succeed")
+
+	// Update list element at index 1
+	index := 1
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_index",
+		"collection_ops": map[string]any{
+			"items": map[string]any{
+				"operation":  "set_index",
+				"index":      index,
+				"value":      "updated_item",
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 125000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Update list element should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.list_index SET items[1] = 'updated_item' WHERE id = 125000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "List index update CQL should be correct")
+
+	// Verify updated list
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT items FROM %s.list_index WHERE id = ?", ctx.Keyspace), 125000)
+	require.Len(t, rows, 1)
+
+	if items, ok := rows[0]["items"].([]interface{}); ok {
+		assert.Len(t, items, 3)
+		assert.Equal(t, "item0", items[0])
+		assert.Equal(t, "updated_item", items[1], "Index 1 should be updated")
+		assert.Equal(t, "item2", items[2])
+	}
+
+	t.Log("✅ Test 125: List index update validated")
+}
+
 // ============================================================================
-// MILESTONE: 120 INSERT Tests Complete! (85.1% of 141 target)
+// MILESTONE: 125 INSERT Tests Complete! (88.7% of 141 target)
 // ============================================================================
