@@ -6119,6 +6119,51 @@ func TestDML_Insert_81_JSON_PartialColumns(t *testing.T) {
 	t.Log("✅ Test 81: INSERT JSON with partial columns validated")
 }
 
+// TestDML_Insert_82_JSON_WithNullValues tests INSERT JSON with explicit NULL values
+// IMPORTANT: INSERT JSON defaults to DEFAULT NULL behavior - explicit nulls create tombstones
+func TestDML_Insert_82_JSON_WithNullValues(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "json_nulls", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_nulls (
+			id int PRIMARY KEY,
+			name text,
+			age int
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with explicit null values
+	// Note: INSERT JSON defaults to DEFAULT NULL, so explicit nulls create tombstones
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_nulls",
+		"insert_json": true,
+		"json_value":  `{"id": 82000, "name": null, "age": null}`,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with null values should succeed")
+
+	// Assert exact CQL (no DEFAULT clause means DEFAULT NULL)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_nulls JSON '{\"id\": 82000, \"name\": null, \"age\": null}';", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON CQL should be correct")
+
+	// Verify behavior with DEFAULT NULL (Cassandra's default for INSERT JSON)
+	// Explicit null in JSON with DEFAULT NULL creates tombstones - values appear as defaults when read
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, name, age FROM %s.json_nulls WHERE id = ?", ctx.Keyspace), 82000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 82000, rows[0]["id"])
+	// With DEFAULT NULL (default), explicit null creates tombstones, reads as default values
+	assert.Equal(t, "", rows[0]["name"], "NULL name creates tombstone, reads as empty string")
+	assert.Equal(t, 0, rows[0]["age"], "NULL age creates tombstone, reads as 0")
+
+	t.Log("✅ Test 82: INSERT JSON with NULL values validated (DEFAULT NULL behavior - creates tombstones)")
+}
+
 // ============================================================================
 // COMPLETION: All 90 DML INSERT Tests Complete!
 // ============================================================================
