@@ -706,6 +706,11 @@ func assertMCPErrorMessageExact(t *testing.T, response map[string]any, expectedE
 		t.Fatalf("%s - Error response but no error text found: %+v", message, response)
 	}
 
+	// Strip "Generated CQL:" section if present (added for debugging, not part of error)
+	if idx := strings.Index(actualError, "\n\nGenerated CQL:"); idx != -1 {
+		actualError = actualError[:idx]
+	}
+
 	// Normalize whitespace for comparison (like CQL assertions)
 	actualNorm := normalizeWhitespace(actualError)
 	expectedNorm := normalizeWhitespace(expectedError)
