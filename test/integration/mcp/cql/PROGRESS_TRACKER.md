@@ -24,13 +24,13 @@
 
 | Category | Target | Completed | Passing | Failing | % Done |
 |----------|--------|-----------|---------|---------|--------|
-| DML INSERT | 141 | **49** | **78** | **0** | **34.8%** |
+| DML INSERT | 141 | **49** | **79** | **0** | **34.8%** |
 | DML INSERT Errors | 14 | **14** | **14** | **0** | **100%** ✅ |
 | DML UPDATE Errors | 3 | **3** | **3** | **0** | **100%** ✅ |
 | DML DELETE Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
 | DML BATCH | 22 | **6** | **6** | **0** | **27.3%** |
 | DML BATCH Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
-| DML UPDATE | 100 | 0 | 0 | 0 | 0% |
+| DML UPDATE | 100 | 1 | 1 | 0 | 1% |
 | DML DELETE | 60 | 0 | 0 | 0 | 0% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
 | DDL Table | 150 | 0 | 0 | 0 | 0 | 0% |
@@ -49,7 +49,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,251** | **76** | **105** | **0** | **6.1%** |
+| **TOTAL** | **1,251** | **78** | **107** | **0** | **6.2%** |
 
 **Note:** Some tests duplicated (5 BATCH tests exist in both dml_insert_test.go and dml_batch_test.go)
 

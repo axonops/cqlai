@@ -36,11 +36,11 @@
 ## Tests To Implement (8 SUCCESS tests)
 
 ### INSERT Tests (1)
-- ❌ INSERT_PK_01: Full PK (valid) - Verifies validation ALLOWS correct INSERT
+- ✅ INSERT_PK_01: Full PK (valid) - DONE as Test 79
 
 ### UPDATE Tests (2)
-- ❌ UPDATE_PK_01: Full PK (valid) - Verifies validation ALLOWS full PK UPDATE
-- ❌ UPDATE_PK_03: Partial PK + static column (valid) - Verifies static column UPDATE with partial PK
+- ✅ UPDATE_PK_01: Full PK (valid) - DONE as UPDATE Test 01
+- ❌ UPDATE_PK_03: Partial PK + static column (valid) - TODO
 
 ### DELETE Tests (5)
 - ❌ DELETE_PK_01: Full PK - row delete (valid)
