@@ -7514,6 +7514,104 @@ func TestDML_Insert_108_BlobLargeValue(t *testing.T) {
 	t.Log("✅ Test 108: Large blob (10KB) validated")
 }
 
+// TestDML_Insert_109_TimestampFormats tests timestamp with different formats
+func TestDML_Insert_109_TimestampFormats(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "timestamp_formats", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.timestamp_formats (
+			id int PRIMARY KEY,
+			ts timestamp
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT timestamp as ISO 8601 string
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "timestamp_formats",
+		"values": map[string]any{
+			"id": 109000,
+			"ts": "2024-01-15T10:30:00.000Z",
+		},
+		"value_types": map[string]any{
+			"ts": "timestamp",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT timestamp as ISO 8601 string should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.timestamp_formats (id, ts) VALUES (109000, '2024-01-15T10:30:00.000Z');", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Timestamp CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT ts FROM %s.timestamp_formats WHERE id = ?", ctx.Keyspace), 109000)
+	require.Len(t, rows, 1)
+	assert.NotNil(t, rows[0]["ts"])
+
+	t.Log("✅ Test 109: Timestamp formats validated")
+}
+
+// TestDML_Insert_110_CounterColumn tests INSERT into counter table (special semantics)
+func TestDML_Insert_110_CounterColumn(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create counter table (can only have counters + partition/clustering keys)
+	err := createTable(ctx, "page_views", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.page_views (
+			page_id text PRIMARY KEY,
+			view_count counter
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Counter columns cannot be INSERTed directly, must use UPDATE
+	// Test that we properly generate UPDATE for counter increments
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "page_views",
+		"counter_ops": map[string]any{
+			"view_count": "+1",
+		},
+		"where": []map[string]any{
+			{"column": "page_id", "operator": "=", "value": "home"},
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "UPDATE counter should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.page_views SET view_count = view_count + 1 WHERE page_id = 'home';", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Counter UPDATE CQL should be correct")
+
+	// Verify counter incremented
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT view_count FROM %s.page_views WHERE page_id = ?", ctx.Keyspace), "home")
+	require.Len(t, rows, 1)
+
+	if count, ok := rows[0]["view_count"].(int64); ok {
+		assert.Equal(t, int64(1), count, "Counter should be 1")
+	}
+
+	// Increment again
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Second counter UPDATE should succeed")
+
+	rows = validateInCassandra(ctx, fmt.Sprintf("SELECT view_count FROM %s.page_views WHERE page_id = ?", ctx.Keyspace), "home")
+	require.Len(t, rows, 1)
+
+	if count, ok := rows[0]["view_count"].(int64); ok {
+		assert.Equal(t, int64(2), count, "Counter should be 2")
+	}
+
+	t.Log("✅ Test 110: Counter column operations validated")
+}
+
 // ============================================================================
-// COMPLETION: Tests 1-108 Complete!
+// MILESTONE: 110 INSERT Tests Complete! (78% of 141 target)
 // ============================================================================
