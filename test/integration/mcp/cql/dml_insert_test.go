@@ -3153,6 +3153,8 @@ func TestDML_Insert_35_CompositePartitionKey(t *testing.T) {
 // Tests 36-40: BATCH, Counters, and More Nesting
 // ============================================================================
 
+// NOTE: Test 36 DUPLICATED in dml_batch_test.go as Batch_01
+// TODO: Remove this duplicate once dml_batch_test.go is stable
 // TestDML_Insert_36_BatchMultipleInserts tests BATCH with multiple INSERT statements
 func TestDML_Insert_36_BatchMultipleInserts(t *testing.T) {
 	ctx := setupCQLTest(t)
@@ -5290,6 +5292,8 @@ func TestDML_Insert_67_MultiColumnWhere(t *testing.T) {
 	t.Log("✅ Test 67: Multi-column WHERE verified")
 }
 
+// NOTE: Test 68 DUPLICATED in dml_batch_test.go as Batch_02
+// TODO: Remove this duplicate once dml_batch_test.go is stable
 // TestDML_Insert_68_BatchUnlogged tests BEGIN UNLOGGED BATCH
 func TestDML_Insert_68_BatchUnlogged(t *testing.T) {
 	ctx := setupCQLTest(t)
