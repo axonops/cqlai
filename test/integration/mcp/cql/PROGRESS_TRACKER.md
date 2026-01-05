@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | % Done |
 |----------|--------|-----------|---------|---------|--------|
-| DML INSERT | 141 | **52** | **82** | **0** | **36.9%** |
+| DML INSERT | 141 | **53** | **83** | **0** | **37.6%** |
 | DML INSERT Errors | 14 | **14** | **14** | **0** | **100%** ✅ |
 | DML UPDATE Errors | 3 | **3** | **3** | **0** | **100%** ✅ |
 | DML DELETE Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
@@ -49,7 +49,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,251** | **92** | **121** | **0** | **7.4%** |
+| **TOTAL** | **1,251** | **93** | **122** | **0** | **7.4%** |
 
 **Note:** Some tests duplicated (5 BATCH tests exist in both dml_insert_test.go and dml_batch_test.go)
 
