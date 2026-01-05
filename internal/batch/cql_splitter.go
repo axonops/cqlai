@@ -7,13 +7,12 @@ import (
 )
 
 /**
- * CQL Statement Splitter - Go port from cqlsh Python via Node.js
+ * CQL Statement Splitter - Go port from Python cqlsh
  *
  * Ported from:
  * - cqlshlib/cql3handling.py (syntax_rules / terminal definitions)
  * - cqlshlib/cqlhandling.py (cql_massage_tokens, cql_split_statements)
  * - cqlshlib/cqlshhandling.py (commands_end_with_newline)
- * - node/cql-splitter.js (JavaScript port)
  */
 
 // TokenType represents the type of a CQL token
