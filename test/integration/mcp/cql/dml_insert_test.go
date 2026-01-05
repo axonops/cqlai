@@ -6032,6 +6032,93 @@ func TestDML_Insert_79_FullPrimaryKey(t *testing.T) {
 	t.Log("✅ Test 79: Full primary key INSERT validated and verified")
 }
 
+// TestDML_Insert_80_JSON_AllColumns tests INSERT JSON with all table columns
+func TestDML_Insert_80_JSON_AllColumns(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with multiple columns
+	err := createTable(ctx, "json_full", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_full (
+			id int PRIMARY KEY,
+			name text,
+			age int,
+			active boolean
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with all columns
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_full",
+		"insert_json": true,
+		"json_value":  `{"id": 80000, "name": "Alice", "age": 30, "active": true}`,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with all columns should succeed")
+
+	// Assert exact CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_full JSON '{\"id\": 80000, \"name\": \"Alice\", \"age\": 30, \"active\": true}';", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON CQL should be correct")
+
+	// Verify all columns inserted correctly
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, name, age, active FROM %s.json_full WHERE id = ?", ctx.Keyspace), 80000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 80000, rows[0]["id"])
+	assert.Equal(t, "Alice", rows[0]["name"])
+	assert.Equal(t, 30, rows[0]["age"])
+	assert.Equal(t, true, rows[0]["active"])
+
+	t.Log("✅ Test 80: INSERT JSON with all columns validated")
+}
+
+// TestDML_Insert_81_JSON_PartialColumns tests INSERT JSON with subset of columns
+func TestDML_Insert_81_JSON_PartialColumns(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "json_partial", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_partial (
+			id int PRIMARY KEY,
+			name text,
+			age int,
+			email text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with only id and name (age, email omitted)
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_partial",
+		"insert_json": true,
+		"json_value":  `{"id": 81000, "name": "Bob"}`,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with partial columns should succeed")
+
+	// Assert exact CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_partial JSON '{\"id\": 81000, \"name\": \"Bob\"}';", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON CQL should be correct")
+
+	// Verify inserted - omitted columns get default values (0 for int, empty string for text)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, name, age, email FROM %s.json_partial WHERE id = ?", ctx.Keyspace), 81000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 81000, rows[0]["id"])
+	assert.Equal(t, "Bob", rows[0]["name"])
+	// Cassandra returns default values for omitted columns in JSON INSERT
+	assert.Equal(t, 0, rows[0]["age"], "Omitted age gets default value 0")
+	assert.Equal(t, "", rows[0]["email"], "Omitted email gets default value empty string")
+
+	t.Log("✅ Test 81: INSERT JSON with partial columns validated")
+}
+
 // ============================================================================
 // COMPLETION: All 90 DML INSERT Tests Complete!
 // ============================================================================
