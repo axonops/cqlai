@@ -6,9 +6,35 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/stretchr/testify/assert"
 )
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+// createSeparateCassandraSession creates a NEW gocql session independent of MCP
+// This simulates another user/connection to Cassandra
+func createSeparateCassandraSession(t *testing.T) *gocql.Session {
+	cluster := gocql.NewCluster("127.0.0.1")
+	cluster.Keyspace = "system"
+	cluster.Consistency = gocql.Quorum
+	cluster.ProtoVersion = 4
+	cluster.Timeout = 10 * time.Second
+	cluster.Authenticator = gocql.PasswordAuthenticator{
+		Username: "cassandra",
+		Password: "cassandra",
+	}
+	cluster.DisableInitialHostLookup = true
+
+	session, err := cluster.CreateSession()
+	assert.NoError(t, err, "Failed to create separate session")
+
+	return session
+}
 
 // ============================================================================
 // ERROR SCENARIO TESTS (Tests 87-90 + Primary Key Validation Errors)
@@ -37,6 +63,73 @@ func TestDML_Insert_ERR_01_NonExistentTable(t *testing.T) {
 	assertMCPError(ctx.T, result, "table", "Should fail - table doesn't exist")
 
 	t.Log("✅ Test ERR_01: Non-existent table error verified")
+}
+
+// TestDML_Insert_ERR_01a_TableCreatedInSeparateSession tests schema propagation across sessions
+// CRITICAL TEST: Verifies that when table is created in SEPARATE session, MCP metadata updates
+func TestDML_Insert_ERR_01a_TableCreatedInSeparateSession(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	tableName := "cross_session_test"
+
+	// 1. First attempt - INSERT into non-existent table (should error)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     tableName,
+		"values": map[string]any{
+			"id":   2000,
+			"name": "TestUser",
+		},
+	}
+
+	result1 := submitQueryPlanMCP(ctx, insertArgs)
+
+	// Should get error
+	assertMCPError(ctx.T, result1, "table", "First attempt should fail - table doesn't exist")
+
+	t.Log("Step 1: ✅ INSERT into non-existent table failed as expected")
+
+	// 2. Create table in SEPARATE session (NOT the MCP session)
+	// This simulates another user/connection creating the table
+	separateSession := createSeparateCassandraSession(t)
+	defer separateSession.Close()
+
+	createQuery := fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.%s (
+			id int PRIMARY KEY,
+			name text
+		)
+	`, ctx.Keyspace, tableName)
+
+	err := separateSession.Query(createQuery).Exec()
+	assert.NoError(t, err, "Failed to create table in separate session")
+
+	t.Log("Step 2: ✅ Table created in SEPARATE session")
+
+	// 3. Wait for schema propagation (gocql detects changes in ~1-2 seconds)
+	t.Log("Step 3: Waiting for schema propagation...")
+	time.Sleep(3 * time.Second)
+
+	// 4. Retry same INSERT - should succeed now (metadata updated automatically)
+	result2 := submitQueryPlanMCP(ctx, insertArgs)
+
+	// Should succeed now!
+	assertNoMCPError(ctx.T, result2, "Second attempt should succeed - table now exists")
+
+	// Verify CQL was generated
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (2000, 'TestUser');", ctx.Keyspace, tableName)
+	assertCQLEquals(t, result2, expectedCQL, "CQL should be generated correctly")
+
+	// Verify data was inserted
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, name FROM %s.%s WHERE id = ?", ctx.Keyspace, tableName), 2000)
+	assert.Len(t, rows, 1, "Row should be inserted")
+	assert.Equal(t, 2000, rows[0]["id"])
+	assert.Equal(t, "TestUser", rows[0]["name"])
+
+	t.Log("Step 4: ✅ INSERT succeeded after table created in separate session")
+	t.Log("✅ CRITICAL TEST PASSED: Schema propagation works across sessions!")
 }
 
 // TestDML_Insert_ERR_02_MissingPartitionKey tests INSERT without partition key
