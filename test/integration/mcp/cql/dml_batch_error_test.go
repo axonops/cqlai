@@ -133,3 +133,25 @@ func TestDML_Batch_ERR_02_LWT_CrossPartition(t *testing.T) {
 
 	t.Log("✅ BATCH_ERR_02: LWT cross-partition error verified (currently from CQL renderer)")
 }
+
+// TestDML_Batch_ERR_03_EmptyBatch tests BATCH with no statements
+// Should be caught by validation
+func TestDML_Batch_ERR_03_EmptyBatch(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Attempt BATCH with no statements
+	batchArgs := map[string]any{
+		"operation":        "BATCH",
+		"batch_type":       "LOGGED",
+		"batch_statements": []map[string]any{}, // Empty!
+	}
+
+	result := submitQueryPlanMCP(ctx, batchArgs)
+
+	// Should get validation error
+	expectedError := "Query validation failed: BATCH must contain at least one statement"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Empty BATCH should be rejected by validation")
+
+	t.Log("✅ BATCH_ERR_03: Empty BATCH validation error verified")
+}
