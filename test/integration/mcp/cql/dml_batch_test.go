@@ -517,14 +517,28 @@ func TestDML_Batch_09_WithTTL(t *testing.T) {
 APPLY BATCH;`, ctx.Keyspace, ctx.Keyspace)
 	assertCQLEquals(t, result, expectedCQL, "BATCH with TTL CQL should be correct")
 
-	// Verify rows inserted
-	row1 := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.temp_data WHERE id = ?", ctx.Keyspace), 1)
-	assert.Len(t, row1, 1)
+	// Verify rows inserted with CORRECT TTL values
+	row1 := validateInCassandra(ctx, fmt.Sprintf("SELECT data, TTL(data) FROM %s.temp_data WHERE id = ?", ctx.Keyspace), 1)
+	require.Len(t, row1, 1)
+	assert.Equal(t, "expires in 300s", row1[0]["data"])
 
-	row2 := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.temp_data WHERE id = ?", ctx.Keyspace), 2)
-	assert.Len(t, row2, 1)
+	// TTL should be ~300 seconds (allow some margin for execution time)
+	if ttl1, ok := row1[0]["ttl(data)"].(int32); ok {
+		assert.GreaterOrEqual(t, ttl1, int32(290), "TTL should be ~300s (minus execution time)")
+		assert.LessOrEqual(t, ttl1, int32(300), "TTL should not exceed 300s")
+	}
 
-	t.Log("✅ Batch Test 09: BATCH with statement-level TTL validated")
+	row2 := validateInCassandra(ctx, fmt.Sprintf("SELECT data, TTL(data) FROM %s.temp_data WHERE id = ?", ctx.Keyspace), 2)
+	require.Len(t, row2, 1)
+	assert.Equal(t, "expires in 600s", row2[0]["data"])
+
+	// TTL should be ~600 seconds
+	if ttl2, ok := row2[0]["ttl(data)"].(int32); ok {
+		assert.GreaterOrEqual(t, ttl2, int32(590), "TTL should be ~600s (minus execution time)")
+		assert.LessOrEqual(t, ttl2, int32(600), "TTL should not exceed 600s")
+	}
+
+	t.Log("✅ Batch Test 09: BATCH with statement-level TTL validated - TTL values verified")
 }
 
 // TestDML_Batch_10_LargeBatch tests BATCH with many statements (size test)
