@@ -1,7 +1,7 @@
 # CQL Test Suite Progress Tracker
 
 **Started:** 2026-01-02
-**Last Updated:** 2026-01-05 (Session 2: Tests 87-104 added, bugs fixed)
+**Last Updated:** 2026-01-05 (Session 2: Tests 87-120 added, 2 bugs fixed)
 **Target:** 1,251+ tests (updated blueprint)
 **Current Files:** dml_insert_test.go, dml_*_error_test.go, dml_batch_test.go
 
@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | % Done |
 |----------|--------|-----------|---------|---------|--------|
-| DML INSERT | 141 | **76** | **110** | **0** | **78.0%** |
+| DML INSERT | 141 | **81** | **120** | **0** | **85.1%** |
 | DML INSERT Errors | 14 | **14** | **14** | **0** | **100%** ✅ |
 | DML UPDATE Errors | 3 | **3** | **3** | **0** | **100%** ✅ |
 | DML DELETE Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
@@ -49,7 +49,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,251** | **120** | **149** | **0** | **9.5%** |
+| **TOTAL** | **1,251** | **125** | **159** | **0** | **10.0%** |
 
 **Note:** Some tests duplicated (5 BATCH tests exist in both dml_insert_test.go and dml_batch_test.go)
 
