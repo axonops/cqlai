@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/axonops/cqlai/internal/cluster"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,9 +29,10 @@ import (
 // Both REPL and MCP share tool implementation logic via getToolData().
 type MCPServer struct {
 	// Independent Cassandra resources (not shared with REPL)
-	session  *db.Session
-	cache    *db.SchemaCache
-	resolver *Resolver
+	session         *db.Session
+	cache           *db.SchemaCache
+	resolver        *Resolver
+	metadataManager cluster.MetadataManager // Cluster metadata for schema validation
 
 	// MCP server infrastructure
 	mcpServer  *server.MCPServer            // The mark3labs MCP server
@@ -157,10 +159,10 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 	}
 
 	// Create independent session from REPL's cluster config
-	cluster := replSession.GetCluster()
+	gocqlClusterConfig := replSession.GetCluster()
 	username := replSession.Username()
 
-	mcpSession, err := db.NewSessionFromCluster(cluster, username, false) // batchMode=false (need schema for AI)
+	mcpSession, err := db.NewSessionFromCluster(gocqlClusterConfig, username, false) // batchMode=false (need schema for AI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP session: %w", err)
 	}
@@ -174,6 +176,10 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 
 	// Create resolver for this session's cache
 	resolver := NewResolver(cache)
+
+	// Create cluster metadata manager for schema validation
+	// db.Session embeds *gocql.Session, so we can use it directly
+	metadataManager := cluster.NewGocqlMetadataManagerWithDefaults(mcpSession.Session, gocqlClusterConfig)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -196,6 +202,7 @@ func NewMCPServer(replSession *db.Session, config *MCPServerConfig) (*MCPServer,
 		session:           mcpSession,
 		cache:             cache,
 		resolver:          resolver,
+		metadataManager:   metadataManager,
 		socketPath:        config.SocketPath,
 		confirmationQueue: confirmationQueue,
 		config:            config,
@@ -991,6 +998,13 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	} else {
 		// Regular CQL - use query builder
 		aiResult := params.ToQueryPlan()
+
+		// VALIDATE plan using cluster metadata BEFORE rendering CQL
+		if err := ValidatePlanWithMetadata(aiResult, s.metadataManager); err != nil {
+			s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
+			return mcp.NewToolResultError(fmt.Sprintf("Query validation failed: %v", err)), nil
+		}
+
 		var err error
 		query, err = RenderCQL(aiResult)
 		if err != nil {
