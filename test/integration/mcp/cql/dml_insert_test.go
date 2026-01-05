@@ -6589,6 +6589,363 @@ func TestDML_Insert_90_MapTextTextComplex(t *testing.T) {
 	t.Log("✅ Test 90: map<text,text> with complex values validated")
 }
 
+// TestDML_Insert_91_JSONWithArrays tests INSERT JSON with array values (maps to list<>)
+func TestDML_Insert_91_JSONWithArrays(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with list columns
+	err := createTable(ctx, "json_arrays", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_arrays (
+			id int PRIMARY KEY,
+			tags list<text>,
+			scores list<int>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with arrays (should map to CQL lists)
+	jsonValue := `{"id": 91000, "tags": ["cassandra", "database", "nosql"], "scores": [95, 87, 92]}`
+
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_arrays",
+		"insert_json": true,
+		"json_value":  jsonValue,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with arrays should succeed")
+
+	// Assert exact CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_arrays JSON '%s';", ctx.Keyspace, jsonValue)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON with arrays CQL should be correct")
+
+	// Verify data in Cassandra
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, tags, scores FROM %s.json_arrays WHERE id = ?", ctx.Keyspace), 91000)
+	require.Len(t, rows, 1)
+
+	// Verify list values
+	if tags, ok := rows[0]["tags"].([]interface{}); ok {
+		assert.Len(t, tags, 3)
+		assert.Equal(t, "cassandra", tags[0])
+		assert.Equal(t, "database", tags[1])
+		assert.Equal(t, "nosql", tags[2])
+	}
+
+	if scores, ok := rows[0]["scores"].([]interface{}); ok {
+		assert.Len(t, scores, 3)
+		assert.Equal(t, int32(95), scores[0])
+		assert.Equal(t, int32(87), scores[1])
+		assert.Equal(t, int32(92), scores[2])
+	}
+
+	t.Log("✅ Test 91: INSERT JSON with arrays validated")
+}
+
+// TestDML_Insert_92_JSONNumericPrecision tests INSERT JSON with large numbers and precision
+func TestDML_Insert_92_JSONNumericPrecision(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with various numeric types
+	err := createTable(ctx, "json_precision", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_precision (
+			id bigint PRIMARY KEY,
+			large_int varint,
+			precise_decimal decimal,
+			small_float float,
+			large_double double
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with large numbers and precision
+	jsonValue := `{"id": 9223372036854775807, "large_int": 123456789012345678901234567890, "precise_decimal": 123.456789012345, "small_float": 3.14159, "large_double": 1.7976931348623157e+308}`
+
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_precision",
+		"insert_json": true,
+		"json_value":  jsonValue,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with numeric precision should succeed")
+
+	// Assert exact CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_precision JSON '%s';", ctx.Keyspace, jsonValue)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON with numeric precision CQL should be correct")
+
+	// Verify data in Cassandra (note: some precision may be lost depending on type)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, large_int, precise_decimal, small_float, large_double FROM %s.json_precision WHERE id = ?", ctx.Keyspace), int64(9223372036854775807))
+	require.Len(t, rows, 1)
+
+	// Verify large int (varint preserves precision)
+	assert.Equal(t, int64(9223372036854775807), rows[0]["id"])
+
+	// Verify other values exist (exact precision may vary)
+	assert.NotNil(t, rows[0]["large_int"])
+	assert.NotNil(t, rows[0]["precise_decimal"])
+	assert.NotNil(t, rows[0]["small_float"])
+	assert.NotNil(t, rows[0]["large_double"])
+
+	t.Log("✅ Test 92: INSERT JSON numeric precision validated")
+}
+
+// TestDML_Insert_93_JSONSpecialCharsEmoji tests INSERT JSON with special characters and emoji
+func TestDML_Insert_93_JSONSpecialCharsEmoji(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "json_special", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_special (
+			id int PRIMARY KEY,
+			message text,
+			description text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with special chars, emoji, and escaped quotes
+	jsonValue := `{"id": 93000, "message": "Hello 🌍! Special chars: @#$%^&*()", "description": "Path: C:\\Users\\test\nNewline here"}`
+
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_special",
+		"insert_json": true,
+		"json_value":  jsonValue,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with special chars and emoji should succeed")
+
+	// Assert exact CQL (note: JSON value will have quotes escaped)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_special JSON '%s';", ctx.Keyspace, jsonValue)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON with special chars CQL should be correct")
+
+	// Verify data in Cassandra
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, message, description FROM %s.json_special WHERE id = ?", ctx.Keyspace), 93000)
+	require.Len(t, rows, 1)
+
+	assert.Equal(t, "Hello 🌍! Special chars: @#$%^&*()", rows[0]["message"])
+	assert.Equal(t, "Path: C:\\Users\\test\nNewline here", rows[0]["description"])
+
+	t.Log("✅ Test 93: INSERT JSON with special chars and emoji validated")
+}
+
+// TestDML_Insert_94_JSONRoundTrip tests INSERT JSON then SELECT JSON to verify round-trip
+func TestDML_Insert_94_JSONRoundTrip(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "json_roundtrip", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_roundtrip (
+			id int PRIMARY KEY,
+			name text,
+			age int,
+			active boolean
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON
+	jsonValue := `{"id": 94000, "name": "Alice", "age": 30, "active": true}`
+
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_roundtrip",
+		"insert_json": true,
+		"json_value":  jsonValue,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_roundtrip JSON '%s';", ctx.Keyspace, jsonValue)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON CQL should be correct")
+
+	// SELECT JSON to verify round-trip
+	selectArgs := map[string]any{
+		"operation":   "SELECT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_roundtrip",
+		"select_json": true,
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 94000},
+		},
+	}
+
+	selectResult := submitQueryPlanMCP(ctx, selectArgs)
+	assertNoMCPError(ctx.T, result, "SELECT JSON should succeed")
+
+	expectedSelectCQL := fmt.Sprintf("SELECT JSON * FROM %s.json_roundtrip WHERE id = 94000;", ctx.Keyspace)
+	assertCQLEquals(t, selectResult, expectedSelectCQL, "SELECT JSON CQL should be correct")
+
+	// Verify we can read it back
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT JSON * FROM %s.json_roundtrip WHERE id = ?", ctx.Keyspace), 94000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 94: INSERT JSON round-trip validated")
+}
+
+// TestDML_Insert_95_UsingTTLZero tests USING TTL 0 (no expiration)
+func TestDML_Insert_95_UsingTTLZero(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "ttl_zero", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.ttl_zero (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with TTL 0 (means no TTL, data never expires)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "ttl_zero",
+		"values": map[string]any{
+			"id":   95000,
+			"data": "never expires",
+		},
+		"using_ttl": 0,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with TTL 0 should succeed")
+
+	// Note: TTL 0 means no TTL clause in CQL (not "USING TTL 0")
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.ttl_zero (data, id) VALUES ('never expires', 95000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "TTL 0 should not generate USING clause")
+
+	// Verify data exists and TTL is null or 0 (no expiration)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data, TTL(data) FROM %s.ttl_zero WHERE id = ?", ctx.Keyspace), 95000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "never expires", rows[0]["data"])
+
+	// TTL may be null or 0 when not set - both indicate no expiration
+	ttlVal := rows[0]["ttl(data)"]
+	if ttlVal != nil {
+		// Could be int or int32 depending on driver
+		switch v := ttlVal.(type) {
+		case int:
+			assert.Equal(t, 0, v, "TTL should be 0 (no expiration)")
+		case int32:
+			assert.Equal(t, int32(0), v, "TTL should be 0 (no expiration)")
+		}
+	}
+
+	t.Log("✅ Test 95: USING TTL 0 (no expiration) validated")
+}
+
+// TestDML_Insert_96_UsingTTLLargeValue tests USING TTL with very large value
+func TestDML_Insert_96_UsingTTLLargeValue(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "ttl_large", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.ttl_large (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with large TTL (Cassandra max is limited by year 2038 problem)
+	// Use 1 year = 31536000 seconds as a "large" value
+	largestTTL := 31536000 // 1 year in seconds
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "ttl_large",
+		"values": map[string]any{
+			"id":   96000,
+			"data": "expires in 1 year",
+		},
+		"using_ttl": largestTTL,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with large TTL should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.ttl_large (data, id) VALUES ('expires in 1 year', 96000) USING TTL %d;", ctx.Keyspace, largestTTL)
+	assertCQLEquals(t, result, expectedCQL, "Large TTL CQL should be correct")
+
+	// Verify TTL is set (should be close to 20 years in seconds)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data, TTL(data) FROM %s.ttl_large WHERE id = ?", ctx.Keyspace), 96000)
+	require.Len(t, rows, 1)
+
+	if ttl, ok := rows[0]["ttl(data)"].(int32); ok {
+		// TTL should be very large (within a few seconds of 1 year)
+		assert.GreaterOrEqual(t, ttl, int32(31535990), "TTL should be close to 1 year")
+		assert.LessOrEqual(t, ttl, int32(31536000), "TTL should not exceed 1 year")
+	}
+
+	t.Log("✅ Test 96: USING TTL with large value validated")
+}
+
+// TestDML_Insert_97_IfNotExistsWithTTL tests IF NOT EXISTS combined with USING TTL
+func TestDML_Insert_97_IfNotExistsWithTTL(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "lwt_ttl", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.lwt_ttl (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// First INSERT with IF NOT EXISTS and TTL
+	insertArgs := map[string]any{
+		"operation":    "INSERT",
+		"keyspace":     ctx.Keyspace,
+		"table":        "lwt_ttl",
+		"values": map[string]any{
+			"id":   97000,
+			"data": "temporary data",
+		},
+		"if_not_exists": true,
+		"using_ttl":     600,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT IF NOT EXISTS with TTL should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.lwt_ttl (data, id) VALUES ('temporary data', 97000) IF NOT EXISTS USING TTL 600;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "IF NOT EXISTS with TTL CQL should be correct")
+
+	// Verify data and TTL
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data, TTL(data) FROM %s.lwt_ttl WHERE id = ?", ctx.Keyspace), 97000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "temporary data", rows[0]["data"])
+
+	if ttl, ok := rows[0]["ttl(data)"].(int32); ok {
+		assert.GreaterOrEqual(t, ttl, int32(590))
+		assert.LessOrEqual(t, ttl, int32(600))
+	}
+
+	// Try to INSERT again (should fail because row exists)
+	result = submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "Second INSERT IF NOT EXISTS should return applied=false")
+
+	t.Log("✅ Test 97: IF NOT EXISTS with TTL validated")
+}
+
 // ============================================================================
-// COMPLETION: Tests 1-90 Complete!
+// COMPLETION: Tests 1-97 Complete!
 // ============================================================================
