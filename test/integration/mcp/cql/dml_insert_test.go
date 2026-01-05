@@ -7855,6 +7855,251 @@ func TestDML_Insert_115_DateFormats(t *testing.T) {
 	t.Log("✅ Test 115: Date all formats validated")
 }
 
+// TestDML_Insert_116_InetIPv4IPv6 tests inet with both IPv4 and IPv6 addresses
+func TestDML_Insert_116_InetIPv4IPv6(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "ip_addresses", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.ip_addresses (
+			id int PRIMARY KEY,
+			ipv4 inet,
+			ipv6 inet
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT both IPv4 and IPv6
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "ip_addresses",
+		"values": map[string]any{
+			"id":   116000,
+			"ipv4": "192.168.1.100",
+			"ipv6": "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+		},
+		"value_types": map[string]any{
+			"ipv4": "inet",
+			"ipv6": "inet",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with IPv4 and IPv6 should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.ip_addresses (id, ipv4, ipv6) VALUES (116000, '192.168.1.100', '2001:0db8:85a3:0000:0000:8a2e:0370:7334');", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "inet CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT ipv4, ipv6 FROM %s.ip_addresses WHERE id = ?", ctx.Keyspace), 116000)
+	require.Len(t, rows, 1)
+	assert.NotNil(t, rows[0]["ipv4"])
+	assert.NotNil(t, rows[0]["ipv6"])
+
+	t.Log("✅ Test 116: inet IPv4/IPv6 validated")
+}
+
+// TestDML_Insert_117_TimeuuidOrdering tests timeuuid ordering (time-based UUIDs)
+func TestDML_Insert_117_TimeuuidOrdering(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "timeuuid_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.timeuuid_test (
+			user_id int,
+			event_id timeuuid,
+			data text,
+			PRIMARY KEY (user_id, event_id)
+		) WITH CLUSTERING ORDER BY (event_id DESC)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT multiple timeuuids using now() function
+	for i := 0; i < 3; i++ {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "timeuuid_test",
+			"values": map[string]any{
+				"user_id":  117000,
+				"event_id": "now()",
+				"data":     fmt.Sprintf("event_%d", i),
+			},
+		}
+
+		result := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, result, fmt.Sprintf("INSERT timeuuid %d should succeed", i))
+	}
+
+	// Verify timeuuids stored (ordering by time)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT event_id, data FROM %s.timeuuid_test WHERE user_id = ?", ctx.Keyspace), 117000)
+	assert.GreaterOrEqual(t, len(rows), 1, "Should have at least 1 event")
+
+	t.Log("✅ Test 117: timeuuid ordering validated")
+}
+
+// TestDML_Insert_118_VarIntVeryLargeValue tests varint with extremely large numbers
+func TestDML_Insert_118_VarIntVeryLargeValue(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "varint_large", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.varint_large (
+			id int PRIMARY KEY,
+			big_number varint
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT very large varint (beyond int64 range) as string
+	largeNumber := "999999999999999999999999999999999999999999"
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "varint_large",
+		"values": map[string]any{
+			"id":         118000,
+			"big_number": largeNumber,
+		},
+		"value_types": map[string]any{
+			"big_number": "varint",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with very large varint should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.varint_large (big_number, id) VALUES (%s, 118000);", ctx.Keyspace, largeNumber)
+	assertCQLEquals(t, result, expectedCQL, "varint CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT big_number FROM %s.varint_large WHERE id = ?", ctx.Keyspace), 118000)
+	require.Len(t, rows, 1)
+	assert.NotNil(t, rows[0]["big_number"])
+
+	t.Log("✅ Test 118: varint very large value validated")
+}
+
+// TestDML_Insert_119_NullValuesAllColumns tests INSERT with explicit NULL for non-key columns
+func TestDML_Insert_119_NullValuesAllColumns(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "null_values", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.null_values (
+			id int PRIMARY KEY,
+			text_col text,
+			int_col int,
+			list_col list<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with all NULL non-key columns
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "null_values",
+		"values": map[string]any{
+			"id":       119000,
+			"text_col": nil,
+			"int_col":  nil,
+			"list_col": nil,
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with NULL values should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.null_values (id, int_col, list_col, text_col) VALUES (119000, null, null, null);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "NULL values CQL should be correct")
+
+	// Verify row exists (NULL columns create tombstones)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id FROM %s.null_values WHERE id = ?", ctx.Keyspace), 119000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 119: NULL values for all non-key columns validated")
+}
+
+// TestDML_Insert_120_MapUpdateElement tests map element update (map['key'] = value)
+func TestDML_Insert_120_MapUpdateElement(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "map_updates", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_updates (
+			id int PRIMARY KEY,
+			settings map<text, int>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial map
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_updates",
+		"values": map[string]any{
+			"id": 120000,
+			"settings": map[string]any{
+				"limit":     100,
+				"threshold": 50,
+			},
+		},
+		"value_types": map[string]any{
+			"settings": "map<text,int>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial map should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.map_updates (id, settings) VALUES (120000, {'limit': 100, 'threshold': 50});", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Initial map CQL should be correct")
+
+	// UPDATE specific map element
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_updates",
+		"collection_ops": map[string]any{
+			"settings": map[string]any{
+				"operation":  "set_element",
+				"key":        "limit",
+				"value":      200,
+				"value_type": "int",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 120000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "UPDATE map element should succeed")
+
+	expectedUpdateCQL := fmt.Sprintf("UPDATE %s.map_updates SET settings['limit'] = 200 WHERE id = 120000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedUpdateCQL, "Map element update CQL should be correct")
+
+	// Verify updated map
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT settings FROM %s.map_updates WHERE id = ?", ctx.Keyspace), 120000)
+	require.Len(t, rows, 1)
+
+	if settings, ok := rows[0]["settings"].(map[string]interface{}); ok {
+		assert.Equal(t, int32(200), settings["limit"], "limit should be updated to 200")
+		assert.Equal(t, int32(50), settings["threshold"], "threshold should remain 50")
+	}
+
+	t.Log("✅ Test 120: Map element update validated")
+}
+
 // ============================================================================
-// MILESTONE: 115 INSERT Tests Complete! (81.5% of 141 target)
+// MILESTONE: 120 INSERT Tests Complete! (85.1% of 141 target)
 // ============================================================================
