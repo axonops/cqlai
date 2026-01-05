@@ -219,12 +219,10 @@ func MassageTokens(tokens []Token) []Token {
 			termOnNL = false
 			output = append(output, curstmt...)
 			curstmt = nil
-		} else {
-			if len(curstmt) == 1 {
-				// First token in statement; command word
-				cmd := strings.ToLower(token.Value)
-				termOnNL = commandsEndWithNewline[cmd]
-			}
+		} else if len(curstmt) == 1 {
+			// First token in statement; command word
+			cmd := strings.ToLower(token.Value)
+			termOnNL = commandsEndWithNewline[cmd]
 		}
 	}
 
