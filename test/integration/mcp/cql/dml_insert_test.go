@@ -7612,6 +7612,249 @@ func TestDML_Insert_110_CounterColumn(t *testing.T) {
 	t.Log("✅ Test 110: Counter column operations validated")
 }
 
+// TestDML_Insert_111_ClusteringKeyOrdering tests INSERT with clustering columns and ORDER BY semantics
+func TestDML_Insert_111_ClusteringKeyOrdering(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with clustering columns
+	err := createTable(ctx, "events", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.events (
+			user_id int,
+			event_time timestamp,
+			event_type text,
+			data text,
+			PRIMARY KEY (user_id, event_time, event_type)
+		) WITH CLUSTERING ORDER BY (event_time DESC, event_type ASC)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT multiple rows with same partition key but different clustering keys
+	for i := 0; i < 3; i++ {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "events",
+			"values": map[string]any{
+				"user_id":    111000,
+				"event_time": fmt.Sprintf("2024-01-15T10:%02d:00.000Z", 30+i),
+				"event_type": fmt.Sprintf("type_%d", i),
+				"data":       fmt.Sprintf("event_%d", i),
+			},
+			"value_types": map[string]any{
+				"event_time": "timestamp",
+			},
+		}
+
+		result := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, result, fmt.Sprintf("INSERT event %d should succeed", i))
+	}
+
+	// Verify clustering order (DESC by event_time, ASC by event_type)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT event_time, event_type FROM %s.events WHERE user_id = ?", ctx.Keyspace), 111000)
+	require.Len(t, rows, 3, "Should have 3 events")
+
+	t.Log("✅ Test 111: Clustering key ordering validated")
+}
+
+// TestDML_Insert_112_CompositePartitionKey tests INSERT with multi-column partition key
+func TestDML_Insert_112_CompositePartitionKey(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with composite partition key
+	err := createTable(ctx, "multi_tenant", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.multi_tenant (
+			tenant_id int,
+			user_id int,
+			data text,
+			PRIMARY KEY ((tenant_id, user_id))
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with all partition key columns
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "multi_tenant",
+		"values": map[string]any{
+			"tenant_id": 1,
+			"user_id":   112000,
+			"data":      "tenant data",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with composite partition key should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.multi_tenant (data, tenant_id, user_id) VALUES ('tenant data', 1, 112000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Composite partition key CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.multi_tenant WHERE tenant_id = ? AND user_id = ?", ctx.Keyspace), 1, 112000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "tenant data", rows[0]["data"])
+
+	t.Log("✅ Test 112: Composite partition key validated")
+}
+
+// TestDML_Insert_113_DurationAllFormats tests duration with different format strings
+func TestDML_Insert_113_DurationAllFormats(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "duration_formats", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.duration_formats (
+			id int PRIMARY KEY,
+			dur duration
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT duration in various formats
+	testCases := []struct {
+		id       int
+		duration string
+		desc     string
+	}{
+		{113001, "1y2mo3w4d5h6m7s8ms9us10ns", "full format"},
+		{113002, "30d", "days only"},
+		{113003, "2h30m", "hours and minutes"},
+		{113004, "500ms", "milliseconds only"},
+	}
+
+	for _, tc := range testCases {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "duration_formats",
+			"values": map[string]any{
+				"id":  tc.id,
+				"dur": tc.duration,
+			},
+			"value_types": map[string]any{
+				"dur": "duration",
+			},
+		}
+
+		result := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, result, fmt.Sprintf("INSERT %s should succeed", tc.desc))
+
+		// Verify stored
+		rows := validateInCassandra(ctx, fmt.Sprintf("SELECT dur FROM %s.duration_formats WHERE id = ?", ctx.Keyspace), tc.id)
+		require.Len(t, rows, 1)
+		assert.NotNil(t, rows[0]["dur"], fmt.Sprintf("Duration %s should be stored", tc.desc))
+	}
+
+	t.Log("✅ Test 113: Duration all formats validated")
+}
+
+// TestDML_Insert_114_TimeFormats tests time with different format strings
+func TestDML_Insert_114_TimeFormats(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "time_formats", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.time_formats (
+			id int PRIMARY KEY,
+			t time
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT time in various formats
+	testCases := []struct {
+		id   int
+		time string
+		desc string
+	}{
+		{114001, "08:12:54", "HH:MM:SS"},
+		{114002, "08:12:54.123", "with milliseconds"},
+		{114003, "08:12:54.123456", "with microseconds"},
+		{114004, "08:12:54.123456789", "with nanoseconds"},
+	}
+
+	for _, tc := range testCases {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "time_formats",
+			"values": map[string]any{
+				"id": tc.id,
+				"t":  tc.time,
+			},
+			"value_types": map[string]any{
+				"t": "time",
+			},
+		}
+
+		result := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, result, fmt.Sprintf("INSERT time %s should succeed", tc.desc))
+
+		// Verify stored
+		rows := validateInCassandra(ctx, fmt.Sprintf("SELECT t FROM %s.time_formats WHERE id = ?", ctx.Keyspace), tc.id)
+		require.Len(t, rows, 1)
+		assert.NotNil(t, rows[0]["t"], fmt.Sprintf("Time %s should be stored", tc.desc))
+	}
+
+	t.Log("✅ Test 114: Time all formats validated")
+}
+
+// TestDML_Insert_115_DateFormats tests date with different format strings
+func TestDML_Insert_115_DateFormats(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "date_formats", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.date_formats (
+			id int PRIMARY KEY,
+			d date
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT date in various formats
+	testCases := []struct {
+		id   int
+		date string
+		desc string
+	}{
+		{115001, "2024-01-15", "ISO 8601 date"},
+		{115002, "2024-12-31", "end of year"},
+		{115003, "2000-01-01", "Y2K"},
+		{115004, "1970-01-01", "Unix epoch"},
+	}
+
+	for _, tc := range testCases {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "date_formats",
+			"values": map[string]any{
+				"id": tc.id,
+				"d":  tc.date,
+			},
+			"value_types": map[string]any{
+				"d": "date",
+			},
+		}
+
+		result := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, result, fmt.Sprintf("INSERT date %s should succeed", tc.desc))
+
+		// Verify stored
+		rows := validateInCassandra(ctx, fmt.Sprintf("SELECT d FROM %s.date_formats WHERE id = ?", ctx.Keyspace), tc.id)
+		require.Len(t, rows, 1)
+		assert.NotNil(t, rows[0]["d"], fmt.Sprintf("Date %s should be stored", tc.desc))
+	}
+
+	t.Log("✅ Test 115: Date all formats validated")
+}
+
 // ============================================================================
-// MILESTONE: 110 INSERT Tests Complete! (78% of 141 target)
+// MILESTONE: 115 INSERT Tests Complete! (81.5% of 141 target)
 // ============================================================================
