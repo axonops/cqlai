@@ -8705,6 +8705,269 @@ func TestDML_Insert_130_OverwriteExistingRow(t *testing.T) {
 	t.Log("✅ Test 130: Overwrite existing row (last write wins) validated")
 }
 
+// TestDML_Insert_131_TextWithQuotes tests INSERT with single quotes in text values
+func TestDML_Insert_131_TextWithQuotes(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "quotes_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.quotes_test (
+			id int PRIMARY KEY,
+			message text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT text with single quotes (should be escaped as '')
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "quotes_test",
+		"values": map[string]any{
+			"id":      131000,
+			"message": "It's a test with 'single quotes' inside",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with single quotes should succeed")
+
+	// Single quotes should be escaped as ''
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.quotes_test (id, message) VALUES (131000, 'It''s a test with ''single quotes'' inside');", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Single quotes should be escaped in CQL")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT message FROM %s.quotes_test WHERE id = ?", ctx.Keyspace), 131000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "It's a test with 'single quotes' inside", rows[0]["message"])
+
+	t.Log("✅ Test 131: Text with single quotes validated")
+}
+
+// TestDML_Insert_132_BooleanFalseExplicit tests INSERT with explicit false boolean
+func TestDML_Insert_132_BooleanFalseExplicit(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "bool_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.bool_test (
+			id int PRIMARY KEY,
+			flag1 boolean,
+			flag2 boolean
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with explicit true and false
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "bool_test",
+		"values": map[string]any{
+			"id":    132000,
+			"flag1": true,
+			"flag2": false,
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with boolean values should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.bool_test (flag1, flag2, id) VALUES (true, false, 132000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Boolean CQL should be lowercase true/false")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT flag1, flag2 FROM %s.bool_test WHERE id = ?", ctx.Keyspace), 132000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, true, rows[0]["flag1"])
+	assert.Equal(t, false, rows[0]["flag2"])
+
+	t.Log("✅ Test 132: Boolean true/false explicit values validated")
+}
+
+// TestDML_Insert_133_SetRemoveElements tests set remove operation
+func TestDML_Insert_133_SetRemoveElements(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "set_remove", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_remove (
+			id int PRIMARY KEY,
+			tags set<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial set
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_remove",
+		"values": map[string]any{
+			"id":   133000,
+			"tags": []interface{}{"tag1", "tag2", "tag3", "tag4", "tag5"},
+		},
+		"value_types": map[string]any{
+			"tags": "set<text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial set should succeed")
+
+	// Remove elements from set
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_remove",
+		"collection_ops": map[string]any{
+			"tags": map[string]any{
+				"operation":  "remove",
+				"value":      []interface{}{"tag2", "tag4"},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 133000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Remove from set should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.set_remove SET tags = tags - {'tag2', 'tag4'} WHERE id = 133000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Set remove CQL should be correct")
+
+	// Verify set has 3 remaining elements
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT tags FROM %s.set_remove WHERE id = ?", ctx.Keyspace), 133000)
+	require.Len(t, rows, 1)
+
+	if tags, ok := rows[0]["tags"].([]interface{}); ok {
+		assert.Len(t, tags, 3, "Set should have 3 elements after remove")
+	}
+
+	t.Log("✅ Test 133: Set remove elements validated")
+}
+
+// TestDML_Insert_134_ListPrepend tests list prepend operation
+func TestDML_Insert_134_ListPrepend(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "list_prepend", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.list_prepend (
+			id int PRIMARY KEY,
+			items list<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial list
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_prepend",
+		"values": map[string]any{
+			"id":    134000,
+			"items": []interface{}{"middle"},
+		},
+		"value_types": map[string]any{
+			"items": "list<text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial list should succeed")
+
+	// Prepend to list
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_prepend",
+		"collection_ops": map[string]any{
+			"items": map[string]any{
+				"operation":  "prepend",
+				"value":      []interface{}{"first", "second"},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 134000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Prepend to list should succeed")
+
+	expectedCQL := fmt.Sprintf("UPDATE %s.list_prepend SET items = ['first', 'second'] + items WHERE id = 134000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "List prepend CQL should be correct")
+
+	// Verify prepended list
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT items FROM %s.list_prepend WHERE id = ?", ctx.Keyspace), 134000)
+	require.Len(t, rows, 1)
+
+	if items, ok := rows[0]["items"].([]interface{}); ok {
+		assert.Len(t, items, 3, "List should have 3 items")
+		assert.Equal(t, "first", items[0])
+		assert.Equal(t, "second", items[1])
+		assert.Equal(t, "middle", items[2])
+	}
+
+	t.Log("✅ Test 134: List prepend operation validated")
+}
+
+// TestDML_Insert_135_UnicodeAllLanguages tests Unicode text from multiple languages
+func TestDML_Insert_135_UnicodeAllLanguages(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "unicode_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.unicode_test (
+			id int PRIMARY KEY,
+			chinese text,
+			arabic text,
+			russian text,
+			emoji text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT Unicode from various languages
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "unicode_test",
+		"values": map[string]any{
+			"id":      135000,
+			"chinese": "你好世界",
+			"arabic":  "مرحبا بالعالم",
+			"russian": "Привет мир",
+			"emoji":   "😀🎉🌟💻🚀",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with multi-language Unicode should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.unicode_test (arabic, chinese, emoji, id, russian) VALUES ('مرحبا بالعالم', '你好世界', '😀🎉🌟💻🚀', 135000, 'Привет мир');", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Unicode CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT chinese, arabic, russian, emoji FROM %s.unicode_test WHERE id = ?", ctx.Keyspace), 135000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "你好世界", rows[0]["chinese"])
+	assert.Equal(t, "مرحبا بالعالم", rows[0]["arabic"])
+	assert.Equal(t, "Привет мир", rows[0]["russian"])
+	assert.Equal(t, "😀🎉🌟💻🚀", rows[0]["emoji"])
+
+	t.Log("✅ Test 135: Unicode all languages validated")
+}
+
 // ============================================================================
-// MILESTONE: 130 INSERT Tests Complete! (92.2% of 141 target)
+// MILESTONE: 135 INSERT Tests Complete! (95.7% of 141 target)
 // ============================================================================
