@@ -798,6 +798,7 @@ func formatValueWithContext(v any, typeHint string, valueTypes map[string]string
 	case "frozen":
 		// frozen<X> - extract X and format appropriately
 		// If X is collection (list/set/map), format as collection
+		// If X is tuple, format as tuple
 		// If X is UDT, format as UDT
 		if elementType != "" {
 			innerBase, innerElement := parseTypeHint(elementType)
@@ -809,6 +810,9 @@ func formatValueWithContext(v any, typeHint string, valueTypes map[string]string
 			case "map":
 				innerKey, innerVal := parseMapTypes(elementType)
 				return formatMapWithContext(v, innerKey, innerVal, valueTypes, fieldPath)
+			case "tuple":
+				// Frozen tuple - format as tuple
+				return formatTuple(v)
 			default:
 				// Frozen UDT
 				return formatUDTWithContext(v, typeHint, valueTypes, fieldPath)

@@ -6394,15 +6394,6 @@ func TestDML_Insert_87_TupleInCollection(t *testing.T) {
 	}
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
-	// This might fail - tuple in collection rendering may have issues
-	// Let's capture the error to understand what's wrong
-	if isError, ok := result["isError"].(bool); ok && isError {
-		actualError := extractMCPErrorMessage(result)
-		t.Logf("Error encountered: %s", actualError)
-		t.Skip("Tuple in collection rendering needs investigation - skipping for now")
-		return
-	}
-
 	assertNoMCPError(ctx.T, result, "INSERT list of tuples should succeed")
 
 	// Assert exact CQL
