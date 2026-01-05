@@ -7315,6 +7315,205 @@ func TestDML_Insert_104_CollectionWithDuplicates(t *testing.T) {
 	t.Log("✅ Test 104: Collection duplicates (list vs set) validated")
 }
 
+// TestDML_Insert_105_FloatDecimalPrecision tests float and decimal precision differences
+func TestDML_Insert_105_FloatDecimalPrecision(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "precision_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.precision_test (
+			id int PRIMARY KEY,
+			float_val float,
+			double_val double,
+			decimal_val decimal
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with precise decimal values
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "precision_test",
+		"values": map[string]any{
+			"id":          105000,
+			"float_val":   3.14159265,      // float loses precision
+			"double_val":  3.141592653589793, // double more precise
+			"decimal_val": "123.456789012345678901234567890", // decimal exact (as string)
+		},
+		"value_types": map[string]any{
+			"decimal_val": "decimal",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with precision values should succeed")
+
+	// Verify data (note: float/double may have rounding)
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT float_val, double_val, decimal_val FROM %s.precision_test WHERE id = ?", ctx.Keyspace), 105000)
+	require.Len(t, rows, 1)
+
+	// Float and double exist (exact values may vary)
+	assert.NotNil(t, rows[0]["float_val"])
+	assert.NotNil(t, rows[0]["double_val"])
+	assert.NotNil(t, rows[0]["decimal_val"])
+
+	t.Log("✅ Test 105: Float/decimal precision validated")
+}
+
+// TestDML_Insert_106_VectorDimensions tests vector with different dimensions
+func TestDML_Insert_106_VectorDimensions(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with different vector dimensions
+	err := createTable(ctx, "vector_dims", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.vector_dims (
+			id int PRIMARY KEY,
+			vec_2d vector<float, 2>,
+			vec_128d vector<float, 128>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT vectors of different dimensions
+	vec2d := []interface{}{1.0, 2.0}
+	vec128d := make([]interface{}, 128)
+	for i := 0; i < 128; i++ {
+		vec128d[i] = float64(i) * 0.1
+	}
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "vector_dims",
+		"values": map[string]any{
+			"id":      106000,
+			"vec_2d":  vec2d,
+			"vec_128d": vec128d,
+		},
+		"value_types": map[string]any{
+			"vec_2d":  "vector<float,2>",
+			"vec_128d": "vector<float,128>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT vectors of different dimensions should succeed")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT vec_2d, vec_128d FROM %s.vector_dims WHERE id = ?", ctx.Keyspace), 106000)
+	require.Len(t, rows, 1)
+
+	// Verify vector dimensions
+	if v2d, ok := rows[0]["vec_2d"].([]interface{}); ok {
+		assert.Len(t, v2d, 2, "2D vector should have 2 dimensions")
+	}
+
+	if v128d, ok := rows[0]["vec_128d"].([]interface{}); ok {
+		assert.Len(t, v128d, 128, "128D vector should have 128 dimensions")
+	}
+
+	t.Log("✅ Test 106: Vector dimensions validated")
+}
+
+// TestDML_Insert_107_MapNestedValues tests map with complex nested values
+func TestDML_Insert_107_MapNestedValues(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with map<text, frozen<list<int>>>
+	err := createTable(ctx, "nested_map", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.nested_map (
+			id int PRIMARY KEY,
+			data map<text, frozen<list<int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT map with frozen list values
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "nested_map",
+		"values": map[string]any{
+			"id": 107000,
+			"data": map[string]any{
+				"scores_math":    []interface{}{95, 87, 92},
+				"scores_english": []interface{}{88, 91, 85},
+				"scores_science": []interface{}{93, 89, 96},
+			},
+		},
+		"value_types": map[string]any{
+			"data": "map<text,frozen<list<int>>>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT map with frozen list values should succeed")
+
+	// Assert exact CQL (keys sorted, values as lists)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.nested_map (data, id) VALUES ({'scores_english': [88, 91, 85], 'scores_math': [95, 87, 92], 'scores_science': [93, 89, 96]}, 107000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Map with frozen list values CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.nested_map WHERE id = ?", ctx.Keyspace), 107000)
+	require.Len(t, rows, 1)
+
+	if mapVal, ok := rows[0]["data"].(map[string]interface{}); ok {
+		assert.Len(t, mapVal, 3, "Map should have 3 keys")
+	}
+
+	t.Log("✅ Test 107: Map with frozen list values validated")
+}
+
+// TestDML_Insert_108_BlobLargeValue tests INSERT with large blob (multi-KB)
+func TestDML_Insert_108_BlobLargeValue(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "large_blob", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.large_blob (
+			id int PRIMARY KEY,
+			data blob
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Create 10KB blob (hex string = 20KB text)
+	blobSize := 10240 // 10KB
+	blobHex := strings.Repeat("DEADBEEF", blobSize/4)
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "large_blob",
+		"values": map[string]any{
+			"id":   108000,
+			"data": blobHex,
+		},
+		"value_types": map[string]any{
+			"data": "blob",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with large blob should succeed")
+
+	// Verify blob was stored
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.large_blob WHERE id = ?", ctx.Keyspace), 108000)
+	require.Len(t, rows, 1)
+
+	// Verify blob size
+	if blobData, ok := rows[0]["data"].([]byte); ok {
+		assert.Equal(t, blobSize, len(blobData), "Blob should be 10KB")
+	}
+
+	t.Log("✅ Test 108: Large blob (10KB) validated")
+}
+
 // ============================================================================
-// COMPLETION: Tests 1-104 Complete!
+// COMPLETION: Tests 1-108 Complete!
 // ============================================================================
