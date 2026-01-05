@@ -1307,3 +1307,52 @@ func TestMapTextTextFormatting(t *testing.T) {
 	assert.Contains(t, cql, "'description': 'Application config with special chars: @#$%^&*()'", "Map text values must be quoted")
 	assert.NotContains(t, cql, "description': Application config", "Map text values must NOT be unquoted")
 }
+
+// TestFormatIntegerBigintMax tests formatInteger with int64 max value
+func TestFormatIntegerBigintMax(t *testing.T) {
+	maxInt64 := int64(9223372036854775807)
+	minInt64 := int64(-9223372036854775807)
+
+	formattedMax := formatInteger(maxInt64, "bigint")
+	formattedMin := formatInteger(minInt64, "bigint")
+
+	t.Logf("formatInteger(%d, 'bigint') -> %s", maxInt64, formattedMax)
+	t.Logf("formatInteger(%d, 'bigint') -> %s", minInt64, formattedMin)
+
+	assert.Equal(t, "9223372036854775807", formattedMax, "int64 max should format without precision loss")
+	assert.Equal(t, "-9223372036854775807", formattedMin, "int64 min should format without precision loss")
+
+	// Test with formatValueWithContext
+	formattedMaxCtx := formatValueWithContext(maxInt64, "bigint", nil, "")
+	formattedMinCtx := formatValueWithContext(minInt64, "bigint", nil, "")
+
+	t.Logf("formatValueWithContext(%d, 'bigint') -> %s", maxInt64, formattedMaxCtx)
+	t.Logf("formatValueWithContext(%d, 'bigint') -> %s", minInt64, formattedMinCtx)
+
+	assert.Equal(t, "9223372036854775807", formattedMaxCtx, "formatValueWithContext should preserve precision")
+	assert.Equal(t, "-9223372036854775807", formattedMinCtx, "formatValueWithContext should preserve precision")
+
+	// Test with full RenderCQL
+	plan := &AIResult{
+		Operation: "INSERT",
+		Keyspace:  "test_ks",
+		Table:     "int_test",
+		Values: map[string]any{
+			"id":      1,
+			"big_max": maxInt64,
+			"big_min": minInt64,
+		},
+		ValueTypes: map[string]string{
+			"big_max": "bigint",
+			"big_min": "bigint",
+		},
+	}
+
+	cql, err := RenderCQL(plan)
+	assert.NoError(t, err)
+	t.Logf("Full CQL: %s", cql)
+
+	assert.Contains(t, cql, "9223372036854775807", "CQL should contain correct max value")
+	assert.NotContains(t, cql, "9223372036854775808", "CQL should NOT contain max+1")
+	assert.Contains(t, cql, "-9223372036854775807", "CQL should contain correct min value")
+}
