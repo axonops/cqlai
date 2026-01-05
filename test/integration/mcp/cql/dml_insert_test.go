@@ -5341,6 +5341,9 @@ func TestDML_Insert_68_BatchUnlogged(t *testing.T) {
 	t.Log("✅ Test 68: BATCH UNLOGGED verified")
 }
 
+// NOTE: Test 69 DUPLICATED in dml_batch_test.go as Batch_03
+// TODO: Remove this duplicate once dml_batch_test.go is stable
+
 // TestDML_Insert_69_BatchCounter tests BEGIN COUNTER BATCH
 func TestDML_Insert_69_BatchCounter(t *testing.T) {
 	ctx := setupCQLTest(t)
@@ -5401,6 +5404,9 @@ func TestDML_Insert_69_BatchCounter(t *testing.T) {
 
 	t.Log("✅ Test 69: BATCH COUNTER verified")
 }
+// NOTE: Test 70 DUPLICATED in dml_batch_test.go as Batch_04
+// TODO: Remove this duplicate once dml_batch_test.go is stable
+
 
 // TestDML_Insert_70_BatchWithTimestamp tests BATCH USING TIMESTAMP
 func TestDML_Insert_70_BatchWithTimestamp(t *testing.T) {
@@ -5454,6 +5460,9 @@ func TestDML_Insert_70_BatchWithTimestamp(t *testing.T) {
 
 // ============================================================================
 // Tests 71-75: BATCH with LWT and Edge Cases
+// NOTE: Test 71 DUPLICATED in dml_batch_test.go as Batch_05
+// TODO: Remove this duplicate once dml_batch_test.go is stable
+
 // ============================================================================
 
 // TestDML_Insert_71_BatchWithLWT tests BATCH with IF NOT EXISTS (same partition)
