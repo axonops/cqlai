@@ -6407,6 +6407,188 @@ func TestDML_Insert_87_TupleInCollection(t *testing.T) {
 	t.Log("✅ Test 87: List of frozen tuples validated")
 }
 
+// TestDML_Insert_88_SetUUIDUniqueness tests set<uuid> uniqueness and deduplication
+func TestDML_Insert_88_SetUUIDUniqueness(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with set<uuid>
+	err := createTable(ctx, "uuid_set", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.uuid_set (
+			id int PRIMARY KEY,
+			identifiers set<uuid>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with duplicate UUIDs in set (should be deduplicated)
+	uuid1 := "550e8400-e29b-41d4-a716-446655440000"
+	uuid2 := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	uuid3 := "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "uuid_set",
+		"values": map[string]any{
+			"id":          88000,
+			"identifiers": []interface{}{uuid1, uuid2, uuid3, uuid1}, // uuid1 appears twice
+		},
+		"value_types": map[string]any{
+			"identifiers": "set<uuid>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT set<uuid> should succeed")
+
+	// Assert exact CQL (set should be deduplicated and sorted)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.uuid_set (id, identifiers) VALUES (88000, {%s, %s, %s});",
+		ctx.Keyspace, uuid1, uuid2, uuid3)
+	assertCQLEquals(t, result, expectedCQL, "Set<uuid> CQL should be correct with deduplication")
+
+	// Verify uniqueness in Cassandra
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT identifiers FROM %s.uuid_set WHERE id = ?", ctx.Keyspace), 88000)
+	require.Len(t, rows, 1)
+
+	// Set should contain exactly 3 unique UUIDs
+	if setVal, ok := rows[0]["identifiers"].([]interface{}); ok {
+		assert.Len(t, setVal, 3, "Set should contain 3 unique UUIDs (duplicates removed)")
+	}
+
+	t.Log("✅ Test 88: set<uuid> uniqueness validated")
+}
+
+// TestDML_Insert_89_TupleImmutability tests tuple update (tuples are immutable, must replace entirely)
+func TestDML_Insert_89_TupleImmutability(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with tuple
+	err := createTable(ctx, "tuple_immutable", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.tuple_immutable (
+			id int PRIMARY KEY,
+			coordinates tuple<double, double, text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial tuple
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "tuple_immutable",
+		"values": map[string]any{
+			"id":          89000,
+			"coordinates": []interface{}{40.7128, -74.0060, "New York"},
+		},
+		"value_types": map[string]any{
+			"coordinates": "tuple<double,double,text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial tuple should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.tuple_immutable (coordinates, id) VALUES ((40.7128, -74.006, 'New York'), 89000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Initial tuple CQL should be correct")
+
+	// Verify initial data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT coordinates FROM %s.tuple_immutable WHERE id = ?", ctx.Keyspace), 89000)
+	require.Len(t, rows, 1)
+
+	// UPDATE tuple (must replace entire tuple, cannot update individual elements)
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "tuple_immutable",
+		"values": map[string]any{
+			"coordinates": []interface{}{51.5074, -0.1278, "London"},
+		},
+		"value_types": map[string]any{
+			"coordinates": "tuple<double,double,text>",
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 89000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "UPDATE entire tuple should succeed")
+
+	expectedCQL = fmt.Sprintf("UPDATE %s.tuple_immutable SET coordinates = (51.5074, -0.1278, 'London') WHERE id = 89000;", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "UPDATE tuple CQL should be correct")
+
+	// Verify updated data
+	rows = validateInCassandra(ctx, fmt.Sprintf("SELECT coordinates FROM %s.tuple_immutable WHERE id = ?", ctx.Keyspace), 89000)
+	require.Len(t, rows, 1)
+	if tupleVal, ok := rows[0]["coordinates"].([]interface{}); ok {
+		assert.Len(t, tupleVal, 3)
+		assert.InDelta(t, 51.5074, tupleVal[0], 0.0001)
+		assert.InDelta(t, -0.1278, tupleVal[1], 0.0001)
+		assert.Equal(t, "London", tupleVal[2])
+	}
+
+	t.Log("✅ Test 89: Tuple immutability (full replacement) validated")
+}
+
+// TestDML_Insert_90_MapTextTextComplex tests map<text,text> with complex values (JSON-like, special chars)
+func TestDML_Insert_90_MapTextTextComplex(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with map<text,text>
+	err := createTable(ctx, "config_map", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.config_map (
+			id int PRIMARY KEY,
+			config map<text, text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with complex text values (URLs, paths, JSON-like strings, special chars, emojis)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "config_map",
+		"values": map[string]any{
+			"id": 90000,
+			"config": map[string]any{
+				"api_url":     "https://api.example.com/v1/users?limit=100&offset=0",
+				"file_path":   "/var/log/cassandra/system.log",
+				"json_config": `{"timeout": 30, "retries": 3}`,
+				"description": "Application config with special chars: @#$%^&*()",
+				"emoji":       "🚀 Rocket to the moon! 🌙",
+			},
+		},
+		"value_types": map[string]any{
+			"config": "map<text,text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT map<text,text> with complex values should succeed")
+
+	// Assert exact CQL (keys should be sorted)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.config_map (config, id) VALUES ({'api_url': 'https://api.example.com/v1/users?limit=100&offset=0', 'description': 'Application config with special chars: @#$%%^&*()', 'emoji': '🚀 Rocket to the moon! 🌙', 'file_path': '/var/log/cassandra/system.log', 'json_config': '{\"timeout\": 30, \"retries\": 3}'}, 90000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Map<text,text> with complex values CQL should be correct")
+
+	// Verify data in Cassandra
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT config FROM %s.config_map WHERE id = ?", ctx.Keyspace), 90000)
+	require.Len(t, rows, 1)
+
+	// Verify all keys exist and values are preserved
+	if mapVal, ok := rows[0]["config"].(map[string]interface{}); ok {
+		assert.Equal(t, "https://api.example.com/v1/users?limit=100&offset=0", mapVal["api_url"])
+		assert.Equal(t, "/var/log/cassandra/system.log", mapVal["file_path"])
+		assert.Equal(t, `{"timeout": 30, "retries": 3}`, mapVal["json_config"])
+		assert.Equal(t, "Application config with special chars: @#$%^&*()", mapVal["description"])
+		assert.Equal(t, "🚀 Rocket to the moon! 🌙", mapVal["emoji"])
+	}
+
+	t.Log("✅ Test 90: map<text,text> with complex values validated")
+}
+
 // ============================================================================
-// COMPLETION: All 90 DML INSERT Tests Complete!
+// COMPLETION: Tests 1-90 Complete!
 // ============================================================================

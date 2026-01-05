@@ -1148,7 +1148,9 @@ func (s *MCPServer) handleSubmitQueryPlan(ctx context.Context, argsMap map[strin
 	// Check if execution failed
 	if err, isErr := execResult.Result.(error); isErr {
 		s.metrics.RecordToolCall(string(ToolSubmitQueryPlan), false, time.Since(startTime))
-		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %v", err)), nil
+		// Return error WITH the generated CQL so it can be debugged
+		errorMsg := fmt.Sprintf("Query execution failed: %v\n\nGenerated CQL:\n%s", err, query)
+		return mcp.NewToolResultError(errorMsg), nil
 	}
 
 	// Success - format response with execution metadata

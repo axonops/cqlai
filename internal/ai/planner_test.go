@@ -1253,3 +1253,57 @@ func TestRenderDelete_IfCondition(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, got, "IF status = 'inactive'")
 }
+
+// TestMapTextTextFormatting tests map<text,text> value formatting bug
+func TestMapTextTextFormatting(t *testing.T) {
+	// First, test parseMapTypes to ensure it extracts types correctly
+	keyType, valueType := parseMapTypes("map<text,text>")
+	t.Logf("parseMapTypes('map<text,text>') -> keyType=%q, valueType=%q", keyType, valueType)
+	assert.Equal(t, "text", keyType, "Key type should be 'text'")
+	assert.Equal(t, "text", valueType, "Value type should be 'text'")
+
+	// Now test the full rendering
+	plan := &AIResult{
+		Operation: "INSERT",
+		Keyspace:  "test_ks",
+		Table:     "config_map",
+		Values: map[string]any{
+			"id": 1,
+			"config": map[string]any{
+				"description": "Application config with special chars: @#$%^&*()",
+			},
+		},
+		ValueTypes: map[string]string{
+			"config": "map<text,text>",
+		},
+	}
+
+	cql, err := RenderCQL(plan)
+	assert.NoError(t, err)
+
+	t.Logf("Generated CQL: %s", cql)
+
+	// Test parseTypeHint for "text"
+	baseType, elementType := parseTypeHint("text")
+	t.Logf("parseTypeHint('text') -> baseType=%q, elementType=%q", baseType, elementType)
+
+	// Test formatValueWithContext directly
+	formattedValue := formatValueWithContext("Application config with special chars: @#$%^&*()", "text", nil, "")
+	t.Logf("formatValueWithContext(string, 'text', nil, '') -> %q", formattedValue)
+	assert.Equal(t, "'Application config with special chars: @#$%^&*()'", formattedValue, "text type should be quoted")
+
+	// Test formatPrimitive directly
+	testStr := "Application config with special chars: @#$%^&*()"
+	primFormatted := formatPrimitive(testStr)
+	t.Logf("formatPrimitive(%q) -> %q", testStr, primFormatted)
+
+	// Test isFunctionCall and isUUID
+	t.Logf("isFunctionCall(%q) = %v", testStr, isFunctionCall(testStr))
+	t.Logf("isUUID(%q) = %v", testStr, isUUID(testStr))
+
+	assert.Equal(t, "'Application config with special chars: @#$%^&*()'", primFormatted, "formatPrimitive should quote strings")
+
+	// The value should be quoted!
+	assert.Contains(t, cql, "'description': 'Application config with special chars: @#$%^&*()'", "Map text values must be quoted")
+	assert.NotContains(t, cql, "description': Application config", "Map text values must NOT be unquoted")
+}

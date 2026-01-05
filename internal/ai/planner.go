@@ -2424,27 +2424,59 @@ func formatSpecialType(v any, typeName string) string {
 }
 
 // isFunctionCall detects CQL function calls (uuid(), now(), toTimestamp(), etc.)
+// Uses a whitelist of known CQL functions for safety
 func isFunctionCall(s string) bool {
 	if s == "" {
 		return false
 	}
 
-	// Must end with ) and contain (
-	if !strings.HasSuffix(s, ")") || !strings.Contains(s, "(") {
-		return false
+	// Whitelist of known CQL functions (case-insensitive)
+	// These are the ONLY strings that should pass through unquoted
+	knownFunctions := []string{
+		"uuid()",
+		"now()",
+		"toTimestamp(now())",
+		"toDate(now())",
+		"toUnixTimestamp(now())",
+		"currentTimestamp()",
+		"currentDate()",
+		"currentTime()",
+		"currentTimeUUID()",
+		"minTimeuuid(now())",
+		"maxTimeuuid(now())",
+		"dateOf(now())",
+		"unixTimestampOf(now())",
+		"blobastext()",
+		"blobastinyint()",
+		"blobassmallint()",
+		"blobasint()",
+		"blobasbigint()",
+		"blobasvarint()",
+		"blobasboolean()",
+		"blobasfloat()",
+		"blobasdouble()",
+		"blobasdecimal()",
+		"blobasascii()",
+		"blobastext()",
+		"blobasvarchar()",
+		"blobasinet()",
+		"blobasdate()",
+		"blobastime()",
+		"blobastimestamp()",
+		"blobasuuid()",
+		"tobigint(now())",
+		"totimestamp(now())",
 	}
 
-	// Must not start with quotes
-	if strings.HasPrefix(s, "'") || strings.HasPrefix(s, "\"") {
-		return false
+	// Check against whitelist (case-insensitive)
+	sLower := strings.ToLower(s)
+	for _, fn := range knownFunctions {
+		if sLower == fn {
+			return true
+		}
 	}
 
-	// Must not start with ( (would be tuple/IN clause)
-	if strings.HasPrefix(s, "(") {
-		return false
-	}
-
-	return true
+	return false
 }
 
 // isUUID checks if string matches UUID format (8-4-4-4-12 hex pattern)
