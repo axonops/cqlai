@@ -6230,6 +6230,44 @@ func TestDML_Insert_83_JSON_DefaultUnset(t *testing.T) {
 	t.Log("Note: DEFAULT UNSET support needed in planner to preserve existing values")
 }
 
+// TestDML_Insert_84_JSON_EscapedQuotes tests INSERT JSON with escaped quotes
+func TestDML_Insert_84_JSON_EscapedQuotes(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "json_quotes", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.json_quotes (
+			id int PRIMARY KEY,
+			text_data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT JSON with escaped quotes in value
+	insertArgs := map[string]any{
+		"operation":   "INSERT",
+		"keyspace":    ctx.Keyspace,
+		"table":       "json_quotes",
+		"insert_json": true,
+		"json_value":  `{"id": 84000, "text_data": "She said \"Hello\" to me"}`,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT JSON with escaped quotes should succeed")
+
+	// Assert exact CQL - JSON string should have escaped quotes
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.json_quotes JSON '{\"id\": 84000, \"text_data\": \"She said \\\"Hello\\\" to me\"}';", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "INSERT JSON CQL with escaped quotes should be correct")
+
+	// Verify data stored correctly with quotes
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT text_data FROM %s.json_quotes WHERE id = ?", ctx.Keyspace), 84000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "She said \"Hello\" to me", rows[0]["text_data"], "Quotes should be preserved in stored data")
+
+	t.Log("✅ Test 84: INSERT JSON with escaped quotes validated")
+}
+
 // ============================================================================
 // COMPLETION: All 90 DML INSERT Tests Complete!
 // ============================================================================
