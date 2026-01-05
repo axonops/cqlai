@@ -5974,5 +5974,64 @@ func TestDML_Insert_Remaining(t *testing.T) {
 }
 
 // ============================================================================
+// PRIMARY KEY VALIDATION TESTS (Tests 79+)
+// These verify our validation correctly ALLOWS valid operations
+// ============================================================================
+
+// TestDML_Insert_79_FullPrimaryKey tests INSERT with full primary key
+// Verifies validation allows INSERT when all partition + clustering keys present
+func TestDML_Insert_79_FullPrimaryKey(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with partition key + clustering keys
+	err := createTable(ctx, "events", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.events (
+			user_id int,
+			timestamp bigint,
+			event_type text,
+			data text,
+			PRIMARY KEY (user_id, timestamp, event_type)
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with FULL primary key
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "events",
+		"values": map[string]any{
+			"user_id":    1,
+			"timestamp":  1000,
+			"event_type": "login",
+			"data":       "test data",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+
+	// Should succeed - validation allows full PK
+	assertNoMCPError(ctx.T, result, "INSERT with full PK should succeed")
+
+	// Assert exact generated CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.events (data, event_type, timestamp, user_id) VALUES ('test data', 'login', 1000, 1);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Generated CQL should be correct")
+
+	// Verify data in Cassandra
+	rows := validateInCassandra(ctx, fmt.Sprintf(
+		"SELECT user_id, timestamp, event_type, data FROM %s.events WHERE user_id = ? AND timestamp = ? AND event_type = ?",
+		ctx.Keyspace,
+	), 1, 1000, "login")
+	require.Len(t, rows, 1, "Row should be inserted")
+	assert.Equal(t, 1, rows[0]["user_id"])
+	assert.Equal(t, int64(1000), rows[0]["timestamp"])
+	assert.Equal(t, "login", rows[0]["event_type"])
+	assert.Equal(t, "test data", rows[0]["data"])
+
+	t.Log("✅ Test 79: Full primary key INSERT validated and verified")
+}
+
+// ============================================================================
 // COMPLETION: All 90 DML INSERT Tests Complete!
 // ============================================================================
