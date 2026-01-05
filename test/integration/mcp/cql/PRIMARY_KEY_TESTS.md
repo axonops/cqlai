@@ -43,11 +43,11 @@
 - ❌ UPDATE_PK_03: Partial PK + static column (valid) - TODO
 
 ### DELETE Tests (5)
-- ❌ DELETE_PK_01: Full PK - row delete (valid)
-- ❌ DELETE_PK_02: Partition key only - partition delete (valid)
-- ❌ DELETE_PK_03: Partition key + range (valid)
-- ❌ DELETE_PK_04: Partition key + IN (valid)
-- ❌ DELETE_PK_07: Static column with partial PK (valid)
+- ✅ DELETE_PK_01: Full PK - row delete - DONE as DELETE Test 01
+- ✅ DELETE_PK_02: Partition key only - partition delete - DONE as DELETE Test 02
+- ✅ DELETE_PK_03: Partition key + range - DONE as DELETE Test 03
+- ✅ DELETE_PK_04: Partition key + IN - DONE as DELETE Test 04
+- ✅ DELETE_PK_07: Static column with partial PK - DONE as DELETE Test 05
 
 ---
 

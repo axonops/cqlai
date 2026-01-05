@@ -30,8 +30,8 @@
 | DML DELETE Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
 | DML BATCH | 22 | **6** | **6** | **0** | **27.3%** |
 | DML BATCH Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
-| DML UPDATE | 100 | 1 | 1 | 0 | 1% |
-| DML DELETE | 60 | 0 | 0 | 0 | 0% |
+| DML UPDATE | 100 | 2 | 2 | 0 | 2% |
+| DML DELETE | 60 | 5 | 5 | 0 | 8.3% |
 | DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
 | DDL Table | 150 | 0 | 0 | 0 | 0 | 0% |
 | DDL Types | 80 | 0 | 0 | 0 | 0 | 0% |
@@ -49,7 +49,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,251** | **78** | **107** | **0** | **6.2%** |
+| **TOTAL** | **1,251** | **85** | **114** | **0** | **6.8%** |
 
 **Note:** Some tests duplicated (5 BATCH tests exist in both dml_insert_test.go and dml_batch_test.go)
 
