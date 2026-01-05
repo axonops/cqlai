@@ -2719,64 +2719,6 @@ func TestDML_Insert_30_IfNotExists(t *testing.T) {
 }
 
 // ============================================================================
-// RAW GOCQL DRIVER TEST - Isolate DELETE Bug
-// ============================================================================
-
-// TestRawGoCQLDelete tests DELETE using ONLY raw gocql driver (no our code)
-func TestRawGoCQLDelete(t *testing.T) {
-	// 1. Raw gocql cluster
-	cluster := gocql.NewCluster("127.0.0.1:9042")
-	cluster.Authenticator = gocql.PasswordAuthenticator{Username: "cassandra", Password: "cassandra"}
-	cluster.Timeout = 10 * time.Second
-	cluster.Consistency = gocql.LocalOne
-
-	// 2. Raw gocql session
-	session, err := cluster.CreateSession()
-	require.NoError(t, err)
-	defer session.Close()
-
-	ks := "raw_delete_test"
-	testID := 999
-
-	// 3. Setup
-	session.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", ks)).Exec()
-	session.Query(fmt.Sprintf(`CREATE KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`, ks)).Exec()
-	session.Query(fmt.Sprintf(`CREATE TABLE %s.lwt_test (id int PRIMARY KEY, data text, version int)`, ks)).Exec()
-
-	// 4. INSERT with IF NOT EXISTS
-	err = session.Query(fmt.Sprintf(`INSERT INTO %s.lwt_test (id, data, version) VALUES (?, ?, ?) IF NOT EXISTS`, ks), testID, "test data", 1).Exec()
-	require.NoError(t, err)
-
-	// 5. Verify INSERT
-	var id, version int
-	var data string
-	iter := session.Query(fmt.Sprintf("SELECT id, data, version FROM %s.lwt_test WHERE id = ?", ks), testID).Iter()
-	found := iter.Scan(&id, &data, &version)
-	iter.Close()
-	require.True(t, found, "Row must exist after INSERT")
-	t.Logf("✅ INSERT verified: id=%d, data='%s', version=%d", id, data, version)
-
-	// 6. DELETE
-	err = session.Query(fmt.Sprintf(`DELETE FROM %s.lwt_test WHERE id = ?`, ks), testID).Exec()
-	require.NoError(t, err, "DELETE should not error")
-	t.Log("✅ DELETE executed (no error)")
-
-	// 7. Verify DELETE
-	iter = session.Query(fmt.Sprintf("SELECT id FROM %s.lwt_test WHERE id = ?", ks), testID).Iter()
-	found = iter.Scan(&id)
-	iter.Close()
-
-	if found {
-		t.Fatalf("❌ DRIVER BUG: Row still exists after DELETE with raw gocql! id=%d", id)
-	}
-
-	t.Log("✅ DELETE worked - gocql driver is fine")
-
-	// Cleanup
-	session.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", ks)).Exec()
-}
-
-// ============================================================================
 // Summary: First 30 DML INSERT Tests Complete
 // ============================================================================
 //
