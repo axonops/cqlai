@@ -24,7 +24,7 @@
 
 | Category | Target | Completed | Passing | Failing | % Done |
 |----------|--------|-----------|---------|---------|--------|
-| DML INSERT | 141 | **56** | **86** | **0** | **39.7%** |
+| DML INSERT | 141 | **59** | **89** | **0** | **42.0%** |
 | DML INSERT Errors | 14 | **14** | **14** | **0** | **100%** ✅ |
 | DML UPDATE Errors | 3 | **3** | **3** | **0** | **100%** ✅ |
 | DML DELETE Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
@@ -49,7 +49,7 @@
 | DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
 | DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
 | Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,251** | **96** | **125** | **0** | **7.7%** |
+| **TOTAL** | **1,251** | **99** | **129** | **0** | **7.9%** |
 
 **Note:** Some tests duplicated (5 BATCH tests exist in both dml_insert_test.go and dml_batch_test.go)
 
@@ -142,6 +142,8 @@
 | 3 | Test 9 | Inet not quoted in CQL | ✅ FIXED | 22344f6 |
 | 4 | Tests 16,18,19 | frozen<collection> routed to formatUDT | ✅ FIXED | e27a6c2 |
 | 5 | Test 30 | DELETE after IF NOT EXISTS timing | ✅ FIXED | Added 5s delay for LWT Paxos - see GOCQL_DELETE_BUG_REPORT.md |
+| 6 | Test 87 | frozen<tuple> not handled in frozen type switch | ✅ FIXED | e92a874 |
+| 7 | Test 90 | isFunctionCall matched strings with parens | ✅ FIXED | 8d879a2 |
 
 _(More bugs will be added as found)_
 
