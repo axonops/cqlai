@@ -36,6 +36,12 @@ type MetadataManager interface {
 	// GetKeyspaceNames returns all keyspace names
 	GetKeyspaceNames() ([]string, error)
 
+	// RefreshKeyspace forces schema agreement for a keyspace
+	// NOTE: gocql auto-refreshes metadata via schema events. This method
+	// waits for schema agreement, then the next GetKeyspace() call will
+	// have fresh metadata from gocql's internal cache.
+	RefreshKeyspace(ctx context.Context, keyspace string) error
+
 	// ========================================================================
 	// Table Operations
 	// ========================================================================

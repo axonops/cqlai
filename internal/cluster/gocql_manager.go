@@ -149,6 +149,30 @@ func (m *GocqlMetadataManager) GetKeyspaceNames() ([]string, error) {
 	return keyspaces, nil
 }
 
+// RefreshKeyspace forces schema agreement and triggers metadata fetch
+//
+// This method:
+// 1. Calls AwaitSchemaAgreement to ensure cluster schema is consistent
+// 2. Calls session.KeyspaceMetadata() to trigger gocql to fetch/update metadata
+//
+// While gocql automatically keeps metadata updated via schema events (~1 second),
+// this method is useful after DDL operations to immediately ensure metadata is current.
+func (m *GocqlMetadataManager) RefreshKeyspace(ctx context.Context, keyspace string) error {
+	// Wait for schema agreement across cluster
+	if err := m.session.AwaitSchemaAgreement(ctx); err != nil {
+		return fmt.Errorf("failed to await schema agreement: %w", err)
+	}
+
+	// Call KeyspaceMetadata to trigger gocql to fetch/update
+	// We discard the result since subsequent GetKeyspace() calls will get it
+	_, err := m.session.KeyspaceMetadata(keyspace)
+	if err != nil {
+		return fmt.Errorf("failed to refresh keyspace metadata: %w", err)
+	}
+
+	return nil
+}
+
 // ============================================================================
 // Table Operations
 // ============================================================================

@@ -430,3 +430,32 @@ func TestMetadataManager_GetSchemaVersion(t *testing.T) {
 
 	t.Logf("Schema version: %s", versions[0])
 }
+
+// TestMetadataManager_RefreshKeyspace verifies RefreshKeyspace waits for schema agreement
+func TestMetadataManager_RefreshKeyspace(t *testing.T) {
+	session, clusterConfig := setupTestSession(t)
+	defer session.Close()
+
+	createTestKeyspace(t, session)
+	defer cleanupTestKeyspace(session)
+
+	manager := clustermd.NewGocqlMetadataManagerWithDefaults(session, clusterConfig)
+
+	// Create a table
+	createQuery := fmt.Sprintf("CREATE TABLE %s.refresh_test (id int PRIMARY KEY, data text)", testKeyspace)
+	err := session.Query(createQuery).Exec()
+	require.NoError(t, err)
+
+	// Call RefreshKeyspace - should wait for schema agreement
+	ctx := context.Background()
+	err = manager.RefreshKeyspace(ctx, testKeyspace)
+	require.NoError(t, err, "RefreshKeyspace should succeed")
+
+	// Verify metadata is available (gocql auto-refreshed)
+	tableMeta, err := manager.GetTable(testKeyspace, "refresh_test")
+	require.NoError(t, err)
+	require.NotNil(t, tableMeta)
+	assert.Equal(t, "refresh_test", tableMeta.Name)
+
+	t.Log("✅ RefreshKeyspace successfully waited for schema agreement")
+}
