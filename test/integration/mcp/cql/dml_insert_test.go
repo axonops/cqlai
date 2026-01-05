@@ -8403,6 +8403,308 @@ func TestDML_Insert_125_ListIndexUpdate(t *testing.T) {
 	t.Log("✅ Test 125: List index update validated")
 }
 
+// TestDML_Insert_126_MapMerge tests map merge operation (map = map + {new entries})
+func TestDML_Insert_126_MapMerge(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "map_merge", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_merge (
+			id int PRIMARY KEY,
+			config map<text, text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT initial map
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_merge",
+		"values": map[string]any{
+			"id": 126000,
+			"config": map[string]any{
+				"setting1": "value1",
+				"setting2": "value2",
+			},
+		},
+		"value_types": map[string]any{
+			"config": "map<text,text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT initial map should succeed")
+
+	// Merge additional entries into map
+	updateArgs := map[string]any{
+		"operation": "UPDATE",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_merge",
+		"collection_ops": map[string]any{
+			"config": map[string]any{
+				"operation": "merge",
+				"value": map[string]any{
+					"setting3": "value3",
+					"setting4": "value4",
+				},
+				"value_type": "text",
+			},
+		},
+		"where": []map[string]any{
+			{"column": "id", "operator": "=", "value": 126000},
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, updateArgs)
+	assertNoMCPError(ctx.T, result, "Map merge should succeed")
+
+	// Verify merged map
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT config FROM %s.map_merge WHERE id = ?", ctx.Keyspace), 126000)
+	require.Len(t, rows, 1)
+
+	if config, ok := rows[0]["config"].(map[string]interface{}); ok {
+		assert.Len(t, config, 4, "Map should have 4 entries after merge")
+		assert.Equal(t, "value1", config["setting1"])
+		assert.Equal(t, "value2", config["setting2"])
+		assert.Equal(t, "value3", config["setting3"])
+		assert.Equal(t, "value4", config["setting4"])
+	}
+
+	t.Log("✅ Test 126: Map merge operation validated")
+}
+
+// TestDML_Insert_127_MultipleUsingClauses tests combining multiple USING clauses
+func TestDML_Insert_127_MultipleUsingClauses(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "using_combo", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.using_combo (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with both TTL and TIMESTAMP
+	timestamp := int64(1700000000000000)
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "using_combo",
+		"values": map[string]any{
+			"id":   127000,
+			"data": "combined using",
+		},
+		"using_ttl":       300,
+		"using_timestamp": timestamp,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with TTL AND TIMESTAMP should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.using_combo (data, id) VALUES ('combined using', 127000) USING TTL 300 AND TIMESTAMP %d;", ctx.Keyspace, timestamp)
+	assertCQLEquals(t, result, expectedCQL, "Combined USING clauses CQL should be correct")
+
+	// Verify both USING clauses applied
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data, TTL(data), WRITETIME(data) FROM %s.using_combo WHERE id = ?", ctx.Keyspace), 127000)
+	require.Len(t, rows, 1)
+
+	// Verify TTL
+	if ttl, ok := rows[0]["ttl(data)"].(int32); ok {
+		assert.GreaterOrEqual(t, ttl, int32(290))
+		assert.LessOrEqual(t, ttl, int32(300))
+	}
+
+	// Verify WRITETIME
+	if wt, ok := rows[0]["writetime(data)"].(int64); ok {
+		assert.Equal(t, timestamp, wt, "WRITETIME should match specified timestamp")
+	}
+
+	t.Log("✅ Test 127: Multiple USING clauses validated")
+}
+
+// TestDML_Insert_128_UDTNestedDeep tests deeply nested UDTs
+func TestDML_Insert_128_UDTNestedDeep(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create nested UDTs
+	err := createTable(ctx, "location_udt", fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.coordinates (
+			lat double,
+			lon double
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	err = createTable(ctx, "address_with_coords", fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.full_location (
+			street text,
+			city text,
+			coords frozen<coordinates>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Create table
+	err = createTable(ctx, "nested_udt", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.nested_udt (
+			id int PRIMARY KEY,
+			location frozen<full_location>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with nested UDT
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "nested_udt",
+		"values": map[string]any{
+			"id": 128000,
+			"location": map[string]any{
+				"street": "123 Main St",
+				"city":   "New York",
+				"coords": map[string]any{
+					"lat": 40.7128,
+					"lon": -74.0060,
+				},
+			},
+		},
+		"value_types": map[string]any{
+			"location":        "frozen<full_location>",
+			"location.coords": "frozen<coordinates>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with deeply nested UDT should succeed")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT location FROM %s.nested_udt WHERE id = ?", ctx.Keyspace), 128000)
+	require.Len(t, rows, 1)
+	assert.NotNil(t, rows[0]["location"])
+
+	t.Log("✅ Test 128: Deeply nested UDT validated")
+}
+
+// TestDML_Insert_129_PartialColumnInsert tests INSERT with only some columns (sparse insert)
+func TestDML_Insert_129_PartialColumnInsert(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with many columns
+	err := createTable(ctx, "sparse_insert", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.sparse_insert (
+			id int PRIMARY KEY,
+			col1 text,
+			col2 text,
+			col3 text,
+			col4 text,
+			col5 text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT only id and col1 (other columns will be NULL)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "sparse_insert",
+		"values": map[string]any{
+			"id":   129000,
+			"col1": "only this column",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "Partial column INSERT should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.sparse_insert (col1, id) VALUES ('only this column', 129000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Partial column INSERT CQL should be correct")
+
+	// Verify row exists with only specified columns
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT col1, col2, col3, col4, col5 FROM %s.sparse_insert WHERE id = ?", ctx.Keyspace), 129000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "only this column", rows[0]["col1"])
+	// Unspecified text columns may be nil or empty string depending on driver
+	col2 := rows[0]["col2"]
+	assert.True(t, col2 == nil || col2 == "", "Unspecified columns should be NULL or empty")
+	col3 := rows[0]["col3"]
+	assert.True(t, col3 == nil || col3 == "", "Unspecified columns should be NULL or empty")
+
+	t.Log("✅ Test 129: Partial column INSERT validated")
+}
+
+// TestDML_Insert_130_OverwriteExistingRow tests INSERT that overwrites existing row (last write wins)
+func TestDML_Insert_130_OverwriteExistingRow(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "overwrite_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.overwrite_test (
+			id int PRIMARY KEY,
+			data text,
+			version int
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// First INSERT
+	insertArgs1 := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "overwrite_test",
+		"values": map[string]any{
+			"id":      130000,
+			"data":    "original data",
+			"version": 1,
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs1)
+	assertNoMCPError(ctx.T, result, "First INSERT should succeed")
+
+	// Verify original data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data, version FROM %s.overwrite_test WHERE id = ?", ctx.Keyspace), 130000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "original data", rows[0]["data"])
+
+	// Second INSERT with same key (overwrites)
+	insertArgs2 := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "overwrite_test",
+		"values": map[string]any{
+			"id":      130000,
+			"data":    "updated data",
+			"version": 2,
+		},
+	}
+
+	result = submitQueryPlanMCP(ctx, insertArgs2)
+	assertNoMCPError(ctx.T, result, "Second INSERT (overwrite) should succeed")
+
+	// Verify overwritten data
+	rows = validateInCassandra(ctx, fmt.Sprintf("SELECT data, version FROM %s.overwrite_test WHERE id = ?", ctx.Keyspace), 130000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "updated data", rows[0]["data"], "Data should be overwritten")
+
+	if version, ok := rows[0]["version"].(int); ok {
+		assert.Equal(t, 2, version, "Version should be updated to 2")
+	} else if version, ok := rows[0]["version"].(int32); ok {
+		assert.Equal(t, int32(2), version, "Version should be updated to 2")
+	}
+
+	t.Log("✅ Test 130: Overwrite existing row (last write wins) validated")
+}
+
 // ============================================================================
-// MILESTONE: 125 INSERT Tests Complete! (88.7% of 141 target)
+// MILESTONE: 130 INSERT Tests Complete! (92.2% of 141 target)
 // ============================================================================
