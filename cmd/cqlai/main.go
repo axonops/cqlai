@@ -221,8 +221,8 @@ func main() {
 		}
 		// Execute based on input source
 		if execute != "" { //nolint:gocritic // more readable as if
-			// Execute command from -e flag
-			err = executor.Execute(execute)
+			// Execute command from -e flag (with multi-statement support)
+			err = executor.ExecuteMulti(execute)
 		} else if executeFile != "" {
 			// Execute from file
 			err = executor.ExecuteFile(executeFile)
