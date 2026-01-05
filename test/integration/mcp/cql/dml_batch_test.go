@@ -471,3 +471,104 @@ func TestDML_Batch_08_MultipleTables(t *testing.T) {
 	t.Log("✅ Batch Test 08: Multiple tables BATCH validated")
 }
 
+// TestDML_Batch_09_WithTTL tests BATCH with TTL on individual statements
+// Verifies TTL can be applied to statements within BATCH
+func TestDML_Batch_09_WithTTL(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "temp_data", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.temp_data (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// BATCH with statement-level TTL
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_statements": []map[string]any{
+			{
+				"operation":  "INSERT",
+				"keyspace":   ctx.Keyspace,
+				"table":      "temp_data",
+				"values":     map[string]any{"id": 1, "data": "expires in 300s"},
+				"using_ttl":  300,
+			},
+			{
+				"operation":  "INSERT",
+				"keyspace":   ctx.Keyspace,
+				"table":      "temp_data",
+				"values":     map[string]any{"id": 2, "data": "expires in 600s"},
+				"using_ttl":  600,
+			},
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, result, "BATCH with statement-level TTL should succeed")
+
+	// Assert CQL
+	expectedCQL := fmt.Sprintf(`BEGIN BATCH
+  INSERT INTO %s.temp_data (data, id) VALUES ('expires in 300s', 1) USING TTL 300;
+  INSERT INTO %s.temp_data (data, id) VALUES ('expires in 600s', 2) USING TTL 600;
+APPLY BATCH;`, ctx.Keyspace, ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "BATCH with TTL CQL should be correct")
+
+	// Verify rows inserted
+	row1 := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.temp_data WHERE id = ?", ctx.Keyspace), 1)
+	assert.Len(t, row1, 1)
+
+	row2 := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.temp_data WHERE id = ?", ctx.Keyspace), 2)
+	assert.Len(t, row2, 1)
+
+	t.Log("✅ Batch Test 09: BATCH with statement-level TTL validated")
+}
+
+// TestDML_Batch_10_LargeBatch tests BATCH with many statements (size test)
+// Verifies BATCH can handle 10+ statements
+func TestDML_Batch_10_LargeBatch(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "large_batch", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.large_batch (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// BATCH with 15 statements
+	statements := []map[string]any{}
+	for i := 1; i <= 15; i++ {
+		statements = append(statements, map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "large_batch",
+			"values":    map[string]any{"id": i, "data": fmt.Sprintf("row%d", i)},
+		})
+	}
+
+	batchArgs := map[string]any{
+		"operation":        "BATCH",
+		"batch_statements": statements,
+	}
+
+	result := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, result, "Large BATCH should succeed")
+
+	// Verify all 15 rows inserted with CORRECT data in CORRECT columns
+	for i := 1; i <= 15; i++ {
+		rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, data FROM %s.large_batch WHERE id = ?", ctx.Keyspace), i)
+		require.Len(t, rows, 1, "Row %d should exist", i)
+		assert.Equal(t, i, rows[0]["id"], "Row %d should have correct id", i)
+		assert.Equal(t, fmt.Sprintf("row%d", i), rows[0]["data"], "Row %d should have correct data", i)
+	}
+
+	t.Log("✅ Batch Test 10: Large BATCH (15 statements) validated - all rows verified with correct data")
+}
+
