@@ -111,7 +111,8 @@ func TestSetLiterals_RealCassandra(t *testing.T) {
 
 		cql, err := ai.RenderCQL(plan)
 		assert.NoError(t, err)
-		assert.Contains(t, cql, "{'admin', 'verified', 'premium'}")
+		// Sets are sorted alphabetically by planner
+		assert.Contains(t, cql, "{'admin', 'premium', 'verified'}")
 
 		output, err := executeCassandra(t, cql)
 		assert.NoError(t, err, output)
