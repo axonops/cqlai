@@ -336,3 +336,138 @@ func TestDML_Batch_06_LWT_SamePartition(t *testing.T) {
 
 	t.Log("✅ Batch Test 06: LWT BATCH with same table and partition key verified")
 }
+
+// TestDML_Batch_07_MixedDML tests BATCH with INSERT, UPDATE, and DELETE
+// Verifies BATCH can mix different DML operations
+func TestDML_Batch_07_MixedDML(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "users", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.users (
+			id int PRIMARY KEY,
+			name text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Pre-insert rows for UPDATE and DELETE
+	for _, id := range []int{2, 3} {
+		insertArgs := map[string]any{
+			"operation": "INSERT",
+			"keyspace":  ctx.Keyspace,
+			"table":     "users",
+			"values":    map[string]any{"id": id, "name": fmt.Sprintf("user%d", id)},
+		}
+		insertResult := submitQueryPlanMCP(ctx, insertArgs)
+		assertNoMCPError(ctx.T, insertResult, "Pre-insert should succeed")
+	}
+
+	// BATCH with mixed DML: INSERT, UPDATE, DELETE
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_statements": []map[string]any{
+			{
+				"operation": "INSERT",
+				"keyspace":  ctx.Keyspace,
+				"table":     "users",
+				"values":    map[string]any{"id": 1, "name": "Alice"},
+			},
+			{
+				"operation": "UPDATE",
+				"keyspace":  ctx.Keyspace,
+				"table":     "users",
+				"values":    map[string]any{"name": "Bob Updated"},
+				"where":     []map[string]any{{"column": "id", "operator": "=", "value": 2}},
+			},
+			{
+				"operation": "DELETE",
+				"keyspace":  ctx.Keyspace,
+				"table":     "users",
+				"where":     []map[string]any{{"column": "id", "operator": "=", "value": 3}},
+			},
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, result, "Mixed DML BATCH should succeed")
+
+	// Assert CQL
+	expectedCQL := fmt.Sprintf(`BEGIN BATCH
+  INSERT INTO %s.users (id, name) VALUES (1, 'Alice');
+  UPDATE %s.users SET name = 'Bob Updated' WHERE id = 2;
+  DELETE FROM %s.users WHERE id = 3;
+APPLY BATCH;`, ctx.Keyspace, ctx.Keyspace, ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Mixed DML BATCH CQL should be correct")
+
+	// Verify results
+	row1 := validateInCassandra(ctx, fmt.Sprintf("SELECT name FROM %s.users WHERE id = ?", ctx.Keyspace), 1)
+	assert.Len(t, row1, 1)
+	assert.Equal(t, "Alice", row1[0]["name"])
+
+	row2 := validateInCassandra(ctx, fmt.Sprintf("SELECT name FROM %s.users WHERE id = ?", ctx.Keyspace), 2)
+	assert.Len(t, row2, 1)
+	assert.Equal(t, "Bob Updated", row2[0]["name"])
+
+	row3 := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.users WHERE id = ?", ctx.Keyspace), 3)
+	assert.Len(t, row3, 0, "Row 3 should be deleted")
+
+	t.Log("✅ Batch Test 07: Mixed DML (INSERT+UPDATE+DELETE) validated")
+}
+
+// TestDML_Batch_08_MultipleTables tests BATCH across multiple tables
+// Verifies BATCH can operate on different tables
+func TestDML_Batch_08_MultipleTables(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create two tables
+	err := createTable(ctx, "users", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.users (
+			id int PRIMARY KEY,
+			name text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	err = createTable(ctx, "profiles", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.profiles (
+			id int PRIMARY KEY,
+			bio text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// BATCH across two tables
+	batchArgs := map[string]any{
+		"operation": "BATCH",
+		"batch_statements": []map[string]any{
+			{
+				"operation": "INSERT",
+				"keyspace":  ctx.Keyspace,
+				"table":     "users",
+				"values":    map[string]any{"id": 1, "name": "Alice"},
+			},
+			{
+				"operation": "INSERT",
+				"keyspace":  ctx.Keyspace,
+				"table":     "profiles",
+				"values":    map[string]any{"id": 1, "bio": "Developer"},
+			},
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, batchArgs)
+	assertNoMCPError(ctx.T, result, "Multi-table BATCH should succeed")
+
+	// Verify both inserts
+	userRows := validateInCassandra(ctx, fmt.Sprintf("SELECT name FROM %s.users WHERE id = ?", ctx.Keyspace), 1)
+	assert.Len(t, userRows, 1)
+
+	profileRows := validateInCassandra(ctx, fmt.Sprintf("SELECT bio FROM %s.profiles WHERE id = ?", ctx.Keyspace), 1)
+	assert.Len(t, profileRows, 1)
+
+	t.Log("✅ Batch Test 08: Multiple tables BATCH validated")
+}
+
