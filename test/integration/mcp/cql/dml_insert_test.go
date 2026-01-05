@@ -6268,6 +6268,103 @@ func TestDML_Insert_84_JSON_EscapedQuotes(t *testing.T) {
 	t.Log("✅ Test 84: INSERT JSON with escaped quotes validated")
 }
 
+// TestDML_Insert_85_Tuple_MixedTypes tests tuple with different data types
+func TestDML_Insert_85_Tuple_MixedTypes(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with tuple of mixed types
+	err := createTable(ctx, "mixed_tuple", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.mixed_tuple (
+			id int PRIMARY KEY,
+			info tuple<text, int, boolean>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with mixed type tuple
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "mixed_tuple",
+		"values": map[string]any{
+			"id":   85000,
+			"info": []interface{}{"Alice", 30, true},
+		},
+		"value_types": map[string]any{
+			"info": "tuple<text,int,boolean>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with mixed type tuple should succeed")
+
+	// Assert exact CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.mixed_tuple (id, info) VALUES (85000, ('Alice', 30, true));", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Mixed type tuple CQL should be correct")
+
+	// Verify tuple stored correctly
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT info FROM %s.mixed_tuple WHERE id = ?", ctx.Keyspace), 85000)
+	require.Len(t, rows, 1)
+	// Tuple comes back as tuple type
+	if tupleVal, ok := rows[0]["info"].([]interface{}); ok {
+		assert.Len(t, tupleVal, 3)
+		assert.Equal(t, "Alice", tupleVal[0])
+		assert.Equal(t, 30, tupleVal[1])
+		assert.Equal(t, true, tupleVal[2])
+	}
+
+	t.Log("✅ Test 85: Tuple with mixed types validated")
+}
+
+// TestDML_Insert_86_Tuple_WithNullElements tests tuple with NULL elements
+func TestDML_Insert_86_Tuple_WithNullElements(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "null_tuple", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.null_tuple (
+			id int PRIMARY KEY,
+			data tuple<int, text, int>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with NULL in tuple
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "null_tuple",
+		"values": map[string]any{
+			"id":   86000,
+			"data": []interface{}{10, nil, 30}, // Middle element is NULL
+		},
+		"value_types": map[string]any{
+			"data": "tuple<int,text,int>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with NULL in tuple should succeed")
+
+	// Assert exact CQL
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.null_tuple (data, id) VALUES ((10, null, 30), 86000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Tuple with NULL CQL should be correct")
+
+	// Verify tuple stored with NULL element
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.null_tuple WHERE id = ?", ctx.Keyspace), 86000)
+	require.Len(t, rows, 1)
+	if tupleVal, ok := rows[0]["data"].([]interface{}); ok {
+		assert.Len(t, tupleVal, 3)
+		assert.Equal(t, 10, tupleVal[0])
+		assert.Nil(t, tupleVal[1], "NULL element should be nil")
+		assert.Equal(t, 30, tupleVal[2])
+	}
+
+	t.Log("✅ Test 86: Tuple with NULL elements validated")
+}
+
 // ============================================================================
 // COMPLETION: All 90 DML INSERT Tests Complete!
 // ============================================================================
