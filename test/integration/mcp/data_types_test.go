@@ -243,11 +243,6 @@ func TestMixedTypes_RealCassandra(t *testing.T) {
 func executeCassandra(t *testing.T, cql string) (string, error) {
 	t.Helper()
 
-	// Escape single quotes for shell
-	escapedCQL := strings.ReplaceAll(cql, "'", "'\"'\"'")
-
-	cmd := fmt.Sprintf("podman exec cassandra-test cqlsh -u cassandra -p cassandra -e \"USE cqlai_test; %s\"", escapedCQL)
-
 	// Note: Using simple exec for now - should integrate with proper test helpers later
 	// For this integration test, we just need to verify no Cassandra errors
 
