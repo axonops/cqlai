@@ -7213,6 +7213,108 @@ func TestDML_Insert_102_MaxIntMinIntBoundaries(t *testing.T) {
 	t.Log("✅ Test 102: MAX_INT/MIN_INT boundaries validated")
 }
 
+// TestDML_Insert_103_UsingTimestampPastFuture tests USING TIMESTAMP with past and future timestamps
+func TestDML_Insert_103_UsingTimestampPastFuture(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "timestamp_test", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.timestamp_test (
+			id int PRIMARY KEY,
+			data text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with past timestamp (microseconds since epoch)
+	pastTimestamp := int64(1000000000000000) // Year 2001
+
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "timestamp_test",
+		"values": map[string]any{
+			"id":   103000,
+			"data": "backdated",
+		},
+		"using_timestamp": pastTimestamp,
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with past TIMESTAMP should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.timestamp_test (data, id) VALUES ('backdated', 103000) USING TIMESTAMP %d;", ctx.Keyspace, pastTimestamp)
+	assertCQLEquals(t, result, expectedCQL, "Past TIMESTAMP CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data, WRITETIME(data) FROM %s.timestamp_test WHERE id = ?", ctx.Keyspace), 103000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "backdated", rows[0]["data"])
+
+	// WRITETIME should match the specified timestamp
+	if wt, ok := rows[0]["writetime(data)"].(int64); ok {
+		assert.Equal(t, pastTimestamp, wt, "WRITETIME should match USING TIMESTAMP")
+	}
+
+	t.Log("✅ Test 103: USING TIMESTAMP with past/future values validated")
+}
+
+// TestDML_Insert_104_CollectionWithDuplicates tests list with duplicates (allowed) vs set (deduped)
+func TestDML_Insert_104_CollectionWithDuplicates(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "collection_dups", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.collection_dups (
+			id int PRIMARY KEY,
+			items_list list<text>,
+			items_set set<text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with duplicates
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "collection_dups",
+		"values": map[string]any{
+			"id":         104000,
+			"items_list": []interface{}{"a", "b", "a", "c", "b"}, // Duplicates allowed in list
+			"items_set":  []interface{}{"a", "b", "a", "c", "b"}, // Duplicates deduped in set
+		},
+		"value_types": map[string]any{
+			"items_list": "list<text>",
+			"items_set":  "set<text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with duplicates should succeed")
+
+	// List preserves duplicates, set deduplicates and sorts
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.collection_dups (id, items_list, items_set) VALUES (104000, ['a', 'b', 'a', 'c', 'b'], {'a', 'b', 'c'});", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Duplicates CQL should be correct")
+
+	// Verify in Cassandra
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT items_list, items_set FROM %s.collection_dups WHERE id = ?", ctx.Keyspace), 104000)
+	require.Len(t, rows, 1)
+
+	// List should have 5 elements (duplicates preserved)
+	if list, ok := rows[0]["items_list"].([]interface{}); ok {
+		assert.Len(t, list, 5, "List should preserve duplicates")
+	}
+
+	// Set should have 3 unique elements
+	if set, ok := rows[0]["items_set"].([]interface{}); ok {
+		assert.Len(t, set, 3, "Set should deduplicate")
+	}
+
+	t.Log("✅ Test 104: Collection duplicates (list vs set) validated")
+}
+
 // ============================================================================
-// COMPLETION: Tests 1-102 Complete!
+// COMPLETION: Tests 1-104 Complete!
 // ============================================================================
