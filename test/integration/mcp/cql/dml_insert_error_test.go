@@ -59,6 +59,7 @@ func TestDML_Insert_ERR_01_NonExistentTable(t *testing.T) {
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
 	// Assert EXACT error message from Cassandra
+	// Note: Cassandra error just includes table name (not keyspace.table prefix)
 	expectedError := "Query execution failed: query failed: table nonexistent_table does not exist"
 	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact table not found error from Cassandra")
 
@@ -87,6 +88,7 @@ func TestDML_Insert_ERR_01a_TableCreatedInSeparateSession(t *testing.T) {
 	result1 := submitQueryPlanMCP(ctx, insertArgs)
 
 	// Assert EXACT error message for non-existent table
+	// Note: Cassandra error just includes table name (not keyspace.table)
 	expectedError1 := fmt.Sprintf("Query execution failed: query failed: table %s does not exist", tableName)
 	assertMCPErrorMessageExact(ctx.T, result1, expectedError1, "First attempt should fail with exact table not found error")
 
@@ -166,9 +168,9 @@ func TestDML_Insert_ERR_02_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Assert EXACT validation error message (improved to list ALL partition keys)
-	expectedError := "Query validation failed: missing partition key column(s): device_id. Include all partition keys: user_id, device_id (required for INSERT)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get helpful error listing all partition keys")
+	// Assert EXACT validation error message (improved to list ALL partition keys + keyspace.table)
+	expectedError := fmt.Sprintf("Query validation failed: missing partition key column(s): device_id. Include all partition keys: user_id, device_id (required for INSERT into %s.pk_test)", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get helpful error listing all partition keys and keyspace.table")
 
 	// Verify no data was inserted
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.pk_test", ctx.Keyspace))
@@ -212,9 +214,9 @@ func TestDML_Insert_ERR_03_MissingClusteringKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Assert EXACT validation error message (improved to list ALL clustering keys in order)
-	expectedError := "Query validation failed: missing clustering key column(s): month, day. Include all clustering keys in order: year, month, day (required for INSERT)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get helpful error listing all clustering keys in order")
+	// Assert EXACT validation error message (improved to list ALL clustering keys in order + keyspace.table)
+	expectedError := fmt.Sprintf("Query validation failed: missing clustering key column(s): month, day. Include all clustering keys in order: year, month, day (required for INSERT into %s.ck_test)", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get helpful error listing all clustering keys in order and keyspace.table")
 
 	// Verify no data was inserted
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.ck_test", ctx.Keyspace))
@@ -363,4 +365,51 @@ func TestDML_Insert_ERR_05_FrozenUDTFieldUpdate(t *testing.T) {
 
 	t.Log("✅ ERR_05: Frozen UDT field update correctly rejected with error")
 }
+
+// TestDML_Insert_ERR_06_ThreeColumnPartitionKey tests INSERT with 3-column partition key missing 2 columns
+// This verifies improved error message lists ALL required partition keys
+func TestDML_Insert_ERR_06_ThreeColumnPartitionKey(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with 3-column composite partition key
+	err := createTable(ctx, "multi_tenant", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.multi_tenant (
+			org_id int,
+			tenant_id int,
+			region text,
+			timestamp bigint,
+			data text,
+			PRIMARY KEY ((org_id, tenant_id, region), timestamp)
+		)
+	`, ctx.Keyspace))
+	assert.NoError(ctx.T, err)
+
+	// Attempt INSERT with only org_id (missing tenant_id and region)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "multi_tenant",
+		"values": map[string]any{
+			"org_id":    100,
+			// tenant_id missing!
+			// region missing!
+			"timestamp": 1000,
+			"data":      "test",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+
+	// Assert EXACT error message - should list ALL missing partition keys + keyspace.table
+	expectedError := fmt.Sprintf("Query validation failed: missing partition key column(s): tenant_id, region. Include all partition keys: org_id, tenant_id, region (required for INSERT into %s.multi_tenant)", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should list all missing partition keys and keyspace.table")
+
+	// Verify no data was inserted
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.multi_tenant", ctx.Keyspace))
+	assert.Len(ctx.T, rows, 0, "No data should be inserted on validation error")
+
+	t.Log("✅ ERR_06: 3-column partition key validation with helpful error listing all required keys")
+}
+
 

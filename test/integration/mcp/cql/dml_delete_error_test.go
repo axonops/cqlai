@@ -59,9 +59,9 @@ func TestDML_Delete_ERR_01_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, deleteArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: WHERE clause must include at least one partition key column for DELETE"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error")
+	// Assert EXACT validation error message (includes keyspace.table and partition key list)
+	expectedError := fmt.Sprintf("Query validation failed: WHERE clause must include at least one partition key column for DELETE on %s.events. Partition keys: user_id", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error with keyspace.table")
 
 	// Verify row still exists (not deleted)
 	rows := validateInCassandra(ctx, fmt.Sprintf(
@@ -111,9 +111,9 @@ func TestDML_Delete_ERR_02_NoWHEREClause(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, deleteArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: WHERE clause is required for DELETE (DELETE without WHERE is not allowed)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact WHERE clause required error")
+	// Assert EXACT validation error message (includes keyspace.table)
+	expectedError := fmt.Sprintf("Query validation failed: WHERE clause is required for DELETE on %s.users (DELETE without WHERE is not allowed)", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact WHERE clause required error with keyspace.table")
 
 	// Verify row still exists
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, name FROM %s.users WHERE id = ?", ctx.Keyspace), 100)

@@ -49,13 +49,18 @@ func ValidateInsertPlan(plan *AIResult, metadata cluster.MetadataManager) error 
 		}
 	}
 	if len(missingPKs) > 0 {
+		tableName := plan.Table
+		if plan.Keyspace != "" {
+			tableName = plan.Keyspace + "." + plan.Table
+		}
 		if len(pkNames) == 1 {
-			return fmt.Errorf("missing partition key column: %s (required for INSERT)", missingPKs[0])
+			return fmt.Errorf("missing partition key column: %s (required for INSERT into %s)", missingPKs[0], tableName)
 		}
 		// Multiple partition keys - list all required keys for clarity
-		return fmt.Errorf("missing partition key column(s): %s. Include all partition keys: %s (required for INSERT)",
+		return fmt.Errorf("missing partition key column(s): %s. Include all partition keys: %s (required for INSERT into %s)",
 			strings.Join(missingPKs, ", "),
-			strings.Join(pkNames, ", "))
+			strings.Join(pkNames, ", "),
+			tableName)
 	}
 
 	// Validate all clustering keys are present
@@ -67,13 +72,18 @@ func ValidateInsertPlan(plan *AIResult, metadata cluster.MetadataManager) error 
 		}
 	}
 	if len(missingCKs) > 0 {
+		tableName := plan.Table
+		if plan.Keyspace != "" {
+			tableName = plan.Keyspace + "." + plan.Table
+		}
 		if len(ckNames) == 1 {
-			return fmt.Errorf("missing clustering key column: %s (required for INSERT)", missingCKs[0])
+			return fmt.Errorf("missing clustering key column: %s (required for INSERT into %s)", missingCKs[0], tableName)
 		}
 		// Multiple clustering keys - list all required keys for clarity
-		return fmt.Errorf("missing clustering key column(s): %s. Include all clustering keys in order: %s (required for INSERT)",
+		return fmt.Errorf("missing clustering key column(s): %s. Include all clustering keys in order: %s (required for INSERT into %s)",
 			strings.Join(missingCKs, ", "),
-			strings.Join(ckNames, ", "))
+			strings.Join(ckNames, ", "),
+			tableName)
 	}
 
 	return nil
@@ -94,7 +104,11 @@ func ValidateUpdatePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 	}
 
 	if len(plan.Where) == 0 {
-		return fmt.Errorf("WHERE clause is required for UPDATE")
+		tableName := plan.Table
+		if plan.Keyspace != "" {
+			tableName = plan.Keyspace + "." + plan.Table
+		}
+		return fmt.Errorf("WHERE clause is required for UPDATE on %s", tableName)
 	}
 
 	// Get table metadata
@@ -145,12 +159,17 @@ func ValidateUpdatePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 			}
 		}
 		if len(missingPKs) > 0 {
-			if len(pkNames) == 1 {
-				return fmt.Errorf("missing partition key in WHERE clause: %s (required for UPDATE)", missingPKs[0])
+			tableName := plan.Table
+			if plan.Keyspace != "" {
+				tableName = plan.Keyspace + "." + plan.Table
 			}
-			return fmt.Errorf("missing partition key column(s) in WHERE clause: %s. Include all partition keys: %s (required for UPDATE)",
+			if len(pkNames) == 1 {
+				return fmt.Errorf("missing partition key in WHERE clause: %s (required for UPDATE on %s)", missingPKs[0], tableName)
+			}
+			return fmt.Errorf("missing partition key column(s) in WHERE clause: %s. Include all partition keys: %s (required for UPDATE on %s)",
 				strings.Join(missingPKs, ", "),
-				strings.Join(pkNames, ", "))
+				strings.Join(pkNames, ", "),
+				tableName)
 		}
 
 		// Validate all clustering keys present in WHERE
@@ -162,12 +181,17 @@ func ValidateUpdatePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 			}
 		}
 		if len(missingCKs) > 0 {
-			if len(ckNames) == 1 {
-				return fmt.Errorf("missing clustering key in WHERE clause: %s (required for UPDATE of regular columns)", missingCKs[0])
+			tableName := plan.Table
+			if plan.Keyspace != "" {
+				tableName = plan.Keyspace + "." + plan.Table
 			}
-			return fmt.Errorf("missing clustering key column(s) in WHERE clause: %s. Include all clustering keys in order: %s (required for UPDATE of regular columns)",
+			if len(ckNames) == 1 {
+				return fmt.Errorf("missing clustering key in WHERE clause: %s (required for UPDATE of regular columns on %s)", missingCKs[0], tableName)
+			}
+			return fmt.Errorf("missing clustering key column(s) in WHERE clause: %s. Include all clustering keys in order: %s (required for UPDATE of regular columns on %s)",
 				strings.Join(missingCKs, ", "),
-				strings.Join(ckNames, ", "))
+				strings.Join(ckNames, ", "),
+				tableName)
 		}
 	} else {
 		// Updating static columns only - just need partition key
@@ -213,7 +237,11 @@ func ValidateDeletePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 	}
 
 	if len(plan.Where) == 0 {
-		return fmt.Errorf("WHERE clause is required for DELETE (DELETE without WHERE is not allowed)")
+		tableName := plan.Table
+		if plan.Keyspace != "" {
+			tableName = plan.Keyspace + "." + plan.Table
+		}
+		return fmt.Errorf("WHERE clause is required for DELETE on %s (DELETE without WHERE is not allowed)", tableName)
 	}
 
 	// Get table metadata
@@ -247,7 +275,12 @@ func ValidateDeletePlan(plan *AIResult, metadata cluster.MetadataManager) error 
 	}
 
 	if !hasPartitionKey {
-		return fmt.Errorf("WHERE clause must include at least one partition key column for DELETE")
+		tableName := plan.Table
+		if plan.Keyspace != "" {
+			tableName = plan.Keyspace + "." + plan.Table
+		}
+		pkList := strings.Join(tableMeta.GetPartitionKeyNames(), ", ")
+		return fmt.Errorf("WHERE clause must include at least one partition key column for DELETE on %s. Partition keys: %s", tableName, pkList)
 	}
 
 	// Clustering keys are optional for DELETE (allows range deletes)

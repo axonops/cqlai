@@ -62,9 +62,9 @@ func TestDML_Update_ERR_01_PartialPK_RegularColumn(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, updateArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: missing clustering key in WHERE clause: timestamp (required for UPDATE of regular columns)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing clustering key error")
+	// Assert EXACT validation error message (includes keyspace.table)
+	expectedError := fmt.Sprintf("Query validation failed: missing clustering key column(s) in WHERE clause: timestamp, event_type. Include all clustering keys in order: timestamp, event_type (required for UPDATE of regular columns on %s.events)", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing clustering keys error with keyspace.table")
 
 	// Verify original data unchanged
 	rows := validateInCassandra(ctx, fmt.Sprintf(
@@ -111,9 +111,9 @@ func TestDML_Update_ERR_02_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, updateArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: missing partition key in WHERE clause: user_id (required for UPDATE)"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error")
+	// Assert EXACT validation error message (includes keyspace.table)
+	expectedError := fmt.Sprintf("Query validation failed: missing partition key in WHERE clause: user_id (required for UPDATE on %s.events)", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error with keyspace.table")
 
 	t.Log("✅ UPDATE_ERR_02: Missing partition key validation error verified (exact message)")
 }
@@ -146,9 +146,9 @@ func TestDML_Update_ERR_03_NoWHEREClause(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, updateArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: WHERE clause is required for UPDATE"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact WHERE clause required error")
+	// Assert EXACT validation error message (includes keyspace.table)
+	expectedError := fmt.Sprintf("Query validation failed: WHERE clause is required for UPDATE on %s.users", ctx.Keyspace)
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact WHERE clause required error with keyspace.table")
 
 	t.Log("✅ UPDATE_ERR_03: No WHERE clause validation error verified (exact message)")
 }
