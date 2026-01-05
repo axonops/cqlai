@@ -337,12 +337,12 @@ func ValidateBatchPlan(plan *AIResult, metadata cluster.MetadataManager) error {
 
 	// Validate counter mixing
 	if hasCounter && hasNonCounter {
-		return fmt.Errorf("cannot mix counter and non-counter operations in BATCH")
+		return fmt.Errorf("cannot mix counter and non-counter operations in BATCH. Use separate batch requests: batch_type='COUNTER' for counter operations, batch_type='LOGGED' or 'UNLOGGED' for regular operations")
 	}
 
 	// If counter batch, must be COUNTER type
 	if hasCounter && batchType != "COUNTER" {
-		return fmt.Errorf("counter operations require BATCH type COUNTER")
+		return fmt.Errorf("counter operations require batch_type='COUNTER'. Set batch_type to 'COUNTER' for counter operations")
 	}
 
 	// TODO: Add cross-partition detection

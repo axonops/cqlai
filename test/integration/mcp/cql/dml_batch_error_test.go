@@ -67,9 +67,9 @@ func TestDML_Batch_ERR_01_MixedCounterAndRegular(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, batchArgs)
 
-	// Assert EXACT validation error message
-	expectedError := "Query validation failed: cannot mix counter and non-counter operations in BATCH"
-	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact counter mixing error")
+	// Assert EXACT validation error message (improved to be instructive with JSON API)
+	expectedError := "Query validation failed: cannot mix counter and non-counter operations in BATCH. Use separate batch requests: batch_type='COUNTER' for counter operations, batch_type='LOGGED' or 'UNLOGGED' for regular operations"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get instructive error with JSON API guidance")
 
 	// Verify no data was inserted/updated
 	// Check counter table
