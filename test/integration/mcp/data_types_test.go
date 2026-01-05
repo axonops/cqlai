@@ -4,8 +4,6 @@
 package mcp
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/axonops/cqlai/internal/ai"
