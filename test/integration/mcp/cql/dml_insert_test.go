@@ -6946,6 +6946,153 @@ func TestDML_Insert_97_IfNotExistsWithTTL(t *testing.T) {
 	t.Log("✅ Test 97: IF NOT EXISTS with TTL validated")
 }
 
+// TestDML_Insert_98_UDTWithNullFields tests INSERT with UDT containing NULL fields
+func TestDML_Insert_98_UDTWithNullFields(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create UDT and table
+	err := createTable(ctx, "address_udt", fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.full_address (
+			street text,
+			city text,
+			zip_code text,
+			country text
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	err = createTable(ctx, "udt_nulls", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.udt_nulls (
+			id int PRIMARY KEY,
+			address frozen<full_address>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT UDT with some NULL fields
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "udt_nulls",
+		"values": map[string]any{
+			"id": 98000,
+			"address": map[string]any{
+				"street":   "123 Main St",
+				"city":     "New York",
+				"zip_code": nil, // NULL field
+				"country":  "USA",
+			},
+		},
+		"value_types": map[string]any{
+			"address": "frozen<full_address>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT UDT with NULL fields should succeed")
+
+	// Assert exact CQL (NULL fields included)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.udt_nulls (address, id) VALUES ({city: 'New York', country: 'USA', street: '123 Main St', zip_code: null}, 98000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "UDT with NULL fields CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT address FROM %s.udt_nulls WHERE id = ?", ctx.Keyspace), 98000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 98: UDT with NULL fields validated")
+}
+
+// TestDML_Insert_99_AsciiVarcharTypes tests ascii and varchar (text aliases)
+func TestDML_Insert_99_AsciiVarcharTypes(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with ascii and varchar
+	err := createTable(ctx, "text_aliases", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.text_aliases (
+			id int PRIMARY KEY,
+			ascii_col ascii,
+			varchar_col varchar
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with ascii (7-bit only) and varchar (alias for text)
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "text_aliases",
+		"values": map[string]any{
+			"id":          99000,
+			"ascii_col":   "Plain ASCII text",
+			"varchar_col": "Unicode varchar: 你好",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with ascii and varchar should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.text_aliases (ascii_col, id, varchar_col) VALUES ('Plain ASCII text', 99000, 'Unicode varchar: 你好');", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "ascii and varchar CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT ascii_col, varchar_col FROM %s.text_aliases WHERE id = ?", ctx.Keyspace), 99000)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "Plain ASCII text", rows[0]["ascii_col"])
+	assert.Equal(t, "Unicode varchar: 你好", rows[0]["varchar_col"])
+
+	t.Log("✅ Test 99: ascii and varchar types validated")
+}
+
+// TestDML_Insert_100_EmptyCollections tests INSERT with empty list, set, and map
+func TestDML_Insert_100_EmptyCollections(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table with collections
+	err := createTable(ctx, "empty_collections", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.empty_collections (
+			id int PRIMARY KEY,
+			empty_list list<int>,
+			empty_set set<text>,
+			empty_map map<text,int>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT with empty collections
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "empty_collections",
+		"values": map[string]any{
+			"id":         100000,
+			"empty_list": []interface{}{},
+			"empty_set":  []interface{}{},
+			"empty_map":  map[string]any{},
+		},
+		"value_types": map[string]any{
+			"empty_list": "list<int>",
+			"empty_set":  "set<text>",
+			"empty_map":  "map<text,int>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT with empty collections should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.empty_collections (empty_list, empty_map, empty_set, id) VALUES ([], {}, {}, 100000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "Empty collections CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT empty_list, empty_set, empty_map FROM %s.empty_collections WHERE id = ?", ctx.Keyspace), 100000)
+	require.Len(t, rows, 1)
+
+	// Empty collections may be null or empty in Cassandra
+	t.Log("✅ Test 100: Empty collections validated")
+}
+
 // ============================================================================
-// COMPLETION: Tests 1-97 Complete!
+// COMPLETION: Tests 1-100 Complete!
 // ============================================================================
