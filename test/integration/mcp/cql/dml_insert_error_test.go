@@ -4,7 +4,6 @@ package cql
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -59,10 +58,11 @@ func TestDML_Insert_ERR_01_NonExistentTable(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Should get error from Cassandra
-	assertMCPError(ctx.T, result, "table", "Should fail - table doesn't exist")
+	// Assert EXACT error message from Cassandra
+	expectedError := "Query execution failed: query failed: table nonexistent_table does not exist"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact table not found error from Cassandra")
 
-	t.Log("✅ Test ERR_01: Non-existent table error verified")
+	t.Log("✅ Test ERR_01: Non-existent table error verified (exact message)")
 }
 
 // TestDML_Insert_ERR_01a_TableCreatedInSeparateSession tests schema propagation across sessions
@@ -165,19 +165,15 @@ func TestDML_Insert_ERR_02_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Extract and log the actual error message
-	actualError := extractMCPErrorMessage(result)
-	t.Logf("Actual error message: %s", actualError)
-
-	// Should get validation error BEFORE CQL generation
-	assertMCPError(ctx.T, result, "partition key", "Should fail - missing partition key")
-	assertMCPError(ctx.T, result, "device_id", "Error should mention missing column")
+	// Assert EXACT validation error message
+	expectedError := "Query validation failed: missing partition key column: device_id (required for INSERT)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error")
 
 	// Verify no data was inserted
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.pk_test", ctx.Keyspace))
 	assert.Len(ctx.T, rows, 0, "No data should be inserted on validation error")
 
-	t.Log("✅ Test ERR_02: Missing partition key validation error verified")
+	t.Log("✅ Test ERR_02: Missing partition key validation error verified (exact message)")
 }
 
 // TestDML_Insert_ERR_03_MissingClusteringKey tests INSERT without clustering key
@@ -215,20 +211,16 @@ func TestDML_Insert_ERR_03_MissingClusteringKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, insertArgs)
 
-	// Should get validation error
-	assertMCPError(ctx.T, result, "clustering key", "Should fail - missing clustering keys")
-	// Should mention at least one missing column (month or day)
-	// Note: Validation reports first missing key found
-	errorStr := fmt.Sprintf("%v", result)
-	hasMonth := strings.Contains(errorStr, "month")
-	hasDay := strings.Contains(errorStr, "day")
-	assert.True(ctx.T, hasMonth || hasDay, "Error should mention at least one missing clustering key")
+	// Assert EXACT validation error message
+	// Note: Validation reports first missing clustering key found
+	expectedError := "Query validation failed: missing clustering key column: month (required for INSERT)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing clustering key error")
 
 	// Verify no data was inserted
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT * FROM %s.ck_test", ctx.Keyspace))
 	assert.Len(ctx.T, rows, 0, "No data should be inserted on validation error")
 
-	t.Log("✅ Test ERR_03: Missing clustering key validation error verified")
+	t.Log("✅ Test ERR_03: Missing clustering key validation error verified (exact message)")
 }
 
 // TestDML_Insert_ERR_04_TypeMismatch tests INSERT with wrong data type

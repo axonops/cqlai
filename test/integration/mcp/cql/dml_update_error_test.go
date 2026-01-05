@@ -62,9 +62,9 @@ func TestDML_Update_ERR_01_PartialPK_RegularColumn(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, updateArgs)
 
-	// Should get validation error
-	assertMCPError(ctx.T, result, "clustering key", "Should fail - partial PK not allowed for regular column")
-	assertMCPError(ctx.T, result, "timestamp", "Error should mention missing timestamp")
+	// Assert EXACT validation error message
+	expectedError := "Query validation failed: missing clustering key in WHERE clause: timestamp (required for UPDATE of regular columns)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing clustering key error")
 
 	// Verify original data unchanged
 	rows := validateInCassandra(ctx, fmt.Sprintf(
@@ -111,11 +111,11 @@ func TestDML_Update_ERR_02_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, updateArgs)
 
-	// Should get validation error
-	assertMCPError(ctx.T, result, "partition key", "Should fail - missing partition key")
-	assertMCPError(ctx.T, result, "user_id", "Error should mention missing user_id")
+	// Assert EXACT validation error message
+	expectedError := "Query validation failed: missing partition key in WHERE clause: user_id (required for UPDATE)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error")
 
-	t.Log("✅ UPDATE_ERR_02: Missing partition key validation error verified")
+	t.Log("✅ UPDATE_ERR_02: Missing partition key validation error verified (exact message)")
 }
 
 // TestDML_Update_ERR_03_NoWHEREClause tests UPDATE without WHERE clause
@@ -146,8 +146,9 @@ func TestDML_Update_ERR_03_NoWHEREClause(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, updateArgs)
 
-	// Should get validation error
-	assertMCPError(ctx.T, result, "WHERE", "Should fail - WHERE clause required for UPDATE")
+	// Assert EXACT validation error message
+	expectedError := "Query validation failed: WHERE clause is required for UPDATE"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact WHERE clause required error")
 
-	t.Log("✅ UPDATE_ERR_03: No WHERE clause validation error verified")
+	t.Log("✅ UPDATE_ERR_03: No WHERE clause validation error verified (exact message)")
 }

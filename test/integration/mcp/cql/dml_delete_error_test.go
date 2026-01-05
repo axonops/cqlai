@@ -59,8 +59,9 @@ func TestDML_Delete_ERR_01_MissingPartitionKey(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, deleteArgs)
 
-	// Should get validation error
-	assertMCPError(ctx.T, result, "partition key", "Should fail - missing partition key")
+	// Assert EXACT validation error message
+	expectedError := "Query validation failed: WHERE clause must include at least one partition key column for DELETE"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact missing partition key error")
 
 	// Verify row still exists (not deleted)
 	rows := validateInCassandra(ctx, fmt.Sprintf(
@@ -110,12 +111,13 @@ func TestDML_Delete_ERR_02_NoWHEREClause(t *testing.T) {
 
 	result := submitQueryPlanMCP(ctx, deleteArgs)
 
-	// Should get validation error
-	assertMCPError(ctx.T, result, "WHERE", "Should fail - WHERE clause required")
+	// Assert EXACT validation error message
+	expectedError := "Query validation failed: WHERE clause is required for DELETE (DELETE without WHERE is not allowed)"
+	assertMCPErrorMessageExact(ctx.T, result, expectedError, "Should get exact WHERE clause required error")
 
 	// Verify row still exists
 	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT id, name FROM %s.users WHERE id = ?", ctx.Keyspace), 100)
 	assert.Len(ctx.T, rows, 1, "Row should still exist - DELETE was rejected")
 
-	t.Log("✅ DELETE_ERR_02: No WHERE clause validation error verified")
+	t.Log("✅ DELETE_ERR_02: No WHERE clause validation error verified (exact message)")
 }
