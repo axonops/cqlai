@@ -580,6 +580,35 @@ func buildOperationParams(operation, keyspace, table string) map[string]any {
 			"identity":    "user@REALM",
 			"role_name":   "app_role",
 		}
+	case "BATCH", "BEGIN", "APPLY":
+		// Handle all BATCH-related operations
+		// BEGIN BATCH becomes "BEGIN", BEGIN UNLOGGED BATCH, BEGIN COUNTER BATCH
+		batchType := "LOGGED" // default
+		if strings.Contains(strings.ToUpper(operation), "UNLOGGED") {
+			batchType = "UNLOGGED"
+		} else if strings.Contains(strings.ToUpper(operation), "COUNTER") {
+			batchType = "COUNTER"
+		}
+
+		// For simple "BATCH" operation or "BEGIN BATCH" or "APPLY BATCH"
+		if mainOp == "BATCH" || mainOp == "BEGIN" || mainOp == "APPLY" {
+			params["operation"] = "BATCH"
+			params["batch_statements"] = []map[string]any{
+				{
+					"operation": "INSERT",
+					"keyspace":  keyspace,
+					"table":     table,
+					"values": map[string]any{
+						"id":    "00000000-0000-0000-0000-000000000070",
+						"name":  "Batch Test",
+						"email": "batch@example.com",
+					},
+				},
+			}
+			if batchType != "LOGGED" {
+				params["batch_type"] = batchType
+			}
+		}
 	}
 
 	return params
