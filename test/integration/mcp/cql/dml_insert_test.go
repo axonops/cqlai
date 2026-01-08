@@ -9262,7 +9262,258 @@ func TestDML_Insert_141_ComplexMultiTypeRow(t *testing.T) {
 }
 
 // ============================================================================
-// 🎉 COMPLETE: ALL 141 INSERT Tests Implemented! (100%) 🎉
+// Advanced Nesting Scenarios (Tests 142-146)
+// ============================================================================
+// These tests cover nesting scenarios not covered in Tests 1-141:
+// - set<frozen<map>>
+// - set<frozen<set>>
+// - map<text,frozen<map>>
+// - list<tuple> (non-frozen)
+// - UDT with list+set+map all together
+
+// TestDML_Insert_142_SetOfFrozenMap tests set<frozen<map<text,int>>>
+func TestDML_Insert_142_SetOfFrozenMap(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "set_frozen_map", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_frozen_map (
+			id int PRIMARY KEY,
+			data set<frozen<map<text, int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT set of frozen maps
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_frozen_map",
+		"values": map[string]any{
+			"id": 142000,
+			"data": []interface{}{
+				map[string]any{"a": 1, "b": 2},
+				map[string]any{"x": 10, "y": 20},
+			},
+		},
+		"value_types": map[string]any{
+			"data": "set<frozen<map<text,int>>>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT set<frozen<map>> should succeed")
+
+	// Assert CQL (sets of maps, both sorted)
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.set_frozen_map (data, id) VALUES ({{'a': 1, 'b': 2}, {'x': 10, 'y': 20}}, 142000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "set<frozen<map>> CQL should be correct")
+
+	// Verify data
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.set_frozen_map WHERE id = ?", ctx.Keyspace), 142000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 142: set<frozen<map<text,int>>> validated")
+}
+
+// TestDML_Insert_143_SetOfFrozenSet tests set<frozen<set<int>>>
+func TestDML_Insert_143_SetOfFrozenSet(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "set_frozen_set", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.set_frozen_set (
+			id int PRIMARY KEY,
+			data set<frozen<set<int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT set of frozen sets
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "set_frozen_set",
+		"values": map[string]any{
+			"id": 143000,
+			"data": []interface{}{
+				[]interface{}{1, 2, 3},
+				[]interface{}{4, 5, 6},
+			},
+		},
+		"value_types": map[string]any{
+			"data": "set<frozen<set<int>>>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT set<frozen<set>> should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.set_frozen_set (data, id) VALUES ({{1, 2, 3}, {4, 5, 6}}, 143000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "set<frozen<set>> CQL should be correct")
+
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.set_frozen_set WHERE id = ?", ctx.Keyspace), 143000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 143: set<frozen<set<int>>> validated")
+}
+
+// TestDML_Insert_144_MapOfMaps tests map<text,frozen<map<text,int>>> (nested maps)
+func TestDML_Insert_144_MapOfMaps(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table
+	err := createTable(ctx, "map_of_maps", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.map_of_maps (
+			id int PRIMARY KEY,
+			data map<text, frozen<map<text, int>>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT map of frozen maps
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "map_of_maps",
+		"values": map[string]any{
+			"id": 144000,
+			"data": map[string]any{
+				"group1": map[string]any{"a": 1, "b": 2},
+				"group2": map[string]any{"x": 10, "y": 20},
+			},
+		},
+		"value_types": map[string]any{
+			"data": "map<text,frozen<map<text,int>>>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT map<text,frozen<map>> should succeed")
+
+	// Keys sorted at both levels
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.map_of_maps (data, id) VALUES ({'group1': {'a': 1, 'b': 2}, 'group2': {'x': 10, 'y': 20}}, 144000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "map<text,frozen<map>> CQL should be correct")
+
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT data FROM %s.map_of_maps WHERE id = ?", ctx.Keyspace), 144000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 144: map<text,frozen<map<text,int>>> validated")
+}
+
+// TestDML_Insert_145_ListOfTuple tests list<tuple<int,text>> (tuples are always frozen)
+func TestDML_Insert_145_ListOfTuple(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create table - tuples are implicitly frozen
+	err := createTable(ctx, "list_tuple", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.list_tuple (
+			id int PRIMARY KEY,
+			coordinates list<tuple<int, text>>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT list of tuples
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "list_tuple",
+		"values": map[string]any{
+			"id": 145000,
+			"coordinates": []interface{}{
+				[]interface{}{1, "alice"},
+				[]interface{}{2, "bob"},
+			},
+		},
+		"value_types": map[string]any{
+			"coordinates": "list<tuple<int,text>>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT list<tuple> should succeed")
+
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.list_tuple (coordinates, id) VALUES ([(1, 'alice'), (2, 'bob')], 145000);", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "list<tuple> CQL should be correct")
+
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT coordinates FROM %s.list_tuple WHERE id = ?", ctx.Keyspace), 145000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 145: list<tuple<int,text>> validated")
+}
+
+// TestDML_Insert_146_UDTWithAllCollectionTypes tests UDT with list, set, and map fields
+func TestDML_Insert_146_UDTWithAllCollectionTypes(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Create UDT with all collection types
+	err := createTable(ctx, "contact_udt", fmt.Sprintf(`
+		CREATE TYPE IF NOT EXISTS %s.rich_contact (
+			name text,
+			phones list<text>,
+			email_tags set<text>,
+			metadata map<text, text>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// Create table
+	err = createTable(ctx, "contacts_all_collections", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.contacts_all_collections (
+			id int PRIMARY KEY,
+			info frozen<rich_contact>
+		)
+	`, ctx.Keyspace))
+	require.NoError(t, err)
+
+	// INSERT UDT with list, set, and map
+	insertArgs := map[string]any{
+		"operation": "INSERT",
+		"keyspace":  ctx.Keyspace,
+		"table":     "contacts_all_collections",
+		"values": map[string]any{
+			"id": 146000,
+			"info": map[string]any{
+				"name":       "Charlie",
+				"phones":     []interface{}{"555-1111", "555-2222", "555-3333"},
+				"email_tags": []interface{}{"work", "primary", "verified"},
+				"metadata": map[string]any{
+					"dept":   "sales",
+					"level":  "senior",
+					"region": "west",
+				},
+			},
+		},
+		"value_types": map[string]any{
+			"info":            "frozen<rich_contact>",
+			"info.phones":     "list<text>",
+			"info.email_tags": "set<text>",
+			"info.metadata":   "map<text,text>",
+		},
+	}
+
+	result := submitQueryPlanMCP(ctx, insertArgs)
+	assertNoMCPError(ctx.T, result, "INSERT UDT with all collection types should succeed")
+
+	// UDT fields sorted: email_tags, metadata, name, phones
+	// Set sorted: primary, verified, work
+	// Map sorted: dept, level, region
+	expectedCQL := fmt.Sprintf("INSERT INTO %s.contacts_all_collections (id, info) VALUES (146000, {email_tags: {'primary', 'verified', 'work'}, metadata: {'dept': 'sales', 'level': 'senior', 'region': 'west'}, name: 'Charlie', phones: ['555-1111', '555-2222', '555-3333']});", ctx.Keyspace)
+	assertCQLEquals(t, result, expectedCQL, "UDT with all collection types CQL should be correct")
+
+	rows := validateInCassandra(ctx, fmt.Sprintf("SELECT info FROM %s.contacts_all_collections WHERE id = ?", ctx.Keyspace), 146000)
+	require.Len(t, rows, 1)
+
+	t.Log("✅ Test 146: UDT with list+set+map all together validated")
+}
+
+// ============================================================================
+// 🎉 COMPLETE: ALL 146 INSERT Tests Implemented! (100%) 🎉
 // ============================================================================
 //
 // INSERT Test Suite Coverage Summary:
@@ -9278,8 +9529,9 @@ func TestDML_Insert_141_ComplexMultiTypeRow(t *testing.T) {
 // - Static columns: Behavior across partition ✅
 // - Edge cases: Boundaries, precision, Unicode, quotes, NULL, overwrites ✅
 // - Primary keys: Simple, composite, clustering ✅
+// - Advanced nesting: set<frozen<map>>, set<frozen<set>>, map of maps, list<tuple>, UDT with all collections ✅
 //
-// Total INSERT tests: 141/141 (100%)
+// Total INSERT tests: 146/146 (100%)
 // Total INSERT error tests: 14/14 (100%)
 // Combined: 155 INSERT-related tests
 //

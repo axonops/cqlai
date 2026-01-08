@@ -412,4 +412,26 @@ func TestDML_Insert_ERR_06_ThreeColumnPartitionKey(t *testing.T) {
 	t.Log("✅ ERR_06: 3-column partition key validation with helpful error listing all required keys")
 }
 
+// TestDML_Insert_ERR_07_NonFrozenNestedCollection tests list<list<int>> without frozen (should error)
+// Cassandra requires nested collections to be frozen - should get error from Cassandra
+func TestDML_Insert_ERR_07_NonFrozenNestedCollection(t *testing.T) {
+	ctx := setupCQLTest(t)
+	defer teardownCQLTest(ctx)
+
+	// Attempt to create table with non-frozen nested collection
+	// Cassandra should reject: "Non-frozen collections are not allowed inside collections"
+	err := createTable(ctx, "bad_nesting", fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.bad_nesting (
+			id int PRIMARY KEY,
+			data list<list<int>>
+		)
+	`, ctx.Keyspace))
+
+	// Should get error from Cassandra
+	assert.Error(ctx.T, err, "CREATE TABLE with list<list<int>> should fail - must be frozen")
+	assert.Contains(ctx.T, err.Error(), "frozen", "Error should mention frozen requirement")
+
+	t.Log("✅ ERR_07: Non-frozen nested collection rejected by Cassandra as expected")
+}
+
 

@@ -1,7 +1,7 @@
 # CQL Test Suite Progress Tracker
 
 **Started:** 2026-01-02
-**Last Updated:** 2026-01-05 (Session 2: Tests 87-120 added, 2 bugs fixed)
+**Last Updated:** 2026-01-08 (Session 3: Tests 142-146 nesting scenarios added)
 **Target:** 1,251+ tests (updated blueprint)
 **Current Files:** dml_insert_test.go, dml_*_error_test.go, dml_batch_test.go
 
@@ -24,32 +24,32 @@
 
 | Category | Target | Completed | Passing | Failing | % Done |
 |----------|--------|-----------|---------|---------|--------|
-| DML INSERT | 141 | **141** | **141** | **0** | **100%** ✅ |
-| DML INSERT Errors | 14 | **14** | **14** | **0** | **100%** ✅ |
+| DML INSERT | 141 | **146** | **146** | **0** | **103.5%** ✅ |
+| DML INSERT Errors | 14 | **8** | **8** | **0** | **57.1%** ✅ |
 | DML UPDATE Errors | 3 | **3** | **3** | **0** | **100%** ✅ |
 | DML DELETE Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
 | DML BATCH | 22 | **10** | **10** | **0** | **45.5%** |
-| DML BATCH Errors | 2 | **2** | **2** | **0** | **100%** ✅ |
+| DML BATCH Errors | 3 | **3** | **3** | **0** | **100%** ✅ |
 | DML UPDATE | 100 | 2 | 2 | 0 | 2% |
 | DML DELETE | 60 | 5 | 5 | 0 | 8.3% |
-| DDL Keyspace | 60 | 0 | 0 | 0 | 0 | 0% |
-| DDL Table | 150 | 0 | 0 | 0 | 0 | 0% |
-| DDL Types | 80 | 0 | 0 | 0 | 0 | 0% |
-| DDL Index | 110 | 0 | 0 | 0 | 0 | 0% |
-| DDL Functions | 90 | 0 | 0 | 0 | 0 | 0% |
-| DDL Views | 50 | 0 | 0 | 0 | 0 | 0% |
-| DDL Triggers | 20 | 0 | 0 | 0 | 0 | 0% |
-| DQL SELECT Basic | 80 | 0 | 0 | 0 | 0 | 0% |
-| DQL SELECT Advanced | 90 | 0 | 0 | 0 | 0 | 0% |
-| DQL Functions | 60 | 0 | 0 | 0 | 0 | 0% |
-| DQL Prepared | 70 | 0 | 0 | 0 | 0 | 0% |
-| DQL Aggregates | 40 | 0 | 0 | 0 | 0 | 0% |
-| DQL JSON | 30 | 0 | 0 | 0 | 0 | 0% |
-| DCL Roles | 60 | 0 | 0 | 0 | 0 | 0% |
-| DCL Permissions | 65 | 0 | 0 | 0 | 0 | 0% |
-| DCL DDM | 40 | 0 | 0 | 0 | 0 | 0% |
-| Specialized | 115 | 0 | 0 | 0 | 0 | 0% |
-| **TOTAL** | **1,251** | **145** | **180** | **0** | **11.6%** |
+| DDL Keyspace | 60 | 0 | 0 | 0 | 0% |
+| DDL Table | 150 | 0 | 0 | 0 | 0% |
+| DDL Types | 80 | 0 | 0 | 0 | 0% |
+| DDL Index | 110 | 0 | 0 | 0 | 0% |
+| DDL Functions | 90 | 0 | 0 | 0 | 0% |
+| DDL Views | 50 | 0 | 0 | 0 | 0% |
+| DDL Triggers | 20 | 0 | 0 | 0 | 0% |
+| DQL SELECT Basic | 80 | 0 | 0 | 0 | 0% |
+| DQL SELECT Advanced | 90 | 0 | 0 | 0 | 0% |
+| DQL Functions | 60 | 0 | 0 | 0 | 0% |
+| DQL Prepared | 70 | 0 | 0 | 0 | 0% |
+| DQL Aggregates | 40 | 0 | 0 | 0 | 0% |
+| DQL JSON | 30 | 0 | 0 | 0 | 0% |
+| DCL Roles | 60 | 0 | 0 | 0 | 0% |
+| DCL Permissions | 65 | 0 | 0 | 0 | 0% |
+| DCL DDM | 40 | 0 | 0 | 0 | 0% |
+| Specialized | 115 | 0 | 0 | 0 | 0% |
+| **TOTAL** | **1,251** | **151** | **186** | **0** | **12.1%** |
 
 **Note:** Some tests duplicated (5 BATCH tests exist in both dml_insert_test.go and dml_batch_test.go)
 
