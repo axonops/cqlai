@@ -630,6 +630,42 @@ Repeat Step 1-5 of systematic approach until INSERT tests complete
 **Start new session with:**
 
 ```
+Read the CLAUDE.md again to remember what we are doing. In the prompt below there are references to lots of other md files you should be reading - MAKE SURE TO READ THEM ALL.
+
+The purpose of what we are doing is writing a massively detailed set of integration tests for our MCP query planner. There is nothing that is not important - we need to be 100% feature compatible with CQL. There is no "thats not needed" or anything - we are not done until EVERY SINGLE THING IS TESTED AND FIXED. Our Current State: 125 tests implemented (7.4% of 1,251 target) shows you what I mean - we have a LOT to test still.
+
+When writing tests and saying your done on a test - UNLESS ITS RUN THANS THATS A FUCKING LIE! Test mean shit unless they are run - never say your finished on tests or provide postive "i am finished, yay!!" type of responses when tests are not run! Thats what shit developers do! Test, test, test and make sure they run and pass and if they fail it shoudl be triaged with me.
+
+Always run go clean -testcache before running tests to prevent caching issues on test results
+
+### Non negotaible!
+1 - If I ever see things like this "SKIPPED due to a tuple-in-collection rendering bug. That's documented. Let me commit this and continue with simpler tests" where you by yourself decide to skip a bug and do something else without my clear and explicit approval I will be extremely angry. You do NOT have the authority or knowledge to make decisions like this - that is NOT your job. You can stop, explain your reasoning to me and let me decide - you should never, ever, ever skip any bug or test without my direct approval.
+
+2 - NEVER skip tests or assertions based on things being not implemented in tests as this is probably a bug!
+
+3 - When you get errors like this DO NOT IGNORE THEM!! THIS MEANS YOU HAVNT MADE THE CHANGES. 
+⏺ Update(test/integration/mcp/cql/dml_insert_test.go)
+  ⎿  File must be read first
+This is something you keep doing and causing lots of problems, wasted time and wasted tokens as you didnt make the fucking changes you meant to make - which is stupid.
+
+## CRITICAL: Shell Command Rules
+When appending or writing content to files, always use the Write or Edit tools instead of bash commands like `cat >> file <<'EOF'`. Never use heredocs or shell redirection for file modifications.
+
+When running CQL commands via podman, write the CQL to a temp .cql file first, then execute with: podman exec cassandra-test cqlsh -f /path/to/file.cql . Never use heredocs or pipes with podman commands.
+
+Run git commands separately, never chain with &&
+
+NEVER use these shell operators in bash commands:
+- No pipes: `|`
+- No redirections: `>`, `>>`, `<`, `<<`
+- No heredocs: `<< 'EOF'`
+- No chaining: `&&`, `||`, `;`
+
+Instead:
+- Run commands separately one at a time
+- Use Write/Edit tools for file content
+- Let me see full command output (no grep filtering)
+
 I am continuing comprehensive CQL test suite implementation for CQLAI MCP server.
 
 CRITICAL: Test 87 (TestDML_Insert_87_TupleInCollection) is SKIPPED due to a tuple-in-collection rendering bug. I MUST fix this bug before continuing with other tests.
