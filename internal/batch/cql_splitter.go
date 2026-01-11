@@ -55,7 +55,10 @@ type terminalPattern struct {
 	pattern   *regexp.Regexp
 }
 
-// Commands that terminate on newline instead of semicolon
+// commandsEndWithNewline lists cqlsh shell commands that terminate on newline
+// instead of semicolon. This list matches Python cqlsh behavior and includes
+// shell-specific commands (exit, quit, clear, etc.) not in validation/command.go.
+// Note: This is intentionally separate from validMetaCommands as they serve different purposes.
 var commandsEndWithNewline = map[string]bool{
 	"help":        true,
 	"?":           true,
@@ -298,8 +301,9 @@ func SplitStatements(text string) (*SplitResult, error) {
 
 		// Check for BATCH start/end
 		if len(stmt) >= 3 {
-			// Check for APPLY BATCH at end (position -3 from end, before endtoken)
-			if strings.ToUpper(stmt[len(stmt)-3].Value) == "APPLY" {
+			// Check for APPLY BATCH at end (positions -3 and -2 from end, before endtoken)
+			if strings.ToUpper(stmt[len(stmt)-3].Value) == "APPLY" &&
+				strings.ToUpper(stmt[len(stmt)-2].Value) == "BATCH" {
 				inBatch = false
 			} else if strings.ToUpper(stmt[0].Value) == "BEGIN" {
 				inBatch = true
@@ -387,8 +391,10 @@ func (sr *SplitResult) GetStatementStrings() []string {
 	return stmts
 }
 
-// Split is the main entry point - splits CQL input into statement strings
-func Split(text string) ([]string, error) {
+// SplitForNode is the main entry point for splitting CQL input into statement strings.
+// This function was created for the Node.js bindings and provides robust tokenization
+// that correctly handles semicolons inside strings, comments, and BATCH blocks.
+func SplitForNode(text string) ([]string, error) {
 	// Handle empty input
 	text = strings.TrimSpace(text)
 	if text == "" {

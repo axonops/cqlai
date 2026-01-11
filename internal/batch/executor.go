@@ -135,7 +135,7 @@ func (e *Executor) Close() error {
 // ExecuteMulti runs multiple CQL statements using the robust CQL splitter
 func (e *Executor) ExecuteMulti(cql string) error {
 	// Split into individual statements using proper CQL tokenizer
-	statements, err := Split(cql)
+	statements, err := SplitForNode(cql)
 	if err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
