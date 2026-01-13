@@ -65,6 +65,10 @@ nfpms:
     formats:
       - deb
       - rpm
+    deb:
+      compression: xz  # Use xz for compatibility with older dpkg (< 1.19.0.5)
+    rpm:
+      compression: xz
     dependencies:
       - libc6 # for deb
       - glibc # for rpm
