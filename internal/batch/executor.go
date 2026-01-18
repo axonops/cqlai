@@ -140,13 +140,8 @@ func (e *Executor) ExecuteMulti(cql string) error {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	// Execute each statement
+	// Execute each statement (SplitForNode already trims and filters empty statements)
 	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
-
 		if err := e.Execute(stmt); err != nil {
 			return err
 		}
