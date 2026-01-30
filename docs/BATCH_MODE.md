@@ -146,6 +146,42 @@ cqlai --host cassandra.example.com \
       -e "SELECT * FROM mytable;"
 ```
 
+## Disabling Confirmation Prompts
+
+By default, CQLAI requires confirmation for destructive commands (DROP, DELETE, TRUNCATE). For automated scripts and batch operations, you can disable these prompts:
+
+### Using Command-Line Flag
+
+```bash
+cqlai --no-confirm -e "TRUNCATE my_table;"
+cqlai --no-confirm -f cleanup_script.cql
+```
+
+### Using Environment Variable
+
+```bash
+export CQLAI_NO_CONFIRM=true
+cqlai -e "DROP TABLE old_data;"
+```
+
+Or inline:
+
+```bash
+CQLAI_NO_CONFIRM=true cqlai -f maintenance.cql
+```
+
+### Using Configuration File
+
+In your `cqlai.json`:
+
+```json
+{
+  "requireConfirmation": false
+}
+```
+
+**Warning**: Disabling confirmation prompts removes a safety check against accidental data loss. Use with caution, especially in production environments.
+
 ## Examples
 
 ### Export to CSV

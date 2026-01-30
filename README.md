@@ -208,7 +208,7 @@ cqlai [options]
 | `--keyspace <keyspace>` | `-k` | Default keyspace (overrides config) |
 | `--username <username>` | `-u` | Username for authentication |
 | `--password <password>` | `-p` | Password for authentication* |
-| `--no-confirm` | | Disable confirmation prompts |
+| `--no-confirm` | | Disable confirmation prompts for destructive commands (DROP, DELETE, TRUNCATE) |
 | `--connect-timeout <seconds>` | | Connection timeout (default: 10) |
 | `--request-timeout <seconds>` | | Request timeout (default: 10) |
 | `--debug` | | Enable debug logging |
@@ -943,7 +943,7 @@ If an environment variable is set, it will be used even if a value is present in
 | `keyspace` | string | `""` | Default keyspace to use |
 | `username` | string | `""` | Authentication username |
 | `password` | string | `""` | Authentication password |
-| `requireConfirmation` | boolean | `true` | Require confirmation for dangerous commands |
+| `requireConfirmation` | boolean | `true` | Require confirmation for destructive commands (DROP, DELETE, TRUNCATE) |
 | `consistency` | string | `LOCAL_ONE` | Default consistency level (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
 | `pageSize` | number | `100` | Number of rows per page |
 | `maxMemoryMB` | number | `10` | Maximum memory for query results in MB |
@@ -976,6 +976,7 @@ Common environment variables:
 - `CQLAI_USERNAME` - Authentication username
 - `CQLAI_PASSWORD` - Authentication password
 - `CQLAI_PAGE_SIZE` - Batch mode pagination size (default: 100)
+- `CQLAI_NO_CONFIRM` - Set to `true` or `1` to disable confirmation prompts for destructive commands
 - `CQLSH_RC` - Path to custom CQLSHRC file
 
 ### Migration from cqlsh
@@ -1030,6 +1031,30 @@ Configure your preferred AI provider in `cqlai.json`:
 - **Dangerous operation warnings**: DROP, DELETE, TRUNCATE operations show warnings
 - **Confirmation required**: Destructive operations require additional confirmation
 - **Schema validation**: Queries are validated against your current schema
+
+### Disabling Confirmation Prompts
+
+For automation and scripting, you can disable the confirmation prompts for destructive commands (DROP, DELETE, TRUNCATE) using any of these methods:
+
+1. **Command-line flag**:
+   ```bash
+   cqlai --no-confirm -e "TRUNCATE my_table;"
+   ```
+
+2. **Environment variable**:
+   ```bash
+   export CQLAI_NO_CONFIRM=true
+   cqlai -e "DROP TABLE old_data;"
+   ```
+
+3. **Configuration file** (`cqlai.json`):
+   ```json
+   {
+     "requireConfirmation": false
+   }
+   ```
+
+**Note**: Use with caution in production environments. These settings disable safety prompts that help prevent accidental data loss.
 
 ## 📦 Apache Parquet Support
 

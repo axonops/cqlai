@@ -197,7 +197,7 @@ cqlai [options]
 | `--keyspace <keyspace>` | `-k` | デフォルトのキースペース(設定を上書き) |
 | `--username <username>` | `-u` | 認証用のユーザー名 |
 | `--password <password>` | `-p` | 認証用のパスワード* |
-| `--no-confirm` | | 確認プロンプトを無効化 |
+| `--no-confirm` | | 破壊的コマンド(DROP、DELETE、TRUNCATE)の確認プロンプトを無効化 |
 | `--connect-timeout <seconds>` | | 接続タイムアウト(デフォルト: 10) |
 | `--request-timeout <seconds>` | | リクエストタイムアウト(デフォルト: 10) |
 | `--debug` | | デバッグログを有効化 |
@@ -748,7 +748,7 @@ validate = true
 | `keyspace` | string | `""` | 使用するデフォルトキースペース |
 | `username` | string | `""` | 認証ユーザー名 |
 | `password` | string | `""` | 認証パスワード |
-| `requireConfirmation` | boolean | `true` | 危険なコマンドの確認を要求 |
+| `requireConfirmation` | boolean | `true` | 破壊的コマンド(DROP、DELETE、TRUNCATE)の確認を要求 |
 | `consistency` | string | `LOCAL_ONE` | デフォルトの一貫性レベル (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
 | `pageSize` | number | `100` | ページあたりの行数 |
 | `maxMemoryMB` | number | `10` | クエリ結果の最大メモリ(MB) |
@@ -781,6 +781,7 @@ CQLAIは次の場所で設定ファイルを検索します:
 - `CQLAI_USERNAME` - 認証ユーザー名
 - `CQLAI_PASSWORD` - 認証パスワード
 - `CQLAI_PAGE_SIZE` - バッチモードのページサイズ(デフォルト: 100)
+- `CQLAI_NO_CONFIRM` - `true`または`1`に設定して破壊的コマンドの確認プロンプトを無効化
 - `CQLSH_RC` - カスタムCQLSHRCファイルへのパス
 
 ### cqlshからの移行
@@ -868,6 +869,30 @@ Syntheticを使用して、非常に合理的な価格で多数のオープン�
 - **危険な操作の警告**: DROP、DELETE、TRUNCATE操作は警告を表示
 - **確認が必要**: 破壊的な操作には追加の確認が必要
 - **スキーマ検証**: クエリは現在のスキーマに対して検証されます
+
+### 確認プロンプトの無効化
+
+自動化やスクリプト用に、破壊的コマンド(DROP、DELETE、TRUNCATE)の確認プロンプトを無効にする方法:
+
+1. **コマンドラインフラグ**:
+   ```bash
+   cqlai --no-confirm -e "TRUNCATE my_table;"
+   ```
+
+2. **環境変数**:
+   ```bash
+   export CQLAI_NO_CONFIRM=true
+   cqlai -e "DROP TABLE old_data;"
+   ```
+
+3. **設定ファイル** (`cqlai.json`):
+   ```json
+   {
+     "requireConfirmation": false
+   }
+   ```
+
+**注意**: 本番環境では注意して使用してください。これらの設定は、偶発的なデータ損失を防ぐための安全プロンプトを無効にします。
 
 ## 📦 Apache Parquetサポート
 
