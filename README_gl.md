@@ -205,7 +205,7 @@ cqlai [opcións]
 | `--keyspace <keyspace>` | `-k` | Keyspace predeterminado (sobrescribe config) |
 | `--username <usuario>` | `-u` | Usuario para autenticación |
 | `--password <contrasinal>` | `-p` | Contrasinal para autenticación* |
-| `--no-confirm` | | Desactivar confirmacións |
+| `--no-confirm` | | Desactivar confirmacións para comandos destrutivos (DROP, DELETE, TRUNCATE) |
 | `--connect-timeout <segundos>` | | Tempo de espera de conexión (predeterminado: 10) |
 | `--request-timeout <segundos>` | | Tempo de espera de petición (predeterminado: 10) |
 | `--debug` | | Habilitar rexistro de depuración |
@@ -940,7 +940,7 @@ Se se establece unha variable de contorno, utilizarase aínda que haxa un valor 
 | `keyspace` | string | `""` | Keyspace predeterminado a usar |
 | `username` | string | `""` | Nome de usuario para autenticación |
 | `password` | string | `""` | Contrasinal para autenticación |
-| `requireConfirmation` | boolean | `true` | Requirir confirmación para comandos perigosos |
+| `requireConfirmation` | boolean | `true` | Requirir confirmación para comandos destrutivos (DROP, DELETE, TRUNCATE) |
 | `consistency` | string | `LOCAL_ONE` | Nivel de consistencia predeterminado (ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE) |
 | `pageSize` | number | `100` | Número de filas por páxina |
 | `maxMemoryMB` | number | `10` | Memoria máxima para resultados de consultas en MB |
@@ -973,6 +973,7 @@ Variables de contorno comúns:
 - `CQLAI_USERNAME` - Nome de usuario para autenticación
 - `CQLAI_PASSWORD` - Contrasinal para autenticación
 - `CQLAI_PAGE_SIZE` - Tamaño de paxinación en modo batch (predeterminado: 100)
+- `CQLAI_NO_CONFIRM` - Establecer a `true` ou `1` para desactivar confirmacións de comandos destrutivos
 - `CQLSH_RC` - Ruta a arquivo CQLSHRC personalizado
 
 ### Migración desde cqlsh
@@ -1027,6 +1028,30 @@ Configura o teu provedor de IA preferido en `cqlai.json`:
 - **Advertencias de operacións perigosas**: Operacións DROP, DELETE, TRUNCATE mostran advertencias
 - **Confirmación requirida**: Operacións destrutivas requiren confirmación adicional
 - **Validación de esquema**: As consultas valídanse contra o teu esquema actual
+
+### Desactivar Confirmacións
+
+Para automatización e scripts, podes desactivar as confirmacións para comandos destrutivos (DROP, DELETE, TRUNCATE) usando calquera destes métodos:
+
+1. **Bandeira de liña de comandos**:
+   ```bash
+   cqlai --no-confirm -e "TRUNCATE my_table;"
+   ```
+
+2. **Variable de contorno**:
+   ```bash
+   export CQLAI_NO_CONFIRM=true
+   cqlai -e "DROP TABLE old_data;"
+   ```
+
+3. **Arquivo de configuración** (`cqlai.json`):
+   ```json
+   {
+     "requireConfirmation": false
+   }
+   ```
+
+**Nota**: Usar con precaución en contornos de produción. Estas configuracións desactivan as confirmacións de seguridade que axudan a previr perda accidental de datos.
 
 ## 📦 Soporte de Apache Parquet
 
