@@ -132,7 +132,25 @@ func (e *Executor) Close() error {
 	return nil
 }
 
-// Execute runs CQL in batch mode
+// ExecuteMulti runs multiple CQL statements using the robust CQL splitter
+func (e *Executor) ExecuteMulti(cql string) error {
+	// Split into individual statements using proper CQL tokenizer
+	statements, err := SplitForNode(cql)
+	if err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+
+	// Execute each statement (SplitForNode already trims and filters empty statements)
+	for _, stmt := range statements {
+		if err := e.Execute(stmt); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Execute runs a single CQL statement
 func (e *Executor) Execute(cql string) error {
 	// Set up signal handling for Ctrl+C
 	ctx, cancel := context.WithCancel(context.Background())
