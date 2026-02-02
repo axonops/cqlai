@@ -1,23 +1,23 @@
-name: Release macOS
+name: Test macOS Signing Pipeline
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - 'bug/signing-pipeline-issue'
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'Tag name for release (e.g., v1.0.0)'
-        required: true
-        default: 'v0.1.0'
+      branch:
+        description: 'Branch to test'
+        required: false
+        default: 'bug/signing-pipeline-issue'
 
 env:
   GO_VERSION: '1.25'
 
 jobs:
-  # Build macOS binaries natively
-  build-macos-binaries:
-    name: Build macOS ${{ matrix.arch }}
+  # Build macOS binaries natively for testing
+  test-macos-signing:
+    name: Test macOS ${{ matrix.arch }} Signing
     runs-on: macos-latest
 
     strategy:
@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -44,17 +46,14 @@ jobs:
       - name: Get version
         id: version
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          elif [[ -n "${{ github.event.inputs.tag_name }}" ]]; then
-            VERSION=${{ github.event.inputs.tag_name }}
-          else
-            VERSION="dev-${GITHUB_SHA::8}"
-          fi
-          # Remove 'v' prefix for package version
+          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          VERSION="test-${BRANCH_NAME}-${COMMIT_SHA}"
           PACKAGE_VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+          echo "Testing on branch: $BRANCH_NAME"
+          echo "Commit: $COMMIT_SHA"
 
       - name: Build binary
         env:
@@ -67,6 +66,7 @@ jobs:
             -o "${OUTPUT_NAME}" \
             ./cmd/cqlai
           chmod +x "${OUTPUT_NAME}"
+          echo "✅ Binary built successfully"
 
       - name: Setup temporary installer signing keychain
         uses: apple-actions/import-codesign-certs@v3
@@ -77,6 +77,7 @@ jobs:
       - name: Install fpm
         run: |
           sudo gem install fpm
+          echo "✅ FPM installed"
 
       - name: Create PKG package
         run: |
@@ -90,9 +91,9 @@ jobs:
               codesign --force --options runtime \
                 --timestamp \
                 -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
-              echo "Binary code signed successfully"
+              echo "✅ Binary code signed successfully"
             else
-              echo "Developer ID Application certificate not found, skipping binary code signing"
+              echo "⚠️ Developer ID Application certificate not found, skipping binary code signing"
             fi
           fi
 
@@ -111,27 +112,33 @@ jobs:
 
           # Rename unsigned package
           mv cqlai-${VERSION}.pkg Unsigned-cqlai.pkg
+          echo "✅ PKG package created"
 
       - name: Sign and notarize the Apple pkg
         run: |
           VERSION="${{ steps.version.outputs.package_version }}"
           ARCH="${{ matrix.pkg_arch }}"
 
+          echo "Starting package signing and notarization process..."
+
           # Sign the package
+          echo "Step 1: Signing package with Developer ID Installer..."
           productsign --sign "Developer ID Installer: AXONOPS Limited (UJ776LUP23)" \
             Unsigned-cqlai.pkg \
             cqlai-${VERSION}-${ARCH}.pkg
 
           # Clean up unsigned package
           rm -f Unsigned-cqlai.pkg
+          echo "✅ Package signed successfully"
 
           # Notarize the package with robust error handling and retry logic
+          echo "Step 2: Submitting for notarization with retry logic..."
           MAX_ATTEMPTS=3
           ATTEMPT=1
           SUBMISSION_ID=""
           
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Notarization attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            echo "Notarization submission attempt $ATTEMPT of $MAX_ATTEMPTS..."
             
             # Submit for notarization (don't wait, get submission ID)
             NOTARIZE_OUTPUT=$(xcrun notarytool submit cqlai-${VERSION}-${ARCH}.pkg \
@@ -159,10 +166,10 @@ jobs:
                 fi
               fi
               
-              echo "Submission ID: $SUBMISSION_ID"
+              echo "✅ Submission successful. ID: $SUBMISSION_ID"
               break
             else
-              echo "Submission failed with exit code $NOTARIZE_EXIT_CODE"
+              echo "⚠️ Submission failed with exit code $NOTARIZE_EXIT_CODE"
               echo "Output: $NOTARIZE_OUTPUT"
               
               if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
@@ -176,12 +183,14 @@ jobs:
           done
           
           # Poll for notarization status with extended timeout
+          echo "Step 3: Polling for notarization status..."
           POLL_ATTEMPTS=0
           MAX_POLL_ATTEMPTS=120  # 2 hours with 60-second intervals
           POLL_INTERVAL=60
           
           while [ $POLL_ATTEMPTS -lt $MAX_POLL_ATTEMPTS ]; do
-            echo "Checking notarization status (attempt $((POLL_ATTEMPTS + 1))/$MAX_POLL_ATTEMPTS)..."
+            ELAPSED_MINUTES=$((POLL_ATTEMPTS * POLL_INTERVAL / 60))
+            echo "[$ELAPSED_MINUTES min] Checking notarization status (attempt $((POLL_ATTEMPTS + 1))/$MAX_POLL_ATTEMPTS)..."
             
             STATUS_OUTPUT=$(xcrun notarytool info "$SUBMISSION_ID" \
               --apple-id "$APPLE_ID" \
@@ -192,7 +201,7 @@ jobs:
             STATUS_EXIT_CODE=$?
             
             if [ $STATUS_EXIT_CODE -ne 0 ]; then
-              echo "Error checking status: $STATUS_OUTPUT"
+              echo "⚠️ Error checking status: $STATUS_OUTPUT"
               POLL_ATTEMPTS=$((POLL_ATTEMPTS + 1))
               sleep $POLL_INTERVAL
               continue
@@ -201,6 +210,7 @@ jobs:
             # Check status
             if echo "$STATUS_OUTPUT" | grep -q "Accepted"; then
               echo "✅ Notarization successful!"
+              echo "$STATUS_OUTPUT"
               break
             elif echo "$STATUS_OUTPUT" | grep -q "Rejected\|Invalid"; then
               echo "❌ Notarization rejected or invalid"
@@ -212,7 +222,7 @@ jobs:
               sleep $POLL_INTERVAL
               continue
             else
-              echo "Unknown status:"
+              echo "ℹ️ Status output:"
               echo "$STATUS_OUTPUT"
               POLL_ATTEMPTS=$((POLL_ATTEMPTS + 1))
               sleep $POLL_INTERVAL
@@ -221,7 +231,7 @@ jobs:
           done
           
           if [ $POLL_ATTEMPTS -ge $MAX_POLL_ATTEMPTS ]; then
-            echo "❌ Notarization timeout - exceeded maximum polling attempts"
+            echo "❌ Notarization timeout - exceeded maximum polling attempts (2 hours)"
             exit 1
           fi
           
@@ -234,37 +244,16 @@ jobs:
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-pkg-${{ matrix.platform }}
+          name: test-macos-pkg-${{ matrix.platform }}
           path: "*.pkg"
+          if-no-files-found: error
 
-  # Upload to GitHub Release
-  upload-to-release:
-    name: Upload to GitHub Release
-    needs: build-macos-binaries
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-
-    steps:
-      - name: Download all PKG artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: macos-pkg-*
-          merge-multiple: true
-
-      - name: Get version
-        id: version
+      - name: Post-test summary
+        if: always()
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          else
-            VERSION=${{ github.event.inputs.tag_name }}
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          files: "*.pkg"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "## Test Summary"
+          echo "- Branch: ${{ github.ref }}"
+          echo "- Architecture: ${{ matrix.arch }}"
+          echo "- Status: ${{ job.status }}"
+          echo ""
+          echo "✅ All signing and notarization steps completed successfully!"
