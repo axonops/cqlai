@@ -74,43 +74,28 @@ jobs:
           p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
           p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
 
-      - name: Install fpm
-        run: |
-          sudo gem install fpm
-
       - name: Create PKG package
         run: |
           VERSION="${{ steps.version.outputs.package_version }}"
           PLATFORM="${{ matrix.platform }}"
-          ARCH="${{ matrix.pkg_arch }}"
 
-          # Code sign the binary (optional - may not have Application cert)
-          if command -v codesign > /dev/null; then
-            if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
-              codesign --force --options runtime \
-                --timestamp \
-                -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
-              echo "Binary code signed successfully"
-            else
-              echo "Developer ID Application certificate not found, skipping binary code signing"
-            fi
+          # Code sign the binary (required for notarization)
+          if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
+            codesign --force --options runtime --timestamp \
+              -s "Developer ID Application: AXONOPS Limited (UJ776LUP23)" "cqlai-${PLATFORM}"
+            echo "Binary code signed successfully"
           fi
 
-          # Create PKG using fpm (unsigned)
-          fpm -s dir -t osxpkg \
-            --name cqlai \
-            --version "${VERSION}" \
-            --architecture "${ARCH}" \
-            --license "Apache-2.0" \
-            --vendor "AxonOps" \
-            --maintainer "AxonOps <support@axonops.com>" \
-            --description "AI-powered Cassandra CQL Shell - Modern interactive terminal for Apache Cassandra with AI assistance" \
-            --url "https://github.com/axonops/cqlai" \
-            --osxpkg-identifier-prefix "com.axonops" \
-            "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
+          # Create staging directory
+          mkdir -p pkg-root/usr/local/bin
+          cp "cqlai-${PLATFORM}" pkg-root/usr/local/bin/cqlai
 
-          # Rename unsigned package
-          mv cqlai-${VERSION}.pkg Unsigned-cqlai.pkg
+          # Build unsigned pkg using pkgbuild directly
+          pkgbuild --root pkg-root \
+            --identifier com.axonops.cqlai \
+            --version "${VERSION}" \
+            --install-location / \
+            Unsigned-cqlai.pkg
 
       - name: Sign and notarize the Apple pkg
         run: |
