@@ -48,7 +48,9 @@ jobs:
         run: |
           BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
           COMMIT_SHA=$(git rev-parse --short HEAD)
-          VERSION="test-${BRANCH_NAME}-${COMMIT_SHA}"
+          # Replace slashes in branch name to avoid path separator issues in filenames
+          SAFE_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/' '-')
+          VERSION="test-${SAFE_BRANCH_NAME}-${COMMIT_SHA}"
           PACKAGE_VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
@@ -71,6 +73,7 @@ jobs:
       - name: Setup temporary installer signing keychain
         uses: apple-actions/import-codesign-certs@v3
         with:
+          keychain: signing-${{ matrix.arch }}
           p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
           p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
 
@@ -116,19 +119,41 @@ jobs:
 
       - name: Sign and notarize the Apple pkg
         run: |
+          set -x  # Enable debug output
+          
           VERSION="${{ steps.version.outputs.package_version }}"
           ARCH="${{ matrix.pkg_arch }}"
 
           echo "Starting package signing and notarization process..."
+          echo "Version: $VERSION"
+          echo "Architecture: $ARCH"
+          
+          # Verify package exists
+          if [ ! -f "Unsigned-cqlai.pkg" ]; then
+            echo "❌ ERROR: Unsigned package not found!"
+            ls -la
+            exit 1
+          fi
 
           # Sign the package
           echo "Step 1: Signing package with Developer ID Installer..."
-          productsign --sign "Developer ID Installer: AXONOPS Limited (UJ776LUP23)" \
+          if ! productsign --sign "Developer ID Installer: AXONOPS Limited (UJ776LUP23)" \
             Unsigned-cqlai.pkg \
-            cqlai-${VERSION}-${ARCH}.pkg
+            cqlai-${VERSION}-${ARCH}.pkg; then
+            echo "❌ ERROR: Failed to sign package"
+            exit 1
+          fi
 
           # Clean up unsigned package
           rm -f Unsigned-cqlai.pkg
+          
+          # Verify signed package exists
+          if [ ! -f "cqlai-${VERSION}-${ARCH}.pkg" ]; then
+            echo "❌ ERROR: Signed package not found!"
+            ls -la
+            exit 1
+          fi
+          
           echo "✅ Package signed successfully"
 
           # Notarize the package with robust error handling and retry logic
@@ -141,21 +166,23 @@ jobs:
             echo "Notarization submission attempt $ATTEMPT of $MAX_ATTEMPTS..."
             
             # Submit for notarization (don't wait, get submission ID)
-            NOTARIZE_OUTPUT=$(xcrun notarytool submit cqlai-${VERSION}-${ARCH}.pkg \
+            NOTARIZE_OUTPUT=$(xcrun notarytool submit "cqlai-${VERSION}-${ARCH}.pkg" \
               --apple-id "$APPLE_ID" \
               --team-id "$APPLE_TEAM_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              2>&1)
+              2>&1) || true
             
             NOTARIZE_EXIT_CODE=$?
+            echo "Submission output: $NOTARIZE_OUTPUT"
+            echo "Exit code: $NOTARIZE_EXIT_CODE"
             
             if [ $NOTARIZE_EXIT_CODE -eq 0 ]; then
-              # Extract submission ID from output
-              SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep -oP 'id: \K[a-f0-9\-]+' | head -1)
+              # Extract submission ID from output - try multiple patterns
+              SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | awk '/^  id:/{print $2; exit}')
               
               if [ -z "$SUBMISSION_ID" ]; then
-                echo "Error: Could not extract submission ID"
-                echo "Output: $NOTARIZE_OUTPUT"
+                echo "⚠️ Warning: Could not extract submission ID from output"
+                echo "Full output: $NOTARIZE_OUTPUT"
                 if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
                   ATTEMPT=$((ATTEMPT + 1))
                   echo "Retrying..."
@@ -170,13 +197,13 @@ jobs:
               break
             else
               echo "⚠️ Submission failed with exit code $NOTARIZE_EXIT_CODE"
-              echo "Output: $NOTARIZE_OUTPUT"
               
               if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
                 ATTEMPT=$((ATTEMPT + 1))
                 echo "Retrying in 30 seconds..."
                 sleep 30
               else
+                echo "❌ All submission attempts failed"
                 exit 1
               fi
             fi
@@ -196,27 +223,33 @@ jobs:
               --apple-id "$APPLE_ID" \
               --team-id "$APPLE_TEAM_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              2>&1)
+              2>&1) || true
             
             STATUS_EXIT_CODE=$?
+            echo "Status check exit code: $STATUS_EXIT_CODE"
+            echo "Status output: $STATUS_OUTPUT"
             
             if [ $STATUS_EXIT_CODE -ne 0 ]; then
-              echo "⚠️ Error checking status: $STATUS_OUTPUT"
+              echo "⚠️ Error checking status, will retry"
               POLL_ATTEMPTS=$((POLL_ATTEMPTS + 1))
               sleep $POLL_INTERVAL
               continue
             fi
             
-            # Check status
-            if echo "$STATUS_OUTPUT" | grep -q "Accepted"; then
+            # Check status - look for specific keywords
+            if echo "$STATUS_OUTPUT" | grep -qi "Accepted"; then
               echo "✅ Notarization successful!"
               echo "$STATUS_OUTPUT"
               break
-            elif echo "$STATUS_OUTPUT" | grep -q "Rejected\|Invalid"; then
-              echo "❌ Notarization rejected or invalid"
+            elif echo "$STATUS_OUTPUT" | grep -qi "Rejected"; then
+              echo "❌ Notarization rejected"
               echo "$STATUS_OUTPUT"
               exit 1
-            elif echo "$STATUS_OUTPUT" | grep -q "In Progress"; then
+            elif echo "$STATUS_OUTPUT" | grep -qi "Invalid"; then
+              echo "❌ Notarization invalid"
+              echo "$STATUS_OUTPUT"
+              exit 1
+            elif echo "$STATUS_OUTPUT" | grep -qi "In Progress"; then
               echo "⏳ Notarization in progress..."
               POLL_ATTEMPTS=$((POLL_ATTEMPTS + 1))
               sleep $POLL_INTERVAL
@@ -236,6 +269,8 @@ jobs:
           fi
           
           echo "✅ Package signed and notarized successfully"
+          
+          set +x  # Disable debug output
         env:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

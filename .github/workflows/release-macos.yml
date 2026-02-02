@@ -71,6 +71,7 @@ jobs:
       - name: Setup temporary installer signing keychain
         uses: apple-actions/import-codesign-certs@v3
         with:
+          keychain: signing-${{ matrix.arch }}
           p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
           p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
 
@@ -144,7 +145,7 @@ jobs:
             
             if [ $NOTARIZE_EXIT_CODE -eq 0 ]; then
               # Extract submission ID from output
-              SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep -oP 'id: \K[a-f0-9\-]+' | head -1)
+              SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | awk '/^  id:/{print $2; exit}')
               
               if [ -z "$SUBMISSION_ID" ]; then
                 echo "Error: Could not extract submission ID"
