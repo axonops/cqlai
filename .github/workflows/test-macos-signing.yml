@@ -51,7 +51,8 @@ jobs:
           # Replace slashes in branch name to avoid path separator issues in filenames
           SAFE_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/' '-')
           VERSION="test-${SAFE_BRANCH_NAME}-${COMMIT_SHA}"
-          PACKAGE_VERSION="${VERSION#v}"
+          # pkgbuild requires a numeric version (X.Y.Z format)
+          PACKAGE_VERSION="0.0.0"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
           echo "Testing on branch: $BRANCH_NAME"
@@ -85,7 +86,7 @@ jobs:
 
       - name: Create PKG package
         run: |
-          VERSION="${{ steps.version.outputs.package_version }}"
+          PKG_VERSION="${{ steps.version.outputs.package_version }}"
           PLATFORM="${{ matrix.platform }}"
           ARCH="${{ matrix.pkg_arch }}"
 
@@ -101,10 +102,10 @@ jobs:
             fi
           fi
 
-          # Create PKG using fpm (unsigned)
+          # Create PKG using fpm (unsigned) - version must be numeric for pkgbuild
           fpm -s dir -t osxpkg \
             --name cqlai \
-            --version "${VERSION}" \
+            --version "${PKG_VERSION}" \
             --architecture "${ARCH}" \
             --license "Apache-2.0" \
             --vendor "AxonOps" \
@@ -115,7 +116,7 @@ jobs:
             "cqlai-${PLATFORM}=/usr/local/bin/cqlai"
 
           # Rename unsigned package
-          mv cqlai-${VERSION}.pkg Unsigned-cqlai.pkg
+          mv cqlai-${PKG_VERSION}.pkg Unsigned-cqlai.pkg
           echo "✅ PKG package created"
 
       - name: Sign and notarize the Apple pkg
