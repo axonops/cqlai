@@ -72,6 +72,7 @@ jobs:
         uses: apple-actions/import-codesign-certs@v3
         with:
           keychain: signing-${{ matrix.arch }}
+          keychain-password: ${{ github.run_id }}
           p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
           p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
 
