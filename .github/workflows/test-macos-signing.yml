@@ -74,10 +74,22 @@ jobs:
       - name: Setup temporary installer signing keychain
         uses: apple-actions/import-codesign-certs@v3
         with:
-          keychain: signing-${{ matrix.arch }}
-          keychain-password: ${{ github.run_id }}
           p12-file-base64: ${{ secrets.CSC_INSTALLER_LINK }}
           p12-password: ${{ secrets.CSC_INSTALLER_KEY_PASSWORD }}
+
+      - name: Debug - List signing identities
+        run: |
+          echo "=== Keychain search list ==="
+          security list-keychains -d user
+          echo ""
+          echo "=== All signing identities ==="
+          security find-identity -v
+          echo ""
+          echo "=== Installer identities ==="
+          security find-identity -v | grep -i installer || echo "No installer identities found"
+          echo ""
+          echo "=== Codesigning identities ==="
+          security find-identity -v -p codesigning || echo "No codesigning identities found"
 
       - name: Install fpm
         run: |
