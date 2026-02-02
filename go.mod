@@ -1,6 +1,8 @@
 module github.com/axonops/cqlai
 
-go 1.25.6
+go 1.25
+
+toolchain go1.25.6
 
 replace github.com/axonops/cqlai => ./
 
