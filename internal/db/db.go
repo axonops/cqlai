@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -559,6 +560,23 @@ func (s *Session) SetKeyspace(keyspace string) error {
 	return nil
 }
 
+// expandPath expands ~ to the user's home directory
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~") {
+		home := os.Getenv("HOME")
+		if home == "" {
+			// Fallback for systems where HOME is not set
+			if userHome, err := os.UserHomeDir(); err == nil {
+				home = userHome
+			}
+		}
+		if home != "" {
+			return filepath.Join(home, path[1:])
+		}
+	}
+	return path
+}
+
 // createTLSConfig creates a TLS configuration based on the SSL settings
 func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config, error) {
 	// Determine server name for hostname verification
@@ -585,7 +603,9 @@ func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config,
 
 	// Load client certificate if provided
 	if sslConfig.CertPath != "" && sslConfig.KeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(sslConfig.CertPath, sslConfig.KeyPath)
+		certPath := expandPath(sslConfig.CertPath)
+		keyPath := expandPath(sslConfig.KeyPath)
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load client certificate: %v", err)
 		}
@@ -594,7 +614,8 @@ func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config,
 
 	// Load CA certificate if provided
 	if sslConfig.CAPath != "" {
-		caCert, err := os.ReadFile(sslConfig.CAPath)
+		caPath := expandPath(sslConfig.CAPath)
+		caCert, err := os.ReadFile(caPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate: %v", err)
 		}
