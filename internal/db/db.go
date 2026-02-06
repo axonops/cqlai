@@ -615,7 +615,7 @@ func createTLSConfig(sslConfig *config.SSLConfig, hostname string) (*tls.Config,
 	// Load CA certificate if provided
 	if sslConfig.CAPath != "" {
 		caPath := expandPath(sslConfig.CAPath)
-		caCert, err := os.ReadFile(caPath)
+		caCert, err := os.ReadFile(caPath) // #nosec G304 - Path from trusted user configuration
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate: %v", err)
 		}
