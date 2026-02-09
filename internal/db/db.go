@@ -81,10 +81,10 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 				Provider: "mock",
 			},
 		}
-		logger.DebugfToFile("Session", "Using default config: host=%s, port=%d, username=%s", 
+		logger.DebugfToFile("Session", "Using default config: host=%s, port=%d, username=%s",
 			cfg.Host, cfg.Port, cfg.Username)
 	} else {
-		logger.DebugfToFile("Session", "Loaded config: host=%s, port=%d, username=%s, keyspace=%s, hasPassword=%v", 
+		logger.DebugfToFile("Session", "Loaded config: host=%s, port=%d, username=%s, keyspace=%s, hasPassword=%v",
 			cfg.Host, cfg.Port, cfg.Username, cfg.Keyspace, cfg.Password != "")
 	}
 
@@ -114,9 +114,9 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		cfg.SSL = options.SSL
 		logger.DebugfToFile("Session", "Overriding SSL config with command-line option")
 	}
-	
+
 	// Log final configuration being used
-	logger.DebugfToFile("Session", "Final config for connection: host=%s:%d, username=%s, keyspace=%s, hasPassword=%v", 
+	logger.DebugfToFile("Session", "Final config for connection: host=%s:%d, username=%s, keyspace=%s, hasPassword=%v",
 		cfg.Host, cfg.Port, cfg.Username, cfg.Keyspace, cfg.Password != "")
 
 	// Create cluster configuration
@@ -124,7 +124,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	// Suppress gocql's default logging to prevent terminal corruption
 	cluster.Logger = &customLogger{}
 	cluster.Consistency = gocql.LocalOne
-	
+
 	// Set timeouts based on options, config, or use defaults
 	switch {
 	case options.RequestTimeout > 0:
@@ -134,7 +134,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	default:
 		cluster.Timeout = 10 * time.Second
 	}
-	
+
 	switch {
 	case options.ConnectTimeout > 0:
 		cluster.ConnectTimeout = time.Duration(options.ConnectTimeout) * time.Second
@@ -143,7 +143,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	default:
 		cluster.ConnectTimeout = 10 * time.Second
 	}
-	
+
 	cluster.DisableInitialHostLookup = true
 
 	if cfg.Keyspace != "" {
@@ -174,7 +174,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 	// Protocol v3: Cassandra 2.1+
 	var session *gocql.Session
 	protocolVersions := []int{5, 4, 3}
-	
+
 	for _, protoVer := range protocolVersions {
 		cluster.ProtoVersion = protoVer
 		session, err = cluster.CreateSession()
@@ -186,7 +186,7 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		// Log the failure and try next version
 		logger.DebugfToFile("Session", "Failed to connect with protocol version %d: %v", protoVer, err)
 	}
-	
+
 	if session == nil {
 		return nil, fmt.Errorf("failed to connect to Cassandra with any supported protocol version: %v", err)
 	}
@@ -292,7 +292,6 @@ func loadConfig(customConfigPath string) (*config.Config, error) {
 
 	return conf, nil
 }
-
 
 // Consistency returns the current consistency level
 func (s *Session) Consistency() string {
@@ -562,7 +561,7 @@ func (s *Session) SetKeyspace(keyspace string) error {
 
 // expandPath expands ~ to the user's home directory
 func expandPath(path string) string {
-	if strings.HasPrefix(path, "~") {
+	if strings.HasPrefix(path, "~/") {
 		home := os.Getenv("HOME")
 		if home == "" {
 			// Fallback for systems where HOME is not set
