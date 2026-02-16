@@ -488,21 +488,25 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Upload DEB to Artifact Registry
+      - name: Upload DEB packages to Artifact Registry
         run: |
-          DEB_FILE=$(ls *.deb | head -1)
-          gcloud artifacts apt upload ${{ env.APT_REPO }} \
-            --location=${{ env.GCP_REGION }} \
-            --source="${DEB_FILE}" \
-            --project=${{ env.GCP_PROJECT }}
+          for DEB_FILE in *.deb; do
+            echo "Uploading ${DEB_FILE}..."
+            gcloud artifacts apt upload ${{ env.APT_REPO }} \
+              --location=${{ env.GCP_REGION }} \
+              --source="${DEB_FILE}" \
+              --project=${{ env.GCP_PROJECT }} || echo "Warning: ${DEB_FILE} may already exist, continuing..."
+          done
 
-      - name: Upload RPM to Artifact Registry
+      - name: Upload RPM packages to Artifact Registry
         run: |
-          RPM_FILE=$(ls *.rpm | head -1)
-          gcloud artifacts yum upload ${{ env.YUM_REPO }} \
-            --location=${{ env.GCP_REGION }} \
-            --source="${RPM_FILE}" \
-            --project=${{ env.GCP_PROJECT }}
+          for RPM_FILE in *.rpm; do
+            echo "Uploading ${RPM_FILE}..."
+            gcloud artifacts yum upload ${{ env.YUM_REPO }} \
+              --location=${{ env.GCP_REGION }} \
+              --source="${RPM_FILE}" \
+              --project=${{ env.GCP_PROJECT }} || echo "Warning: ${RPM_FILE} may already exist, continuing..."
+          done
 
       - name: Configure Docker for GCP
         run: |
@@ -523,7 +527,7 @@ jobs:
   
   update-homebrew:
     name: Update homebrew repository
-    needs: [build-binaries, build-windows-packages, build-packages, upload-gcp]
+    needs: [build-binaries, build-windows-packages, build-packages]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -590,7 +594,7 @@ jobs:
   # Create GitHub Release
   create-release:
     name: Create GitHub Release
-    needs: [build-binaries, build-windows-packages, build-packages, upload-gcp]
+    needs: [build-binaries, build-windows-packages, build-packages]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
