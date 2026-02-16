@@ -397,7 +397,7 @@ jobs:
             ~/rpmbuild/SPECS/cqlai.spec
 
           # Copy the built RPM
-          cp ~/rpmbuild/RPMS/${ARCH}/cqlai-${VERSION}-1*.rpm ./
+          cp ~/rpmbuild/RPMS/${ARCH}/cqlai-${VERSION}-${RELEASE}*.rpm ./
 
       - name: Upload packages
         uses: actions/upload-artifact@v4
