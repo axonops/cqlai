@@ -197,8 +197,10 @@ cqlai
 ### Command-Line Options
 
 ```bash
-cqlai [options]
+cqlai [options] [host [port]]
 ```
+
+**Note:** Positional arguments are supported for `cqlsh` compatibility. `cqlai 192.168.1.100 9042` is equivalent to `cqlai --host 192.168.1.100 --port 9042`.
 
 #### Connection Options
 | Option | Short | Description |
@@ -208,6 +210,8 @@ cqlai [options]
 | `--keyspace <keyspace>` | `-k` | Default keyspace (overrides config) |
 | `--username <username>` | `-u` | Username for authentication |
 | `--password <password>` | `-p` | Password for authentication* |
+| `--ssl` | | Enable SSL/TLS connection |
+| `--consistency <level>` | | Default consistency level (e.g., ONE, QUORUM, LOCAL_QUORUM) |
 | `--no-confirm` | | Disable confirmation prompts for destructive commands (DROP, DELETE, TRUNCATE) |
 | `--connect-timeout <seconds>` | | Connection timeout (default: 10) |
 | `--request-timeout <seconds>` | | Request timeout (default: 10) |
@@ -969,15 +973,46 @@ CQLAI searches for configuration files in the following locations:
 
 ### Environment Variables
 
-Common environment variables:
+All environment variables supported by CQLAI. `CQLAI_*` variables take precedence over `CASSANDRA_*` equivalents.
+
+#### Connection
 - `CQLAI_HOST` or `CASSANDRA_HOST` - Cassandra host
 - `CQLAI_PORT` or `CASSANDRA_PORT` - Cassandra port
-- `CQLAI_KEYSPACE` - Default keyspace
-- `CQLAI_USERNAME` - Authentication username
-- `CQLAI_PASSWORD` - Authentication password
-- `CQLAI_PAGE_SIZE` - Batch mode pagination size (default: 100)
+- `CQLAI_KEYSPACE` or `CASSANDRA_KEYSPACE` - Default keyspace
+- `CQLAI_USERNAME` or `CASSANDRA_USERNAME` - Authentication username
+- `CQLAI_PASSWORD` or `CASSANDRA_PASSWORD` - Authentication password
+- `CQLAI_CONNECT_TIMEOUT` - Connection timeout in seconds (default: 10)
+- `CQLAI_REQUEST_TIMEOUT` - Request timeout in seconds (default: 10)
 - `CQLAI_NO_CONFIRM` - Set to `true` or `1` to disable confirmation prompts for destructive commands
+- `CQLAI_DEBUG` - Set to `true` or `1` to enable debug logging
+
+#### Configuration
+- `CQLAI_CONFIG_FILE` - Path to JSON config file (overrides default locations)
 - `CQLSH_RC` - Path to custom CQLSHRC file
+
+#### Batch Mode
+- `CQLAI_EXECUTE` - CQL statement to execute (equivalent to `-e`)
+- `CQLAI_FILE` - CQL file to execute (equivalent to `-f`)
+- `CQLAI_FORMAT` - Output format: ascii, json, csv, table (default: ascii)
+- `CQLAI_NO_HEADER` - Set to `true` or `1` to omit column headers (CSV)
+- `CQLAI_FIELD_SEPARATOR` - Field separator for CSV output (default: `,`)
+- `CQLAI_PAGE_SIZE` - Pagination size (default: 100)
+- `CQLAI_MAX_MEMORY_MB` - Maximum memory for query results in MB (default: 10)
+
+#### AI Configuration
+- `CQLAI_AI_PROVIDER` or `AI_PROVIDER` - AI provider name (mock, openai, anthropic, gemini, ollama, openrouter)
+- `CQLAI_AI_API_KEY` or `AI_API_KEY` - General AI API key
+- `CQLAI_AI_MODEL` or `AI_MODEL` - General AI model name
+- `OPENAI_API_KEY` - OpenAI API key
+- `OPENAI_MODEL` - OpenAI model name
+- `ANTHROPIC_API_KEY` - Anthropic API key
+- `ANTHROPIC_MODEL` - Anthropic model name
+- `GEMINI_API_KEY` - Google Gemini API key
+- `OLLAMA_URL` - Ollama server URL (default: `http://localhost:11434/v1`)
+- `OLLAMA_MODEL` - Ollama model name
+- `OPENROUTER_API_KEY` - OpenRouter API key
+- `OPENROUTER_MODEL` - OpenRouter model name
+- `OPENROUTER_URL` - OpenRouter API URL (default: `https://openrouter.ai/api/v1`)
 
 ### Migration from cqlsh
 
