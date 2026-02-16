@@ -144,6 +144,17 @@ cqlai --host cassandra.example.com \
       --password mypass \
       --keyspace mykeyspace \
       -e "SELECT * FROM mytable;"
+
+# SSLと整合性レベルを指定
+cqlai --host cassandra.example.com \
+      --ssl \
+      --consistency QUORUM \
+      -e "SELECT * FROM mytable;"
+
+# 位置引数を使用（cqlsh互換）
+cqlai cassandra.example.com 9042 \
+      -u myuser \
+      -e "SELECT * FROM mytable;"
 ```
 
 ## 例

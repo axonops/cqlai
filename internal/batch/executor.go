@@ -81,6 +81,17 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 	if options.ConnOptions.Password != "" {
 		cfg.Password = options.ConnOptions.Password
 	}
+	// Override consistency from CLI flag
+	if options.ConnOptions.Consistency != "" {
+		cfg.Consistency = options.ConnOptions.Consistency
+	}
+	// Enable SSL from CLI flag (--ssl)
+	if options.ConnOptions.SSL {
+		if cfg.SSL == nil {
+			cfg.SSL = &config.SSLConfig{}
+		}
+		cfg.SSL.Enabled = true
+	}
 
 	// Use config PageSize if not specified on command line
 	if options.PageSize == 0 && cfg.PageSize > 0 {
@@ -97,6 +108,7 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		Keyspace:       cfg.Keyspace,
 		Username:       cfg.Username,
 		Password:       cfg.Password,
+		Consistency:    cfg.Consistency,
 		SSL:            cfg.SSL,
 		BatchMode:      true, // Disable schema caching in batch mode
 		ConnectTimeout: options.ConnOptions.ConnectTimeout,

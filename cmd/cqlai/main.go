@@ -28,6 +28,8 @@ func main() {
 		connectTimeout int
 		requestTimeout int
 		debug          bool
+		ssl            bool
+		consistency    string
 		execute        string
 		executeFile    string
 		format         string
@@ -49,6 +51,8 @@ func main() {
 	pflag.IntVar(&connectTimeout, "connect-timeout", 10, "Connection timeout in seconds")
 	pflag.IntVar(&requestTimeout, "request-timeout", 10, "Request timeout in seconds")
 	pflag.BoolVar(&debug, "debug", false, "Enable debug logging")
+	pflag.BoolVar(&ssl, "ssl", false, "Enable SSL/TLS connection")
+	pflag.StringVar(&consistency, "consistency", "", "Default consistency level (e.g., ONE, QUORUM, LOCAL_QUORUM)")
 	pflag.StringVar(&configFile, "config-file", "", "Path to config file (overrides default locations)")
 
 	// Batch mode flags (compatible with cqlsh)
@@ -60,14 +64,46 @@ func main() {
 	pflag.IntVar(&pageSize, "page-size", 100, "Pagination size for batch mode")
 
 	// Version and help flags
-	pflag.BoolVarP(&version, "version", "v", false, "Print version and exit")
+	pflag.BoolVarP(&version, "version", "V", false, "Print version and exit")
 	pflag.BoolVarP(&help, "help", "h", false, "Show help message")
 
 	pflag.Parse()
 
+	// Handle positional arguments for cqlsh compatibility (cqlai [host] [port])
+	args := pflag.Args()
+
+	// 1. Guard Clause: Fail fast
+	if len(args) > 2 {
+		fmt.Fprintf(os.Stderr, "Error: unexpected positional arguments: %v\nUsage: cqlai [options] [host [port]]\n", args[2:])
+		os.Exit(1)
+	}
+
+	// 2. Handle Host
+	if len(args) >= 1 {
+		if host != "" {
+			fmt.Fprintf(os.Stderr, "Warning: positional argument %q ignored because --host was specified\n", args[0])
+		} else {
+			host = args[0]
+		}
+	}
+
+	// 3. Handle Port
+	if len(args) >= 2 {
+		if port != 0 {
+			fmt.Fprintf(os.Stderr, "Warning: positional argument %q ignored because --port was specified\n", args[1])
+		} else if p, err := strconv.Atoi(args[1]); err == nil {
+			port = p
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: invalid port number %q\n", args[1])
+			os.Exit(1)
+		}
+	}
+
 	// Handle help flag
 	if help {
 		fmt.Println("cqlai - A modern Cassandra CQL shell with AI assistance")
+		fmt.Println()
+		fmt.Println("Usage: cqlai [options] [host [port]]")
 		fmt.Println()
 		pflag.PrintDefaults()
 		os.Exit(0)
@@ -77,6 +113,27 @@ func main() {
 	if version {
 		fmt.Printf("cqlai version %s\n", Version)
 		os.Exit(0)
+	}
+
+	// Validate --format value
+	switch strings.ToLower(format) {
+	case "ascii", "json", "csv", "table":
+		// valid
+	default:
+		fmt.Fprintf(os.Stderr, "Error: invalid output format %q (valid: ascii, json, csv, table)\n", format)
+		os.Exit(1)
+	}
+
+	// Validate --consistency value if provided
+	if consistency != "" {
+		switch strings.ToUpper(consistency) {
+		case "ANY", "ONE", "TWO", "THREE", "QUORUM", "ALL",
+			"LOCAL_QUORUM", "EACH_QUORUM", "LOCAL_ONE", "SERIAL", "LOCAL_SERIAL":
+			consistency = strings.ToUpper(consistency)
+		default:
+			fmt.Fprintf(os.Stderr, "Error: invalid consistency level %q (valid: ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE, SERIAL, LOCAL_SERIAL)\n", consistency)
+			os.Exit(1)
+		}
 	}
 
 	// Override with environment variables if command-line flags not set
@@ -113,14 +170,14 @@ func main() {
 			debug = envDebug == "true" || envDebug == "1"
 		}
 	}
-	if connectTimeout == 10 { // Check if still at default
+	if !pflag.CommandLine.Changed("connect-timeout") {
 		if envTimeout := os.Getenv("CQLAI_CONNECT_TIMEOUT"); envTimeout != "" {
 			if t, err := strconv.Atoi(envTimeout); err == nil {
 				connectTimeout = t
 			}
 		}
 	}
-	if requestTimeout == 10 { // Check if still at default
+	if !pflag.CommandLine.Changed("request-timeout") {
 		if envTimeout := os.Getenv("CQLAI_REQUEST_TIMEOUT"); envTimeout != "" {
 			if t, err := strconv.Atoi(envTimeout); err == nil {
 				requestTimeout = t
@@ -143,7 +200,7 @@ func main() {
 			executeFile = envFile
 		}
 	}
-	if format == "ascii" { // Check if still at default
+	if !pflag.CommandLine.Changed("format") {
 		if envFormat := os.Getenv("CQLAI_FORMAT"); envFormat != "" {
 			format = envFormat
 		}
@@ -153,12 +210,12 @@ func main() {
 			noHeader = envNoHeader == "true" || envNoHeader == "1"
 		}
 	}
-	if fieldSep == "," { // Check if still at default
+	if !pflag.CommandLine.Changed("field-separator") {
 		if envFieldSep := os.Getenv("CQLAI_FIELD_SEPARATOR"); envFieldSep != "" {
 			fieldSep = envFieldSep
 		}
 	}
-	if pageSize == 100 { // Check if still at default
+	if !pflag.CommandLine.Changed("page-size") {
 		if envPageSize := os.Getenv("CQLAI_PAGE_SIZE"); envPageSize != "" {
 			if ps, err := strconv.Atoi(envPageSize); err == nil {
 				pageSize = ps
@@ -166,7 +223,15 @@ func main() {
 		}
 	}
 
-	// Handle password prompting if username provided without password
+	// Check password environment variable before interactive prompt
+	// Precedence: CLI flag (-p) > env var > interactive prompt
+	if password == "" {
+		if envPass := os.Getenv("CQLAI_PASSWORD"); envPass != "" {
+			password = envPass
+		}
+	}
+
+	// Prompt for password interactively only if still empty and username was provided
 	if username != "" && password == "" && isTerminal() {
 		fmt.Fprintf(os.Stderr, "Password: ")
 		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -176,13 +241,6 @@ func main() {
 			os.Exit(1)
 		}
 		password = string(passwordBytes)
-	}
-
-	// Also check environment variable as fallback
-	if password == "" {
-		if envPass := os.Getenv("CQLAI_PASSWORD"); envPass != "" {
-			password = envPass
-		}
 	}
 
 	// Create connection options
@@ -197,6 +255,9 @@ func main() {
 		RequestTimeout:      requestTimeout,
 		Debug:               debug,
 		ConfigFile:          configFile,
+		SSL:                 ssl,
+		Consistency:         consistency,
+		PageSize:            pageSize,
 	}
 
 	// Check if we're in batch mode

@@ -94,9 +94,16 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 	logger.DebugfToFile("Config", "Default config initialized: host=%s, port=%d", config.Host, config.Port)
 
 	// First, try to load CQLSHRC file
-	cqlshrcPaths := []string{
-		filepath.Join(os.Getenv("HOME"), ".cassandra", "cqlshrc"),
-		filepath.Join(os.Getenv("HOME"), ".cqlshrc"),
+	// Check $CQLSH_RC environment variable first (as documented in README)
+	var cqlshrcPaths []string
+	if cqlshRC := os.Getenv("CQLSH_RC"); cqlshRC != "" {
+		cqlshrcPaths = []string{cqlshRC}
+		logger.DebugfToFile("Config", "Using $CQLSH_RC path: %s", cqlshRC)
+	} else {
+		cqlshrcPaths = []string{
+			filepath.Join(os.Getenv("HOME"), ".cassandra", "cqlshrc"),
+			filepath.Join(os.Getenv("HOME"), ".cqlshrc"),
+		}
 	}
 
 	logger.DebugfToFile("Config", "Looking for cqlshrc files in: %v", cqlshrcPaths)

@@ -186,8 +186,10 @@ cqlai
 ### コマンドラインオプション
 
 ```bash
-cqlai [options]
+cqlai [options] [host [port]]
 ```
+
+**注意:** `cqlsh`互換性のため、位置引数がサポートされています。`cqlai 192.168.1.100 9042`は`cqlai --host 192.168.1.100 --port 9042`と同等です。
 
 #### 接続オプション
 | オプション | 短縮 | 説明 |
@@ -197,6 +199,8 @@ cqlai [options]
 | `--keyspace <keyspace>` | `-k` | デフォルトのキースペース(設定を上書き) |
 | `--username <username>` | `-u` | 認証用のユーザー名 |
 | `--password <password>` | `-p` | 認証用のパスワード* |
+| `--ssl` | | SSL/TLS接続を有効化 |
+| `--consistency <level>` | | デフォルトの整合性レベル（例: ONE、QUORUM、LOCAL_QUORUM） |
 | `--no-confirm` | | 破壊的コマンド(DROP、DELETE、TRUNCATE)の確認プロンプトを無効化 |
 | `--connect-timeout <seconds>` | | 接続タイムアウト(デフォルト: 10) |
 | `--request-timeout <seconds>` | | リクエストタイムアウト(デフォルト: 10) |
@@ -221,7 +225,7 @@ cqlai [options]
 | オプション | 短縮 | 説明 |
 |--------|-------|-------------|
 | `--help` | `-h` | ヘルプメッセージを表示 |
-| `--version` | `-v` | バージョンを表示して終了 |
+| `--version` | `-V` | バージョンを表示して終了 |
 
 ### バッチモードの例
 
@@ -774,15 +778,46 @@ CQLAIは次の場所で設定ファイルを検索します:
 
 ### 環境変数
 
-一般的な環境変数:
+CQLAIがサポートするすべての環境変数です。`CQLAI_*`変数は`CASSANDRA_*`の同等変数より優先されます。
+
+#### 接続
 - `CQLAI_HOST`または`CASSANDRA_HOST` - Cassandraホスト
 - `CQLAI_PORT`または`CASSANDRA_PORT` - Cassandraポート
-- `CQLAI_KEYSPACE` - デフォルトのキースペース
-- `CQLAI_USERNAME` - 認証ユーザー名
-- `CQLAI_PASSWORD` - 認証パスワード
-- `CQLAI_PAGE_SIZE` - バッチモードのページサイズ(デフォルト: 100)
+- `CQLAI_KEYSPACE`または`CASSANDRA_KEYSPACE` - デフォルトのキースペース
+- `CQLAI_USERNAME`または`CASSANDRA_USERNAME` - 認証ユーザー名
+- `CQLAI_PASSWORD`または`CASSANDRA_PASSWORD` - 認証パスワード
+- `CQLAI_CONNECT_TIMEOUT` - 接続タイムアウト（秒単位、デフォルト: 10）
+- `CQLAI_REQUEST_TIMEOUT` - リクエストタイムアウト（秒単位、デフォルト: 10）
 - `CQLAI_NO_CONFIRM` - `true`または`1`に設定して破壊的コマンドの確認プロンプトを無効化
+- `CQLAI_DEBUG` - `true`または`1`に設定してデバッグログを有効化
+
+#### 設定
+- `CQLAI_CONFIG_FILE` - JSON設定ファイルへのパス（デフォルトの場所を上書き）
 - `CQLSH_RC` - カスタムCQLSHRCファイルへのパス
+
+#### バッチモード
+- `CQLAI_EXECUTE` - 実行するCQLステートメント（`-e`と同等）
+- `CQLAI_FILE` - 実行するCQLファイル（`-f`と同等）
+- `CQLAI_FORMAT` - 出力形式: ascii, json, csv, table（デフォルト: ascii）
+- `CQLAI_NO_HEADER` - `true`または`1`に設定してカラムヘッダーを省略（CSV）
+- `CQLAI_FIELD_SEPARATOR` - CSV出力のフィールド区切り文字（デフォルト: `,`）
+- `CQLAI_PAGE_SIZE` - ページネーションサイズ（デフォルト: 100）
+- `CQLAI_MAX_MEMORY_MB` - クエリ結果の最大メモリ（MB単位、デフォルト: 10）
+
+#### AI設定
+- `CQLAI_AI_PROVIDER`または`AI_PROVIDER` - AIプロバイダー名（mock, openai, anthropic, gemini, ollama, openrouter）
+- `CQLAI_AI_API_KEY`または`AI_API_KEY` - 汎用AI APIキー
+- `CQLAI_AI_MODEL`または`AI_MODEL` - 汎用AIモデル名
+- `OPENAI_API_KEY` - OpenAI APIキー
+- `OPENAI_MODEL` - OpenAIモデル名
+- `ANTHROPIC_API_KEY` - Anthropic APIキー
+- `ANTHROPIC_MODEL` - Anthropicモデル名
+- `GEMINI_API_KEY` - Google Gemini APIキー
+- `OLLAMA_URL` - OllamaサーバーURL（デフォルト: `http://localhost:11434/v1`）
+- `OLLAMA_MODEL` - Ollamaモデル名
+- `OPENROUTER_API_KEY` - OpenRouter APIキー
+- `OPENROUTER_MODEL` - OpenRouterモデル名
+- `OPENROUTER_URL` - OpenRouter API URL（デフォルト: `https://openrouter.ai/api/v1`）
 
 ### cqlshからの移行
 

@@ -144,6 +144,17 @@ cqlai --host cassandra.example.com \
       --password mypass \
       --keyspace mykeyspace \
       -e "SELECT * FROM mytable;"
+
+# With SSL and consistency level
+cqlai --host cassandra.example.com \
+      --ssl \
+      --consistency QUORUM \
+      -e "SELECT * FROM mytable;"
+
+# Using positional arguments (cqlsh compatible)
+cqlai cassandra.example.com 9042 \
+      -u myuser \
+      -e "SELECT * FROM mytable;"
 ```
 
 ## Disabling Confirmation Prompts
