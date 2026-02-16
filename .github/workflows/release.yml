@@ -37,11 +37,11 @@ jobs:
 
       - name: Run gosec security scanner
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.21.4
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.23.0
           gosec -no-fail -fmt sarif -out gosec-results.sarif ./...
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
