@@ -32,6 +32,9 @@ type ConnectionOptions struct {
 	RequestTimeout      int    // Request timeout in seconds
 	Debug               bool   // Enable debug logging
 	ConfigFile          string // Path to custom config file
+	SSL                 bool   // Enable SSL/TLS connection
+	Consistency         string // Default consistency level (e.g., "QUORUM")
+	PageSize            int    // Page size for results
 }
 
 // AIMessage represents a single message in the AI conversation
@@ -315,6 +318,21 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	if options.Host != "" || options.Port != 0 || options.Keyspace != "" ||
 		options.Username != "" || options.Password != "" {
 		cfg.RequireConfirmation = options.RequireConfirmation
+	}
+	// Override consistency from CLI flag
+	if options.Consistency != "" {
+		cfg.Consistency = options.Consistency
+	}
+	// Override page size from CLI flag
+	if options.PageSize > 0 {
+		cfg.PageSize = options.PageSize
+	}
+	// Enable SSL from CLI flag (--ssl)
+	if options.SSL {
+		if cfg.SSL == nil {
+			cfg.SSL = &config.SSLConfig{}
+		}
+		cfg.SSL.Enabled = true
 	}
 
 	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{
