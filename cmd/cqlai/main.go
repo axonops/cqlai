@@ -72,30 +72,30 @@ func main() {
 	// Handle positional arguments for cqlsh compatibility (cqlai [host] [port])
 	args := pflag.Args()
 
-	// 1. Guard Clause: Fail fast
 	if len(args) > 2 {
 		fmt.Fprintf(os.Stderr, "Error: unexpected positional arguments: %v\nUsage: cqlai [options] [host [port]]\n", args[2:])
 		os.Exit(1)
 	}
 
-	// 2. Handle Host
-	if len(args) >= 1 {
-		if host != "" {
-			fmt.Fprintf(os.Stderr, "Warning: positional argument %q ignored because --host was specified\n", args[0])
-		} else {
-			host = args[0]
-		}
-	}
-
-	// 3. Handle Port
-	if len(args) >= 2 {
-		if port != 0 {
-			fmt.Fprintf(os.Stderr, "Warning: positional argument %q ignored because --port was specified\n", args[1])
-		} else if p, err := strconv.Atoi(args[1]); err == nil {
+	for i, val := range args {
+		switch i {
+		case 0: // Host
+			if host == "" {
+				host = val
+			} else {
+				fmt.Fprintf(os.Stderr, "Warning: positional argument %q ignored (host already set)\n", val)
+			}
+		case 1: // Port
+			if port != 0 {
+				fmt.Fprintf(os.Stderr, "Warning: positional argument %q ignored (port already set)\n", val)
+				continue
+			}
+			p, err := strconv.Atoi(val)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid port number %q\n", val)
+				os.Exit(1)
+			}
 			port = p
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: invalid port number %q\n", args[1])
-			os.Exit(1)
 		}
 	}
 
