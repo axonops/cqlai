@@ -165,8 +165,16 @@ jobs:
           fi
           # Remove 'v' prefix for package version
           PACKAGE_VERSION="${VERSION#v}"
+          # MSI requires x.x.x.x format - convert RC/beta/alpha suffixes
+          # e.g., 0.1.2rc1 -> 0.1.2.1, 0.1.2beta3 -> 0.1.2.3, 0.1.2 -> 0.1.2
+          if [[ "$PACKAGE_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(rc|beta|alpha)([0-9]+)$ ]]; then
+            MSI_VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[3]}"
+          else
+            MSI_VERSION="${PACKAGE_VERSION}"
+          fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+          echo "msi_version=${MSI_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Sign windows binary
         shell: pwsh
@@ -186,13 +194,14 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = "${{ steps.version.outputs.package_version }}"
+          $MSI_VERSION = "${{ steps.version.outputs.msi_version }}"
 
           # Create WiX source file
           @"
           <?xml version='1.0' encoding='windows-1252'?>
           <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
             <Product Name='CQLAI' Id='*' UpgradeCode='12345678-1234-1234-1234-123456789012'
-              Language='1033' Codepage='1252' Version='$VERSION' Manufacturer='AxonOps'>
+              Language='1033' Codepage='1252' Version='$MSI_VERSION' Manufacturer='AxonOps'>
               <Package Id='*' Keywords='Installer' Description='CQLAI Installer'
                 Manufacturer='AxonOps' InstallerVersion='200' Languages='1033'
                 Compressed='yes' SummaryCodepage='1252' Platform='x64' />
@@ -268,8 +277,23 @@ jobs:
           fi
           # Remove 'v' prefix for package version
           PACKAGE_VERSION="${VERSION#v}"
+          # For DEB/RPM: convert RC/beta/alpha to ~ separator (proper pre-release sorting)
+          # e.g., 0.1.2rc1 -> 0.1.2~rc1
+          DEB_VERSION=$(echo "${PACKAGE_VERSION}" | sed 's/\(rc\|beta\|alpha\)/~\1/')
+          # For RPM: pre-release goes in Release field, Version stays numeric
+          # e.g., 0.1.2rc1 -> version=0.1.2, rpm_release=0.1.rc1
+          if [[ "$PACKAGE_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(rc|beta|alpha)([0-9]+)$ ]]; then
+            RPM_VERSION="${BASH_REMATCH[1]}"
+            RPM_RELEASE="0.1.${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+          else
+            RPM_VERSION="${PACKAGE_VERSION}"
+            RPM_RELEASE="1"
+          fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+          echo "deb_version=${DEB_VERSION}" >> $GITHUB_OUTPUT
+          echo "rpm_version=${RPM_VERSION}" >> $GITHUB_OUTPUT
+          echo "rpm_release=${RPM_RELEASE}" >> $GITHUB_OUTPUT
 
       - name: Build binary
         run: |
@@ -285,8 +309,9 @@ jobs:
 
       - name: Create DEB package
         run: |
-          VERSION="${{ steps.version.outputs.package_version }}"
+          VERSION="${{ steps.version.outputs.deb_version }}"
           ARCH="${{ matrix.debarch }}"
+          PKG_VERSION="${{ steps.version.outputs.package_version }}"
 
           # Create debian package structure
           mkdir -p cqlai-deb/DEBIAN
@@ -316,11 +341,12 @@ jobs:
 
           # Build package
           dpkg-deb --build cqlai-deb
-          mv cqlai-deb.deb cqlai_${VERSION}_${ARCH}.deb
+          mv cqlai-deb.deb cqlai_${PKG_VERSION}_${ARCH}.deb
 
       - name: Create RPM package
         run: |
-          VERSION="${{ steps.version.outputs.package_version }}"
+          VERSION="${{ steps.version.outputs.rpm_version }}"
+          RELEASE="${{ steps.version.outputs.rpm_release }}"
           ARCH="${{ matrix.rpmarch }}"
 
           # Setup RPM build tree
@@ -337,7 +363,7 @@ jobs:
           cat > ~/rpmbuild/SPECS/cqlai.spec << EOF
           Name:           cqlai
           Version:        ${VERSION}
-          Release:        1%{?dist}
+          Release:        ${RELEASE}%{?dist}
           Summary:        AI-powered Cassandra CQL Shell
           License:        Apache-2.0
           URL:            https://github.com/axonops/cqlai
@@ -361,7 +387,7 @@ jobs:
           /usr/bin/cqlai
 
           %changelog
-          * $(date +"%a %b %d %Y") AxonOps <support@axonops.com> - ${VERSION}-1
+          * $(date +"%a %b %d %Y") AxonOps <support@axonops.com> - ${VERSION}-${RELEASE}
           - Release ${VERSION}
           EOF
 
@@ -443,6 +469,8 @@ jobs:
           tags: |
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.docker_tag }}
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.docker_tag }}
+            ghcr.io/${{ github.repository }}:latest
           outputs: type=docker,dest=/tmp/cqlai.tar
 
       - name: Upload Docker image
@@ -451,13 +479,15 @@ jobs:
           name: docker-image
           path: /tmp/cqlai.tar
 
-  # Upload to GCP Artifact Registry
+  # Upload to GCP Artifact Registry and GHCR
   upload-gcp:
-    name: Upload to GCP
+    name: Upload to GCP and GHCR
     needs: [build-packages, build-docker]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-    
+    permissions:
+      packages: write
+
     steps:
       - name: Download packages (amd64)
         uses: actions/download-artifact@v4
@@ -506,18 +536,36 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
 
-      - name: Push Docker image
+      - name: Push Docker image to GCP
         run: |
           docker load --input cqlai.tar
-          
+
           VERSION="${GITHUB_REF#refs/tags/}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "refs/heads/main" ]; then
             VERSION="${{ github.event.inputs.tag_name }}"
           fi
           DOCKER_TAG="${VERSION#v}"
-          
+
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${DOCKER_TAG}
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker image to GHCR
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "refs/heads/main" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          fi
+          DOCKER_TAG="${VERSION#v}"
+
+          docker push ghcr.io/${{ github.repository }}:${DOCKER_TAG}
+          docker push ghcr.io/${{ github.repository }}:latest
   
   update-homebrew:
     name: Update homebrew repository
