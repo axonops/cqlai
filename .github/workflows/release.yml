@@ -610,14 +610,14 @@ jobs:
           VERSION="${{ steps.brew_info.outputs.version }}"
           SHA256="${{ steps.brew_info.outputs.sha256 }}"
 
-          # Update the URL with new version
-          sed -i "s|archive/refs/tags/v[0-9.]*\.tar\.gz|archive/refs/tags/${VERSION}.tar.gz|g" cqlai.rb
+          # Update the URL with new version (match any tag including rc/beta/alpha suffixes)
+          sed -i "s|archive/refs/tags/v[0-9a-zA-Z.~]*\.tar\.gz|archive/refs/tags/${VERSION}.tar.gz|g" cqlai.rb
 
-          # Update the main SHA256 hash (the line right after url)
-          sed -i "/url.*archive.*tar\.gz/!b;n;s/sha256.*/  sha256 \"${SHA256}\"/" cqlai.rb
+          # Update the main SHA256 hash (replace entire line including leading whitespace)
+          sed -i "/url.*archive.*tar\.gz/!b;n;s/^[[:space:]]*sha256.*/  sha256 \"${SHA256}\"/" cqlai.rb
 
-          # Update the version in ldflags
-          sed -i "s/-X main.Version=[^ ]*/-X main.Version=${VERSION}/" cqlai.rb
+          # Update the version in ldflags (stop at the closing double-quote, not at space)
+          sed -i "s/-X main.Version=[^\"]*/-X main.Version=${VERSION}/" cqlai.rb
 
       - name: Commit and push changes
         run: |
