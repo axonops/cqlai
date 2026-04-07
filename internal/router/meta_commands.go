@@ -290,7 +290,7 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 	}
 
 	// Read the file
-	content, err := os.ReadFile(filename) // #nosec G304 - User-provided source filename
+	content, err := os.ReadFile(filename) // #nosec G304 G703 - User-provided source filename
 	if err != nil {
 		return fmt.Sprintf("Error reading file: %v", err)
 	}

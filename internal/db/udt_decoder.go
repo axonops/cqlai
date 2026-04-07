@@ -110,7 +110,7 @@ func (d *BinaryDecoder) decodeTinyInt(data []byte) (int8, error) {
 	if len(data) != 1 {
 		return 0, fmt.Errorf("invalid tinyint data length: %d", len(data))
 	}
-	return int8(data[0]), nil
+	return int8(data[0]), nil //nolint:gosec // G115: intentional byte-to-int8 conversion for CQL tinyint
 }
 
 func (d *BinaryDecoder) decodeSmallInt(data []byte) (int16, error) {

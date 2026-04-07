@@ -234,7 +234,7 @@ func main() {
 	// Prompt for password interactively only if still empty and username was provided
 	if username != "" && password == "" && isTerminal() {
 		fmt.Fprintf(os.Stderr, "Password: ")
-		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // G115: fd conversion is safe on all supported platforms
 		fmt.Fprintln(os.Stderr) // Print newline after password input
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)

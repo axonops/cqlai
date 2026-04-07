@@ -29,7 +29,7 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 	case string:
 		// If it's an error message, fall back to manual construction
 		if strings.Contains(v, "SyntaxException") || strings.Contains(v, "Invalid") ||
-		   strings.Contains(v, "Unknown") || strings.Contains(v, "Error") {
+			strings.Contains(v, "Unknown") || strings.Contains(v, "Error") {
 			// Fall through to manual construction
 			break
 		}
@@ -89,8 +89,8 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		}
 
 		// Build CREATE KEYSPACE statement
-		result.WriteString(fmt.Sprintf("CREATE KEYSPACE %s WITH replication = %s",
-			ks, FormatMapForCQL(keyspaceInfo.Replication)))
+		fmt.Fprintf(&result, "CREATE KEYSPACE %s WITH replication = %s",
+			ks, FormatMapForCQL(keyspaceInfo.Replication))
 
 		// Always show durable_writes like cqlsh does
 		if keyspaceInfo.DurableWrites {
@@ -103,12 +103,12 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		// 2. Get all types
 		typesQuery := `SELECT type_name FROM system_schema.types WHERE keyspace_name = ?`
 		iter := s.Query(typesQuery, ks).Iter()
-	var typeName string
-	var typeNames []string
-	for iter.Scan(&typeName) {
-		typeNames = append(typeNames, typeName)
-	}
-	_ = iter.Close()
+		var typeName string
+		var typeNames []string
+		for iter.Scan(&typeName) {
+			typeNames = append(typeNames, typeName)
+		}
+		_ = iter.Close()
 
 		// Get CREATE statement for each type
 		sort.Strings(typeNames)
@@ -123,26 +123,26 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		// 3. Get all tables and their indexes
 		tablesQuery := `SELECT table_name FROM system_schema.tables WHERE keyspace_name = ?`
 		iter = s.Query(tablesQuery, ks).Iter()
-	var tableName string
-	var tableNames []string
-	for iter.Scan(&tableName) {
-		tableNames = append(tableNames, tableName)
-	}
-	_ = iter.Close()
+		var tableName string
+		var tableNames []string
+		for iter.Scan(&tableName) {
+			tableNames = append(tableNames, tableName)
+		}
+		_ = iter.Close()
 
 		// Get all indexes for this keyspace
 		indexQuery := `SELECT index_name, table_name FROM system_schema.indexes WHERE keyspace_name = ?`
 		iter = s.Query(indexQuery, ks).Iter()
-	var indexName, indexTableName string
-	type indexPair struct {
-		name  string
-		table string
-	}
-	tableIndexes := make(map[string][]indexPair) // map from table name to its indexes
-	for iter.Scan(&indexName, &indexTableName) {
-		tableIndexes[indexTableName] = append(tableIndexes[indexTableName], indexPair{name: indexName, table: indexTableName})
-	}
-	_ = iter.Close()
+		var indexName, indexTableName string
+		type indexPair struct {
+			name  string
+			table string
+		}
+		tableIndexes := make(map[string][]indexPair) // map from table name to its indexes
+		for iter.Scan(&indexName, &indexTableName) {
+			tableIndexes[indexTableName] = append(tableIndexes[indexTableName], indexPair{name: indexName, table: indexTableName})
+		}
+		_ = iter.Close()
 
 		// Get CREATE statement for each table and its indexes
 		sort.Strings(tableNames)
@@ -169,12 +169,12 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		// 5. Get all materialized views
 		viewsQuery := `SELECT view_name FROM system_schema.views WHERE keyspace_name = ?`
 		iter = s.Query(viewsQuery, ks).Iter()
-	var viewName string
-	var viewNames []string
-	for iter.Scan(&viewName) {
-		viewNames = append(viewNames, viewName)
-	}
-	_ = iter.Close()
+		var viewName string
+		var viewNames []string
+		for iter.Scan(&viewName) {
+			viewNames = append(viewNames, viewName)
+		}
+		_ = iter.Close()
 
 		// Get CREATE statement for each materialized view
 		sort.Strings(viewNames)
@@ -189,17 +189,17 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		// 6. Get all functions
 		functionsQuery := `SELECT function_name, argument_types FROM system_schema.functions WHERE keyspace_name = ?`
 		iter = s.Query(functionsQuery, ks).Iter()
-	var functionName string
-	var argumentTypes []string
-	type functionSig struct {
-		name string
-		args []string
-	}
-	var functions []functionSig
-	for iter.Scan(&functionName, &argumentTypes) {
-		functions = append(functions, functionSig{name: functionName, args: argumentTypes})
-	}
-	_ = iter.Close()
+		var functionName string
+		var argumentTypes []string
+		type functionSig struct {
+			name string
+			args []string
+		}
+		var functions []functionSig
+		for iter.Scan(&functionName, &argumentTypes) {
+			functions = append(functions, functionSig{name: functionName, args: argumentTypes})
+		}
+		_ = iter.Close()
 
 		// Get CREATE statement for each function
 		sort.Slice(functions, func(i, j int) bool { return functions[i].name < functions[j].name })
@@ -216,17 +216,17 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		// 7. Get all aggregates
 		aggregatesQuery := `SELECT aggregate_name, argument_types FROM system_schema.aggregates WHERE keyspace_name = ?`
 		iter = s.Query(aggregatesQuery, ks).Iter()
-	var aggregateName string
-	var aggregateArgTypes []string
-	type aggregateSig struct {
-		name string
-		args []string
-	}
-	var aggregates []aggregateSig
-	for iter.Scan(&aggregateName, &aggregateArgTypes) {
-		aggregates = append(aggregates, aggregateSig{name: aggregateName, args: aggregateArgTypes})
-	}
-	_ = iter.Close()
+		var aggregateName string
+		var aggregateArgTypes []string
+		type aggregateSig struct {
+			name string
+			args []string
+		}
+		var aggregates []aggregateSig
+		for iter.Scan(&aggregateName, &aggregateArgTypes) {
+			aggregates = append(aggregates, aggregateSig{name: aggregateName, args: aggregateArgTypes})
+		}
+		_ = iter.Close()
 
 		// Get CREATE statement for each aggregate
 		sort.Slice(aggregates, func(i, j int) bool { return aggregates[i].name < aggregates[j].name })
@@ -244,15 +244,14 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 
 // Helper functions to format CREATE statements
 
-
 func formatTypeCreateStatement(keyspace string, typeInfo *TypeInfo) string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("CREATE TYPE %s.%s (\n", keyspace, typeInfo.Name))
+	fmt.Fprintf(&result, "CREATE TYPE %s.%s (\n", keyspace, typeInfo.Name)
 
 	for i := range typeInfo.FieldNames {
 		if i < len(typeInfo.FieldTypes) {
-			result.WriteString(fmt.Sprintf("    %s %s", typeInfo.FieldNames[i], typeInfo.FieldTypes[i]))
+			fmt.Fprintf(&result, "    %s %s", typeInfo.FieldNames[i], typeInfo.FieldTypes[i])
 		}
 		if i < len(typeInfo.FieldNames)-1 {
 			result.WriteString(",")
@@ -275,16 +274,16 @@ func formatIndexCreateStatement(keyspace string, index *IndexInfo) string {
 
 		// Build CREATE CUSTOM INDEX statement
 		if target != "" {
-			result.WriteString(fmt.Sprintf("CREATE CUSTOM INDEX %s ON %s.%s (%s)",
-				index.IndexName, keyspace, index.TableName, target))
+			fmt.Fprintf(&result, "CREATE CUSTOM INDEX %s ON %s.%s (%s)",
+				index.IndexName, keyspace, index.TableName, target)
 		} else {
-			result.WriteString(fmt.Sprintf("CREATE CUSTOM INDEX %s ON %s.%s",
-				index.IndexName, keyspace, index.TableName))
+			fmt.Fprintf(&result, "CREATE CUSTOM INDEX %s ON %s.%s",
+				index.IndexName, keyspace, index.TableName)
 		}
 
 		// Add USING clause
 		if className != "" {
-			result.WriteString(fmt.Sprintf(" USING '%s'", className))
+			fmt.Fprintf(&result, " USING '%s'", className)
 		}
 
 		// Build OPTIONS excluding target and class_name
@@ -302,11 +301,11 @@ func formatIndexCreateStatement(keyspace string, index *IndexInfo) string {
 	} else {
 		// For regular (non-CUSTOM) indexes
 		if target, ok := index.Options["target"]; ok {
-			result.WriteString(fmt.Sprintf("CREATE INDEX %s ON %s.%s (%s)",
-				index.IndexName, keyspace, index.TableName, target))
+			fmt.Fprintf(&result, "CREATE INDEX %s ON %s.%s (%s)",
+				index.IndexName, keyspace, index.TableName, target)
 		} else {
-			result.WriteString(fmt.Sprintf("CREATE INDEX %s ON %s.%s",
-				index.IndexName, keyspace, index.TableName))
+			fmt.Fprintf(&result, "CREATE INDEX %s ON %s.%s",
+				index.IndexName, keyspace, index.TableName)
 		}
 
 		// Regular indexes typically don't have additional options
@@ -332,9 +331,9 @@ func formatIndexCreateStatement(keyspace string, index *IndexInfo) string {
 func formatMaterializedViewCreateStatement(keyspace string, mv *MaterializedViewInfo) string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW %s.%s AS\n", keyspace, mv.Name))
-	result.WriteString(fmt.Sprintf("    SELECT * FROM %s.%s\n", keyspace, mv.BaseTable))
-	result.WriteString(fmt.Sprintf("    WHERE %s\n", mv.WhereClause))
+	fmt.Fprintf(&result, "CREATE MATERIALIZED VIEW %s.%s AS\n", keyspace, mv.Name)
+	fmt.Fprintf(&result, "    SELECT * FROM %s.%s\n", keyspace, mv.BaseTable)
+	fmt.Fprintf(&result, "    WHERE %s\n", mv.WhereClause)
 
 	// Add PRIMARY KEY
 	result.WriteString("    PRIMARY KEY (")
@@ -379,7 +378,7 @@ func formatMaterializedViewCreateStatement(keyspace string, mv *MaterializedView
 func formatFunctionCreateStatement(keyspace string, fn *FunctionDetails) string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("CREATE FUNCTION %s.%s(", keyspace, fn.Name))
+	fmt.Fprintf(&result, "CREATE FUNCTION %s.%s(", keyspace, fn.Name)
 
 	// Add parameters
 	params := make([]string, 0, len(fn.ArgumentNames))
@@ -398,9 +397,9 @@ func formatFunctionCreateStatement(keyspace string, fn *FunctionDetails) string 
 		result.WriteString("\n    RETURNS NULL ON NULL INPUT")
 	}
 
-	result.WriteString(fmt.Sprintf("\n    RETURNS %s", fn.ReturnType))
-	result.WriteString(fmt.Sprintf("\n    LANGUAGE %s", fn.Language))
-	result.WriteString(fmt.Sprintf("\n    AS '%s';", fn.Body))
+	fmt.Fprintf(&result, "\n    RETURNS %s", fn.ReturnType)
+	fmt.Fprintf(&result, "\n    LANGUAGE %s", fn.Language)
+	fmt.Fprintf(&result, "\n    AS '%s';", fn.Body)
 
 	return result.String()
 }
@@ -408,18 +407,18 @@ func formatFunctionCreateStatement(keyspace string, fn *FunctionDetails) string 
 func formatAggregateCreateStatement(keyspace string, agg *AggregateInfo) string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("CREATE AGGREGATE %s.%s(%s)",
-		keyspace, agg.Name, strings.Join(agg.ArgumentTypes, ", ")))
+	fmt.Fprintf(&result, "CREATE AGGREGATE %s.%s(%s)",
+		keyspace, agg.Name, strings.Join(agg.ArgumentTypes, ", "))
 
-	result.WriteString(fmt.Sprintf("\n    SFUNC %s", agg.StateFunc))
-	result.WriteString(fmt.Sprintf("\n    STYPE %s", agg.StateType))
+	fmt.Fprintf(&result, "\n    SFUNC %s", agg.StateFunc)
+	fmt.Fprintf(&result, "\n    STYPE %s", agg.StateType)
 
 	if agg.FinalFunc != "" {
-		result.WriteString(fmt.Sprintf("\n    FINALFUNC %s", agg.FinalFunc))
+		fmt.Fprintf(&result, "\n    FINALFUNC %s", agg.FinalFunc)
 	}
 
 	if agg.InitCond != "" {
-		result.WriteString(fmt.Sprintf("\n    INITCOND %s", agg.InitCond))
+		fmt.Fprintf(&result, "\n    INITCOND %s", agg.InitCond)
 	}
 
 	result.WriteString(";")

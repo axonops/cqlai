@@ -12,18 +12,18 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 	var result strings.Builder
 
 	if includeHeader {
-		result.WriteString(fmt.Sprintf("Table: %s.%s\n\n", tableInfo.KeyspaceName, tableInfo.TableName))
+		fmt.Fprintf(&result, "Table: %s.%s\n\n", tableInfo.KeyspaceName, tableInfo.TableName)
 	}
 
 	// Format CREATE TABLE statement
-	result.WriteString(fmt.Sprintf("CREATE TABLE %s.%s (\n", tableInfo.KeyspaceName, tableInfo.TableName))
+	fmt.Fprintf(&result, "CREATE TABLE %s.%s (\n", tableInfo.KeyspaceName, tableInfo.TableName)
 
 	// Check if we have a simple primary key (single partition key, no clustering keys)
 	singlePKNoCluster := len(tableInfo.PartitionKeys) == 1 && len(tableInfo.ClusteringKeys) == 0
 
 	// Write column definitions
 	for i, col := range tableInfo.Columns {
-		result.WriteString(fmt.Sprintf("    %s %s", col.Name, col.DataType))
+		fmt.Fprintf(&result, "    %s %s", col.Name, col.DataType)
 
 		// Add PRIMARY KEY inline if this is the partition key and conditions are met
 		if singlePKNoCluster && col.Kind == "partition_key" {
@@ -42,7 +42,7 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 
 		// Format partition keys
 		if len(tableInfo.PartitionKeys) > 1 {
-			result.WriteString(fmt.Sprintf("(%s)", strings.Join(tableInfo.PartitionKeys, ", ")))
+			fmt.Fprintf(&result, "(%s)", strings.Join(tableInfo.PartitionKeys, ", "))
 		} else if len(tableInfo.PartitionKeys) == 1 {
 			result.WriteString(tableInfo.PartitionKeys[0])
 		}
@@ -63,10 +63,10 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 
 	// Filter out internal system properties that shouldn't be displayed
 	internalProps := map[string]bool{
-		"keyspace_name": true,
-		"table_name":    true,
-		"id":            true,
-		"flags":         true,
+		"keyspace_name":              true,
+		"table_name":                 true,
+		"id":                         true,
+		"flags":                      true,
 		"dclocal_read_repair_chance": true, // Deprecated property
 		"read_repair_chance":         true, // Deprecated property
 	}
