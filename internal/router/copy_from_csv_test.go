@@ -116,7 +116,7 @@ func TestLargeBatchCreation(t *testing.T) {
 		var csvContent strings.Builder
 		csvContent.WriteString("id,name\n")
 		for i := 1; i <= 100; i++ {
-			csvContent.WriteString(fmt.Sprintf("%d,name%d\n", i, i))
+			fmt.Fprintf(&csvContent, "%d,name%d\n", i, i)
 		}
 		err := os.WriteFile(csvFile, []byte(csvContent.String()), 0644)
 		require.NoError(t, err)

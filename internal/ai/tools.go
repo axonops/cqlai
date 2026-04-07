@@ -87,9 +87,10 @@ func ExecuteToolCallTyped(toolName ToolName, params ToolParams) *CommandResult {
 	}
 }
 
-// ExecuteToolCall is a common function to execute a tool based on its name and arguments
-// This function is shared across all AI clients to ensure consistent behavior
-// Deprecated: Use ExecuteToolCallTyped with proper typed parameters instead
+// ExecuteToolCall is a common function to execute a tool based on its name and arguments.
+// This function is shared across all AI clients to ensure consistent behavior.
+//
+// Deprecated: Use ExecuteToolCallTyped with proper typed parameters instead.
 func ExecuteToolCall(toolName string, args map[string]any) *CommandResult {
 	// Convert string to ToolName
 	tool := ParseToolName(toolName)

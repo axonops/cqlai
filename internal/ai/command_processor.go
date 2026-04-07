@@ -178,10 +178,10 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 
 			if len(candidates) > 0 {
 				var sb strings.Builder
-				sb.WriteString(fmt.Sprintf("Found %d tables matching '%s':\n", len(candidates), arg))
+				fmt.Fprintf(&sb, "Found %d tables matching '%s':\n", len(candidates), arg)
 				for _, c := range candidates {
-					sb.WriteString(fmt.Sprintf("- %s.%s (score: %.2f, columns: %v)\n",
-						c.Keyspace, c.Table, c.Score, c.Columns))
+					fmt.Fprintf(&sb, "- %s.%s (score: %.2f, columns: %v)\n",
+						c.Keyspace, c.Table, c.Score, c.Columns)
 				}
 				return &CommandResult{Success: true, Data: sb.String()}
 			}
@@ -189,8 +189,8 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 			// No direct matches, show available keyspaces
 			if len(globalAI.cache.Keyspaces) > 0 {
 				var sb strings.Builder
-				sb.WriteString(fmt.Sprintf("No tables found matching '%s'. Available keyspaces: %s\n",
-					arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", ")))
+				fmt.Fprintf(&sb, "No tables found matching '%s'. Available keyspaces: %s\n",
+					arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", "))
 				sb.WriteString("\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace.")
 				return &CommandResult{Success: true, Data: sb.String()}
 			}
@@ -221,10 +221,10 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 		}
 
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Table %s.%s schema:\n", parts[0], parts[1]))
-		sb.WriteString(fmt.Sprintf("Partition Keys: %v\n", schemaInfo.PartitionKeys))
-		sb.WriteString(fmt.Sprintf("Clustering Keys: %v\n", schemaInfo.ClusteringKeys))
-		sb.WriteString(fmt.Sprintf("Columns: %v", schemaInfo.Columns))
+		fmt.Fprintf(&sb, "Table %s.%s schema:\n", parts[0], parts[1])
+		fmt.Fprintf(&sb, "Partition Keys: %v\n", schemaInfo.PartitionKeys)
+		fmt.Fprintf(&sb, "Clustering Keys: %v\n", schemaInfo.ClusteringKeys)
+		fmt.Fprintf(&sb, "Columns: %v", schemaInfo.Columns)
 		return &CommandResult{Success: true, Data: sb.String()}
 
 	case ToolListKeyspaces:

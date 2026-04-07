@@ -445,7 +445,7 @@ func exportToASCII(filename string, data [][]string, options map[string]interfac
 
 	// Add row count footer
 	rowCount := len(data) - 1 // Exclude header
-	output.WriteString(fmt.Sprintf("\n(%d rows)\n", rowCount))
+	fmt.Fprintf(&output, "\n(%d rows)\n", rowCount)
 
 	return os.WriteFile(filename, []byte(output.String()), 0600)
 }

@@ -11,17 +11,17 @@ func FormatASCIITableHeader(headers [][]string) string {
 	if len(headers) == 0 || len(headers[0]) == 0 {
 		return ""
 	}
-	
+
 	header := headers[0]
-	
+
 	// Calculate column widths (using rune count for proper Unicode handling)
 	columnWidths := make([]int, len(header))
 	for i, h := range header {
 		columnWidths[i] = len([]rune(h)) // Count runes, not bytes
 	}
-	
+
 	var buf bytes.Buffer
-	
+
 	// Top border
 	buf.WriteString("+")
 	for _, width := range columnWidths {
@@ -29,14 +29,14 @@ func FormatASCIITableHeader(headers [][]string) string {
 		buf.WriteString("+")
 	}
 	buf.WriteString("\n")
-	
+
 	// Header row
 	buf.WriteString("|")
 	for i, h := range header {
-		buf.WriteString(fmt.Sprintf(" %-*s |", columnWidths[i], h))
+		fmt.Fprintf(&buf, " %-*s |", columnWidths[i], h)
 	}
 	buf.WriteString("\n")
-	
+
 	// Header separator
 	buf.WriteString("+")
 	for _, width := range columnWidths {
@@ -44,7 +44,7 @@ func FormatASCIITableHeader(headers [][]string) string {
 		buf.WriteString("+")
 	}
 	buf.WriteString("\n")
-	
+
 	return buf.String()
 }
 
@@ -152,9 +152,9 @@ func FormatASCIITable(data [][]string) string {
 	// Add row count
 	rowCount := len(data) - 1
 	if rowCount == 1 {
-		buf.WriteString(fmt.Sprintf("\n(%d row)\n", rowCount))
+		fmt.Fprintf(&buf, "\n(%d row)\n", rowCount)
 	} else {
-		buf.WriteString(fmt.Sprintf("\n(%d rows)\n", rowCount))
+		fmt.Fprintf(&buf, "\n(%d rows)\n", rowCount)
 	}
 
 	return buf.String()

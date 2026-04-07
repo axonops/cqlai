@@ -91,7 +91,7 @@ func renderSelect(plan *AIResult) (string, error) {
 	// FROM clause
 	sb.WriteString(" FROM ")
 	if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+		fmt.Fprintf(&sb, "%s.%s", plan.Keyspace, plan.Table)
 	} else {
 		sb.WriteString(plan.Table)
 	}
@@ -124,7 +124,7 @@ func renderSelect(plan *AIResult) (string, error) {
 
 	// LIMIT clause
 	if plan.Limit > 0 {
-		sb.WriteString(fmt.Sprintf(" LIMIT %d", plan.Limit))
+		fmt.Fprintf(&sb, " LIMIT %d", plan.Limit)
 	}
 
 	// ALLOW FILTERING
@@ -145,7 +145,7 @@ func renderInsert(plan *AIResult) (string, error) {
 	sb.WriteString("INSERT INTO ")
 
 	if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+		fmt.Fprintf(&sb, "%s.%s", plan.Keyspace, plan.Table)
 	} else {
 		sb.WriteString(plan.Table)
 	}
@@ -159,9 +159,9 @@ func renderInsert(plan *AIResult) (string, error) {
 		values = append(values, formatValue(val))
 	}
 
-	sb.WriteString(fmt.Sprintf(" (%s) VALUES (%s);",
+	fmt.Fprintf(&sb, " (%s) VALUES (%s);",
 		strings.Join(columns, ", "),
-		strings.Join(values, ", ")))
+		strings.Join(values, ", "))
 
 	return sb.String(), nil
 }
@@ -171,7 +171,7 @@ func renderUpdate(plan *AIResult) (string, error) {
 	sb.WriteString("UPDATE ")
 
 	if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+		fmt.Fprintf(&sb, "%s.%s", plan.Keyspace, plan.Table)
 	} else {
 		sb.WriteString(plan.Table)
 	}
@@ -214,7 +214,7 @@ func renderDelete(plan *AIResult) (string, error) {
 
 	sb.WriteString("FROM ")
 	if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+		fmt.Fprintf(&sb, "%s.%s", plan.Keyspace, plan.Table)
 	} else {
 		sb.WriteString(plan.Table)
 	}
@@ -240,7 +240,7 @@ func renderCreate(plan *AIResult) (string, error) {
 
 	// Handle CREATE KEYSPACE
 	if plan.Table == "" && plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("CREATE KEYSPACE %s", plan.Keyspace))
+		fmt.Fprintf(&sb, "CREATE KEYSPACE %s", plan.Keyspace)
 
 		// Add WITH REPLICATION clause if options are provided
 		if plan.Options != nil {
@@ -250,7 +250,7 @@ func renderCreate(plan *AIResult) (string, error) {
 				if replMap, ok := replication.(map[string]any); ok {
 					sb.WriteString(formatMapValue(replMap))
 				} else {
-					sb.WriteString(fmt.Sprintf("%v", replication))
+					fmt.Fprintf(&sb, "%v", replication)
 				}
 			}
 		}
@@ -267,7 +267,7 @@ func renderCreate(plan *AIResult) (string, error) {
 	sb.WriteString("CREATE TABLE ")
 
 	if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+		fmt.Fprintf(&sb, "%s.%s", plan.Keyspace, plan.Table)
 	} else {
 		sb.WriteString(plan.Table)
 	}
@@ -293,12 +293,12 @@ func renderDrop(plan *AIResult) (string, error) {
 	if plan.Table != "" {
 		sb.WriteString("TABLE ")
 		if plan.Keyspace != "" {
-			sb.WriteString(fmt.Sprintf("%s.%s", plan.Keyspace, plan.Table))
+			fmt.Fprintf(&sb, "%s.%s", plan.Keyspace, plan.Table)
 		} else {
 			sb.WriteString(plan.Table)
 		}
 	} else if plan.Keyspace != "" {
-		sb.WriteString(fmt.Sprintf("KEYSPACE %s", plan.Keyspace))
+		fmt.Fprintf(&sb, "KEYSPACE %s", plan.Keyspace)
 	}
 
 	sb.WriteString(";")
@@ -325,12 +325,12 @@ func renderDescribe(plan *AIResult) (string, error) {
 		// Describing a specific table or keyspace
 		if plan.Table != "" {
 			if plan.Keyspace != "" {
-				sb.WriteString(fmt.Sprintf("TABLE %s.%s", plan.Keyspace, plan.Table))
+				fmt.Fprintf(&sb, "TABLE %s.%s", plan.Keyspace, plan.Table)
 			} else {
-				sb.WriteString(fmt.Sprintf("TABLE %s", plan.Table))
+				fmt.Fprintf(&sb, "TABLE %s", plan.Table)
 			}
 		} else if plan.Keyspace != "" {
-			sb.WriteString(fmt.Sprintf("KEYSPACE %s", plan.Keyspace))
+			fmt.Fprintf(&sb, "KEYSPACE %s", plan.Keyspace)
 		}
 	}
 

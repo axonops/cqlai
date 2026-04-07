@@ -143,7 +143,7 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 
 	for _, path := range configPaths {
 		logger.DebugfToFile("Config", "Checking JSON config at: %s", path)
-		configData, err = os.ReadFile(path) // #nosec G304 - Config file path is validated
+		configData, err = os.ReadFile(path) // #nosec G304 G703 - Config file path is validated
 		if err == nil {
 			foundPath = path
 			logger.DebugfToFile("Config", "Found JSON config at: %s", path)
@@ -400,7 +400,7 @@ func ParseOutputFormat(format string) (OutputFormat, error) {
 func loadCQLSHRC(path string, config *Config) error {
 	logger.DebugfToFile("CQLSHRC", "Attempting to open file: %s", path)
 	
-	file, err := os.Open(path) // #nosec G304 - Config file path is validated
+	file, err := os.Open(path) // #nosec G304 G703 - Config file path is validated
 	if err != nil {
 		logger.DebugfToFile("CQLSHRC", "Failed to open file %s: %v", path, err)
 		return err
@@ -587,7 +587,7 @@ func loadCredentialsFile(path string, config *Config) error {
 		logger.DebugfToFile("Credentials", "Expanded path to: %s", path)
 	}
 
-	file, err := os.Open(path) // #nosec G304 - Config file path is validated
+	file, err := os.Open(path) // #nosec G304 G703 - Config file path is validated
 	if err != nil {
 		logger.DebugfToFile("Credentials", "Failed to open credentials file %s: %v", path, err)
 		return err

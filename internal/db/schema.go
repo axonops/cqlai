@@ -44,32 +44,32 @@ func (s *Session) GetSchemaCatalog() (*SchemaCatalog, error) {
 	// Get all keyspaces
 	keyspaceQuery := `SELECT keyspace_name FROM system_schema.keyspaces`
 	iter := s.Query(keyspaceQuery).Iter()
-	
+
 	var keyspaceName string
 	for iter.Scan(&keyspaceName) {
 		// Skip system keyspaces unless explicitly requested
 		if strings.HasPrefix(keyspaceName, "system") {
 			continue
 		}
-		
+
 		ks := &KeyspaceSchema{
 			Name:   keyspaceName,
 			Tables: make(map[string]*TableSchema),
 		}
-		
+
 		// Get tables for this keyspace
 		if err := s.loadTablesForKeyspace(ks); err != nil {
 			_ = iter.Close()
 			return nil, fmt.Errorf("failed to load tables for keyspace %s: %v", keyspaceName, err)
 		}
-		
+
 		catalog.Keyspaces[keyspaceName] = ks
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to retrieve keyspaces: %v", err)
 	}
-	
+
 	return catalog, nil
 }
 
@@ -79,11 +79,11 @@ func (s *Session) GetKeyspaceSchema(keyspace string) (*KeyspaceSchema, error) {
 		Name:   keyspace,
 		Tables: make(map[string]*TableSchema),
 	}
-	
+
 	if err := s.loadTablesForKeyspace(ks); err != nil {
 		return nil, fmt.Errorf("failed to load tables for keyspace %s: %v", keyspace, err)
 	}
-	
+
 	return ks, nil
 }
 
@@ -96,19 +96,19 @@ func (s *Session) GetTableSchema(keyspace, table string) (*TableSchema, error) {
 		PartitionKeys:  []string{},
 		ClusteringKeys: []string{},
 	}
-	
+
 	// Get columns
 	columnQuery := `
 		SELECT column_name, type, kind, position 
 		FROM system_schema.columns 
 		WHERE keyspace_name = ? AND table_name = ?
 		ORDER BY position`
-	
+
 	iter := s.Query(columnQuery, keyspace, table).Iter()
-	
+
 	var colName, colType, colKind string
 	var position int
-	
+
 	for iter.Scan(&colName, &colType, &colKind, &position) {
 		col := ColumnSchema{
 			Name:     colName,
@@ -117,7 +117,7 @@ func (s *Session) GetTableSchema(keyspace, table string) (*TableSchema, error) {
 			Position: position,
 		}
 		ts.Columns = append(ts.Columns, col)
-		
+
 		// Track partition and clustering keys
 		switch colKind {
 		case "partition_key":
@@ -126,15 +126,15 @@ func (s *Session) GetTableSchema(keyspace, table string) (*TableSchema, error) {
 			ts.ClusteringKeys = append(ts.ClusteringKeys, colName)
 		}
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to retrieve columns: %v", err)
 	}
-	
+
 	if len(ts.Columns) == 0 {
 		return nil, fmt.Errorf("table %s.%s not found", keyspace, table)
 	}
-	
+
 	return ts, nil
 }
 
@@ -154,7 +154,7 @@ func (s *Session) GetCurrentKeyspaceSchema(sessionMgr *session.Manager) (*Keyspa
 func (s *Session) loadTablesForKeyspace(ks *KeyspaceSchema) error {
 	tableQuery := `SELECT table_name FROM system_schema.tables WHERE keyspace_name = ?`
 	iter := s.Query(tableQuery, ks.Name).Iter()
-	
+
 	var tableName string
 	for iter.Scan(&tableName) {
 		ts, err := s.GetTableSchema(ks.Name, tableName)
@@ -163,7 +163,7 @@ func (s *Session) loadTablesForKeyspace(ks *KeyspaceSchema) error {
 		}
 		ks.Tables[tableName] = ts
 	}
-	
+
 	return iter.Close()
 }
 
@@ -173,25 +173,25 @@ func (s *Session) GetSchemaContext(limit int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	var sb strings.Builder
 	count := 0
-	
+
 	for ksName, ks := range catalog.Keyspaces {
 		if count >= limit {
 			break
 		}
-		
-		sb.WriteString(fmt.Sprintf("Keyspace: %s\n", ksName))
-		
+
+		fmt.Fprintf(&sb, "Keyspace: %s\n", ksName)
+
 		for tableName, table := range ks.Tables {
 			if count >= limit {
 				break
 			}
-			
-			sb.WriteString(fmt.Sprintf("  Table: %s\n", tableName))
+
+			fmt.Fprintf(&sb, "  Table: %s\n", tableName)
 			sb.WriteString("    Columns:\n")
-			
+
 			for _, col := range table.Columns {
 				marker := ""
 				switch col.Kind {
@@ -200,11 +200,11 @@ func (s *Session) GetSchemaContext(limit int) (string, error) {
 				case "clustering":
 					marker = " (CK)"
 				}
-				sb.WriteString(fmt.Sprintf("      - %s: %s%s\n", col.Name, col.Type, marker))
+				fmt.Fprintf(&sb, "      - %s: %s%s\n", col.Name, col.Type, marker)
 			}
 			count++
 		}
 	}
-	
+
 	return sb.String(), nil
 }
