@@ -92,6 +92,18 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		}
 		cfg.SSL.Enabled = true
 	}
+	// Override SSL host verification and insecure skip verify from CLI flags
+	if options.ConnOptions.SSLHostVerification != nil || options.ConnOptions.SSLInsecureSkipVerify != nil {
+		if cfg.SSL == nil {
+			cfg.SSL = &config.SSLConfig{}
+		}
+		if options.ConnOptions.SSLHostVerification != nil {
+			cfg.SSL.HostVerification = *options.ConnOptions.SSLHostVerification
+		}
+		if options.ConnOptions.SSLInsecureSkipVerify != nil {
+			cfg.SSL.InsecureSkipVerify = *options.ConnOptions.SSLInsecureSkipVerify
+		}
+	}
 
 	// Use config PageSize if not specified on command line
 	if options.PageSize == 0 && cfg.PageSize > 0 {
