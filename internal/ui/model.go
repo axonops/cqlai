@@ -32,8 +32,10 @@ type ConnectionOptions struct {
 	RequestTimeout      int    // Request timeout in seconds
 	Debug               bool   // Enable debug logging
 	ConfigFile          string // Path to custom config file
-	SSL                 bool   // Enable SSL/TLS connection
-	Consistency         string // Default consistency level (e.g., "QUORUM")
+	SSL                    bool   // Enable SSL/TLS connection
+	SSLHostVerification    *bool  // Override SSL host verification (nil = use config)
+	SSLInsecureSkipVerify  *bool  // Override SSL insecure skip verify (nil = use config)
+	Consistency            string // Default consistency level (e.g., "QUORUM")
 	PageSize            int    // Page size for results
 }
 
@@ -333,6 +335,18 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 			cfg.SSL = &config.SSLConfig{}
 		}
 		cfg.SSL.Enabled = true
+	}
+	// Override SSL host verification and insecure skip verify from CLI flags
+	if options.SSLHostVerification != nil || options.SSLInsecureSkipVerify != nil {
+		if cfg.SSL == nil {
+			cfg.SSL = &config.SSLConfig{}
+		}
+		if options.SSLHostVerification != nil {
+			cfg.SSL.HostVerification = *options.SSLHostVerification
+		}
+		if options.SSLInsecureSkipVerify != nil {
+			cfg.SSL.InsecureSkipVerify = *options.SSLInsecureSkipVerify
+		}
 	}
 
 	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{

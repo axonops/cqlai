@@ -468,7 +468,7 @@ func loadCQLSHRC(path string, config *Config) error {
 					logger.DebugfToFile("CQLSHRC", "Failed to parse port value: %s", value)
 				}
 			case "ssl":
-				if value == "true" || value == "1" {
+				if strings.ToLower(value) == "true" || value == "1" {
 					if config.SSL == nil {
 						config.SSL = &SSLConfig{}
 					}
@@ -539,7 +539,7 @@ func loadCQLSHRC(path string, config *Config) error {
 				config.SSL.CertPath = value
 				logger.DebugfToFile("CQLSHRC", "Set cert path to: %s", value)
 			case "validate":
-				if value == "false" || value == "0" {
+				if strings.ToLower(value) == "false" || value == "0" {
 					config.SSL.InsecureSkipVerify = true
 					config.SSL.HostVerification = false
 					logger.DebugfToFile("CQLSHRC", "Set InsecureSkipVerify to true and HostVerification to false")

@@ -103,6 +103,48 @@ validate = false
 	}
 }
 
+// TestLoadCQLSHRCPythonBooleans verifies that Python-style True/False values
+// (as written by cqlsh) are handled case-insensitively.
+func TestLoadCQLSHRCPythonBooleans(t *testing.T) {
+	tmpDir := t.TempDir()
+	cqlshrcPath := filepath.Join(tmpDir, "cqlshrc")
+
+	// Python cqlsh writes True/False with capital letters
+	cqlshrcContent := `[connection]
+hostname = pyhost.example.com
+port = 9042
+ssl = True
+
+[ssl]
+certfile = ~/certs/ca.pem
+validate = False
+`
+	if err := os.WriteFile(cqlshrcPath, []byte(cqlshrcContent), 0600); err != nil {
+		t.Fatalf("Failed to create test cqlshrc file: %v", err)
+	}
+
+	config := &Config{Host: "localhost", Port: 9042}
+	if err := loadCQLSHRC(cqlshrcPath, config); err != nil {
+		t.Fatalf("Failed to load cqlshrc: %v", err)
+	}
+
+	if config.Host != "pyhost.example.com" {
+		t.Errorf("Expected host 'pyhost.example.com', got '%s'", config.Host)
+	}
+	if config.SSL == nil {
+		t.Fatal("Expected SSL config to be set")
+	}
+	if !config.SSL.Enabled {
+		t.Error("Expected SSL to be enabled (ssl = True)")
+	}
+	if !config.SSL.InsecureSkipVerify {
+		t.Error("Expected InsecureSkipVerify to be true (validate = False)")
+	}
+	if config.SSL.HostVerification {
+		t.Error("Expected HostVerification to be false (validate = False)")
+	}
+}
+
 func TestLoadCredentialsFile(t *testing.T) {
 	// Create a temporary credentials file
 	tmpDir := t.TempDir()

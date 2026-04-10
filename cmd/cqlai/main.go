@@ -24,12 +24,14 @@ func main() {
 		keyspace       string
 		username       string
 		password       string
-		noConfirm      bool
-		connectTimeout int
-		requestTimeout int
-		debug          bool
-		ssl            bool
-		consistency    string
+		noConfirm             bool
+		connectTimeout        int
+		requestTimeout        int
+		debug                 bool
+		ssl                   bool
+		sslNoHostVerification bool
+		sslInsecureSkipVerify bool
+		consistency           string
 		execute        string
 		executeFile    string
 		format         string
@@ -52,6 +54,8 @@ func main() {
 	pflag.IntVar(&requestTimeout, "request-timeout", 10, "Request timeout in seconds")
 	pflag.BoolVar(&debug, "debug", false, "Enable debug logging")
 	pflag.BoolVar(&ssl, "ssl", false, "Enable SSL/TLS connection")
+	pflag.BoolVar(&sslNoHostVerification, "no-ssl-host-verification", false, "Disable SSL hostname verification")
+	pflag.BoolVar(&sslInsecureSkipVerify, "ssl-insecure-skip-verify", false, "Skip SSL certificate verification (not recommended for production)")
 	pflag.StringVar(&consistency, "consistency", "", "Default consistency level (e.g., ONE, QUORUM, LOCAL_QUORUM)")
 	pflag.StringVar(&configFile, "config-file", "", "Path to config file (overrides default locations)")
 
@@ -231,6 +235,19 @@ func main() {
 		}
 	}
 
+	// SSL host verification and insecure skip verify env vars
+	// CLI flags take priority; env vars only apply if the flag was not explicitly set
+	if !pflag.CommandLine.Changed("no-ssl-host-verification") {
+		if envVal := os.Getenv("CQLAI_NO_SSL_HOST_VERIFICATION"); envVal != "" {
+			sslNoHostVerification = envVal == "true" || envVal == "1"
+		}
+	}
+	if !pflag.CommandLine.Changed("ssl-insecure-skip-verify") {
+		if envVal := os.Getenv("CQLAI_SSL_INSECURE_SKIP_VERIFY"); envVal != "" {
+			sslInsecureSkipVerify = envVal == "true" || envVal == "1"
+		}
+	}
+
 	// Prompt for password interactively only if still empty and username was provided
 	if username != "" && password == "" && isTerminal() {
 		fmt.Fprintf(os.Stderr, "Password: ")
@@ -243,21 +260,35 @@ func main() {
 		password = string(passwordBytes)
 	}
 
+	// Build optional SSL flag pointers — only override config when explicitly set
+	var sslNoHostVerificationPtr *bool
+	if pflag.CommandLine.Changed("no-ssl-host-verification") || os.Getenv("CQLAI_NO_SSL_HOST_VERIFICATION") != "" {
+		v := !sslNoHostVerification
+		sslNoHostVerificationPtr = &v
+	}
+	var sslInsecureSkipVerifyPtr *bool
+	if pflag.CommandLine.Changed("ssl-insecure-skip-verify") || os.Getenv("CQLAI_SSL_INSECURE_SKIP_VERIFY") != "" {
+		v := sslInsecureSkipVerify
+		sslInsecureSkipVerifyPtr = &v
+	}
+
 	// Create connection options
 	connOptions := ui.ConnectionOptions{
-		Host:                host,
-		Port:                port,
-		Keyspace:            keyspace,
-		Username:            username,
-		Password:            password,
-		RequireConfirmation: !noConfirm,
-		ConnectTimeout:      connectTimeout,
-		RequestTimeout:      requestTimeout,
-		Debug:               debug,
-		ConfigFile:          configFile,
-		SSL:                 ssl,
-		Consistency:         consistency,
-		PageSize:            pageSize,
+		Host:                   host,
+		Port:                   port,
+		Keyspace:               keyspace,
+		Username:               username,
+		Password:               password,
+		RequireConfirmation:    !noConfirm,
+		ConnectTimeout:         connectTimeout,
+		RequestTimeout:         requestTimeout,
+		Debug:                  debug,
+		ConfigFile:             configFile,
+		SSL:                    ssl,
+		SSLHostVerification:    sslNoHostVerificationPtr,
+		SSLInsecureSkipVerify:  sslInsecureSkipVerifyPtr,
+		Consistency:            consistency,
+		PageSize:               pageSize,
 	}
 
 	// Check if we're in batch mode
