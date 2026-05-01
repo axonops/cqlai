@@ -25,9 +25,18 @@ func NewBinaryDecoder(registry *UDTRegistry) *BinaryDecoder {
 
 // Decode decodes binary data based on the type information
 func (d *BinaryDecoder) Decode(data []byte, typeInfo *CQLTypeInfo, keyspace string) (interface{}, error) {
-	// Handle null values
+	// Handle empty data - for text/blob types, empty data is a valid empty value, not null
+	// Null values in Cassandra are represented by a -1 length prefix, not empty data
 	if len(data) == 0 {
-		return nil, nil
+		switch typeInfo.BaseType {
+		case "ascii", "text", "varchar":
+			return "", nil // Empty string, not null
+		case "blob":
+			return []byte{}, nil // Empty blob, not null
+		default:
+			// For other types, empty data likely means null or invalid
+			return nil, nil
+		}
 	}
 
 	switch typeInfo.BaseType {
@@ -117,33 +126,24 @@ func (d *BinaryDecoder) decodeSmallInt(data []byte) (int16, error) {
 	if len(data) != 2 {
 		return 0, fmt.Errorf("invalid smallint data length: %d", len(data))
 	}
-	val := binary.BigEndian.Uint16(data)
-	if val > math.MaxInt16 {
-		return 0, fmt.Errorf("smallint value %d exceeds int16 range", val)
-	}
-	return int16(val), nil
+	// Cassandra smallint is signed 16-bit, read as unsigned and cast to preserve two's complement
+	return int16(binary.BigEndian.Uint16(data)), nil //nolint:gosec // CQL smallint is two's-complement; conversion is intentional
 }
 
 func (d *BinaryDecoder) decodeInt(data []byte) (int32, error) {
 	if len(data) != 4 {
 		return 0, fmt.Errorf("invalid int data length: %d", len(data))
 	}
-	val := binary.BigEndian.Uint32(data)
-	if val > math.MaxInt32 {
-		return 0, fmt.Errorf("int value %d exceeds int32 range", val)
-	}
-	return int32(val), nil
+	// Cassandra int is signed 32-bit, read as unsigned and cast to preserve two's complement
+	return int32(binary.BigEndian.Uint32(data)), nil //nolint:gosec // CQL int is two's-complement; conversion is intentional
 }
 
 func (d *BinaryDecoder) decodeBigInt(data []byte) (int64, error) {
 	if len(data) != 8 {
 		return 0, fmt.Errorf("invalid bigint data length: %d", len(data))
 	}
-	val := binary.BigEndian.Uint64(data)
-	if val > math.MaxInt64 {
-		return 0, fmt.Errorf("bigint value %d exceeds int64 range", val)
-	}
-	return int64(val), nil
+	// Cassandra bigint is signed 64-bit, read as unsigned and cast to preserve two's complement
+	return int64(binary.BigEndian.Uint64(data)), nil //nolint:gosec // CQL bigint is two's-complement; conversion is intentional
 }
 
 func (d *BinaryDecoder) decodeVarInt(data []byte) (*big.Int, error) {
@@ -246,12 +246,10 @@ func (d *BinaryDecoder) decodeTimestamp(data []byte) (time.Time, error) {
 	if len(data) != 8 {
 		return time.Time{}, fmt.Errorf("invalid timestamp data length: %d", len(data))
 	}
-	val := binary.BigEndian.Uint64(data)
-	// Check for overflow before converting to int64
-	if val > math.MaxInt64 {
-		return time.Time{}, fmt.Errorf("timestamp value %d exceeds int64 range", val)
-	}
-	millis := int64(val)
+	// Cassandra timestamps are signed int64 milliseconds since epoch
+	// Negative values represent dates before 1970-01-01
+	// Read as signed int64 directly (two's complement)
+	millis := int64(binary.BigEndian.Uint64(data)) //nolint:gosec // CQL timestamp is two's-complement int64; conversion is intentional
 	return time.Unix(0, millis*int64(time.Millisecond)), nil
 }
 
@@ -259,14 +257,13 @@ func (d *BinaryDecoder) decodeDate(data []byte) (time.Time, error) {
 	if len(data) != 4 {
 		return time.Time{}, fmt.Errorf("invalid date data length: %d", len(data))
 	}
+	// Cassandra DATE is stored as unsigned 32-bit integer
+	// The value 2^31 (2147483648) represents 1970-01-01 (epoch)
+	// Values < 2^31 represent dates before epoch
+	// Values > 2^31 represent dates after epoch
 	val := binary.BigEndian.Uint32(data)
-	// Check for overflow before converting to int32
-	if val > math.MaxInt32 {
-		return time.Time{}, fmt.Errorf("date value %d exceeds int32 range", val)
-	}
-	days := int32(val)
-	// Cassandra date epoch is 1970-01-01 with day precision
-	// Days are stored as days since epoch (can be negative)
+	// Convert to days relative to epoch by subtracting 2^31
+	days := int64(val) - (1 << 31)
 	epoch := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 	return epoch.AddDate(0, 0, int(days)), nil
 }
@@ -275,12 +272,9 @@ func (d *BinaryDecoder) decodeTime(data []byte) (time.Duration, error) {
 	if len(data) != 8 {
 		return 0, fmt.Errorf("invalid time data length: %d", len(data))
 	}
-	val := binary.BigEndian.Uint64(data)
-	// Check for overflow before converting to int64
-	if val > math.MaxInt64 {
-		return 0, fmt.Errorf("time value %d exceeds int64 range", val)
-	}
-	nanos := int64(val)
+	// Cassandra TIME is nanoseconds since midnight (0 to 86399999999999)
+	// Always positive, fits in int64
+	nanos := int64(binary.BigEndian.Uint64(data)) //nolint:gosec // CQL time fits in int64 (0..86399999999999); conversion is intentional
 	return time.Duration(nanos), nil
 }
 

@@ -2,139 +2,170 @@ package batch
 
 import "strings"
 
-// stripComments removes SQL-style comments from CQL statements while preserving newlines
+// stripComments removes SQL-style comments from CQL statements while respecting quoted strings.
+// It handles:
+// - Single-quoted strings 'like this' (CQL standard)
+// - Escaped quotes '' within strings
+// - Line comments: -- and //
+// - Block comments: /* ... */
 func stripComments(input string) string {
 	var result strings.Builder
-	lines := strings.Split(input, "\n")
+	result.Grow(len(input))
 
-	inBlockComment := false
-	for _, line := range lines {
-		// Handle block comments /* ... */
-		for {
-			if inBlockComment {
-				endIdx := strings.Index(line, "*/")
-				if endIdx >= 0 {
-					line = line[endIdx+2:]
-					inBlockComment = false
-				} else {
-					// Entire line is within block comment
-					line = ""
-					break
-				}
-			}
+	i := 0
+	inSingleQuote := false
 
-			startIdx := strings.Index(line, "/*")
-			if startIdx >= 0 {
-				endIdx := strings.Index(line[startIdx:], "*/")
-				if endIdx >= 0 {
-					// Block comment on same line
-					line = line[:startIdx] + line[startIdx+endIdx+2:]
-				} else {
-					// Block comment starts but doesn't end on this line
-					line = line[:startIdx]
-					inBlockComment = true
-					break
+	for i < len(input) {
+		ch := input[i]
+
+		// Handle single quotes
+		if ch == '\'' {
+			if inSingleQuote {
+				// Check for escaped quote ''
+				if i+1 < len(input) && input[i+1] == '\'' {
+					result.WriteString("''")
+					i += 2
+					continue
 				}
+				// End of quoted string
+				inSingleQuote = false
 			} else {
-				break
+				// Start of quoted string
+				inSingleQuote = true
 			}
+			result.WriteByte(ch)
+			i++
+			continue
 		}
 
-		// Handle line comments -- and //
-		if idx := strings.Index(line, "--"); idx >= 0 {
-			line = line[:idx]
-		}
-		if idx := strings.Index(line, "//"); idx >= 0 {
-			line = line[:idx]
+		// If inside quotes, just copy the character
+		if inSingleQuote {
+			result.WriteByte(ch)
+			i++
+			continue
 		}
 
-		// Trim trailing whitespace but preserve the line structure
-		line = strings.TrimRight(line, " \t\r")
+		// Not in quotes - check for comments
 
-		// Add the line (even if empty) to preserve line breaks
-		if result.Len() > 0 {
-			result.WriteString("\n")
+		// Check for -- line comment
+		if ch == '-' && i+1 < len(input) && input[i+1] == '-' {
+			// Skip until end of line
+			for i < len(input) && input[i] != '\n' {
+				i++
+			}
+			// Don't skip the newline itself - let it be processed normally
+			continue
 		}
-		result.WriteString(line)
+
+		// Check for // line comment
+		if ch == '/' && i+1 < len(input) && input[i+1] == '/' {
+			// Skip until end of line
+			for i < len(input) && input[i] != '\n' {
+				i++
+			}
+			continue
+		}
+
+		// Check for /* block comment */
+		if ch == '/' && i+1 < len(input) && input[i+1] == '*' {
+			i += 2 // Skip /*
+			// Find closing */
+			for i < len(input) {
+				if input[i] == '*' && i+1 < len(input) && input[i+1] == '/' {
+					i += 2 // Skip */
+					break
+				}
+				i++
+			}
+			continue
+		}
+
+		// Regular character - copy it
+		result.WriteByte(ch)
+		i++
 	}
 
 	return result.String()
 }
 
-// splitStatements intelligently splits CQL statements, handling BATCH blocks
+// splitStatements intelligently splits CQL statements by semicolons,
+// respecting quoted strings and handling BATCH blocks.
 func splitStatements(content string) []string {
 	var statements []string
 	var currentStmt strings.Builder
 
-	// Track if we're inside a BATCH statement
+	inSingleQuote := false
 	inBatch := false
 
-	// Track if we're accumulating a non-empty statement
-	hasContent := false
+	for i := 0; i < len(content); i++ {
+		ch := content[i]
 
-	// Process line by line to handle BATCH blocks and regular statements
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-
-		// Skip empty lines unless we're in a batch
-		if trimmedLine == "" && !inBatch && !hasContent {
+		// Handle single quotes
+		if ch == '\'' {
+			if inSingleQuote {
+				// Check for escaped quote ''
+				if i+1 < len(content) && content[i+1] == '\'' {
+					currentStmt.WriteString("''")
+					i++
+					continue
+				}
+				// End of quoted string
+				inSingleQuote = false
+			} else {
+				// Start of quoted string
+				inSingleQuote = true
+			}
+			currentStmt.WriteByte(ch)
 			continue
 		}
 
-		// Convert to uppercase for comparison
-		upperLine := strings.ToUpper(trimmedLine)
-
-		// Check for BATCH start
-		if strings.HasPrefix(upperLine, "BEGIN BATCH") ||
-		   strings.HasPrefix(upperLine, "BEGIN UNLOGGED BATCH") ||
-		   strings.HasPrefix(upperLine, "BEGIN COUNTER BATCH") {
-			inBatch = true
-			hasContent = true
+		// If inside quotes, just copy the character
+		if inSingleQuote {
+			currentStmt.WriteByte(ch)
+			continue
 		}
 
-		// Add line to current statement
-		if currentStmt.Len() > 0 {
-			currentStmt.WriteString("\n")
+		// Check for BATCH start (case-insensitive)
+		if !inBatch && (ch == 'B' || ch == 'b') {
+			remaining := strings.ToUpper(content[i:])
+			if strings.HasPrefix(remaining, "BEGIN BATCH") ||
+				strings.HasPrefix(remaining, "BEGIN UNLOGGED BATCH") ||
+				strings.HasPrefix(remaining, "BEGIN COUNTER BATCH") {
+				inBatch = true
+			}
 		}
-		currentStmt.WriteString(line)
 
-		if trimmedLine != "" {
-			hasContent = true
+		// Check for APPLY BATCH (end of batch)
+		if inBatch && (ch == 'A' || ch == 'a') {
+			remaining := strings.ToUpper(content[i:])
+			if strings.HasPrefix(remaining, "APPLY BATCH") {
+				inBatch = false
+			}
 		}
 
-		// Check if we have a complete statement
-		if strings.HasSuffix(trimmedLine, ";") {
-			if inBatch {
-				// Check if this ends the batch
-				if strings.HasPrefix(upperLine, "APPLY BATCH") {
-					inBatch = false
-					stmt := strings.TrimSpace(currentStmt.String())
-					if stmt != "" && stmt != ";" {
-						statements = append(statements, stmt)
-					}
-					currentStmt.Reset()
-					hasContent = false
-				}
-				// Otherwise, continue accumulating the batch
-			} else {
-				// Regular statement ended
+		// Handle semicolon - statement separator (unless in batch)
+		if ch == ';' {
+			currentStmt.WriteByte(ch)
+
+			if !inBatch {
+				// End of statement
 				stmt := strings.TrimSpace(currentStmt.String())
 				if stmt != "" && stmt != ";" {
 					statements = append(statements, stmt)
 				}
 				currentStmt.Reset()
-				hasContent = false
 			}
+			continue
 		}
+
+		// Regular character
+		currentStmt.WriteByte(ch)
 	}
 
 	// Add any remaining statement
-	if hasContent {
-		stmt := strings.TrimSpace(currentStmt.String())
-		if stmt != "" && stmt != ";" {
-			statements = append(statements, stmt)
-		}
+	stmt := strings.TrimSpace(currentStmt.String())
+	if stmt != "" && stmt != ";" {
+		statements = append(statements, stmt)
 	}
 
 	return statements

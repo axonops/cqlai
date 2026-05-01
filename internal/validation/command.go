@@ -42,7 +42,8 @@ func ValidateCommandSyntax(command string) error {
 	}
 
 	for _, cmd := range validMetaCommands {
-		if strings.HasPrefix(upperCommand, cmd+" ") || strings.HasPrefix(upperCommand, cmd) {
+		// Check for word boundary: exact match OR followed by space
+		if upperCommand == cmd || strings.HasPrefix(upperCommand, cmd+" ") {
 			return nil
 		}
 	}
@@ -65,26 +66,12 @@ func IsDangerousCommand(command string) bool {
 		"TRUNCATE",
 	}
 
-	// Check if the command starts with any dangerous prefix
+	// Check if the command starts with any dangerous keyword (with word boundary)
 	for _, dangerous := range dangerousCommands {
-		if strings.HasPrefix(upperCommand, dangerous) {
+		// Check for word boundary: exact match OR followed by space
+		if upperCommand == dangerous || strings.HasPrefix(upperCommand, dangerous+" ") {
 			return true
 		}
-	}
-
-	// Special case: ALTER without TABLE/KEYSPACE/MATERIALIZED VIEW is still dangerous
-	if strings.HasPrefix(upperCommand, "ALTER ") {
-		return true
-	}
-
-	// Special case: DROP without specific type is still dangerous
-	if strings.HasPrefix(upperCommand, "DROP ") {
-		return true
-	}
-
-	// Special case: REVOKE without specific type is still dangerous
-	if strings.HasPrefix(upperCommand, "REVOKE ") {
-		return true
 	}
 
 	return false

@@ -122,12 +122,31 @@ func TestBinaryDecoder_PrimitiveTypes(t *testing.T) {
 
 	t.Run("date type", func(t *testing.T) {
 		// Test a specific date
+		// Cassandra DATE uses unsigned 32-bit with 2^31 as epoch (1970-01-01)
 		date := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
 		epoch := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
-		days := int32(date.Sub(epoch).Hours() / 24)
+		daysSinceEpoch := int64(date.Sub(epoch).Hours() / 24)
+		// Add 2^31 offset for Cassandra DATE encoding
+		cassandraValue := uint32(daysSinceEpoch + (1 << 31))
 
 		data := make([]byte, 4)
-		binary.BigEndian.PutUint32(data, uint32(days))
+		binary.BigEndian.PutUint32(data, cassandraValue)
+
+		result, err := decoder.Decode(data, &CQLTypeInfo{BaseType: "date"}, "")
+		require.NoError(t, err)
+		assert.Equal(t, date, result)
+	})
+
+	t.Run("date type pre-epoch", func(t *testing.T) {
+		// Test a date before 1970
+		date := time.Date(1960, 6, 15, 0, 0, 0, 0, time.UTC)
+		epoch := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+		daysSinceEpoch := int64(date.Sub(epoch).Hours() / 24) // negative
+		// Add 2^31 offset for Cassandra DATE encoding
+		cassandraValue := uint32(daysSinceEpoch + (1 << 31))
+
+		data := make([]byte, 4)
+		binary.BigEndian.PutUint32(data, cassandraValue)
 
 		result, err := decoder.Decode(data, &CQLTypeInfo{BaseType: "date"}, "")
 		require.NoError(t, err)
@@ -160,8 +179,24 @@ func TestBinaryDecoder_PrimitiveTypes(t *testing.T) {
 		assert.Equal(t, net.IP(data), result)
 	})
 
-	t.Run("null values", func(t *testing.T) {
+	t.Run("empty text value", func(t *testing.T) {
+		// Empty data for text types is a valid empty string, not null
+		// Null in Cassandra is represented by -1 length prefix in the protocol
 		result, err := decoder.Decode([]byte{}, &CQLTypeInfo{BaseType: "text"}, "")
+		require.NoError(t, err)
+		assert.Equal(t, "", result)
+	})
+
+	t.Run("empty blob value", func(t *testing.T) {
+		// Empty data for blob types is a valid empty blob, not null
+		result, err := decoder.Decode([]byte{}, &CQLTypeInfo{BaseType: "blob"}, "")
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, result)
+	})
+
+	t.Run("empty int value", func(t *testing.T) {
+		// Empty data for non-string types is treated as null
+		result, err := decoder.Decode([]byte{}, &CQLTypeInfo{BaseType: "int"}, "")
 		require.NoError(t, err)
 		assert.Nil(t, result)
 	})

@@ -249,11 +249,17 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		}
 	}
 
+	// Use page size from config, default to 100 if not set
+	pageSize := cfg.PageSize
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+
 	s := &Session{
 		Session:          session,
 		cluster:          cluster,
 		consistency:      initialConsistency,
-		pageSize:         100,
+		pageSize:         pageSize,
 		tracing:          false,
 		username:         cfg.Username,
 		cassandraVersion: releaseVersion,

@@ -134,7 +134,8 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 	// Create session manager for tracking keyspace changes
 	sessionMgr := session.NewManager(cfg)
 	if cfg.Keyspace != "" {
-		sessionMgr.SetKeyspace(cfg.Keyspace)
+		// SetKeyspace validates the keyspace name, but config values should already be valid
+		_ = sessionMgr.SetKeyspace(cfg.Keyspace)
 	}
 
 	// Initialize router with session manager
@@ -221,9 +222,9 @@ func (e *Executor) Execute(cql string) error {
 			keyspaceName := strings.TrimPrefix(v, "Now using keyspace ")
 			keyspaceName = strings.TrimSpace(keyspaceName)
 
-			// Update the session manager
+			// Update the session manager (keyspace already validated by Cassandra)
 			if e.sessionManager != nil {
-				e.sessionManager.SetKeyspace(keyspaceName)
+				_ = e.sessionManager.SetKeyspace(keyspaceName)
 			}
 
 			// Update the database session's keyspace
