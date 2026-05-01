@@ -86,6 +86,13 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 		}
 	}
 
+	// Precompute column name to index map to avoid O(cols^2) lookup per row
+	columnIndexMap := make(map[string]int, len(result.ColumnNames))
+	for j, name := range result.ColumnNames {
+		columnIndexMap[name] = j
+	}
+
+	rowCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -101,43 +108,38 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 			row := make([]string, len(result.ColumnNames))
 			for i, col := range cols {
 				colName := col.Name
-				colIdx := -1
-				for j, name := range result.ColumnNames {
-					if name == colName {
-						colIdx = j
-						break
-					}
+				colIdx, found := columnIndexMap[colName]
+				if !found {
+					continue
 				}
 
-				if colIdx >= 0 {
-					if udtTypeInfo, hasUDT := udtColumns[i]; hasUDT {
-						// Handle UDT column
-						rawBytes := scanDest[i].(*db.RawBytes)
-						if rawBytes != nil && *rawBytes != nil && decoder != nil {
-							// Determine keyspace
-							keyspace := udtTypeInfo.Keyspace
-							if keyspace == "" {
-								keyspace = currentKeyspace
-							}
+				if udtTypeInfo, hasUDT := udtColumns[i]; hasUDT {
+					// Handle UDT column
+					rawBytes := scanDest[i].(*db.RawBytes)
+					if rawBytes != nil && *rawBytes != nil && decoder != nil {
+						// Determine keyspace
+						keyspace := udtTypeInfo.Keyspace
+						if keyspace == "" {
+							keyspace = currentKeyspace
+						}
 
-							decodedValue, err := decoder.Decode([]byte(*rawBytes), udtTypeInfo, keyspace)
-							if err == nil {
-								row[colIdx] = db.FormatValue(decodedValue)
-							} else {
-								logger.DebugfToFile("batch", "Failed to decode UDT for %s: %v", colName, err)
-								row[colIdx] = db.FormatValue(*rawBytes)
-							}
+						decodedValue, err := decoder.Decode([]byte(*rawBytes), udtTypeInfo, keyspace)
+						if err == nil {
+							row[colIdx] = db.FormatValue(decodedValue)
 						} else {
-							row[colIdx] = ""
+							logger.DebugfToFile("batch", "Failed to decode UDT for %s: %v", colName, err)
+							row[colIdx] = db.FormatValue(*rawBytes)
 						}
 					} else {
-						// Regular column
-						val := *(scanDest[i].(*interface{}))
-						if val == nil {
-							row[colIdx] = ""
-						} else {
-							row[colIdx] = db.FormatValue(val)
-						}
+						row[colIdx] = ""
+					}
+				} else {
+					// Regular column
+					val := *(scanDest[i].(*interface{}))
+					if val == nil {
+						row[colIdx] = ""
+					} else {
+						row[colIdx] = db.FormatValue(val)
 					}
 				}
 			}
@@ -145,9 +147,12 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 			if err := csvWriter.Write(row); err != nil {
 				return fmt.Errorf("failed to write CSV row: %w", err)
 			}
+			rowCount++
 
-			// Flush periodically for large result sets
-			csvWriter.Flush()
+			// Flush periodically - every 1000 rows instead of every row
+			if rowCount%1000 == 0 {
+				csvWriter.Flush()
+			}
 		}
 	}
 }

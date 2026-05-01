@@ -21,12 +21,14 @@ type FuzzyMatch struct {
 // SearchIndexManager manages the search index for fuzzy matching
 // This is separate from schema cache to optimize performance
 type SearchIndexManager struct {
-	cache           *db.SchemaCache
-	tableIndex      map[string]*TableSearchEntry // keyspace.table -> search entry
-	lastIndexBuild  time.Time
-	indexTTL        time.Duration
-	mu              sync.RWMutex
-	buildInProgress bool
+	cache              *db.SchemaCache
+	tableIndex         map[string]*TableSearchEntry // keyspace.table -> search entry
+	lastIndexBuild     time.Time
+	lastAccessUpdate   time.Time // Last time we updated access timestamps (for debouncing)
+	indexTTL           time.Duration
+	mu                 sync.RWMutex
+	buildInProgress    bool
+	pendingAccessBatch []FuzzyMatch // Batched access updates
 }
 
 // TableSearchEntry contains search metadata for a table
@@ -132,14 +134,13 @@ func (sim *SearchIndexManager) FindTables(query string, limit int) []FuzzyMatch 
 		logger.DebugfToFile("SearchIndexManager", "Failed to build index: %v", err)
 	}
 
-	sim.mu.RLock()
-	defer sim.mu.RUnlock()
-
 	queryLower := strings.ToLower(query)
 	queryTokens := tokenizeTableName(query)
 
 	var matches []FuzzyMatch
 
+	// Hold read lock only during the search
+	sim.mu.RLock()
 	for _, entry := range sim.tableIndex {
 		score := calculateFuzzyScore(queryLower, queryTokens, entry)
 
@@ -152,6 +153,7 @@ func (sim *SearchIndexManager) FindTables(query string, limit int) []FuzzyMatch 
 			})
 		}
 	}
+	sim.mu.RUnlock()
 
 	// Sort by score (highest first)
 	sortFuzzyMatches(matches)
@@ -161,24 +163,39 @@ func (sim *SearchIndexManager) FindTables(query string, limit int) []FuzzyMatch 
 		matches = matches[:limit]
 	}
 
-	// Update last accessed time for matched entries
-	go sim.updateLastAccessed(matches)
+	// Debounce last accessed time updates (only update every 30 seconds)
+	sim.maybeUpdateLastAccessed(matches)
 
 	return matches
 }
 
-// updateLastAccessed updates the last accessed time for matched entries
-func (sim *SearchIndexManager) updateLastAccessed(matches []FuzzyMatch) {
+// accessUpdateDebounce is the minimum interval between access timestamp updates
+const accessUpdateDebounce = 30 * time.Second
+
+// maybeUpdateLastAccessed updates access timestamps with debouncing
+// to avoid spawning goroutines for every FindTables call
+func (sim *SearchIndexManager) maybeUpdateLastAccessed(matches []FuzzyMatch) {
 	sim.mu.Lock()
 	defer sim.mu.Unlock()
 
+	// Batch the matches
+	sim.pendingAccessBatch = append(sim.pendingAccessBatch, matches...)
+
+	// Check if we should flush the batch
+	if time.Since(sim.lastAccessUpdate) < accessUpdateDebounce {
+		return
+	}
+
+	// Flush the batch
 	now := time.Now()
-	for _, match := range matches {
+	for _, match := range sim.pendingAccessBatch {
 		key := fmt.Sprintf("%s.%s", match.Keyspace, match.Table)
 		if entry, ok := sim.tableIndex[key]; ok {
 			entry.LastAccessed = now
 		}
 	}
+	sim.pendingAccessBatch = nil
+	sim.lastAccessUpdate = now
 }
 
 // calculateFuzzyScore calculates the fuzzy match score

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -251,6 +252,9 @@ func (pw *PartitionedParquetWriter) WriteRows(rows []map[string]interface{}) err
 			for key := range cleanRows[0] {
 				columnNames = append(columnNames, key)
 			}
+			// Sort column names to ensure consistent ordering across partitions
+			// Go map iteration order is non-deterministic
+			sort.Strings(columnNames)
 		}
 
 		writer, err := pw.getOrCreateWriter(partitionKey, columnNames)
@@ -264,6 +268,18 @@ func (pw *PartitionedParquetWriter) WriteRows(rows []map[string]interface{}) err
 		}
 
 		writer.rowCount += int64(len(partitionRows))
+
+		// Update file size tracking - flush to get accurate size on disk
+		if writer.maxFileSize > 0 {
+			// Flush to disk to get accurate file size
+			if err := writer.writer.Flush(); err != nil {
+				return fmt.Errorf("failed to flush partition %s: %w", partitionKey, err)
+			}
+			// Get actual file size from disk
+			if info, err := os.Stat(writer.filePath); err == nil {
+				writer.fileSize = info.Size()
+			}
+		}
 
 		// Check if we need to rotate the file
 		if writer.maxFileSize > 0 && writer.fileSize > writer.maxFileSize {

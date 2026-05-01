@@ -24,34 +24,75 @@ func GetMetaHandler() *MetaCommandHandler {
 	return metaHandler
 }
 
-// stripComments removes SQL-style comments from a command
+// stripComments removes SQL-style comments from a command while respecting quoted strings.
+// It handles single-quoted strings, escaped quotes (''), and both line (--) and block (/* */) comments.
 func stripComments(input string) string {
-	// First handle line comments (-- and //)
-	// These take precedence and terminate the line
-	if idx := strings.Index(input, "--"); idx >= 0 {
-		input = input[:idx]
-	}
-	if idx := strings.Index(input, "//"); idx >= 0 {
-		input = input[:idx]
-	}
-	
-	// Then handle block comments /* ... */
-	for {
-		startIdx := strings.Index(input, "/*")
-		if startIdx < 0 {
+	var result strings.Builder
+	result.Grow(len(input))
+
+	inSingleQuote := false
+
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+
+		// Handle single quotes
+		if ch == '\'' {
+			if inSingleQuote {
+				// Check for escaped quote ''
+				if i+1 < len(input) && input[i+1] == '\'' {
+					result.WriteString("''")
+					i++
+					continue
+				}
+				// End of quoted string
+				inSingleQuote = false
+			} else {
+				// Start of quoted string
+				inSingleQuote = true
+			}
+			result.WriteByte(ch)
+			continue
+		}
+
+		// If inside quotes, just copy the character
+		if inSingleQuote {
+			result.WriteByte(ch)
+			continue
+		}
+
+		// Not in quotes - check for comments
+
+		// Check for -- line comment
+		if ch == '-' && i+1 < len(input) && input[i+1] == '-' {
+			// Skip rest of input (single-line command context)
 			break
 		}
-		endIdx := strings.Index(input[startIdx:], "*/")
-		if endIdx < 0 {
-			// Block comment starts but doesn't end
-			input = input[:startIdx]
+
+		// Check for // line comment
+		if ch == '/' && i+1 < len(input) && input[i+1] == '/' {
+			// Skip rest of input
 			break
 		}
-		// Remove the block comment
-		input = input[:startIdx] + input[startIdx+endIdx+2:]
+
+		// Check for /* block comment */
+		if ch == '/' && i+1 < len(input) && input[i+1] == '*' {
+			i += 2 // Skip /*
+			// Find closing */
+			for i < len(input) {
+				if input[i] == '*' && i+1 < len(input) && input[i+1] == '/' {
+					i++ // Will be incremented again by loop
+					break
+				}
+				i++
+			}
+			continue
+		}
+
+		// Regular character
+		result.WriteByte(ch)
 	}
-	
-	return strings.TrimSpace(input)
+
+	return strings.TrimSpace(result.String())
 }
 
 // ProcessCommand processes a user command.
@@ -89,7 +130,8 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s', trimmed: '%s', upper: '%s'", command, trimmedCommand, upperCommand)
 
 	for _, meta := range metaCommands {
-		if strings.HasPrefix(upperCommand, meta) {
+		// Check for word boundary: command equals meta OR starts with "meta "
+		if upperCommand == meta || strings.HasPrefix(upperCommand, meta+" ") {
 			isMetaCommand = true
 			logger.DebugfToFile("ProcessCommand", "Detected meta-command (matched %s)", meta)
 			break
@@ -97,7 +139,10 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	}
 
 	// Special handling for SHOW commands that might be CQL
-	if strings.HasPrefix(upperCommand, "SHOW") && !strings.Contains(upperCommand, "VERSION") && !strings.Contains(upperCommand, "HOST") && !strings.Contains(upperCommand, "SESSION") {
+	if (upperCommand == "SHOW" || strings.HasPrefix(upperCommand, "SHOW ")) &&
+		!strings.Contains(upperCommand, "VERSION") &&
+		!strings.Contains(upperCommand, "HOST") &&
+		!strings.Contains(upperCommand, "SESSION") {
 		// SHOW commands that aren't meta-commands should be treated as CQL
 		isMetaCommand = false
 	}
@@ -109,14 +154,11 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	} else {
 		// Check if we need to transform SELECT to SELECT JSON
 		if sessionManager != nil && sessionManager.GetOutputFormat() == config.OutputFormatJSON {
-			// Check if it's a SELECT query that should be transformed
-			if strings.HasPrefix(upperCommand, "SELECT") && !strings.Contains(upperCommand, "SELECT JSON") {
-				// Transform SELECT to SELECT JSON
-				// Find the position of SELECT and insert JSON after it
-				selectPos := strings.Index(upperCommand, "SELECT")
-				if selectPos >= 0 {
-					// Insert JSON after SELECT
-					modifiedCommand := command[:selectPos+6] + " JSON" + command[selectPos+6:]
+			// Check if it's a SELECT query that should be transformed (with word boundary)
+			if (upperCommand == "SELECT" || strings.HasPrefix(upperCommand, "SELECT ")) && !strings.Contains(upperCommand, "SELECT JSON") {
+				// Use db.ConvertToJSONQuery which properly handles SELECT DISTINCT
+				modifiedCommand := db.ConvertToJSONQuery(command)
+				if modifiedCommand != command {
 					logger.DebugfToFile("ProcessCommand", "Transformed query to: %s", modifiedCommand)
 					return session.ExecuteCQLQuery(modifiedCommand)
 				}
@@ -278,7 +320,9 @@ func handleOutputCommand(command string, session *db.Session) interface{} {
 		if err != nil {
 			return fmt.Sprintf("Invalid output format '%s'. Valid formats are: TABLE, ASCII, EXPAND, JSON", formatStr)
 		}
-		sessionManager.SetOutputFormat(format)
+		if err := sessionManager.SetOutputFormat(format); err != nil {
+			return fmt.Sprintf("Failed to set output format: %v", err)
+		}
 		return fmt.Sprintf("Now using %s output format", formatStr)
 	}
 
