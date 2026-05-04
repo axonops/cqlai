@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/batch"
+	"github.com/axonops/cqlai/internal/textmode"
 	"github.com/axonops/cqlai/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/pflag"
@@ -19,11 +21,11 @@ var Version = "dev"
 func main() {
 	// Parse command-line flags using pflag for POSIX/GNU-style flags
 	var (
-		host           string
-		port           int
-		keyspace       string
-		username       string
-		password       string
+		host                  string
+		port                  int
+		keyspace              string
+		username              string
+		password              string
 		noConfirm             bool
 		connectTimeout        int
 		requestTimeout        int
@@ -32,15 +34,16 @@ func main() {
 		sslNoHostVerification bool
 		sslInsecureSkipVerify bool
 		consistency           string
-		execute        string
-		executeFile    string
-		format         string
-		noHeader       bool
-		fieldSep       string
-		pageSize       int
-		configFile     string
-		version        bool
-		help           bool
+		execute               string
+		executeFile           string
+		format                string
+		noHeader              bool
+		fieldSep              string
+		pageSize              int
+		configFile            string
+		version               bool
+		help                  bool
+		noTUI                 bool
 	)
 
 	// Connection flags
@@ -66,6 +69,10 @@ func main() {
 	pflag.BoolVar(&noHeader, "no-header", false, "Don't output column headers (CSV format)")
 	pflag.StringVar(&fieldSep, "field-separator", ",", "Field separator for CSV output")
 	pflag.IntVar(&pageSize, "page-size", 100, "Pagination size for batch mode")
+
+	// Text-mode REPL flag
+	pflag.BoolVar(&noTUI, "no-tui", false, "Launch the interactive text-mode REPL instead of the TUI")
+	pflag.BoolVar(&noTUI, "repl", false, "Alias for --no-tui")
 
 	// Version and help flags
 	pflag.BoolVarP(&version, "version", "V", false, "Print version and exit")
@@ -252,7 +259,7 @@ func main() {
 	if username != "" && password == "" && isTerminal() {
 		fmt.Fprintf(os.Stderr, "Password: ")
 		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // G115: fd conversion is safe on all supported platforms
-		fmt.Fprintln(os.Stderr) // Print newline after password input
+		fmt.Fprintln(os.Stderr)                                     // Print newline after password input
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
 			os.Exit(1)
@@ -274,25 +281,32 @@ func main() {
 
 	// Create connection options
 	connOptions := ui.ConnectionOptions{
-		Host:                   host,
-		Port:                   port,
-		Keyspace:               keyspace,
-		Username:               username,
-		Password:               password,
-		RequireConfirmation:    !noConfirm,
-		ConnectTimeout:         connectTimeout,
-		RequestTimeout:         requestTimeout,
-		Debug:                  debug,
-		ConfigFile:             configFile,
-		SSL:                    ssl,
-		SSLHostVerification:    sslNoHostVerificationPtr,
-		SSLInsecureSkipVerify:  sslInsecureSkipVerifyPtr,
-		Consistency:            consistency,
-		PageSize:               pageSize,
+		Host:                  host,
+		Port:                  port,
+		Keyspace:              keyspace,
+		Username:              username,
+		Password:              password,
+		RequireConfirmation:   !noConfirm,
+		ConnectTimeout:        connectTimeout,
+		RequestTimeout:        requestTimeout,
+		Debug:                 debug,
+		ConfigFile:            configFile,
+		SSL:                   ssl,
+		SSLHostVerification:   sslNoHostVerificationPtr,
+		SSLInsecureSkipVerify: sslInsecureSkipVerifyPtr,
+		Consistency:           consistency,
+		PageSize:              pageSize,
 	}
 
 	// Check if we're in batch mode
 	isBatchMode := execute != "" || executeFile != "" || !isTerminal()
+
+	// Check if text-mode REPL was explicitly requested via env var as well.
+	if !noTUI {
+		if envNoTUI := os.Getenv("CQLAI_NO_TUI"); envNoTUI == "true" || envNoTUI == "1" {
+			noTUI = true
+		}
+	}
 
 	if isBatchMode {
 		// Batch mode execution
@@ -328,6 +342,35 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	} else if noTUI {
+		// Text-mode REPL (--no-tui / --repl)
+		replExecutor, err := batch.NewExecutor(&batch.Options{
+			Format:      batch.OutputFormat(strings.ToLower(format)),
+			NoHeader:    noHeader,
+			FieldSep:    fieldSep,
+			PageSize:    pageSize,
+			ConnOptions: connOptions,
+		}, os.Stdout)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		sess := replExecutor.Session()
+		sessMgr := replExecutor.SessionManager()
+
+		replOpts := textmode.Options{
+			Format:   format,
+			PageSize: pageSize,
+			NoHeader: noHeader,
+			FieldSep: fieldSep,
+			Version:  Version,
+		}
+		if err := textmode.Run(context.Background(), sess, sessMgr, replOpts); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			_ = replExecutor.Close()
+			os.Exit(1)
+		}
+		_ = replExecutor.Close()
 	} else {
 		// Interactive mode - use Bubble Tea UI
 		m, err := ui.NewMainModelWithConnectionOptions(connOptions)

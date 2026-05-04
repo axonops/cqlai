@@ -14,6 +14,10 @@ import (
 var metaHandler *MetaCommandHandler
 var sessionManager *session.Manager
 
+// ExitSignal is returned by ProcessCommand when the user runs EXIT or QUIT.
+// Callers (text-mode REPL, etc.) should treat this as a request to terminate.
+type ExitSignal struct{}
+
 // InitRouter initializes the router with a session manager
 func InitRouter(mgr *session.Manager) {
 	sessionManager = mgr
@@ -34,7 +38,7 @@ func stripComments(input string) string {
 	if idx := strings.Index(input, "//"); idx >= 0 {
 		input = input[:idx]
 	}
-	
+
 	// Then handle block comments /* ... */
 	for {
 		startIdx := strings.Index(input, "/*")
@@ -50,7 +54,7 @@ func stripComments(input string) string {
 		// Remove the block comment
 		input = input[:startIdx] + input[startIdx+endIdx+2:]
 	}
-	
+
 	return strings.TrimSpace(input)
 }
 
@@ -84,7 +88,7 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	trimmedCommand := strings.TrimSuffix(strings.TrimSpace(command), ";")
 	upperCommand := strings.ToUpper(trimmedCommand)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP", "SAVE"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP", "SAVE", "EXIT", "QUIT"}
 
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s', trimmed: '%s', upper: '%s'", command, trimmedCommand, upperCommand)
 
@@ -217,6 +221,12 @@ func parseMetaCommand(command string, session *db.Session, sessionMgr *session.M
 	command = strings.TrimSpace(command)
 	command = strings.TrimSuffix(command, ";")
 	upperCommand := strings.ToUpper(strings.TrimSpace(command))
+
+	// Handle EXIT / QUIT — return a sentinel so callers can break their loop.
+	// The TUI short-circuits before reaching here, so this only fires in text mode.
+	if upperCommand == "EXIT" || upperCommand == "QUIT" {
+		return ExitSignal{}
+	}
 
 	// Handle OUTPUT command with simple string parsing
 	if strings.HasPrefix(upperCommand, "OUTPUT") {

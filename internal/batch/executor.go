@@ -31,14 +31,14 @@ const (
 
 // Options contains batch execution options
 type Options struct {
-	Execute      string       // CQL to execute directly (-e flag)
-	File         string       // CQL file to execute (-f flag)
-	Format       OutputFormat // Output format
-	NoHeader     bool         // Skip headers in output
-	FieldSep     string       // Field separator for CSV
-	NoPager      bool         // Disable paging (print all results)
-	PageSize     int          // Number of rows per batch for streaming
-	ConnOptions  ui.ConnectionOptions
+	Execute     string       // CQL to execute directly (-e flag)
+	File        string       // CQL file to execute (-f flag)
+	Format      OutputFormat // Output format
+	NoHeader    bool         // Skip headers in output
+	FieldSep    string       // Field separator for CSV
+	NoPager     bool         // Disable paging (print all results)
+	PageSize    int          // Number of rows per batch for streaming
+	ConnOptions ui.ConnectionOptions
 }
 
 // Executor handles batch mode execution
@@ -146,6 +146,17 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		options:        options,
 		writer:         writer,
 	}, nil
+}
+
+// Session returns the underlying database session.
+// Used by callers (e.g. text-mode REPL) that need direct access after setup.
+func (e *Executor) Session() *db.Session {
+	return e.session
+}
+
+// SessionManager returns the session manager.
+func (e *Executor) SessionManager() *session.Manager {
+	return e.sessionManager
 }
 
 // Close closes the executor and its resources
@@ -288,8 +299,8 @@ func (e *Executor) ExecuteStdin() error {
 
 		// Check for BATCH start
 		if strings.HasPrefix(upperLine, "BEGIN BATCH") ||
-		   strings.HasPrefix(upperLine, "BEGIN UNLOGGED BATCH") ||
-		   strings.HasPrefix(upperLine, "BEGIN COUNTER BATCH") {
+			strings.HasPrefix(upperLine, "BEGIN UNLOGGED BATCH") ||
+			strings.HasPrefix(upperLine, "BEGIN COUNTER BATCH") {
 			inBatch = true
 		}
 
