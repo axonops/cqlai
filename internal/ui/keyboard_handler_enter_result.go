@@ -646,7 +646,9 @@ func (m *MainModel) processStringResult(command string, v string) (*MainModel, t
 		keyspace := strings.TrimPrefix(v, "Now using keyspace ")
 		keyspace = strings.TrimSpace(keyspace)
 		if m.sessionManager != nil {
-			m.sessionManager.SetKeyspace(keyspace)
+			if err := m.sessionManager.SetKeyspace(keyspace); err != nil {
+				logger.DebugfToFile("keyboard_handler_enter", "Failed to update session manager keyspace: %v", err)
+			}
 			// Update the status bar
 			m.statusBar.Keyspace = keyspace
 		}

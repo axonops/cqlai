@@ -184,6 +184,7 @@ func (w *ParquetCaptureWriter) WriteRow(row map[string]interface{}) error {
 		if err := w.typeMapper.AppendValueToBuilder(columnBuilder, value, field.Type); err != nil {
 			logger.DebugfToFile("ParquetWriter", "Error appending value for column %s: %v", field.Name, err)
 			// Continue with other columns even if one fails
+			// TODO: Fix underlying type conversion issues and then surface this error
 		}
 	}
 

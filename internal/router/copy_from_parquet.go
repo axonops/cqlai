@@ -317,13 +317,15 @@ func (h *MetaCommandHandler) formatStringValue(value string, columnName string, 
 }
 
 // isUUIDColumn checks if a column should be treated as UUID
+// Only matches columns where the parquet type or column name explicitly contains "uuid".
+// Avoids false positives for columns like "provider_id" or "valid" that might store
+// UUID-formatted strings in TEXT columns.
 func (h *MetaCommandHandler) isUUIDColumn(columnName string, parquetType string) bool {
 	lowerType := strings.ToLower(parquetType)
 	lowerCol := strings.ToLower(columnName)
 
 	return strings.Contains(lowerType, "uuid") ||
-		strings.Contains(lowerCol, "uuid") ||
-		strings.Contains(lowerCol, "id")
+		strings.Contains(lowerCol, "uuid")
 }
 
 // isUUIDFormat checks if a string is a valid UUID using the google/uuid library

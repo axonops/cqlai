@@ -168,7 +168,7 @@ type Message struct {
 
 // extractJSON attempts to extract JSON from a text response
 func extractJSON(text string) string {
-	// Look for JSON between ```json and ``` markers
+	// First priority: Look for JSON between ```json and ``` markers
 	startMarker := JSONStartMarker
 	endMarker := JSONEndMarker
 	startIdx := strings.Index(text, startMarker)
@@ -176,16 +176,65 @@ func extractJSON(text string) string {
 		startIdx += len(startMarker)
 		endIdx := strings.Index(text[startIdx:], endMarker)
 		if endIdx != -1 {
-			return strings.TrimSpace(text[startIdx : startIdx+endIdx])
+			candidate := strings.TrimSpace(text[startIdx : startIdx+endIdx])
+			// Validate it's actual JSON
+			if json.Valid([]byte(candidate)) {
+				return candidate
+			}
 		}
 	}
 
-	// Look for JSON between { and }
+	// Second priority: Extract balanced JSON object
 	startIdx = strings.Index(text, "{")
 	if startIdx != -1 {
-		endIdx := strings.LastIndex(text, "}")
-		if endIdx != -1 && endIdx > startIdx {
-			return text[startIdx : endIdx+1]
+		// Find the matching closing brace by counting braces
+		candidate := extractBalancedJSON(text[startIdx:])
+		if candidate != "" && json.Valid([]byte(candidate)) {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+// extractBalancedJSON extracts a balanced JSON object from text starting with {
+func extractBalancedJSON(text string) string {
+	if len(text) == 0 || text[0] != '{' {
+		return ""
+	}
+
+	depth := 0
+	inString := false
+	escaped := false
+
+	for i, c := range text {
+		if escaped {
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && inString {
+			escaped = true
+			continue
+		}
+
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+
+		if inString {
+			continue
+		}
+
+		switch c {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return text[:i+1]
+			}
 		}
 	}
 

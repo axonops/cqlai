@@ -28,9 +28,11 @@ type Config struct {
 	Debug               bool            `json:"debug,omitempty"`               // Enable debug logging
 	HistoryFile         string          `json:"historyFile,omitempty"`         // Path to CQL command history file
 	AIHistoryFile       string          `json:"aiHistoryFile,omitempty"`       // Path to AI command history file
+	OutputFormat        string          `json:"outputFormat,omitempty"`        // Default output format (TABLE, ASCII, EXPAND, JSON)
 	SSL                 *SSLConfig      `json:"ssl,omitempty"`
 	AI                  *AIConfig       `json:"ai,omitempty"`
 	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`
+	LoadWarnings        []string        `json:"-"` // Warnings from loading config files (not serialized)
 }
 
 // AuthProvider holds authentication provider configuration
@@ -108,17 +110,32 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 
 	logger.DebugfToFile("Config", "Looking for cqlshrc files in: %v", cqlshrcPaths)
 
+	var cqlshrcWarnings []string
 	for _, path := range cqlshrcPaths {
 		logger.DebugfToFile("Config", "Attempting to load cqlshrc from: %s", path)
-		if err := loadCQLSHRC(path, config); err == nil {
+		err := loadCQLSHRC(path, config)
+		switch {
+		case err == nil:
 			logger.DebugfToFile("Config", "Successfully loaded cqlshrc from: %s", path)
 			logger.DebugfToFile("Config", "Config after cqlshrc: host=%s, port=%d, username=%s, keyspace=%s",
 				config.Host, config.Port, config.Username, config.Keyspace)
+		case os.IsNotExist(err):
+			logger.DebugfToFile("Config", "cqlshrc not found at %s", path)
+		case os.IsPermission(err):
+			warning := fmt.Sprintf("Warning: Cannot read cqlshrc at %s: permission denied", path)
+			cqlshrcWarnings = append(cqlshrcWarnings, warning)
+			logger.DebugfToFile("Config", "Permission denied reading cqlshrc: %s", path)
+		default:
+			warning := fmt.Sprintf("Warning: Error loading cqlshrc from %s: %v", path, err)
+			cqlshrcWarnings = append(cqlshrcWarnings, warning)
+			logger.DebugfToFile("Config", "Error loading cqlshrc from %s: %v", path, err)
+		}
+		if err == nil {
 			break
-		} else {
-			logger.DebugfToFile("Config", "Failed to load cqlshrc from %s: %v", path, err)
 		}
 	}
+	// Store warnings in config for caller to handle
+	config.LoadWarnings = cqlshrcWarnings
 
 	// Then check JSON config file locations (these will override CQLSHRC settings)
 	var configPaths []string
@@ -438,7 +455,7 @@ func loadCQLSHRC(path string, config *Config) error {
 		// Parse key-value pairs
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
-			logger.DebugfToFile("CQLSHRC", "Skipping invalid line %d (no '=' found): %s", lineNum, line)
+			logger.DebugfToFile("CQLSHRC", "Skipping invalid line %d (no '=' found)", lineNum)
 			continue
 		}
 
@@ -451,7 +468,12 @@ func loadCQLSHRC(path string, config *Config) error {
 			value = value[1 : len(value)-1]
 		}
 		
-		logger.DebugfToFile("CQLSHRC", "Section [%s], key=%s, value=%s", currentSection, key, value)
+		// Mask sensitive values in debug logs
+		logValue := value
+		if strings.ToLower(key) == "password" || strings.Contains(strings.ToLower(key), "api") || strings.Contains(strings.ToLower(key), "secret") {
+			logValue = "(hidden)"
+		}
+		logger.DebugfToFile("CQLSHRC", "Section [%s], key=%s, value=%s", currentSection, key, logValue)
 
 		// Map CQLSHRC values to config
 		switch currentSection {
@@ -554,6 +576,12 @@ func loadCQLSHRC(path string, config *Config) error {
 
 	// If a credentials file was specified, try to load it
 	if credentialsPath != "" {
+		// Resolve relative paths relative to the cqlshrc file location
+		if !filepath.IsAbs(credentialsPath) && !strings.HasPrefix(credentialsPath, "~") {
+			cqlshrcDir := filepath.Dir(path)
+			credentialsPath = filepath.Join(cqlshrcDir, credentialsPath)
+			logger.DebugfToFile("CQLSHRC", "Resolved relative credentials path to: %s", credentialsPath)
+		}
 		logger.DebugfToFile("CQLSHRC", "Loading credentials file: %s", credentialsPath)
 		if err := loadCredentialsFile(credentialsPath, config); err != nil {
 			logger.DebugfToFile("CQLSHRC", "Failed to load credentials file: %v", err)
@@ -609,7 +637,8 @@ func loadCredentialsFile(path string, config *Config) error {
 			continue
 		}
 		
-		logger.DebugfToFile("Credentials", "Line %d: %s", lineNum, line)
+		// Don't log raw lines as they may contain passwords
+		logger.DebugfToFile("Credentials", "Processing line %d", lineNum)
 
 		// Check for section headers
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
@@ -627,7 +656,7 @@ func loadCredentialsFile(path string, config *Config) error {
 		// Parse key-value pairs
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
-			logger.DebugfToFile("Credentials", "Skipping invalid line %d (no '=' found): %s", lineNum, line)
+			logger.DebugfToFile("Credentials", "Skipping invalid line %d (no '=' found)", lineNum)
 			continue
 		}
 

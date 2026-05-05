@@ -14,9 +14,11 @@ import (
 )
 
 const (
-	openAiBaseURL     = "https://api.openai.com/v1"
-	openRouterBaseURL = "https://openrouter.ai/api/v1"
-	ollamaBaseURL     = "http://localhost:11434/v1"
+	openAiBaseURL        = "https://api.openai.com/v1"
+	openRouterBaseURL    = "https://openrouter.ai/api/v1"
+	ollamaBaseURL        = "http://localhost:11434/v1"
+	maxConversations     = 100              // Maximum number of conversations to keep
+	conversationMaxAge   = 24 * time.Hour   // Maximum age before cleanup
 )
 
 // ConversationManager manages ongoing AI conversations
@@ -38,6 +40,11 @@ func GetConversationManager() *ConversationManager {
 func (cm *ConversationManager) StartConversation(provider, model, apiKey, baseURL, request, schemaContext string) (*AIConversation, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+
+	// Cleanup old conversations if we have too many
+	if len(cm.conversations) >= maxConversations {
+		cm.cleanupLocked()
+	}
 
 	conv := &AIConversation{
 		ID:              fmt.Sprintf("conv-%d", time.Now().UnixNano()),
@@ -139,6 +146,48 @@ func (cm *ConversationManager) CleanupOldConversations(maxAge time.Duration) {
 			delete(cm.conversations, id)
 			logger.DebugfToFile("ConversationManager", "Cleaned up old conversation %s", id)
 		}
+	}
+}
+
+// cleanupLocked removes old conversations (must be called with lock held)
+func (cm *ConversationManager) cleanupLocked() {
+	cutoff := time.Now().Add(-conversationMaxAge)
+	cleaned := 0
+
+	// First pass: remove conversations older than maxAge
+	for id, conv := range cm.conversations {
+		if conv.LastActivity.Before(cutoff) {
+			delete(cm.conversations, id)
+			cleaned++
+			logger.DebugfToFile("ConversationManager", "Cleaned up old conversation %s", id)
+		}
+	}
+
+	// Second pass: if still over limit, remove oldest conversations
+	for len(cm.conversations) >= maxConversations {
+		var oldestID string
+		var oldestTime time.Time
+		first := true
+
+		for id, conv := range cm.conversations {
+			if first || conv.LastActivity.Before(oldestTime) {
+				oldestID = id
+				oldestTime = conv.LastActivity
+				first = false
+			}
+		}
+
+		if oldestID != "" {
+			delete(cm.conversations, oldestID)
+			cleaned++
+			logger.DebugfToFile("ConversationManager", "Evicted oldest conversation %s to stay under limit", oldestID)
+		} else {
+			break
+		}
+	}
+
+	if cleaned > 0 {
+		logger.DebugfToFile("ConversationManager", "Cleanup complete: removed %d conversations, %d remaining", cleaned, len(cm.conversations))
 	}
 }
 
