@@ -71,8 +71,8 @@ func (swt *SlidingWindowTable) AddRow(row []string) {
 
 // needsEviction checks if we need to evict rows before adding a new one
 func (swt *SlidingWindowTable) needsEviction(newRowMemory int64) bool {
-	// Check row count limit
-	if len(swt.Rows) >= swt.MaxRows {
+	// Check row count limit (MaxRows=0 means no limit)
+	if swt.MaxRows > 0 && len(swt.Rows) >= swt.MaxRows {
 		return true
 	}
 	
@@ -101,8 +101,9 @@ func (swt *SlidingWindowTable) evictOldestRows(neededMemory int64) {
 		rowsToEvict++
 		
 		// Stop if we've freed enough memory and evicted minimum
-		if rowsToEvict >= minEvict && 
-		   (len(swt.Rows) - rowsToEvict < swt.MaxRows) &&
+		// MaxRows=0 means no row limit, only memory limit applies
+		if rowsToEvict >= minEvict &&
+		   (swt.MaxRows == 0 || len(swt.Rows) - rowsToEvict < swt.MaxRows) &&
 		   (swt.CurrentMemory - freedMemory + neededMemory <= swt.MaxMemoryBytes) {
 			break
 		}

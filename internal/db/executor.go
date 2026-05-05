@@ -384,29 +384,6 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 
 	iter := q.Iter()
 
-	// Check for connection errors early
-	if err := iter.Close(); err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "connection refused") ||
-			strings.Contains(errStr, "no connections") ||
-			strings.Contains(errStr, "unable to connect") {
-			return fmt.Errorf("connection lost to Cassandra - please check if the server is running")
-		}
-		// Re-create the iterator if no connection error
-		q = s.Query(query)
-		if s.tracing && tracer != nil {
-			q = q.Trace(tracer)
-		}
-		iter = q.Iter()
-	} else {
-		// Re-create the iterator since we closed it
-		q = s.Query(query)
-		if s.tracing && tracer != nil {
-			q = q.Trace(tracer)
-		}
-		iter = q.Iter()
-	}
-
 	// Get column info
 	columns := iter.Columns()
 	logger.DebugfToFile("executeSelectQuery", "Number of columns: %d", len(columns))

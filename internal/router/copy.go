@@ -227,9 +227,13 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 			}
 		}
 
-		// Write data rows
+		// Write data rows - skip first row since v.Data[0] contains headers
 		rowCount := 0
-		for _, row := range v.Data {
+		dataRows := v.Data
+		if len(dataRows) > 0 {
+			dataRows = dataRows[1:] // Skip header row in Data
+		}
+		for _, row := range dataRows {
 			// Replace nulls with NULLVAL option if specified
 			processedRow := make([]string, len(row))
 			nullVal := options["NULLVAL"]

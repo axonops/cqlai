@@ -194,9 +194,9 @@ func (h *MetaCommandHandler) handlePaging(command string) interface{} {
 	case 2:
 		// Check if it's "PAGING OFF"
 		if strings.ToUpper(parts[1]) == "OFF" {
-			// Set to a large value to effectively disable paging
-			h.session.SetPageSize(10000)
-			return "Paging disabled (set to 10000)"
+			// Set to 0 to disable client-side paging (uses server defaults)
+			h.session.SetPageSize(0)
+			return "Paging disabled (using server defaults)"
 		}
 
 		// Try to parse the page size

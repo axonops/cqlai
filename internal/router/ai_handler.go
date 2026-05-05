@@ -26,7 +26,7 @@ func InitAIHandler(session *db.Session) error {
 		MaxTokens:   2000,
 	}
 	
-	aiInstance, err := ai.NewAI(session, config)
+	aiInstance, err := ai.NewAIWithCache(session, config)
 	if err != nil {
 		return fmt.Errorf("failed to initialize AI: %w", err)
 	}

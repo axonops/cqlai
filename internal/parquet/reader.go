@@ -13,7 +13,8 @@ import (
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
-// ParquetReader reads data from Parquet files
+// ParquetReader reads data from Parquet files using row-group streaming
+// to avoid loading the entire file into memory
 type ParquetReader struct {
 	file         *os.File
 	reader       *file.Reader
@@ -21,10 +22,13 @@ type ParquetReader struct {
 	schema       *arrow.Schema
 	columnNames  []string
 	columnTypes  []string
-	rowGroupIdx  int
-	currentBatch arrow.RecordBatch
-	batchIdx     int
+	allColumns   []int // Explicit list of all leaf column indices; nil means "no columns" in pqarrow
+	rowGroupIdx  int   // Current row group being processed
+	numRowGroups int   // Total number of row groups
+	currentBatch arrow.RecordBatch // Current record batch
+	batchIdx     int   // Current row index within current batch
 	totalRows    int64
+	exhausted    bool  // True when all data has been read
 }
 
 // NewParquetReader creates a new Parquet reader
@@ -73,6 +77,15 @@ func NewParquetReader(filename string) (*ParquetReader, error) {
 	}
 
 
+	// Build explicit list of all leaf column indices. pqarrow.ReadRowGroups
+	// treats nil as "no columns", not "all columns" — see ReadTable in
+	// vendor/.../pqarrow/file_reader.go for the equivalent pattern.
+	numCols := reader.MetaData().Schema.NumColumns()
+	allColumns := make([]int, numCols)
+	for i := range allColumns {
+		allColumns[i] = i
+	}
+
 	return &ParquetReader{
 		file:        f,
 		reader:      reader,
@@ -80,6 +93,7 @@ func NewParquetReader(filename string) (*ParquetReader, error) {
 		schema:      schema,
 		columnNames: columnNames,
 		columnTypes: columnTypes,
+		allColumns:  allColumns,
 		totalRows:   reader.NumRows(),
 	}, nil
 }
@@ -104,63 +118,83 @@ func (r *ParquetReader) NumRowGroups() int {
 	return r.reader.NumRowGroups()
 }
 
-// ReadBatch reads the next batch of rows
+// ReadBatch reads the next batch of rows using row-group streaming
+// to avoid loading the entire file into memory
 func (r *ParquetReader) ReadBatch(batchSize int) ([]map[string]any, error) {
 	ctx := context.Background()
 
-	// If we don't have a current batch or we've consumed it, get the next batch
-	if r.currentBatch == nil || r.batchIdx >= int(r.currentBatch.NumRows()) {
-		// For the first batch, read the entire table
-		// Note: Row group reading seems to have issues with nested types
-		if r.rowGroupIdx == 0 {
-			table, err := r.arrowReader.ReadTable(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read table: %w", err)
+	// Initialize numRowGroups on first call
+	if r.numRowGroups == 0 {
+		r.numRowGroups = r.reader.NumRowGroups()
+	}
+
+	// Check if we've exhausted all data
+	if r.exhausted {
+		return nil, io.EOF
+	}
+
+	rows := make([]map[string]any, 0, batchSize)
+
+	for len(rows) < batchSize {
+		// If we don't have a current batch or we've consumed it, get the next one
+		if r.currentBatch == nil || r.batchIdx >= int(r.currentBatch.NumRows()) {
+			// Release previous batch if any
+			if r.currentBatch != nil {
+				r.currentBatch.Release()
+				r.currentBatch = nil
 			}
-			r.rowGroupIdx++ // Mark that we've read the table
+
+			// Move to next row group if needed
+			if r.rowGroupIdx >= r.numRowGroups {
+				r.exhausted = true
+				break
+			}
+
+			// Read the next row group
+			table, err := r.arrowReader.ReadRowGroups(ctx, r.allColumns, []int{r.rowGroupIdx})
+			if err != nil {
+				return nil, fmt.Errorf("failed to read row group %d: %w", r.rowGroupIdx, err)
+			}
+			r.rowGroupIdx++
 
 			if table.NumRows() == 0 {
 				table.Release()
-				return nil, io.EOF
+				continue // Try next row group
 			}
 
-			// Create a record batch from the table
+			// Create a record reader from the table
 			chunkSize := int64(batchSize)
 			if chunkSize <= 0 || chunkSize > table.NumRows() {
 				chunkSize = table.NumRows()
 			}
-			reader := array.NewTableReader(table, chunkSize)
+			tableReader := array.NewTableReader(table, chunkSize)
 
-			if reader.Next() {
-				r.currentBatch = reader.RecordBatch()
-				r.currentBatch.Retain() // Keep the record alive
+			if tableReader.Next() {
+				r.currentBatch = tableReader.RecordBatch()
+				r.currentBatch.Retain() // Keep the record alive after releasing tableReader
 				r.batchIdx = 0
-			} else {
-				table.Release()
-				reader.Release()
-				return nil, fmt.Errorf("failed to read record batch from table with %d rows", table.NumRows())
 			}
-			reader.Release()
+			tableReader.Release()
 			table.Release()
-		} else {
-			return nil, io.EOF
-		}
-	}
 
-	// Extract rows from the current batch
-	rows := make([]map[string]any, 0, batchSize)
-
-	for i := 0; i < batchSize && r.batchIdx < int(r.currentBatch.NumRows()); i++ {
-		row := make(map[string]any)
-
-		for colIdx, colName := range r.columnNames {
-			col := r.currentBatch.Column(colIdx)
-			value := extractValue(col, r.batchIdx)
-			row[colName] = value
+			if r.currentBatch == nil {
+				continue // Try next row group
+			}
 		}
 
-		rows = append(rows, row)
-		r.batchIdx++
+		// Extract rows from the current batch
+		for len(rows) < batchSize && r.batchIdx < int(r.currentBatch.NumRows()) {
+			row := make(map[string]any)
+
+			for colIdx, colName := range r.columnNames {
+				col := r.currentBatch.Column(colIdx)
+				value := extractValue(col, r.batchIdx)
+				row[colName] = value
+			}
+
+			rows = append(rows, row)
+			r.batchIdx++
+		}
 	}
 
 	if len(rows) == 0 {
