@@ -1,6 +1,6 @@
 module github.com/axonops/cqlai
 
-go 1.26.1
+go 1.26.2
 
 replace github.com/axonops/cqlai => ./
 
@@ -23,7 +23,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
-	github.com/apache/thrift v0.22.0 // indirect
+	github.com/apache/thrift v0.23.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

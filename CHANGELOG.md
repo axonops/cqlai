@@ -31,3 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single-file and partitioned readers. Unblocks `TestRoundTripCollections`
   on Cassandra 5.0; CI `-skip` flag removed
   ([#81](https://github.com/axonops/cqlai/issues/81)).
+
+### Security
+
+- Bump transitive `github.com/apache/thrift` from `v0.22.0` to `v0.23.0` to
+  resolve [CVE-2026-41602](https://nvd.nist.gov/vuln/detail/CVE-2026-41602)
+  (`TFramedTransport` integer-overflow, GHSA-wf45-q9ch-q8gh, CVSS 7.5).
+
+### Build
+
+- Bump Go toolchain from `1.26.1` to `1.26.2` across `go.mod`, all GitHub
+  Actions workflows, and Docker build images.
