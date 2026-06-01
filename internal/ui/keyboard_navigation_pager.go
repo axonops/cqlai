@@ -564,7 +564,7 @@ func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
 			// Special handling for the last boundary (bottom border)
 			if noMoreData && len(m.tableRowBoundaries) > 0 {
 				lastBoundary := m.tableRowBoundaries[len(m.tableRowBoundaries)-1]
-				if newOffset >= lastBoundary - viewportHeight {
+				if newOffset >= lastBoundary-viewportHeight {
 					// Position to show the bottom border
 					desiredOffset := lastBoundary - viewportHeight + 1
 					if desiredOffset < 0 {

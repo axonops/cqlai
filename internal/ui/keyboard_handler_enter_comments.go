@@ -54,14 +54,14 @@ func (m *MainModel) handleMultiLineBlockComment(command string) (*MainModel, tea
 		m.multiLineBuffer = nil
 		m.input.Placeholder = "Enter CQL command..."
 		m.input.Reset()
-		
+
 		// Add to history
 		for _, line := range strings.Split(fullComment, "\n") {
 			m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+line)
 		}
 		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
-		
+
 		// Process (will be stripped as comment)
 		_ = router.ProcessCommand(fullComment, m.session, m.sessionManager)
 		return m, nil

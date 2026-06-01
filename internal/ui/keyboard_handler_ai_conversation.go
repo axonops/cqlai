@@ -231,4 +231,3 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 	// If we get here, the key wasn't handled, so return nil to let it fall through
 	return nil, nil
 }
-

@@ -33,7 +33,7 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 		schemaContext := ""
 		// Try to get from globalAI if available
 		_ = ai.InitializeLocalAI(session) // Ignore error
-		
+
 		// Get minimal schema context
 		schemaContext = "Available keyspaces: "
 		sc, err := session.GetSchemaContext(20)
@@ -43,7 +43,7 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 
 		// Convert config to get proper provider-specific settings
 		localConfig := ai.ConvertDBConfigToAIConfig(aiConfig)
-		logger.DebugfToFile("AI", "Using provider: %s, model: %s, has_api_key: %v", 
+		logger.DebugfToFile("AI", "Using provider: %s, model: %s, has_api_key: %v",
 			localConfig.Provider, localConfig.Model, localConfig.APIKey != "")
 
 		// Start a new conversation
@@ -59,7 +59,7 @@ func startAIConversation(session *db.Session, aiConfig *config.AIConfig, userReq
 		if err != nil {
 			return AICQLResultMsg{Error: err}
 		}
-		
+
 		logger.DebugfToFile("AI", "Started conversation with ID: %s", conv.ID)
 
 		// Start the conversation with the user's request

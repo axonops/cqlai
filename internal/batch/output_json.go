@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
 // outputJSON outputs data in JSON format

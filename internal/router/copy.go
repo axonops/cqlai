@@ -108,8 +108,8 @@ func (h *MetaCommandHandler) handleCopyTo(command string) interface{} {
 // parseCopyOptions parses COPY command options
 func parseCopyOptions(optionsStr string) map[string]string {
 	options := map[string]string{
-		"HEADER":          "false",
-		"NULLVAL":         "null",
+		"HEADER":  "false",
+		"NULLVAL": "null",
 		// Don't set FORMAT default here - let executeCopyTo detect from extension
 		"DELIMITER":       ",",
 		"QUOTE":           "\"",

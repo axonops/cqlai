@@ -239,13 +239,13 @@ func (ce *CompletionEngine) completeNative(input string) []string {
 
 	// Get context-aware completions
 	var suggestions []string
-	
+
 	// Debug the decision logic
 	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 		fmt.Fprintf(debugFile, "[DEBUG] COMPLETION LOGIC: len(words)=%d, afterSpace=%v\n", len(words), afterSpace)
 		defer debugFile.Close()
 	}
-	
+
 	switch {
 	case len(words) == 0:
 		suggestions = ce.getTopLevelCommands()
@@ -335,9 +335,9 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 			// If the word contains = and ends with a quote, number, or TRUE/FALSE (case insensitive), it's complete
 			upperLastWord := strings.ToUpper(lastWord)
 			if strings.HasSuffix(lastWord, "'") ||
-			   strings.HasSuffix(upperLastWord, "TRUE") ||
-			   strings.HasSuffix(upperLastWord, "FALSE") ||
-			   len(lastWord) > 0 && (lastWord[len(lastWord)-1] >= '0' && lastWord[len(lastWord)-1] <= '9') {
+				strings.HasSuffix(upperLastWord, "TRUE") ||
+				strings.HasSuffix(upperLastWord, "FALSE") ||
+				len(lastWord) > 0 && (lastWord[len(lastWord)-1] >= '0' && lastWord[len(lastWord)-1] <= '9') {
 				// Complete option assignment, suggest AND
 				return []string{"AND"}
 			}
@@ -346,8 +346,8 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 		// Check if the input ends with a value that completes an assignment
 		trimmedInput := strings.TrimSpace(input)
 		if strings.HasSuffix(trimmedInput, "'") ||
-		   strings.HasSuffix(upperInput, "TRUE") ||
-		   strings.HasSuffix(upperInput, "FALSE") {
+			strings.HasSuffix(upperInput, "TRUE") ||
+			strings.HasSuffix(upperInput, "FALSE") {
 			// Check if this is after an option assignment
 			withPart := input[strings.Index(upperInput, "WITH"):]
 			if strings.Contains(withPart, "=") {
@@ -392,7 +392,7 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 		// Check if we're right after TO or FROM (with or without space)
 		trimmed := strings.TrimSpace(input)
 		if strings.HasSuffix(trimmed, " TO") || strings.HasSuffix(trimmed, " FROM") ||
-		   (lastWord == "TO" || lastWord == "FROM") {
+			(lastWord == "TO" || lastWord == "FROM") {
 			return CopyFileSuggestions
 		}
 

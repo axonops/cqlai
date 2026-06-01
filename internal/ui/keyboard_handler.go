@@ -155,20 +155,20 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			if cursorPos < len(currentValue) {
 				// Find the end of the word to cut
 				end := cursorPos
-				
+
 				// Skip leading spaces
 				for end < len(currentValue) && currentValue[end] == ' ' {
 					end++
 				}
-				
+
 				// Find the end of the word
 				for end < len(currentValue) && currentValue[end] != ' ' {
 					end++
 				}
-				
+
 				// Store the cut text in clipboard buffer
 				m.clipboardBuffer = currentValue[cursorPos:end]
-				
+
 				// Remove the word from the input
 				newValue := currentValue[:cursorPos] + currentValue[end:]
 				m.input.SetValue(newValue)
@@ -314,7 +314,6 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-
 	// If history modal is showing, navigate up (go to older command)
 	if m.showHistoryModal && len(m.commandHistory) > 0 {
 		// Navigate to older commands (decrease index in original array)
@@ -357,14 +356,13 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-
 	// If history modal is showing, navigate down (go to newer command)
 	if m.showHistoryModal && len(m.commandHistory) > 0 {
 		// Navigate to newer commands (increase index in original array)
 		if m.historyModalIndex < len(m.commandHistory)-1 {
 			m.historyModalIndex++
 			// Adjust scroll offset if selection moves out of view
-			if m.historyModalIndex >= m.historyModalScrollOffset + 10 {
+			if m.historyModalIndex >= m.historyModalScrollOffset+10 {
 				m.historyModalScrollOffset = m.historyModalIndex - 9
 			}
 		}
@@ -379,6 +377,5 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	// Handle command history navigation down
 	return m.handleCommandHistoryDown()
 }
-
 
 // handleLeftArrow handles Left arrow key press

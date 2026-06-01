@@ -25,7 +25,7 @@ func GetMetaHandler() *MetaCommandHandler {
 }
 
 // stripComments removes SQL-style comments from a command while respecting quoted strings.
-// It handles single-quoted strings, escaped quotes (''), and both line (--) and block (/* */) comments.
+// It handles single-quoted strings, escaped quotes (”), and both line (--) and block (/* */) comments.
 func stripComments(input string) string {
 	var result strings.Builder
 	result.Grow(len(input))

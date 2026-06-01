@@ -9,14 +9,14 @@ import (
 // captureTraceData captures trace data if tracing is enabled
 func (m *MainModel) captureTraceData(command string) {
 	upperCmd := strings.ToUpper(strings.TrimSpace(command))
-	if m.session != nil && m.session.Tracing() && 
-	   (strings.HasPrefix(upperCmd, "SELECT") || 
-	    strings.HasPrefix(upperCmd, "LIST") || 
-	    strings.HasPrefix(upperCmd, "DESCRIBE") ||
-	    strings.HasPrefix(upperCmd, "DESC")) {
+	if m.session != nil && m.session.Tracing() &&
+		(strings.HasPrefix(upperCmd, "SELECT") ||
+			strings.HasPrefix(upperCmd, "LIST") ||
+			strings.HasPrefix(upperCmd, "DESCRIBE") ||
+			strings.HasPrefix(upperCmd, "DESC")) {
 		// Give Cassandra a moment to write trace data
 		time.Sleep(50 * time.Millisecond)
-		
+
 		// Retrieve trace data
 		traceData, traceHeaders, traceInfo, err := m.session.GetTraceData()
 		if err == nil && len(traceData) > 0 {
@@ -26,19 +26,19 @@ func (m *MainModel) captureTraceData(command string) {
 				summaryLine = fmt.Sprintf("Trace Session - Coordinator: %s | Total Duration: %d μs\n",
 					traceInfo.Coordinator, traceInfo.Duration)
 			}
-			
+
 			// Combine headers and data into a single table structure
 			fullTraceData := make([][]string, 0, len(traceData)+1)
 			fullTraceData = append(fullTraceData, traceHeaders)
 			fullTraceData = append(fullTraceData, traceData...)
-			
+
 			// Store trace data for refreshing
 			m.traceData = fullTraceData
 			m.traceHeaders = traceHeaders
 			m.traceInfo = traceInfo
 			m.hasTrace = true
 			m.traceHorizontalOffset = 0 // Reset horizontal scroll
-			
+
 			// Use the existing formatTableForViewport method temporarily storing the offset
 			originalOffset := m.horizontalOffset
 			originalData := m.lastTableData
@@ -51,7 +51,7 @@ func (m *MainModel) captureTraceData(command string) {
 			// Set trace data temporarily
 			m.horizontalOffset = m.traceHorizontalOffset
 			m.lastTableData = fullTraceData
-			m.cachedTableLines = nil // Force rebuild for trace data
+			m.cachedTableLines = nil    // Force rebuild for trace data
 			m.initialColumnWidths = nil // Reset column widths for trace
 
 			// Format using existing table renderer
@@ -69,7 +69,7 @@ func (m *MainModel) captureTraceData(command string) {
 			m.columnWidths = originalColWidths
 			m.cachedTableLines = originalCachedLines
 			m.initialColumnWidths = originalInitialWidths
-			
+
 			// Prepend summary line to the table
 			finalContent := summaryLine + traceTable
 			m.traceViewport.SetContent(finalContent)

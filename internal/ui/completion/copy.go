@@ -134,4 +134,3 @@ func (ce *CompletionEngine) getCopyCompletions(words []string, wordPos int) []st
 
 	return []string{}
 }
-

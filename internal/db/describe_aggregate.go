@@ -46,7 +46,7 @@ func (s *Session) DescribeAggregatesQuery(keyspace string) ([]AggregateListInfo,
 			ReturnType:    returnType,
 		})
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (s *Session) DBDescribeAggregates(sessionMgr *session.Manager) (interface{}
 		result := s.ExecuteCQLQuery("DESCRIBE AGGREGATES")
 		return result, nil, nil // Server-side result, no AggregateListInfo needed
 	}
-	
+
 	// Fall back to manual construction for pre-4.0
 	currentKeyspace := ""
 	if sessionMgr != nil {
@@ -127,11 +127,11 @@ func (s *Session) DBDescribeAggregate(sessionMgr *session.Manager, aggregateName
 			}
 			describeCmd = fmt.Sprintf("DESCRIBE AGGREGATE %s.%s", currentKeyspace, aggregateName)
 		}
-		
+
 		result := s.ExecuteCQLQuery(describeCmd)
 		return result, nil, nil // Server-side result, no AggregateInfo needed
 	}
-	
+
 	// Fall back to manual construction for pre-4.0
 	currentKeyspace := ""
 	if sessionMgr != nil {

@@ -155,7 +155,7 @@ func TestPartitionedParquetWriter(t *testing.T) {
 
 		// Write rows with special characters in partition values
 		rows := []map[string]interface{}{
-			{"id": 1, "path": "dir/subdir", "value": 100.0},  // Contains slash
+			{"id": 1, "path": "dir/subdir", "value": 100.0},   // Contains slash
 			{"id": 2, "path": "key=value", "value": 200.0},    // Contains equals
 			{"id": 3, "path": "normal_value", "value": 300.0}, // Normal value
 		}

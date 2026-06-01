@@ -80,7 +80,6 @@ func (p *CommandParser) formatGCGrace(gcGrace int) string {
 	return gcGraceStr
 }
 
-
 // filterStreamingTablesResult filters streaming results for current keyspace
 func (p *CommandParser) filterStreamingTablesResult(streamResult db.StreamingQueryResult, currentKeyspace string) interface{} {
 	// Find keyspace_name column index

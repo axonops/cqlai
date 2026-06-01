@@ -11,28 +11,28 @@ import (
 // SlidingWindowTable manages a sliding window of table data with memory limits
 type SlidingWindowTable struct {
 	// Configuration
-	MaxRows        int  // Maximum rows to keep in memory (e.g., 10000)
+	MaxRows        int   // Maximum rows to keep in memory (e.g., 10000)
 	MaxMemoryBytes int64 // Maximum memory usage in bytes (e.g., 10MB)
-	
+
 	// Data storage
-	Headers      []string   // Column headers with (PK)/(C) indicators (always kept)
-	ColumnNames  []string   // Original column names without indicators (for data lookup)
-	Rows         [][]string // Current window of rows
-	ColumnTypes  []string   // Column types (always kept)
-	
+	Headers     []string   // Column headers with (PK)/(C) indicators (always kept)
+	ColumnNames []string   // Original column names without indicators (for data lookup)
+	Rows        [][]string // Current window of rows
+	ColumnTypes []string   // Column types (always kept)
+
 	// Window tracking
 	FirstRowIndex int64 // Global index of first row in window
 	TotalRowsSeen int64 // Total rows processed (may be more than in memory)
 	CurrentMemory int64 // Approximate current memory usage
-	
+
 	// Streaming result for loading more data
 	streamingResult *db.StreamingResult // Store the streaming result if still available
 	hasMoreData     bool                // Whether more data can be fetched
-	
+
 	// Indicators for UI
 	DataDroppedAtStart bool // True if we've dropped rows from the beginning
 	DataAvailableAtEnd bool // True if more data can be loaded
-	
+
 	// Capture tracking
 	LastCapturedRow int64 // Index of the last row written to capture file
 }
@@ -54,18 +54,18 @@ func NewSlidingWindowTable(maxRows int, maxMemoryMB int) *SlidingWindowTable {
 func (swt *SlidingWindowTable) AddRow(row []string) {
 	// Calculate approximate memory for this row
 	rowMemory := swt.calculateRowMemory(row)
-	
+
 	// Check if adding this row would exceed limits
 	if swt.needsEviction(rowMemory) {
 		swt.evictOldestRows(rowMemory)
 	}
-	
+
 	// Add the new row
 	swt.Rows = append(swt.Rows, row)
 	swt.CurrentMemory += rowMemory
 	swt.TotalRowsSeen++
-	
-	logger.DebugfToFile("SlidingWindowTable", "Added row %d, window size: %d, memory: %d bytes", 
+
+	logger.DebugfToFile("SlidingWindowTable", "Added row %d, window size: %d, memory: %d bytes",
 		swt.TotalRowsSeen, len(swt.Rows), swt.CurrentMemory)
 }
 
@@ -75,12 +75,12 @@ func (swt *SlidingWindowTable) needsEviction(newRowMemory int64) bool {
 	if swt.MaxRows > 0 && len(swt.Rows) >= swt.MaxRows {
 		return true
 	}
-	
+
 	// Check memory limit
-	if swt.CurrentMemory + newRowMemory > swt.MaxMemoryBytes {
+	if swt.CurrentMemory+newRowMemory > swt.MaxMemoryBytes {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -88,32 +88,32 @@ func (swt *SlidingWindowTable) needsEviction(newRowMemory int64) bool {
 func (swt *SlidingWindowTable) evictOldestRows(neededMemory int64) {
 	rowsToEvict := 0
 	freedMemory := int64(0)
-	
+
 	// Calculate how many rows to evict
 	// Evict at least 10% of rows or enough to free needed memory
 	minEvict := len(swt.Rows) / 10
 	if minEvict < 1 {
 		minEvict = 1
 	}
-	
+
 	for i := 0; i < len(swt.Rows); i++ {
 		freedMemory += swt.calculateRowMemory(swt.Rows[i])
 		rowsToEvict++
-		
+
 		// Stop if we've freed enough memory and evicted minimum
 		// MaxRows=0 means no row limit, only memory limit applies
 		if rowsToEvict >= minEvict &&
-		   (swt.MaxRows == 0 || len(swt.Rows) - rowsToEvict < swt.MaxRows) &&
-		   (swt.CurrentMemory - freedMemory + neededMemory <= swt.MaxMemoryBytes) {
+			(swt.MaxRows == 0 || len(swt.Rows)-rowsToEvict < swt.MaxRows) &&
+			(swt.CurrentMemory-freedMemory+neededMemory <= swt.MaxMemoryBytes) {
 			break
 		}
 	}
-	
+
 	// Evict the rows
 	if rowsToEvict > 0 && rowsToEvict < len(swt.Rows) {
-		logger.DebugfToFile("SlidingWindowTable", "Evicting %d rows, freeing ~%d bytes", 
+		logger.DebugfToFile("SlidingWindowTable", "Evicting %d rows, freeing ~%d bytes",
 			rowsToEvict, freedMemory)
-		
+
 		swt.Rows = swt.Rows[rowsToEvict:]
 		swt.FirstRowIndex += int64(rowsToEvict)
 		swt.CurrentMemory -= freedMemory
@@ -135,7 +135,7 @@ func (swt *SlidingWindowTable) GetVisibleRows(startIdx, endIdx int) [][]string {
 	// Adjust indices relative to our window
 	windowStart := startIdx - int(swt.FirstRowIndex)
 	windowEnd := endIdx - int(swt.FirstRowIndex)
-	
+
 	// Clamp to available data
 	if windowStart < 0 {
 		windowStart = 0
@@ -143,11 +143,11 @@ func (swt *SlidingWindowTable) GetVisibleRows(startIdx, endIdx int) [][]string {
 	if windowEnd > len(swt.Rows) {
 		windowEnd = len(swt.Rows)
 	}
-	
+
 	if windowStart >= len(swt.Rows) {
 		return [][]string{}
 	}
-	
+
 	return swt.Rows[windowStart:windowEnd]
 }
 
@@ -166,7 +166,7 @@ func (swt *SlidingWindowTable) GetStatusInfo() string {
 	if swt.DataDroppedAtStart {
 		startRow := swt.FirstRowIndex + 1
 		endRow := swt.FirstRowIndex + int64(len(swt.Rows))
-		return fmt.Sprintf("Showing rows %d-%d (earlier rows dropped due to memory limit)", 
+		return fmt.Sprintf("Showing rows %d-%d (earlier rows dropped due to memory limit)",
 			startRow, endRow)
 	}
 	return ""
@@ -207,19 +207,19 @@ func (swt *SlidingWindowTable) GetUncapturedRows() [][]string {
 		// All rows have been captured
 		return nil
 	}
-	
+
 	// Calculate how many uncaptured rows we have
 	startIdx := swt.LastCapturedRow - swt.FirstRowIndex
 	if startIdx < 0 {
 		// All current rows are uncaptured
 		return swt.Rows
 	}
-	
+
 	if startIdx >= int64(len(swt.Rows)) {
 		// No uncaptured rows in current window
 		return nil
 	}
-	
+
 	// Return the uncaptured portion
 	return swt.Rows[startIdx:]
 }

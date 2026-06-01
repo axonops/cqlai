@@ -190,9 +190,9 @@ func (s *Session) ProcessStreamingQuery(result StreamingQueryResult) *StreamingR
 	processor := NewStreamingProcessor(result, s)
 
 	return &StreamingResult{
-		Headers:     processor.GetHeaders(),
-		Rows:        [][]string{},
-		HasMore:     true,
+		Headers: processor.GetHeaders(),
+		Rows:    [][]string{},
+		HasMore: true,
 		LoadMore: func(ctx context.Context, count int) ([][]string, bool, error) {
 			rows, hasMore, err := processor.LoadResults(ctx, count)
 			if err != nil {

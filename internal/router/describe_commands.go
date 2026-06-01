@@ -10,18 +10,18 @@ import (
 
 // Abbreviation maps for compaction and compression strategies
 var compactionStrategyAbbrev = map[string]string{
-	"SizeTieredCompactionStrategy":     "STCS",
-	"LeveledCompactionStrategy":        "LCS",
-	"DateTieredCompactionStrategy":     "DTCS",
-	"TimeWindowCompactionStrategy":     "TWCS",
-	"UnifiedCompactionStrategy":        "UCS",
+	"SizeTieredCompactionStrategy": "STCS",
+	"LeveledCompactionStrategy":    "LCS",
+	"DateTieredCompactionStrategy": "DTCS",
+	"TimeWindowCompactionStrategy": "TWCS",
+	"UnifiedCompactionStrategy":    "UCS",
 }
 
 var compressionAbbrev = map[string]string{
-	"LZ4Compressor":      "LZ4",
-	"SnappyCompressor":   "Snappy",
-	"DeflateCompressor":  "Deflate",
-	"ZstdCompressor":     "Zstd",
+	"LZ4Compressor":     "LZ4",
+	"SnappyCompressor":  "Snappy",
+	"DeflateCompressor": "Deflate",
+	"ZstdCompressor":    "Zstd",
 }
 
 // describeKeyspaces returns a list of all keyspaces

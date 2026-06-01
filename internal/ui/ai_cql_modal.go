@@ -71,7 +71,7 @@ func (m *AICQLModal) Render(screenWidth, screenHeight int, styles *Styles) strin
 	// Message style
 	messageStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
-		Width(modalWidth - 4).
+		Width(modalWidth-4).
 		Align(lipgloss.Center).
 		Margin(1, 0)
 

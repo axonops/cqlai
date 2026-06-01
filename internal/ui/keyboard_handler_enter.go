@@ -45,7 +45,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	}
 
 	command := strings.TrimSpace(m.input.Value())
-	
+
 	// In multi-line mode, check if this is a repeat Enter press (user pressed Enter without changing input)
 	if m.multiLineMode && len(m.multiLineBuffer) > 0 {
 		lastEntry := m.multiLineBuffer[len(m.multiLineBuffer)-1]
@@ -80,12 +80,12 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		if strings.HasPrefix(command, "--") || strings.HasPrefix(command, "//") {
 			return m.handleCommentLine(command)
 		}
-		
+
 		// Check for block comment handling
 		if strings.HasPrefix(command, "/*") {
 			return m.handleBlockComment(command)
 		}
-		
+
 		// If we're in multi-line mode and this ends a block comment
 		if m.multiLineMode && len(m.multiLineBuffer) > 0 {
 			updatedModel, cmd := m.handleMultiLineBlockComment(command)
@@ -93,7 +93,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 				return updatedModel, cmd
 			}
 		}
-		
+
 		if command == "" && !m.multiLineMode {
 			return m, nil
 		}
@@ -104,22 +104,22 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	// Empty commands in multi-line mode should be treated as CQL to continue multi-line input
 	isCQLStatement := (command == "" && m.multiLineMode) ||
 		(!strings.HasPrefix(upperCommand, "DESCRIBE") &&
-		!strings.HasPrefix(upperCommand, "DESC ") &&
-		!strings.HasPrefix(upperCommand, "CONSISTENCY") &&
-		!strings.HasPrefix(upperCommand, "OUTPUT") &&
-		!strings.HasPrefix(upperCommand, "PAGING") &&
-		!strings.HasPrefix(upperCommand, "AUTOFETCH") &&
-		!strings.HasPrefix(upperCommand, "TRACING") &&
-		!strings.HasPrefix(upperCommand, "SOURCE") &&
-		!strings.HasPrefix(upperCommand, "CAPTURE") &&
-		!strings.HasPrefix(upperCommand, "EXPAND") &&
-		!strings.HasPrefix(upperCommand, "SHOW") &&
-		!strings.HasPrefix(upperCommand, "HELP") &&
-		!strings.HasPrefix(upperCommand, "SAVE") &&
-		!strings.HasPrefix(upperCommand, "CLEAR") &&
-		!strings.HasPrefix(upperCommand, "CLS") &&
-		!strings.HasPrefix(upperCommand, "EXIT") &&
-		!strings.HasPrefix(upperCommand, "QUIT"))
+			!strings.HasPrefix(upperCommand, "DESC ") &&
+			!strings.HasPrefix(upperCommand, "CONSISTENCY") &&
+			!strings.HasPrefix(upperCommand, "OUTPUT") &&
+			!strings.HasPrefix(upperCommand, "PAGING") &&
+			!strings.HasPrefix(upperCommand, "AUTOFETCH") &&
+			!strings.HasPrefix(upperCommand, "TRACING") &&
+			!strings.HasPrefix(upperCommand, "SOURCE") &&
+			!strings.HasPrefix(upperCommand, "CAPTURE") &&
+			!strings.HasPrefix(upperCommand, "EXPAND") &&
+			!strings.HasPrefix(upperCommand, "SHOW") &&
+			!strings.HasPrefix(upperCommand, "HELP") &&
+			!strings.HasPrefix(upperCommand, "SAVE") &&
+			!strings.HasPrefix(upperCommand, "CLEAR") &&
+			!strings.HasPrefix(upperCommand, "CLS") &&
+			!strings.HasPrefix(upperCommand, "EXIT") &&
+			!strings.HasPrefix(upperCommand, "QUIT"))
 
 	// For CQL statements, check for semicolon (skip for AI-generated commands)
 	if isCQLStatement {
@@ -197,7 +197,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
-	
+
 	// Capture trace data if tracing is enabled and this was a query that returns results
 	m.captureTraceData(command)
 

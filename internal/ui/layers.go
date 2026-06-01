@@ -2,7 +2,7 @@ package ui
 
 import (
 	"strings"
-	
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -46,20 +46,20 @@ func (lm *LayerManager) Clear() {
 func (lm *LayerManager) Render(base string) string {
 	// Start with the base content
 	lines := strings.Split(base, "\n")
-	
+
 	// Ensure we have enough lines
 	for len(lines) < lm.height {
 		lines = append(lines, "")
 	}
-	
+
 	// Sort layers by z-index (higher z-index on top)
 	// For now, we'll just render in order since we typically only have one modal
-	
+
 	// Apply each layer
 	for _, layer := range lm.layers {
 		lines = lm.applyLayer(lines, layer)
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -97,7 +97,7 @@ func (lm *LayerManager) applyLayer(lines []string, layer Layer) []string {
 			bgWidth := lipgloss.Width(bgLine)
 
 			// If the background extends beyond the modal, preserve it
-			if layer.X + contentLineWidth < bgWidth {
+			if layer.X+contentLineWidth < bgWidth {
 				// Extract the part of background that's after the modal
 				bgPlain := stripAnsi(bgLine)
 				bgRunes := []rune(bgPlain)
@@ -120,25 +120,25 @@ func RenderModal(content string, width, height int) Layer {
 	modalLines := strings.Split(content, "\n")
 	modalHeight := len(modalLines)
 	modalWidth := 0
-	
+
 	for _, line := range modalLines {
 		w := lipgloss.Width(line)
 		if w > modalWidth {
 			modalWidth = w
 		}
 	}
-	
+
 	// Center the modal
 	x := (width - modalWidth) / 2
 	if x < 0 {
 		x = 0
 	}
-	
+
 	y := (height - modalHeight) / 2
 	if y < 0 {
 		y = 0
 	}
-	
+
 	return Layer{
 		Content: content,
 		X:       x,

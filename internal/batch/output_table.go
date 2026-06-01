@@ -18,7 +18,6 @@ func (e *Executor) outputTable(data [][]string) error {
 	return nil
 }
 
-
 // printTraceData prints tracing information if available
 func (e *Executor) printTraceData() {
 	// Get trace data from the session

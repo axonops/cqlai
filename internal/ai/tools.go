@@ -2,7 +2,7 @@ package ai
 
 import (
 	"fmt"
-	
+
 	"github.com/axonops/cqlai/internal/logger"
 )
 
@@ -71,13 +71,13 @@ func ExecuteToolCallTyped(toolName ToolName, params ToolParams) *CommandResult {
 
 	case ToolInfo:
 		p := params.(*InfoResponseParams)
-		logger.DebugfToFile("Tools", "Info tool called with response_type=%s, title=%s, content=%s", 
+		logger.DebugfToFile("Tools", "Info tool called with response_type=%s, title=%s, content=%s",
 			p.ResponseType, p.Title, p.Content)
 		// Return info response as a special success case
 		return &CommandResult{
 			Success:      true,
 			Data:         fmt.Sprintf("Informational response provided: %s", p.Title), // More meaningful message
-			InfoResponse: p, // Store the info response
+			InfoResponse: p,                                                           // Store the info response
 		}
 
 	default:
@@ -99,7 +99,7 @@ func ExecuteToolCall(toolName string, args map[string]any) *CommandResult {
 			Error: fmt.Errorf("invalid tool name: %s", toolName),
 		}
 	}
-	
+
 	// Parse the arguments into typed parameters
 	params, err := ParseToolParamsFromMap(tool, args)
 	if err != nil {

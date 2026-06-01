@@ -14,7 +14,7 @@ type TopBarModel struct {
 	RowCount     int
 	HasQueryData bool
 	AutoFetch    bool
-	HasMoreData  bool  // Indicates if there's more data to fetch
+	HasMoreData  bool // Indicates if there's more data to fetch
 }
 
 // NewTopBarModel creates a new TopBarModel.

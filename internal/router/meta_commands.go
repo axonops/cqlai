@@ -19,19 +19,19 @@ import (
 
 // MetaCommandHandler handles non-CQL meta commands
 type MetaCommandHandler struct {
-	session                  *db.Session
-	sessionManager           *session.Manager
-	expandMode               bool
-	captureFile              string
-	captureOutput            io.WriteCloser
-	captureFormat            string // "text", "json", "csv", or "parquet"
-	csvWriter                *csv.Writer
-	parquetWriter            *parquet.ParquetCaptureWriter
-	captureHeaders           []string // Store headers for parquet writer
-	partitionedWriter        *parquet.PartitionedParquetWriter // For partitioned Parquet capture
-	captureOptions           map[string]string // Capture options (compression, partition, etc.)
-	capturePartitionColumns  []string // Partition columns for capture
-	captureColumnTypes       []string // Column types for partitioned capture
+	session                 *db.Session
+	sessionManager          *session.Manager
+	expandMode              bool
+	captureFile             string
+	captureOutput           io.WriteCloser
+	captureFormat           string // "text", "json", "csv", or "parquet"
+	csvWriter               *csv.Writer
+	parquetWriter           *parquet.ParquetCaptureWriter
+	captureHeaders          []string                          // Store headers for parquet writer
+	partitionedWriter       *parquet.PartitionedParquetWriter // For partitioned Parquet capture
+	captureOptions          map[string]string                 // Capture options (compression, partition, etc.)
+	capturePartitionColumns []string                          // Partition columns for capture
+	captureColumnTypes      []string                          // Column types for partitioned capture
 }
 
 // NewMetaCommandHandler creates a new meta command handler
@@ -408,7 +408,6 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 
 	return summary
 }
-
 
 // batchEntry holds a prepared statement template and its bound values
 type batchEntry struct {

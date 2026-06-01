@@ -42,7 +42,7 @@ func (ce *CompletionEngine) isComparisonOperator(word string) bool {
 // This is exported for use by other packages (e.g., ui package)
 func IsCompleteKeyword(word string) bool {
 	upperWord := strings.ToUpper(word)
-	
+
 	// Check against all keyword lists from constants
 	// Combine relevant keyword lists for comprehensive checking
 	allKeywords := append([]string{}, TopLevelKeywords...)
@@ -64,7 +64,7 @@ func IsCompleteKeyword(word string) bool {
 	allKeywords = append(allKeywords, ConsistencyLevels...)
 	allKeywords = append(allKeywords, AggregateFunctions...)
 	allKeywords = append(allKeywords, "ALLOW", "PRIMARY", "KEY", "WITH", "DISTINCT", "TOKEN", "JSON", "PER", "PARTITION", "ASCII", "HAVING")
-	
+
 	for _, kw := range allKeywords {
 		if upperWord == kw {
 			return true
@@ -190,12 +190,12 @@ func GetCommandObjects(command, objectType string) []string {
 // getFunctionSuggestions returns CQL function suggestions for SELECT clause
 func (ce *CompletionEngine) getFunctionSuggestions() []string {
 	suggestions := []string{}
-	
+
 	// Add aggregate functions with opening parenthesis
 	for _, fn := range AggregateFunctions {
 		suggestions = append(suggestions, fn+"(")
 	}
-	
+
 	// Add time/UUID functions with parentheses where appropriate
 	for _, fn := range TimeFunctions {
 		if fn == "now" || fn == "currentTimeUUID" || fn == "currentTimestamp" || fn == "currentDate" {
@@ -204,7 +204,7 @@ func (ce *CompletionEngine) getFunctionSuggestions() []string {
 			suggestions = append(suggestions, fn+"(")
 		}
 	}
-	
+
 	// Add system functions with opening parenthesis
 	for _, fn := range SystemFunctions {
 		if fn == "uuid" {
@@ -213,10 +213,10 @@ func (ce *CompletionEngine) getFunctionSuggestions() []string {
 			suggestions = append(suggestions, fn+"(")
 		}
 	}
-	
+
 	// Add type conversion functions
 	suggestions = append(suggestions, "CAST(")
-	
+
 	return suggestions
 }
 

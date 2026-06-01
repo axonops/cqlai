@@ -109,4 +109,3 @@ func FormatExpandTable(data [][]string, styles *Styles) string {
 
 	return buf.String()
 }
-

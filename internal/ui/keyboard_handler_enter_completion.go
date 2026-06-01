@@ -45,12 +45,12 @@ func (m *MainModel) handleCompletionSelection() (*MainModel, tea.Cmd) {
 				// Check various complete assignment patterns
 				// Use case-insensitive check for boolean values
 				lowerLastWord := strings.ToLower(lastWord)
-				if strings.HasSuffix(lastWord, "'") ||  // String value: FORMAT='parquet'
-				   strings.HasSuffix(upperLastWord, "TRUE") ||  // Boolean: HEADER=TRUE
-				   strings.HasSuffix(upperLastWord, "FALSE") ||  // Boolean: HEADER=FALSE
-				   strings.HasSuffix(lowerLastWord, "true") ||  // Boolean: header=true (lowercase)
-				   strings.HasSuffix(lowerLastWord, "false") ||  // Boolean: header=false (lowercase)
-				   (len(lastWord) > 0 && lastWord[len(lastWord)-1] >= '0' && lastWord[len(lastWord)-1] <= '9') {  // Number: PAGESIZE=1000
+				if strings.HasSuffix(lastWord, "'") || // String value: FORMAT='parquet'
+					strings.HasSuffix(upperLastWord, "TRUE") || // Boolean: HEADER=TRUE
+					strings.HasSuffix(upperLastWord, "FALSE") || // Boolean: HEADER=FALSE
+					strings.HasSuffix(lowerLastWord, "true") || // Boolean: header=true (lowercase)
+					strings.HasSuffix(lowerLastWord, "false") || // Boolean: header=false (lowercase)
+					(len(lastWord) > 0 && lastWord[len(lastWord)-1] >= '0' && lastWord[len(lastWord)-1] <= '9') { // Number: PAGESIZE=1000
 					isCompleteAssignment = true
 				}
 			}

@@ -1,3 +1,4 @@
+//go:build !integration
 // +build !integration
 
 package router
@@ -13,7 +14,6 @@ import (
 	"github.com/axonops/cqlai/internal/session"
 	"github.com/stretchr/testify/require"
 )
-
 
 func BenchmarkCopyToCSV(b *testing.B) {
 	b.Skip("Skipping benchmark that requires proper session mocking")

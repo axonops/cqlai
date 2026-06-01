@@ -44,7 +44,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	var checkName string
 	if !checkIter.Scan(&checkName) {
 		_ = checkIter.Close()
-		
+
 		// Get available tables for better error message
 		availQuery := `SELECT table_name FROM system_schema.tables WHERE keyspace_name = ?`
 		availIter := s.Query(availQuery, keyspace).Iter()
@@ -54,7 +54,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 			availableTables = append(availableTables, availName)
 		}
 		_ = availIter.Close()
-		
+
 		availableStr := "none"
 		if len(availableTables) > 0 {
 			availableStr = strings.Join(availableTables, ", ")
@@ -66,7 +66,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	// Get table properties
 	tableQuery := `SELECT * FROM system_schema.tables WHERE keyspace_name = ? AND table_name = ?`
 	iter := s.Query(tableQuery, keyspace, tableName).Iter()
-	
+
 	tableProps := make(map[string]interface{})
 	if !iter.MapScan(tableProps) {
 		_ = iter.Close()
@@ -78,16 +78,16 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	colQuery := `SELECT column_name, type, kind, position 
 	            FROM system_schema.columns 
 	            WHERE keyspace_name = ? AND table_name = ?`
-	
+
 	colIter := s.Query(colQuery, keyspace, tableName).Iter()
-	
+
 	var columns []ColumnInfo
 	var partitionKeys []string
 	var clusteringKeys []string
-	
+
 	var colName, colType, colKind string
 	var colPosition int
-	
+
 	for colIter.Scan(&colName, &colType, &colKind, &colPosition) {
 		columns = append(columns, ColumnInfo{
 			Name:     colName,
@@ -95,7 +95,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 			Kind:     colKind,
 			Position: colPosition,
 		})
-		
+
 		switch colKind {
 		case "partition_key":
 			partitionKeys = append(partitionKeys, colName)
@@ -112,14 +112,14 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 			"clustering":    1,
 			"regular":       2,
 		}
-		
+
 		iPriority := kindPriority[columns[i].Kind]
 		jPriority := kindPriority[columns[j].Kind]
-		
+
 		if iPriority != jPriority {
 			return iPriority < jPriority
 		}
-		
+
 		// Within same kind, sort by position
 		return columns[i].Position < columns[j].Position
 	})
@@ -293,23 +293,23 @@ func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string)
 	if s.IsVersion4OrHigher() {
 		// Try server-side DESCRIBE
 		describeQuery := fmt.Sprintf("DESCRIBE TABLE %s", tableName)
-		
+
 		iter := s.Query(describeQuery).Iter()
-		
+
 		// The server returns a result set with columns like 'keyspace_name', 'type', 'name', 'create_statement'
 		result := make(map[string]interface{})
 		if iter.MapScan(result) {
 			_ = iter.Close()
-			
+
 			if createStmt, ok := result["create_statement"]; ok {
 				return fmt.Sprintf("%v", createStmt), nil, nil
 			}
 		}
-		
+
 		_ = iter.Close()
 		// Server-side DESCRIBE returned no results, fall back to manual
 	}
-	
+
 	// Fall back to manual construction for pre-4.0 or if server-side failed
 	// Check if table name includes keyspace qualification
 	keyspaceName := ""
@@ -317,7 +317,7 @@ func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string)
 		keyspaceName = sessionMgr.CurrentKeyspace()
 	}
 	actualTableName := tableName
-	
+
 	if strings.Contains(tableName, ".") {
 		parts := strings.Split(tableName, ".")
 		if len(parts) == 2 {

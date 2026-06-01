@@ -7,10 +7,10 @@ import (
 
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantCmd  ToolName
-		wantArg  string
+		name      string
+		input     string
+		wantCmd   ToolName
+		wantArg   string
 		wantFound bool
 	}{
 		// JSON format tests
@@ -99,9 +99,9 @@ func TestExecuteCommand_UserSelection(t *testing.T) {
 	// This test just verifies the formatting - actual execution requires globalAI to be set up
 	cmd := ToolUserSelection
 	arg := "table:users,accounts,sessions"
-	
+
 	result := ExecuteCommand(cmd, arg)
-	
+
 	// Without globalAI, should get error
 	if result.Success {
 		t.Error("Expected failure without globalAI initialized")
@@ -115,9 +115,9 @@ func TestExecuteCommand_NotEnoughInfo(t *testing.T) {
 	// Test with the AI system not initialized - should get that error
 	cmd := ToolNotEnoughInfo
 	arg := "Please specify which table to query"
-	
+
 	result := ExecuteCommand(cmd, arg)
-	
+
 	// Without globalAI, should get error
 	if result.Success {
 		t.Error("Expected failure without globalAI initialized")

@@ -27,7 +27,6 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	isFirstBatch := true
 	var columnWidths []int // Store column widths from first batch
 
-
 	for {
 		select {
 		case <-ctx.Done():

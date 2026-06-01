@@ -13,7 +13,7 @@ func splitCellIntoLines(cell string, maxWidth int) []string {
 
 	// First split by newlines
 	lines := strings.Split(cell, "\n")
-	
+
 	var result []string
 	for _, line := range lines {
 		// Further split long lines that exceed maxWidth
@@ -25,11 +25,11 @@ func splitCellIntoLines(cell string, maxWidth int) []string {
 			result = append(result, wrapped...)
 		}
 	}
-	
+
 	if len(result) == 0 {
 		result = []string{""} // Ensure at least one line
 	}
-	
+
 	return result
 }
 
@@ -38,16 +38,16 @@ func wrapLine(line string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		return []string{line}
 	}
-	
+
 	var result []string
 	runes := []rune(line)
-	
+
 	for len(runes) > 0 {
 		if len(runes) <= maxWidth {
 			result = append(result, string(runes))
 			break
 		}
-		
+
 		// Find a good break point (prefer spaces)
 		breakPoint := maxWidth
 		for i := maxWidth - 1; i > maxWidth*2/3; i-- {
@@ -56,17 +56,17 @@ func wrapLine(line string, maxWidth int) []string {
 				break
 			}
 		}
-		
+
 		// Take up to the break point
 		result = append(result, strings.TrimRight(string(runes[:breakPoint]), " "))
 		runes = runes[breakPoint:]
-		
+
 		// Skip leading spaces on the next line
 		for len(runes) > 0 && runes[0] == ' ' {
 			runes = runes[1:]
 		}
 	}
-	
+
 	return result
 }
 

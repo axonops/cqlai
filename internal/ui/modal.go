@@ -14,14 +14,14 @@ const (
 
 // Modal represents a modal dialog
 type Modal struct {
-	Type        ModalType
-	Title       string
-	Message     string
-	Command     string
-	Choices     []string
-	Selected    int
-	Width       int
-	Height      int
+	Type     ModalType
+	Title    string
+	Message  string
+	Command  string
+	Choices  []string
+	Selected int
+	Width    int
+	Height   int
 }
 
 // NewConfirmationModal creates a new confirmation modal for dangerous commands
@@ -94,7 +94,7 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 	// Build button row - simpler approach
 	cancelStyle := lipgloss.NewStyle().Padding(0, 2)
 	executeStyle := lipgloss.NewStyle().Padding(0, 2)
-	
+
 	if m.Selected == 0 { // Cancel selected
 		cancelStyle = cancelStyle.
 			Foreground(lipgloss.Color("#1A1A1A")).
@@ -114,10 +114,10 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 			Background(styles.Error).
 			Bold(true)
 	}
-	
+
 	cancelBtn := cancelStyle.Render("Cancel")
 	executeBtn := executeStyle.Render("Execute")
-	
+
 	// Create the button row with proper spacing
 	buttonRow := lipgloss.JoinHorizontal(
 		lipgloss.Center,
@@ -125,7 +125,7 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 		"     ",
 		executeBtn,
 	)
-	
+
 	// Center the entire button row
 	buttonRow = lipgloss.NewStyle().
 		Width(m.Width - 4).
@@ -154,7 +154,7 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 	)
 
 	modalBox := modalStyle.Render(content)
-	
+
 	// Place the modal in the center with a black background
 	return lipgloss.Place(
 		screenWidth,

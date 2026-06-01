@@ -8,31 +8,31 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	
+
 	"github.com/axonops/cqlai/internal/logger"
 )
 
 // Config holds the application configuration
 type Config struct {
-	Host                string          `json:"host"`
-	Port                int             `json:"port"`
-	Keyspace            string          `json:"keyspace"`
-	Username            string          `json:"username"`
-	Password            string          `json:"password"`
-	RequireConfirmation bool            `json:"requireConfirmation,omitempty"`
-	Consistency         string          `json:"consistency,omitempty"`         // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
-	PageSize            int             `json:"pageSize,omitempty"`
-	MaxMemoryMB         int             `json:"maxMemoryMB,omitempty"`         // Max memory for results in MB (default: 10)
-	ConnectTimeout      int             `json:"connectTimeout,omitempty"`      // Connection timeout in seconds
-	RequestTimeout      int             `json:"requestTimeout,omitempty"`      // Request timeout in seconds
-	Debug               bool            `json:"debug,omitempty"`               // Enable debug logging
-	HistoryFile         string          `json:"historyFile,omitempty"`         // Path to CQL command history file
-	AIHistoryFile       string          `json:"aiHistoryFile,omitempty"`       // Path to AI command history file
-	OutputFormat        string          `json:"outputFormat,omitempty"`        // Default output format (TABLE, ASCII, EXPAND, JSON)
-	SSL                 *SSLConfig      `json:"ssl,omitempty"`
-	AI                  *AIConfig       `json:"ai,omitempty"`
-	AuthProvider        *AuthProvider   `json:"authProvider,omitempty"`
-	LoadWarnings        []string        `json:"-"` // Warnings from loading config files (not serialized)
+	Host                string        `json:"host"`
+	Port                int           `json:"port"`
+	Keyspace            string        `json:"keyspace"`
+	Username            string        `json:"username"`
+	Password            string        `json:"password"`
+	RequireConfirmation bool          `json:"requireConfirmation,omitempty"`
+	Consistency         string        `json:"consistency,omitempty"` // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
+	PageSize            int           `json:"pageSize,omitempty"`
+	MaxMemoryMB         int           `json:"maxMemoryMB,omitempty"`    // Max memory for results in MB (default: 10)
+	ConnectTimeout      int           `json:"connectTimeout,omitempty"` // Connection timeout in seconds
+	RequestTimeout      int           `json:"requestTimeout,omitempty"` // Request timeout in seconds
+	Debug               bool          `json:"debug,omitempty"`          // Enable debug logging
+	HistoryFile         string        `json:"historyFile,omitempty"`    // Path to CQL command history file
+	AIHistoryFile       string        `json:"aiHistoryFile,omitempty"`  // Path to AI command history file
+	OutputFormat        string        `json:"outputFormat,omitempty"`   // Default output format (TABLE, ASCII, EXPAND, JSON)
+	SSL                 *SSLConfig    `json:"ssl,omitempty"`
+	AI                  *AIConfig     `json:"ai,omitempty"`
+	AuthProvider        *AuthProvider `json:"authProvider,omitempty"`
+	LoadWarnings        []string      `json:"-"` // Warnings from loading config files (not serialized)
 }
 
 // AuthProvider holds authentication provider configuration
@@ -54,9 +54,9 @@ type SSLConfig struct {
 
 // AIConfig holds AI provider configuration
 type AIConfig struct {
-	Provider   string            `json:"provider"` // "mock", "openai", "anthropic", "gemini", "ollama", "openrouter"
-	APIKey     string            `json:"apiKey"`   // General API key (overridden by provider-specific)
-	Model      string            `json:"model"`    // General model (overridden by provider-specific)
+	Provider   string            `json:"provider"`      // "mock", "openai", "anthropic", "gemini", "ollama", "openrouter"
+	APIKey     string            `json:"apiKey"`        // General API key (overridden by provider-specific)
+	Model      string            `json:"model"`         // General model (overridden by provider-specific)
 	URL        string            `json:"url,omitempty"` // General URL (overridden by provider-specific)
 	OpenAI     *AIProviderConfig `json:"openai,omitempty"`
 	Anthropic  *AIProviderConfig `json:"anthropic,omitempty"`
@@ -416,14 +416,14 @@ func ParseOutputFormat(format string) (OutputFormat, error) {
 // loadCQLSHRC loads configuration from a CQLSHRC file
 func loadCQLSHRC(path string, config *Config) error {
 	logger.DebugfToFile("CQLSHRC", "Attempting to open file: %s", path)
-	
+
 	file, err := os.Open(path) // #nosec G304 G703 - Config file path is validated
 	if err != nil {
 		logger.DebugfToFile("CQLSHRC", "Failed to open file %s: %v", path, err)
 		return err
 	}
 	defer file.Close()
-	
+
 	logger.DebugfToFile("CQLSHRC", "Successfully opened file: %s", path)
 
 	scanner := bufio.NewScanner(file)
@@ -434,7 +434,7 @@ func loadCQLSHRC(path string, config *Config) error {
 	for scanner.Scan() {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Log non-empty, non-comment lines
 		if line != "" && !strings.HasPrefix(line, ";") && !strings.HasPrefix(line, "#") {
 			logger.DebugfToFile("CQLSHRC", "Line %d: %s", lineNum, line)
@@ -467,7 +467,7 @@ func loadCQLSHRC(path string, config *Config) error {
 			(value[0] == '\'' && value[len(value)-1] == '\'')) {
 			value = value[1 : len(value)-1]
 		}
-		
+
 		// Mask sensitive values in debug logs
 		logValue := value
 		if strings.ToLower(key) == "password" || strings.Contains(strings.ToLower(key), "api") || strings.Contains(strings.ToLower(key), "secret") {
@@ -589,13 +589,13 @@ func loadCQLSHRC(path string, config *Config) error {
 			logger.DebugfToFile("CQLSHRC", "Successfully loaded credentials file")
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		logger.DebugfToFile("CQLSHRC", "Scanner error: %v", err)
 		return err
 	}
-	
-	logger.DebugfToFile("CQLSHRC", "Finished loading cqlshrc: host=%s, port=%d, username=%s, hasPassword=%v", 
+
+	logger.DebugfToFile("CQLSHRC", "Finished loading cqlshrc: host=%s, port=%d, username=%s, hasPassword=%v",
 		config.Host, config.Port, config.Username, config.Password != "")
 
 	return nil
@@ -608,7 +608,7 @@ func loadCQLSHRC(path string, config *Config) error {
 // password = pass
 func loadCredentialsFile(path string, config *Config) error {
 	logger.DebugfToFile("Credentials", "Loading credentials file: %s", path)
-	
+
 	// Expand ~ to home directory
 	if strings.HasPrefix(path, "~") {
 		path = filepath.Join(os.Getenv("HOME"), path[1:])
@@ -621,7 +621,7 @@ func loadCredentialsFile(path string, config *Config) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	logger.DebugfToFile("Credentials", "Successfully opened credentials file")
 
 	scanner := bufio.NewScanner(file)
@@ -636,7 +636,7 @@ func loadCredentialsFile(path string, config *Config) error {
 		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		// Don't log raw lines as they may contain passwords
 		logger.DebugfToFile("Credentials", "Processing line %d", lineNum)
 
@@ -680,13 +680,13 @@ func loadCredentialsFile(path string, config *Config) error {
 			logger.DebugfToFile("Credentials", "Ignoring unknown key: %s", key)
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		logger.DebugfToFile("Credentials", "Scanner error: %v", err)
 		return err
 	}
-	
-	logger.DebugfToFile("Credentials", "Finished loading credentials: username=%s, hasPassword=%v", 
+
+	logger.DebugfToFile("Credentials", "Finished loading credentials: username=%s, hasPassword=%v",
 		config.Username, config.Password != "")
 
 	return nil

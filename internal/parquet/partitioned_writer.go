@@ -18,18 +18,18 @@ import (
 
 // PartitionedParquetWriter writes Parquet files organized in partitioned directories
 type PartitionedParquetWriter struct {
-	baseDir       string
-	partitionCols []string
-	partitionIdx  map[string]int // Column name to index in data
-	writers       map[string]*partitionWriter
-	writerOrder   *list.List // LRU tracking
+	baseDir        string
+	partitionCols  []string
+	partitionIdx   map[string]int // Column name to index in data
+	writers        map[string]*partitionWriter
+	writerOrder    *list.List // LRU tracking
 	writerElements map[string]*list.Element
-	schema        *arrow.Schema
-	options       WriterOptions
-	maxOpenFiles  int
-	maxFileSize   int64
-	mu            sync.Mutex
-	isClosed      bool
+	schema         *arrow.Schema
+	options        WriterOptions
+	maxOpenFiles   int
+	maxFileSize    int64
+	mu             sync.Mutex
+	isClosed       bool
 	// Store column info for creating new partition files
 	columnNames     []string
 	columnTypes     []string
@@ -38,14 +38,14 @@ type PartitionedParquetWriter struct {
 
 // partitionWriter wraps a ParquetCaptureWriter for a specific partition
 type partitionWriter struct {
-	writer      *ParquetCaptureWriter
+	writer       *ParquetCaptureWriter
 	partitionKey string
-	dirPath     string
-	filePath    string
-	rowCount    int64
-	fileSize    int64
-	partNum     int
-	maxFileSize int64
+	dirPath      string
+	filePath     string
+	rowCount     int64
+	fileSize     int64
+	partNum      int
+	maxFileSize  int64
 }
 
 // PartitionedWriterOptions extends WriterOptions with partitioning config
@@ -128,17 +128,17 @@ func NewPartitionedParquetWriterWithTypeInfo(baseDir string, columnNames []strin
 
 	// Store the type infos for later use when creating partition files
 	pw := &PartitionedParquetWriter{
-		baseDir:        baseDir,
-		partitionCols:  options.PartitionColumns,
-		partitionIdx:   partitionIdx,
-		writers:        make(map[string]*partitionWriter),
-		writerOrder:    list.New(),
-		writerElements: make(map[string]*list.Element),
-		options:        options.WriterOptions,
-		maxOpenFiles:   options.MaxOpenFiles,
-		maxFileSize:    options.MaxFileSize,
-		columnNames:    columnNames,
-		columnTypes:    columnTypes,
+		baseDir:         baseDir,
+		partitionCols:   options.PartitionColumns,
+		partitionIdx:    partitionIdx,
+		writers:         make(map[string]*partitionWriter),
+		writerOrder:     list.New(),
+		writerElements:  make(map[string]*list.Element),
+		options:         options.WriterOptions,
+		maxOpenFiles:    options.MaxOpenFiles,
+		maxFileSize:     options.MaxFileSize,
+		columnNames:     columnNames,
+		columnTypes:     columnTypes,
 		columnTypeInfos: columnTypeInfos,
 	}
 
@@ -417,9 +417,9 @@ func (pw *PartitionedParquetWriter) extractPartitionValue(row map[string]interfa
 		for colName, colValue := range row {
 			// Check common time-related column names
 			if strings.Contains(strings.ToLower(colName), "time") ||
-			   strings.Contains(strings.ToLower(colName), "created") ||
-			   strings.Contains(strings.ToLower(colName), "updated") ||
-			   strings.Contains(strings.ToLower(colName), "date") {
+				strings.Contains(strings.ToLower(colName), "created") ||
+				strings.Contains(strings.ToLower(colName), "updated") ||
+				strings.Contains(strings.ToLower(colName), "date") {
 
 				switch v := colValue.(type) {
 				case gocql.UUID:

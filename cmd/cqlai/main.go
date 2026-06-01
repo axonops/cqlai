@@ -19,11 +19,11 @@ var Version = "dev"
 func main() {
 	// Parse command-line flags using pflag for POSIX/GNU-style flags
 	var (
-		host           string
-		port           int
-		keyspace       string
-		username       string
-		password       string
+		host                  string
+		port                  int
+		keyspace              string
+		username              string
+		password              string
 		noConfirm             bool
 		connectTimeout        int
 		requestTimeout        int
@@ -32,15 +32,15 @@ func main() {
 		sslNoHostVerification bool
 		sslInsecureSkipVerify bool
 		consistency           string
-		execute        string
-		executeFile    string
-		format         string
-		noHeader       bool
-		fieldSep       string
-		pageSize       int
-		configFile     string
-		version        bool
-		help           bool
+		execute               string
+		executeFile           string
+		format                string
+		noHeader              bool
+		fieldSep              string
+		pageSize              int
+		configFile            string
+		version               bool
+		help                  bool
 	)
 
 	// Connection flags
@@ -252,7 +252,7 @@ func main() {
 	if username != "" && password == "" && isTerminal() {
 		fmt.Fprintf(os.Stderr, "Password: ")
 		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // G115: fd conversion is safe on all supported platforms
-		fmt.Fprintln(os.Stderr) // Print newline after password input
+		fmt.Fprintln(os.Stderr)                                     // Print newline after password input
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
 			os.Exit(1)
@@ -274,21 +274,21 @@ func main() {
 
 	// Create connection options
 	connOptions := ui.ConnectionOptions{
-		Host:                   host,
-		Port:                   port,
-		Keyspace:               keyspace,
-		Username:               username,
-		Password:               password,
-		RequireConfirmation:    !noConfirm,
-		ConnectTimeout:         connectTimeout,
-		RequestTimeout:         requestTimeout,
-		Debug:                  debug,
-		ConfigFile:             configFile,
-		SSL:                    ssl,
-		SSLHostVerification:    sslNoHostVerificationPtr,
-		SSLInsecureSkipVerify:  sslInsecureSkipVerifyPtr,
-		Consistency:            consistency,
-		PageSize:               pageSize,
+		Host:                  host,
+		Port:                  port,
+		Keyspace:              keyspace,
+		Username:              username,
+		Password:              password,
+		RequireConfirmation:   !noConfirm,
+		ConnectTimeout:        connectTimeout,
+		RequestTimeout:        requestTimeout,
+		Debug:                 debug,
+		ConfigFile:            configFile,
+		SSL:                   ssl,
+		SSLHostVerification:   sslNoHostVerificationPtr,
+		SSLInsecureSkipVerify: sslInsecureSkipVerifyPtr,
+		Consistency:           consistency,
+		PageSize:              pageSize,
 	}
 
 	// Check if we're in batch mode

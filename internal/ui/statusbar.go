@@ -109,7 +109,6 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 		separatorStyle.Render(" │ ") +
 		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState)
 
-
 	// Apply style to the entire bar without forced background
 	barStyle := lipgloss.NewStyle().
 		Padding(0, 1).
