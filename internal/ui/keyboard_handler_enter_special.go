@@ -10,7 +10,7 @@ import (
 // handleSpecialCommands handles special commands like EXIT, QUIT, CLEAR
 func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, bool) {
 	upperCommand := strings.ToUpper(command)
-	
+
 	if upperCommand == "EXIT" || upperCommand == "QUIT" {
 		// Disable mouse tracking on exit
 		fmt.Print("\x1b[?1000l") // Disable basic mouse tracking

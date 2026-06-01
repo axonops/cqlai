@@ -2,7 +2,7 @@ package ui
 
 import (
 	"encoding/json"
-	
+
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
@@ -283,8 +283,6 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	}
 	return m, nil
 }
-
-
 
 // handleLeftArrow handles Left arrow key press
 func (m *MainModel) handleLeftArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {

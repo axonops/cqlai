@@ -89,7 +89,7 @@ func (m *MainModel) handleCtrlLeft() (*MainModel, tea.Cmd) {
 			newPos--
 		}
 		// If we didn't move much, jump by 20 characters
-		if cursorPos - newPos < 5 {
+		if cursorPos-newPos < 5 {
 			newPos = cursorPos - 20
 			if newPos < 0 {
 				newPos = 0
@@ -117,7 +117,7 @@ func (m *MainModel) handleCtrlRight() (*MainModel, tea.Cmd) {
 			newPos++
 		}
 		// If we didn't move much, jump by 20 characters
-		if newPos - cursorPos < 5 {
+		if newPos-cursorPos < 5 {
 			newPos = cursorPos + 20
 			if newPos > valueLen {
 				newPos = valueLen

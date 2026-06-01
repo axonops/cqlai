@@ -1,6 +1,5 @@
 package completion
 
-
 // getDescribeCompletions returns completions for DESCRIBE commands
 func (ce *CompletionEngine) getDescribeCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {

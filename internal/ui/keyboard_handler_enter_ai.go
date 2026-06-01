@@ -57,16 +57,16 @@ func (m *MainModel) handleAICommand(command string) (*MainModel, tea.Cmd) {
 		input.Placeholder = ""
 		input.Prompt = "> "
 		input.Focus()
-		input.CharLimit = 4096 // Increased to support long queries
+		input.CharLimit = 4096                    // Increased to support long queries
 		input.Width = m.historyViewport.Width - 2 // Reduced margin for better scrolling
 		m.aiConversationInput = input
-		
+
 		// Initialize conversation viewport
 		m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
 		// Clear messages for new conversation
 		m.aiConversationMessages = []AIMessage{}
 	}
-	
+
 	// Add user's initial request to raw messages
 	m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
 		Role:    "user",
@@ -74,7 +74,7 @@ func (m *MainModel) handleAICommand(command string) (*MainModel, tea.Cmd) {
 	})
 	// Rebuild the conversation with proper wrapping
 	m.rebuildAIConversation()
-	
+
 	// Switch to AI conversation view
 	m.aiConversationActive = true
 	m.viewMode = "ai"

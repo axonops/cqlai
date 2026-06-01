@@ -13,7 +13,7 @@ import (
 // This replaces the old implementation that maintained its own cache
 type SchemaCache struct {
 	Keyspaces   []string
-	Tables      map[string][]CachedTableInfo        // keyspace -> tables
+	Tables      map[string][]CachedTableInfo       // keyspace -> tables
 	Columns     map[string]map[string][]ColumnInfo // keyspace -> table -> columns
 	SearchIndex *SearchIndex                       // Pre-computed fuzzy search index
 	LastRefresh time.Time
@@ -36,9 +36,9 @@ type SearchIndex struct {
 // NewSchemaCache creates a new schema cache using gocql metadata
 func NewSchemaCache(session *Session) *SchemaCache {
 	return &SchemaCache{
-		session:     session,
-		Tables:      make(map[string][]CachedTableInfo),
-		Columns:     make(map[string]map[string][]ColumnInfo),
+		session: session,
+		Tables:  make(map[string][]CachedTableInfo),
+		Columns: make(map[string]map[string][]ColumnInfo),
 		SearchIndex: &SearchIndex{
 			TableTokens: make(map[string][]string),
 		},

@@ -22,21 +22,21 @@ import (
 
 // ConnectionOptions holds command-line connection options
 type ConnectionOptions struct {
-	Host                string
-	Port                int
-	Keyspace            string
-	Username            string
-	Password            string
-	RequireConfirmation bool
-	ConnectTimeout      int    // Connection timeout in seconds
-	RequestTimeout      int    // Request timeout in seconds
-	Debug               bool   // Enable debug logging
-	ConfigFile          string // Path to custom config file
-	SSL                    bool   // Enable SSL/TLS connection
-	SSLHostVerification    *bool  // Override SSL host verification (nil = use config)
-	SSLInsecureSkipVerify  *bool  // Override SSL insecure skip verify (nil = use config)
-	Consistency            string // Default consistency level (e.g., "QUORUM")
-	PageSize            int    // Page size for results
+	Host                  string
+	Port                  int
+	Keyspace              string
+	Username              string
+	Password              string
+	RequireConfirmation   bool
+	ConnectTimeout        int    // Connection timeout in seconds
+	RequestTimeout        int    // Request timeout in seconds
+	Debug                 bool   // Enable debug logging
+	ConfigFile            string // Path to custom config file
+	SSL                   bool   // Enable SSL/TLS connection
+	SSLHostVerification   *bool  // Override SSL host verification (nil = use config)
+	SSLInsecureSkipVerify *bool  // Override SSL insecure skip verify (nil = use config)
+	Consistency           string // Default consistency level (e.g., "QUORUM")
+	PageSize              int    // Page size for results
 }
 
 // AIMessage represents a single message in the AI conversation
@@ -99,59 +99,59 @@ type MainModel struct {
 	completionScrollOffset   int // Track scroll position in completion list
 	confirmExit              bool
 	modal                    Modal
-	aiConversationID         string              // Current AI conversation ID for stateful interactions
-	aiSelectionModal         *AISelectionModal   // AI selection modal for user choices
-	aiCQLModal               *AICQLModal         // AI CQL execution modal
-	showHistoryModal         bool                // Whether to show command history modal
-	historyModalIndex        int                 // Currently selected item in history modal
-	historyModalScrollOffset int                 // Track scroll position in history modal
-	horizontalOffset         int                 // For horizontal scrolling of tables
-	lastTableData            [][]string          // Store the last table data for horizontal scrolling
-	tableWidth               int                 // Width of the full table (before truncation)
-	tableHeaders             []string            // Store column headers for sticky display
-	columnWidths             []int               // Store column widths for proper alignment
-	initialColumnWidths      []int               // Store initial column widths to maintain consistency
-	hasTable                 bool                // Whether we're currently displaying a table
-	cachedTableLines         []string            // Cache rendered table lines for fast scrolling
-	navigationMode           bool                // Toggle between navigation keys and input mode
-	viewMode                 string              // "history", "table", "trace", or "ai_info"
-	showDataTypes            bool                // Whether to show column data types in table headers
-	columnTypes              []string            // Store column data types
-	tableRowBoundaries       []int               // Line numbers where table rows start
-	
+	aiConversationID         string            // Current AI conversation ID for stateful interactions
+	aiSelectionModal         *AISelectionModal // AI selection modal for user choices
+	aiCQLModal               *AICQLModal       // AI CQL execution modal
+	showHistoryModal         bool              // Whether to show command history modal
+	historyModalIndex        int               // Currently selected item in history modal
+	historyModalScrollOffset int               // Track scroll position in history modal
+	horizontalOffset         int               // For horizontal scrolling of tables
+	lastTableData            [][]string        // Store the last table data for horizontal scrolling
+	tableWidth               int               // Width of the full table (before truncation)
+	tableHeaders             []string          // Store column headers for sticky display
+	columnWidths             []int             // Store column widths for proper alignment
+	initialColumnWidths      []int             // Store initial column widths to maintain consistency
+	hasTable                 bool              // Whether we're currently displaying a table
+	cachedTableLines         []string          // Cache rendered table lines for fast scrolling
+	navigationMode           bool              // Toggle between navigation keys and input mode
+	viewMode                 string            // "history", "table", "trace", or "ai_info"
+	showDataTypes            bool              // Whether to show column data types in table headers
+	columnTypes              []string          // Store column data types
+	tableRowBoundaries       []int             // Line numbers where table rows start
+
 	// AI conversation view
-	aiConversationActive     bool                // Whether AI conversation view is active
-	aiConversationHistory    string              // Full conversation history (formatted)
-	aiConversationMessages   []AIMessage         // Raw conversation messages for dynamic wrapping
-	aiConversationViewport   viewport.Model      // Viewport for scrollable conversation
-	aiConversationInput      textinput.Model     // Input for user messages
-	aiProcessing            bool                // Whether AI is currently processing
-	aiCommandHistory        []string            // Separate history for AI commands
+	aiConversationActive   bool            // Whether AI conversation view is active
+	aiConversationHistory  string          // Full conversation history (formatted)
+	aiConversationMessages []AIMessage     // Raw conversation messages for dynamic wrapping
+	aiConversationViewport viewport.Model  // Viewport for scrollable conversation
+	aiConversationInput    textinput.Model // Input for user messages
+	aiProcessing           bool            // Whether AI is currently processing
+	aiCommandHistory       []string        // Separate history for AI commands
 
 	// Save modal
-	saveModalActive         bool                // Whether save modal is active
-	saveModalStep           int                 // 0: format selection, 1: filename input
-	saveModalFormat         int                 // Selected format index (0: CSV, 1: JSON, 2: ASCII)
-	saveModalFilename       string              // Filename being entered
-	saveModalInput          textinput.Model     // Text input for filename
-	aiHistoryIndex          int                 // Current position in AI history
-	
+	saveModalActive   bool            // Whether save modal is active
+	saveModalStep     int             // 0: format selection, 1: filename input
+	saveModalFormat   int             // Selected format index (0: CSV, 1: JSON, 2: ASCII)
+	saveModalFilename string          // Filename being entered
+	saveModalInput    textinput.Model // Text input for filename
+	aiHistoryIndex    int             // Current position in AI history
+
 	// Tracing support
-	traceViewport            viewport.Model      // Viewport for trace results
-	hasTrace                 bool                // Whether we have trace data to display
-	traceData                [][]string          // Store trace results
-	traceHeaders             []string            // Store trace column headers
-	traceInfo                *db.TraceInfo       // Store trace session info
-	traceHorizontalOffset    int                 // Horizontal scroll offset for trace table
-	traceTableWidth          int                 // Full width of trace table
-	traceColumnWidths        []int               // Column widths for trace table
+	traceViewport         viewport.Model // Viewport for trace results
+	hasTrace              bool           // Whether we have trace data to display
+	traceData             [][]string     // Store trace results
+	traceHeaders          []string       // Store trace column headers
+	traceInfo             *db.TraceInfo  // Store trace session info
+	traceHorizontalOffset int            // Horizontal scroll offset for trace table
+	traceTableWidth       int            // Full width of trace table
+	traceColumnWidths     []int          // Column widths for trace table
 
 	// Sliding window for large result sets
 	slidingWindow *SlidingWindowTable // Manages memory-limited table data
-	
+
 	// Window dimensions
-	windowWidth              int                 // Terminal window width
-	windowHeight             int                 // Terminal window height
+	windowWidth  int // Terminal window width
+	windowHeight int // Terminal window height
 
 	// Multi-line mode
 	multiLineMode   bool     // Whether we're in multi-line mode
@@ -160,11 +160,11 @@ type MainModel struct {
 	// History search
 	historyManager            *HistoryManager
 	aiHistoryManager          *HistoryManager // Separate history for AI conversations
-	historySearchMode         bool     // Whether we're in Ctrl+R history search mode
-	historySearchQuery        string   // Current search query
-	historySearchResults      []string // Filtered history results
-	historySearchIndex        int      // Currently selected item in search results
-	historySearchScrollOffset int      // Scroll offset for history search modal
+	historySearchMode         bool            // Whether we're in Ctrl+R history search mode
+	historySearchQuery        string          // Current search query
+	historySearchResults      []string        // Filtered history results
+	historySearchIndex        int             // Currently selected item in search results
+	historySearchScrollOffset int             // Scroll offset for history search modal
 }
 
 // wrapAIText wraps text to fit the AI conversation viewport width
@@ -182,7 +182,7 @@ func (m *MainModel) wrapAIText(text string) string {
 	if wrapWidth < 20 {
 		wrapWidth = 20 // Minimum wrap width
 	}
-	
+
 	wrapStyle := lipgloss.NewStyle().Width(wrapWidth)
 	return wrapStyle.Render(text)
 }
@@ -190,11 +190,11 @@ func (m *MainModel) wrapAIText(text string) string {
 // rebuildAIConversation rebuilds the formatted conversation from raw messages
 func (m *MainModel) rebuildAIConversation() {
 	var conversation string
-	
+
 	// Add header
-	conversation = m.styles.AccentText.Render("AI Conversation") + "\n" + 
+	conversation = m.styles.AccentText.Render("AI Conversation") + "\n" +
 		m.styles.MutedText.Render("────────────────────") + "\n"
-	
+
 	// Format each message with current viewport width
 	for _, msg := range m.aiConversationMessages {
 		// Skip system-generated tool results (like "Found X tables matching")
@@ -245,7 +245,7 @@ func (m *MainModel) rebuildAIConversation() {
 			}
 		}
 	}
-	
+
 	m.aiConversationHistory = conversation
 	m.aiConversationViewport.SetContent(m.aiConversationHistory)
 	m.aiConversationViewport.GotoBottom()
@@ -294,7 +294,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 			},
 		}
 	}
-	
+
 	// Enable debug logging if configured (from config file or command-line)
 	if cfg.Debug || options.Debug {
 		logger.SetDebugEnabled(true)
@@ -401,7 +401,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 
 	// Load command history from the history manager
 	commandHistory := historyManager.GetHistory()
-	
+
 	// Load AI command history from the AI history manager
 	aiCommandHistory := aiHistoryManager.GetHistory()
 
@@ -468,7 +468,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Store the actual window dimensions
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
-		
+
 		headerHeight := 1 // top bar
 		footerHeight := 1 // status bar
 		inputHeight := 1  // text input
@@ -494,10 +494,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tableViewport.Height = newHeight
 			m.traceViewport.Width = newWidth
 			m.traceViewport.Height = newHeight
-			
+
 			// Re-wrap history content for new width
 			m.updateHistoryWrapping()
-			
+
 			// Also resize AI conversation viewport if it exists
 			if m.aiConversationActive {
 				m.aiConversationViewport.Width = newWidth
@@ -572,7 +572,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						})
 						// Rebuild the conversation with proper wrapping
 						m.rebuildAIConversation()
-						
+
 						// Ensure we're in AI conversation view
 						if !m.aiConversationActive {
 							m.aiConversationActive = true
@@ -608,7 +608,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 					// Rebuild the conversation with proper wrapping
 					m.rebuildAIConversation()
-					
+
 					// Show the CQL execution modal
 					m.aiCQLModal = NewAICQLModal(resultText)
 					m.aiProcessing = false
@@ -638,7 +638,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Content: resultText,
 					})
 				}
-				
+
 				// Rebuild the conversation after adding messages
 				m.rebuildAIConversation()
 				// Stay in AI conversation view
@@ -675,7 +675,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Type:    "selection",
 			})
 			m.rebuildAIConversation()
-			
+
 			// Clear selection modal
 			m.aiSelectionModal = nil
 			m.aiProcessing = true
@@ -700,7 +700,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AIRequestMoreInfoMsg:
 		// AI needs more information from user - append to conversation
 		logger.DebugfToFile("AI", "AI requesting more info: %s", msg.Message)
-		
+
 		// Add assistant message to raw messages
 		m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
 			Role:    "assistant",
@@ -708,7 +708,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		// Rebuild the conversation with proper wrapping
 		m.rebuildAIConversation()
-		
+
 		// Ensure we're in AI conversation view
 		if !m.aiConversationActive {
 			m.aiConversationActive = true
@@ -716,7 +716,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.aiConversationInput.Focus()
 		m.aiProcessing = false
-		
+
 		// Close any modals
 		return m, nil
 

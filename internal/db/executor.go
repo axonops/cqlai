@@ -310,7 +310,7 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 			// Use appropriate system table based on Cassandra version
 			var exists string
 			var iter *gocql.Iter
-			
+
 			if s.IsVersion3OrHigher() {
 				// Cassandra 3.0+ uses system_schema.keyspaces
 				iter = s.Query("SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name = ?", keyspace).Iter()
@@ -318,7 +318,7 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 				// Cassandra 2.x uses system.schema_keyspaces
 				iter = s.Query("SELECT keyspace_name FROM system.schema_keyspaces WHERE keyspace_name = ?", keyspace).Iter()
 			}
-			
+
 			if !iter.Scan(&exists) {
 				_ = iter.Close()
 				return fmt.Errorf("keyspace '%s' does not exist", keyspace)
@@ -368,7 +368,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 
 	// Create the query
 	q := s.Query(query)
-	
+
 	// Enable tracing if needed and capture trace ID
 	var tracer *captureTracer
 	if s.tracing {
@@ -502,7 +502,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Use MapScan for all tables to safely handle NULL values
 	// gocql can panic when scanning NULLs into interface{} with regular Scan()
 	// MapScan handles NULLs gracefully by omitting them from the map
-	if true {  // Always use MapScan for safety
+	if true { // Always use MapScan for safety
 		virtualResults := make([][]string, 0)
 		for {
 			rowMap := make(map[string]interface{})
@@ -562,132 +562,132 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 				}(i)
 			}
 
-		// Scan the row
-		if !iter.Scan(scanDest...) {
-			logger.DebugToFile("executeSelectQuery", "Scan returned false - no more rows or error")
-			break
-		}
-
-		// Store raw data for JSON export (preserves types)
-		rawRow := make(map[string]interface{})
-		// Create formatted row for display
-		row := make([]string, len(filteredColumns))
-
-		for i, col := range filteredColumns {
-			// Extract value based on type
-			var val interface{}
-			switch {
-			case col.TypeInfo == nil:
-				// Handle nil TypeInfo (virtual tables)
-				val = *(scanDest[i].(*interface{}))
-			case col.TypeInfo.Type() == gocql.TypeUDT:
-				// For UDT columns, we used *map[string]interface{}
-				udtMap := scanDest[i].(*map[string]interface{})
-				if udtMap != nil && *udtMap != nil {
-					val = *udtMap
-				} else {
-					val = nil
-				}
-			default:
-				// Regular column - dereference the pointer
-				val = *(scanDest[i].(*interface{}))
+			// Scan the row
+			if !iter.Scan(scanDest...) {
+				logger.DebugToFile("executeSelectQuery", "Scan returned false - no more rows or error")
+				break
 			}
 
-			if val == nil {
-				rawRow[cleanHeaders[i]] = nil
-				row[i] = "null"
-			} else {
-				// Special handling for UDTs and complex types
-				typeStr := columnTypes[i]
+			// Store raw data for JSON export (preserves types)
+			rawRow := make(map[string]interface{})
+			// Create formatted row for display
+			row := make([]string, len(filteredColumns))
 
-				// Parse the type string to get structured type information
-				typeInfo, parseErr := ParseCQLType(typeStr)
-
-				// Add debug logging to understand what we're getting
-				logger.DebugfToFile("ExecuteSelectQuery", "Column %s: typeStr=%s, gocqlType=%v, parsedType=%v, parseErr=%v, valType=%T",
-					col.Name, typeStr, col.TypeInfo.Type(), typeInfo, parseErr, val)
-
-				// Determine the data type category
-				isUDT := col.TypeInfo.Type() == gocql.TypeUDT || (typeInfo != nil && typeInfo.BaseType == "udt")
-				isCollection := typeInfo != nil && (typeInfo.BaseType == "list" || typeInfo.BaseType == "set" ||
-					typeInfo.BaseType == "map" || typeInfo.BaseType == "tuple")
-
+			for i, col := range filteredColumns {
+				// Extract value based on type
+				var val interface{}
 				switch {
-				case isUDT:
-					// UDT handling - try to decode if we got raw bytes
-					if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
-						logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
+				case col.TypeInfo == nil:
+					// Handle nil TypeInfo (virtual tables)
+					val = *(scanDest[i].(*interface{}))
+				case col.TypeInfo.Type() == gocql.TypeUDT:
+					// For UDT columns, we used *map[string]interface{}
+					udtMap := scanDest[i].(*map[string]interface{})
+					if udtMap != nil && *udtMap != nil {
+						val = *udtMap
+					} else {
+						val = nil
+					}
+				default:
+					// Regular column - dereference the pointer
+					val = *(scanDest[i].(*interface{}))
+				}
 
-						// Use our binary decoder to decode the UDT
-						decoder := NewBinaryDecoder(s.udtRegistry)
+				if val == nil {
+					rawRow[cleanHeaders[i]] = nil
+					row[i] = "null"
+				} else {
+					// Special handling for UDTs and complex types
+					typeStr := columnTypes[i]
 
-						// Determine the keyspace - prefer query keyspace, then current
-						keyspace := currentKeyspace
-						if keyspace == "" {
-							keyspace = s.Keyspace()
-							if keyspace == "" && s.cluster != nil {
-								keyspace = s.cluster.Keyspace
-							}
-						}
+					// Parse the type string to get structured type information
+					typeInfo, parseErr := ParseCQLType(typeStr)
 
-						// Try to decode the UDT
-						if typeInfo != nil {
-							decoded, err := decoder.Decode(bytes, typeInfo, keyspace)
-							if err != nil {
-								logger.DebugfToFile("ExecuteSelectQuery", "Failed to decode UDT %s: %v", col.Name, err)
-								// Fall back to showing raw bytes info
-								rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
-								row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
-							} else {
-								// Successfully decoded UDT
-								rawRow[cleanHeaders[i]] = decoded
-								// Format for display
-								if m, ok := decoded.(map[string]interface{}); ok {
-									row[i] = formatUDTMap(m)
-								} else {
-									row[i] = fmt.Sprintf("%v", decoded)
+					// Add debug logging to understand what we're getting
+					logger.DebugfToFile("ExecuteSelectQuery", "Column %s: typeStr=%s, gocqlType=%v, parsedType=%v, parseErr=%v, valType=%T",
+						col.Name, typeStr, col.TypeInfo.Type(), typeInfo, parseErr, val)
+
+					// Determine the data type category
+					isUDT := col.TypeInfo.Type() == gocql.TypeUDT || (typeInfo != nil && typeInfo.BaseType == "udt")
+					isCollection := typeInfo != nil && (typeInfo.BaseType == "list" || typeInfo.BaseType == "set" ||
+						typeInfo.BaseType == "map" || typeInfo.BaseType == "tuple")
+
+					switch {
+					case isUDT:
+						// UDT handling - try to decode if we got raw bytes
+						if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
+							logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
+
+							// Use our binary decoder to decode the UDT
+							decoder := NewBinaryDecoder(s.udtRegistry)
+
+							// Determine the keyspace - prefer query keyspace, then current
+							keyspace := currentKeyspace
+							if keyspace == "" {
+								keyspace = s.Keyspace()
+								if keyspace == "" && s.cluster != nil {
+									keyspace = s.cluster.Keyspace
 								}
 							}
+
+							// Try to decode the UDT
+							if typeInfo != nil {
+								decoded, err := decoder.Decode(bytes, typeInfo, keyspace)
+								if err != nil {
+									logger.DebugfToFile("ExecuteSelectQuery", "Failed to decode UDT %s: %v", col.Name, err)
+									// Fall back to showing raw bytes info
+									rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
+									row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
+								} else {
+									// Successfully decoded UDT
+									rawRow[cleanHeaders[i]] = decoded
+									// Format for display
+									if m, ok := decoded.(map[string]interface{}); ok {
+										row[i] = formatUDTMap(m)
+									} else {
+										row[i] = fmt.Sprintf("%v", decoded)
+									}
+								}
+							} else {
+								// Couldn't parse type, show raw bytes
+								rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
+								row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
+							}
+						} else if m, ok := val.(map[string]interface{}); ok {
+							// Sometimes gocql returns a map directly
+							if len(m) > 0 {
+								rawRow[cleanHeaders[i]] = m
+								row[i] = formatUDTMap(m)
+							} else {
+								// Empty map - common issue with gocql and UDTs
+								logger.DebugfToFile("ExecuteSelectQuery", "UDT %s returned empty map", col.Name)
+								rawRow[cleanHeaders[i]] = m
+								row[i] = "{}"
+							}
 						} else {
-							// Couldn't parse type, show raw bytes
-							rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
-							row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
+							// Other format - just display as is
+							rawRow[cleanHeaders[i]] = val
+							row[i] = fmt.Sprintf("%v", val)
 						}
-					} else if m, ok := val.(map[string]interface{}); ok {
-						// Sometimes gocql returns a map directly
-						if len(m) > 0 {
-							rawRow[cleanHeaders[i]] = m
-							row[i] = formatUDTMap(m)
-						} else {
-							// Empty map - common issue with gocql and UDTs
-							logger.DebugfToFile("ExecuteSelectQuery", "UDT %s returned empty map", col.Name)
-							rawRow[cleanHeaders[i]] = m
-							row[i] = "{}"
-						}
-					} else {
-						// Other format - just display as is
+
+					case isCollection:
+						// Collections are already decoded by gocql, just format them
 						rawRow[cleanHeaders[i]] = val
-						row[i] = fmt.Sprintf("%v", val)
+						row[i] = FormatValue(val)
+
+					default:
+						// Store the actual value for JSON
+						rawRow[cleanHeaders[i]] = val
+
+						// Format for display - use formatValue which handles collections properly
+						row[i] = FormatValue(val)
 					}
-
-				case isCollection:
-					// Collections are already decoded by gocql, just format them
-					rawRow[cleanHeaders[i]] = val
-					row[i] = FormatValue(val)
-
-				default:
-					// Store the actual value for JSON
-					rawRow[cleanHeaders[i]] = val
-
-					// Format for display - use formatValue which handles collections properly
-					row[i] = FormatValue(val)
 				}
 			}
+			rawData = append(rawData, rawRow)
+			results = append(results, row)
+			rowNum++
 		}
-		rawData = append(rawData, rawRow)
-		results = append(results, row)
-		rowNum++
-	}
 	}
 	logger.DebugfToFile("executeSelectQuery", "Scan completed. Total rows: %d", rowNum)
 
@@ -752,7 +752,7 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	if s.pageSize > 0 {
 		q.PageSize(s.pageSize)
 	}
-	
+
 	// Enable tracing if needed and capture trace ID
 	var tracer *captureTracer
 	if s.tracing {
@@ -765,7 +765,7 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 			}
 		}()
 	}
-	
+
 	iter := q.Iter()
 
 	// Get column info

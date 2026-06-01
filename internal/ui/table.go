@@ -8,7 +8,7 @@ import (
 // NewTable creates a new table model with some default styling.
 func NewTable() table.Model {
 	t := table.New(
-		// We will set the columns and rows later.
+	// We will set the columns and rows later.
 	)
 
 	s := table.DefaultStyles()

@@ -140,4 +140,3 @@ func (ce *CompletionEngine) getUpdateCompletions(words []string, wordPos int) []
 
 	return []string{}
 }
-

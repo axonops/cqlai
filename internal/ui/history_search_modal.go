@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
-	
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -27,7 +27,7 @@ func NewHistorySearchModal(query string, results []string, selectedIndex int, sc
 	if maxWidth < 40 {
 		maxWidth = 40
 	}
-	
+
 	return HistorySearchModal{
 		query:        query,
 		results:      results,
@@ -54,13 +54,13 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	// First, determine the actual content width we need
 	minWidth := 40 // Minimum width for readability
 	maxContentWidth := 0
-	
+
 	// Check title width
 	titleWidth := len("History Search (Ctrl+R)") + 4 // +4 for padding
 	if titleWidth > maxContentWidth {
 		maxContentWidth = titleWidth
 	}
-	
+
 	// Check search query width
 	queryWidth := len("Search: ") + len(hsm.query) + 4
 	if hsm.query == "" {
@@ -69,7 +69,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	if queryWidth > maxContentWidth {
 		maxContentWidth = queryWidth
 	}
-	
+
 	// Check results width
 	for _, result := range hsm.results {
 		resultWidth := len(result) + 6 // +6 for arrow/spaces and padding
@@ -77,13 +77,13 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 			maxContentWidth = resultWidth
 		}
 	}
-	
+
 	// Check instruction width
 	instructionWidth := len("↑↓: Navigate • Enter: Select • Esc: Cancel") + 4
 	if instructionWidth > maxContentWidth {
 		maxContentWidth = instructionWidth
 	}
-	
+
 	// Use the calculated width, but respect min/max bounds
 	boxWidth := maxContentWidth
 	if boxWidth < minWidth {
@@ -92,17 +92,17 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	if boxWidth > hsm.maxWidth {
 		boxWidth = hsm.maxWidth
 	}
-	
+
 	boxContentWidth := boxWidth - 6 // Account for border and arrow
-	
+
 	// Create the modal style WITHOUT width or background - let content determine size
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent)
-	
+
 	// Build the content
 	var content []string
-	
+
 	// Title
 	titleText := "History Search (Ctrl+R)"
 	// Pad title to desired width
@@ -114,7 +114,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 		Foreground(styles.Accent).
 		Bold(true)
 	content = append(content, titleStyle.Render(titleText))
-	
+
 	// Search query
 	queryStyle := lipgloss.NewStyle().
 		Foreground(styles.AccentText.GetForeground())
@@ -125,10 +125,10 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 	queryText := " Search: " + queryDisplay
 	// Pad to width
 	if len(queryText) < boxWidth {
-		queryText += strings.Repeat(" ", boxWidth - len(queryText))
+		queryText += strings.Repeat(" ", boxWidth-len(queryText))
 	}
 	content = append(content, queryStyle.Render(queryText))
-	
+
 	// Results section
 	if len(hsm.results) == 0 {
 		noResultsStyle := lipgloss.NewStyle().
@@ -147,7 +147,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 			endIndex = len(hsm.results)
 		}
 		displayResults := hsm.results[hsm.scrollOffset:endIndex]
-		
+
 		// Show scroll up indicator if not at top
 		if hsm.scrollOffset > 0 {
 			scrollStyle := lipgloss.NewStyle().
@@ -159,13 +159,13 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 			}
 			content = append(content, scrollStyle.Render(scrollText))
 		}
-		
+
 		// Results count indicator
 		if len(hsm.results) > hsm.maxShow {
 			countStyle := lipgloss.NewStyle().
 				Foreground(styles.MutedText.GetForeground()).
 				Italic(true)
-			countText := fmt.Sprintf("Showing %d-%d of %d matches", 
+			countText := fmt.Sprintf("Showing %d-%d of %d matches",
 				hsm.scrollOffset+1, endIndex, len(hsm.results))
 			padding := (boxWidth - len(countText)) / 2
 			if padding > 0 {
@@ -173,13 +173,13 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 			}
 			content = append(content, countStyle.Render(countText))
 		}
-		
+
 		// Show results
 		for i, result := range displayResults {
 			actualIndex := hsm.scrollOffset + i
 			// Truncate the result if it's too long
 			displayText := hsm.truncateWithEllipsis(result, boxContentWidth)
-			
+
 			var line string
 			if actualIndex == hsm.selected {
 				// Selected item with arrow
@@ -189,23 +189,23 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 				itemText := " → " + displayText
 				// Pad to width
 				if len(itemText) < boxWidth {
-					itemText += strings.Repeat(" ", boxWidth - len(itemText))
+					itemText += strings.Repeat(" ", boxWidth-len(itemText))
 				}
 				line = itemStyle.Render(itemText)
 			} else {
 				// Regular item
 				itemStyle := lipgloss.NewStyle().
 					Foreground(styles.MutedText.GetForeground())
-				itemText := "   " + displayText  // 3 spaces to align with arrow
+				itemText := "   " + displayText // 3 spaces to align with arrow
 				// Pad to width
 				if len(itemText) < boxWidth {
-					itemText += strings.Repeat(" ", boxWidth - len(itemText))
+					itemText += strings.Repeat(" ", boxWidth-len(itemText))
 				}
 				line = itemStyle.Render(itemText)
 			}
 			content = append(content, line)
 		}
-		
+
 		// Show scroll down indicator if not at bottom
 		if endIndex < len(hsm.results) {
 			scrollDownStyle := lipgloss.NewStyle().
@@ -218,7 +218,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 			content = append(content, scrollDownStyle.Render(scrollDownText))
 		}
 	}
-	
+
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
@@ -229,7 +229,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 		instructionText = strings.Repeat(" ", instrPadding) + instructionText + strings.Repeat(" ", instrPadding)
 	}
 	content = append(content, instructionStyle.Render(instructionText))
-	
+
 	// Join all content
 	modalContent := strings.Join(content, "\n")
 	return modalStyle.Render(modalContent)
@@ -239,7 +239,7 @@ func (hsm HistorySearchModal) RenderContent(styles *Styles) string {
 func (hsm HistorySearchModal) GetOverlay(screenWidth, screenHeight int, styles *Styles) ModalOverlay {
 	content := hsm.RenderContent(styles)
 	modalHeight := strings.Count(content, "\n") + 1
-	
+
 	// Calculate the actual width from the rendered content
 	modalLines := strings.Split(content, "\n")
 	modalWidth := 0
@@ -249,17 +249,17 @@ func (hsm HistorySearchModal) GetOverlay(screenWidth, screenHeight int, styles *
 			modalWidth = lineWidth
 		}
 	}
-	
+
 	// Left align the modal with no margin
 	x := 0
-	
+
 	// Position just above the input line (prompt)
 	// The last two lines are the prompt and status bar
 	y := screenHeight - modalHeight - 2
 	if y < 0 {
 		y = 0
 	}
-	
+
 	return ModalOverlay{
 		Content: content,
 		X:       x,

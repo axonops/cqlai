@@ -133,7 +133,6 @@ func (m *MainModel) isSameTableData(data [][]string) bool {
 	return true
 }
 
-
 // buildFullTable builds the complete table with borders and formatting
 func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 	var lines []string
@@ -328,7 +327,7 @@ func (m *MainModel) refreshTraceView() {
 	// Set trace data temporarily
 	m.horizontalOffset = m.traceHorizontalOffset
 	m.lastTableData = m.traceData
-	m.cachedTableLines = nil // Force rebuild for trace data
+	m.cachedTableLines = nil    // Force rebuild for trace data
 	m.initialColumnWidths = nil // Reset column widths for trace
 
 	// Format using existing table renderer

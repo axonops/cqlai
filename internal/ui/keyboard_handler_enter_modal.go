@@ -46,7 +46,7 @@ func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
 		logger.DebugfToFile("HandleEnterKey", "Result type: %T", result)
 		updatedModel, cmd := m.processCommandResult(command, result, start)
 		return updatedModel, cmd
-		
+
 	} else { // "Cancel" button
 		// Cancel the command
 		m.modal = Modal{Type: ModalNone}

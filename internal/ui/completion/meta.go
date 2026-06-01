@@ -7,6 +7,3 @@ func (ce *CompletionEngine) getShowCompletions(_ []string, wordPos int) []string
 	}
 	return []string{}
 }
-
-
-

@@ -14,7 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-
 // processCommandResult processes the result from a command execution
 func (m *MainModel) processCommandResult(command string, result interface{}, startTime time.Time) (*MainModel, tea.Cmd) {
 	switch v := result.(type) {
@@ -179,7 +178,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 		logger.DebugfToFile("HandleEnterKey", "Got output format from session manager: %v", outputFormat)
 	}
 	logger.DebugfToFile("HandleEnterKey", "Using output format: %v", outputFormat)
-	
+
 	switch outputFormat {
 	case config.OutputFormatExpand:
 		return m.displayExpandFormat(v.Headers, v.ColumnTypes)
@@ -200,7 +199,7 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
-	m.cachedTableLines = nil // Clear cache for new table
+	m.cachedTableLines = nil    // Clear cache for new table
 
 	// Format initial data as expanded vertical format
 	allData := append([][]string{headers}, m.slidingWindow.Rows...)
@@ -211,7 +210,7 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 	expandStr := FormatExpandTable(allData, m.styles)
 	m.tableViewport.SetContent(expandStr)
 	m.tableViewport.GotoTop()
-	
+
 	m.input.Reset()
 	return m, nil
 }
@@ -274,7 +273,7 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 		m.viewMode = "table"
 		m.horizontalOffset = 0
 		m.initialColumnWidths = nil // Reset initial widths for new table
-		m.cachedTableLines = nil // Clear cache for new table
+		m.cachedTableLines = nil    // Clear cache for new table
 
 		// Build initial ASCII display
 		allData := append([][]string{headers}, m.slidingWindow.Rows...)
@@ -386,7 +385,7 @@ func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, co
 		m.viewMode = "table"
 		m.horizontalOffset = 0
 		m.initialColumnWidths = nil // Reset initial widths for new table
-		m.cachedTableLines = nil // Clear cache for new table
+		m.cachedTableLines = nil    // Clear cache for new table
 
 		// Build initial JSON display
 		allData := append([][]string{headers}, m.slidingWindow.Rows...)
@@ -449,7 +448,7 @@ func (m *MainModel) displayTableFormat(headers []string, columnTypes []string) (
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
-	m.cachedTableLines = nil // Clear cache for new table
+	m.cachedTableLines = nil    // Clear cache for new table
 
 	// Format initial data for display
 	allData := append([][]string{headers}, m.slidingWindow.Rows...)
@@ -461,7 +460,7 @@ func (m *MainModel) displayTableFormat(headers []string, columnTypes []string) (
 	m.tableViewport.SetContent(tableStr)
 	m.tableViewport.GotoTop()
 	logger.DebugfToFile("HandleEnterKey", "Table viewport content set, viewMode: %s", m.viewMode)
-	
+
 	m.input.Reset()
 	return m, nil
 }
@@ -488,19 +487,19 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 		switch outputFormat {
 		case config.OutputFormatASCII:
 			// ASCII format - display in CQL view as text
-			m.hasTable = false  // No table, just text
-			m.viewMode = "history"  // Use history view for text output
+			m.hasTable = false     // No table, just text
+			m.viewMode = "history" // Use history view for text output
 
 			// Format as ASCII table
 			asciiOutput := FormatASCIITable(v.Data)
-			
+
 			// Add ASCII output to history content
 			if asciiOutput != "" {
 				m.fullHistoryContent += "\n" + asciiOutput
 			} else {
 				m.fullHistoryContent += "\nNo results"
 			}
-			
+
 			// Update with wrapped content
 			m.updateHistoryWrapping()
 			m.historyViewport.GotoBottom()
@@ -514,7 +513,7 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			m.hasTable = true
 			m.viewMode = "table"
 			m.initialColumnWidths = nil // Reset initial widths for new table
-			m.cachedTableLines = nil // Clear cache for new table
+			m.cachedTableLines = nil    // Clear cache for new table
 
 			// Format as expanded vertical table
 			expandOutput := FormatExpandTable(v.Data, m.styles)
@@ -522,8 +521,8 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			m.tableViewport.GotoTop() // Start at top of table
 		case config.OutputFormatJSON:
 			// JSON format - display in CQL view as text
-			m.hasTable = false  // No table, just text
-			m.viewMode = "history"  // Use history view for text output
+			m.hasTable = false     // No table, just text
+			m.viewMode = "history" // Use history view for text output
 
 			// Check if this is already JSON from SELECT JSON
 			jsonOutput := ""
@@ -553,14 +552,14 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 					}
 				}
 			}
-			
+
 			// Add JSON output to history content
 			if jsonOutput != "" {
 				m.fullHistoryContent += "\n" + jsonOutput
 			} else {
 				m.fullHistoryContent += "\nNo results"
 			}
-			
+
 			// Update with wrapped content
 			m.updateHistoryWrapping()
 			m.historyViewport.GotoBottom()
@@ -574,7 +573,7 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			m.hasTable = true
 			m.viewMode = "table"
 			m.initialColumnWidths = nil // Reset initial widths for new table
-			m.cachedTableLines = nil // Clear cache for new table
+			m.cachedTableLines = nil    // Clear cache for new table
 
 			// Format and display in table viewport
 			tableStr := m.formatTableForViewport(v.Data)
@@ -600,7 +599,7 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			}
 		}
 	}
-	
+
 	m.input.Reset()
 	return m, nil
 }
@@ -617,7 +616,7 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 		m.hasTable = true
 		m.viewMode = "table"
 		m.initialColumnWidths = nil // Reset initial widths for new table
-		m.cachedTableLines = nil // Clear cache for new table
+		m.cachedTableLines = nil    // Clear cache for new table
 
 		// Format and display in table viewport
 		tableStr := m.formatTableForViewport(v)
@@ -633,7 +632,7 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 			_ = metaHandler.WriteCaptureResult(command, headers, rows)
 		}
 	}
-	
+
 	m.input.Reset()
 	return m, nil
 }
@@ -669,20 +668,20 @@ func (m *MainModel) processStringResult(command string, v string) (*MainModel, t
 	m.topBar.HasQueryData = false
 	// Wrap long lines to prevent truncation
 	wrappedResult := wrapLongLines(v, m.historyViewport.Width)
-	
+
 	m.fullHistoryContent += "\n" + wrappedResult
 	m.updateHistoryWrapping()
-	
+
 	// Write to capture file if capturing
 	metaHandler := router.GetMetaHandler()
 	if metaHandler != nil && metaHandler.IsCapturing() {
 		_ = metaHandler.WriteCaptureText(command, v)
 	}
-	
+
 	// Always scroll to bottom for consistent behavior
 	// Users can scroll up if they need to see earlier parts
 	m.historyViewport.GotoBottom()
-	
+
 	m.input.Reset()
 	return m, nil
 }
@@ -700,7 +699,7 @@ func (m *MainModel) processErrorResult(v error) (*MainModel, tea.Cmd) {
 	m.fullHistoryContent += "\n" + errorMsg
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
-	
+
 	m.input.Reset()
 	return m, nil
 }

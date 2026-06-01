@@ -162,7 +162,6 @@ func (ce *CompletionEngine) getInsertCompletions(words []string, wordPos int) []
 	return []string{}
 }
 
-
 // handleInsertIntoCompletion handles completions for INSERT INTO statements
 func (ce *CompletionEngine) handleInsertIntoCompletion(input string, afterInto string) []string {
 	afterIntoTrimmed := strings.TrimSpace(afterInto)

@@ -1,3 +1,4 @@
+//go:build !integration
 // +build !integration
 
 package router
@@ -29,19 +30,19 @@ func TestExecuteCopyToParquet(t *testing.T) {
 	t.Run("basic COPY TO parquet", func(t *testing.T) {
 		// Create mock session with test data
 		mockSession := NewMockSession(db.QueryResult{
-				Headers:     []string{"id (PK)", "name", "value"},
-				ColumnTypes: []string{"int", "text", "double"},
-				Data: [][]string{
-					{"1", "Alice", "100.5"},
-					{"2", "Bob", "200.75"},
-					{"3", "Charlie", "300.25"},
-				},
-				RawData: []map[string]interface{}{
-					{"id (PK)": int32(1), "name": "Alice", "value": 100.5},
-					{"id (PK)": int32(2), "name": "Bob", "value": 200.75},
-					{"id (PK)": int32(3), "name": "Charlie", "value": 300.25},
-				},
-			})
+			Headers:     []string{"id (PK)", "name", "value"},
+			ColumnTypes: []string{"int", "text", "double"},
+			Data: [][]string{
+				{"1", "Alice", "100.5"},
+				{"2", "Bob", "200.75"},
+				{"3", "Charlie", "300.25"},
+			},
+			RawData: []map[string]interface{}{
+				{"id (PK)": int32(1), "name": "Alice", "value": 100.5},
+				{"id (PK)": int32(2), "name": "Bob", "value": 200.75},
+				{"id (PK)": int32(3), "name": "Charlie", "value": 300.25},
+			},
+		})
 
 		// Create a handler with mock session that implements the interface
 		handler := &MetaCommandHandler{
@@ -77,13 +78,13 @@ func TestExecuteCopyToParquet(t *testing.T) {
 
 	t.Run("COPY TO with column selection", func(t *testing.T) {
 		mockSession := NewMockSession(db.QueryResult{
-				Headers:     []string{"id (PK)", "name"},
-				ColumnTypes: []string{"int", "text"},
-				Data: [][]string{
-					{"1", "Alice"},
-					{"2", "Bob"},
-				},
-			})
+			Headers:     []string{"id (PK)", "name"},
+			ColumnTypes: []string{"int", "text"},
+			Data: [][]string{
+				{"1", "Alice"},
+				{"2", "Bob"},
+			},
+		})
 
 		handler := &MetaCommandHandler{
 			session:        mockSession.Session,
@@ -107,14 +108,14 @@ func TestExecuteCopyToParquet(t *testing.T) {
 
 	t.Run("COPY TO with compression", func(t *testing.T) {
 		mockSession := NewMockSession(db.QueryResult{
-				Headers:     []string{"id", "data"},
-				ColumnTypes: []string{"int", "text"},
-				Data: [][]string{
-					{"1", "Test data for compression"},
-					{"2", "More test data"},
-					{"3", "Even more data"},
-				},
-			})
+			Headers:     []string{"id", "data"},
+			ColumnTypes: []string{"int", "text"},
+			Data: [][]string{
+				{"1", "Test data for compression"},
+				{"2", "More test data"},
+				{"3", "Even more data"},
+			},
+		})
 
 		handler := &MetaCommandHandler{
 			session:        mockSession.Session,
@@ -148,9 +149,9 @@ func TestExecuteCopyToParquet(t *testing.T) {
 
 	t.Run("COPY TO handles no data gracefully", func(t *testing.T) {
 		mockSession := NewMockSession(db.QueryResult{
-				Headers: []string{},
-				Data:    [][]string{},
-			})
+			Headers: []string{},
+			Data:    [][]string{},
+		})
 
 		handler := &MetaCommandHandler{
 			session:        mockSession.Session,
@@ -180,12 +181,12 @@ func TestHandleCopyWithParquet(t *testing.T) {
 	sessionMgr := session.NewManager(cfg)
 
 	mockSession := NewMockSession(db.QueryResult{
-			Headers:     []string{"id", "name"},
-			ColumnTypes: []string{"int", "text"},
-			Data: [][]string{
-				{"1", "Test"},
-			},
-		})
+		Headers:     []string{"id", "name"},
+		ColumnTypes: []string{"int", "text"},
+		Data: [][]string{
+			{"1", "Test"},
+		},
+	})
 
 	handler := &MetaCommandHandler{
 		session:        mockSession.Session,

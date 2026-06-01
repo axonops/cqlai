@@ -26,8 +26,8 @@ func TestListTypes(t *testing.T) {
 
 		testData := []map[string]interface{}{
 			{
-				"id":   1,
-				"tags": []string{"tag1", "tag2", "tag3"},
+				"id":     1,
+				"tags":   []string{"tag1", "tag2", "tag3"},
 				"scores": []int{100, 200, 300},
 				"nested_lists": []interface{}{
 					[]int{1, 2, 3},

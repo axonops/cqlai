@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-
 // copyOptions holds parsed options for COPY operation
 type copyOptions struct {
 	batchSize       int

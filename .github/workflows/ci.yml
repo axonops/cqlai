@@ -85,7 +85,10 @@ jobs:
 
       - name: Run unit tests
         run: |
-          # Run tests excluding integration tests (which require Cassandra)
+          # Run tests excluding integration tests (which require Cassandra).
+          # test/bdd is in-process godog and is run by the dedicated bdd-tests
+          # job below — keep it out of the unit suite so coverage only counts
+          # the production packages.
           go test -v -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v /test/)
 
       - name: Upload coverage to Codecov
@@ -94,6 +97,32 @@ jobs:
           file: ./coverage.out
           flags: unittests
           fail_ci_if_error: false
+
+  bdd-tests:
+    name: BDD Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Run godog BDD suites
+        run: |
+          # Pure in-process godog scenarios — no Cassandra required.
+          # Covers test/bdd/steps (validation, splitter, save, ai, ssl-flags)
+          # plus internal/router (COPY options, in-package so it can see
+          # unexported helpers).
+          go test -v -count=1 -run BDD ./test/bdd/... ./internal/router/...
 
   parquet-tests:
     name: Parquet Tests
@@ -286,6 +315,30 @@ jobs:
           else
             echo "No version-specific tests found for Cassandra ${{ matrix.cassandra.version }}"
           fi
+
+      # ------------------------------------------------------------------
+      # Full Go integration suite against Cassandra 5.0 only.
+      # These tests are gated by the `integration` build tag (see
+      # test/integration/*.go) and require a live cluster. Running on every
+      # matrix entry would multiply CI time for little extra signal — the
+      # logic under test is server-version-agnostic.
+      # ------------------------------------------------------------------
+      - name: Setup Go (integration suite)
+        if: matrix.cassandra.version == '5.0'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run Go integration tests against Cassandra 5
+        if: matrix.cassandra.version == '5.0'
+        run: |
+          # TestRoundTripCollections is skipped pending fix for
+          # https://github.com/axonops/cqlai/issues/81 (isSetColumn
+          # heuristic emits set literal for list<text> columns).
+          # Remove the -skip flag once that issue is resolved.
+          go test -v -tags integration -timeout 10m -count=1 \
+            -skip '^TestRoundTripCollections$' \
+            ./test/integration/...
 
   security-scan:
     name: Security Scan

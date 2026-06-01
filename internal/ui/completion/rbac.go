@@ -1,7 +1,5 @@
 package completion
 
-
-
 // getGrantCompletions returns completions for GRANT commands
 func (ce *CompletionEngine) getGrantCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {

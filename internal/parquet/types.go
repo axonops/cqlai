@@ -927,7 +927,6 @@ func (tm *TypeMapper) AppendValueToBuilder(builder array.Builder, value interfac
 	return nil
 }
 
-
 // ArrowToCassandraType converts Arrow data types back to Cassandra types
 func (tm *TypeMapper) ArrowToCassandraType(arrowType arrow.DataType) string {
 	switch arrowType.ID() {

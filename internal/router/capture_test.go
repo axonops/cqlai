@@ -170,9 +170,9 @@ func TestCaptureFormats(t *testing.T) {
 	handler := NewMetaCommandHandler(mockSession, sessionMgr)
 
 	formats := []struct {
-		command      string
-		format       string
-		extension    string
+		command   string
+		format    string
+		extension string
 	}{
 		{"CAPTURE JSON 'test'", "json", ".json"},
 		{"CAPTURE CSV 'test'", "csv", ".csv"},
@@ -183,7 +183,7 @@ func TestCaptureFormats(t *testing.T) {
 	for _, f := range formats {
 		t.Run(f.format, func(t *testing.T) {
 			// Use full path to avoid file conflicts
-			outputPath := filepath.Join(tempDir, "test_" + f.format)
+			outputPath := filepath.Join(tempDir, "test_"+f.format)
 			command := strings.Replace(f.command, "'test'", "'"+outputPath+"'", 1)
 
 			result := handler.handleCapture(command)

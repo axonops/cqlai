@@ -33,11 +33,11 @@ type SearchIndexManager struct {
 
 // TableSearchEntry contains search metadata for a table
 type TableSearchEntry struct {
-	Keyspace      string
-	Table         string
-	Tokens        []string // Tokenized table name for fuzzy matching
-	Columns       []string // Column names for enhanced matching
-	LastAccessed  time.Time
+	Keyspace     string
+	Table        string
+	Tokens       []string // Tokenized table name for fuzzy matching
+	Columns      []string // Column names for enhanced matching
+	LastAccessed time.Time
 }
 
 // NewSearchIndexManager creates a new search index manager

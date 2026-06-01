@@ -204,11 +204,11 @@ func TestVectorSimilarityData(t *testing.T) {
 				"embedding":    embedding,
 				"norm":         calculateNorm(embedding),
 				"metadata": mustJSON(map[string]interface{}{
-					"tags":        generateTags(i),
-					"category":    generateCategory(i),
-					"score":       float64(i%100) / 100.0,
-					"indexed":     true,
-					"version":     "1.0",
+					"tags":     generateTags(i),
+					"category": generateCategory(i),
+					"score":    float64(i%100) / 100.0,
+					"indexed":  true,
+					"version":  "1.0",
 				}),
 				"created_at": generateTimestamp(i),
 			}

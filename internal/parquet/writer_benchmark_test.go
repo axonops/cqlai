@@ -44,8 +44,8 @@ func generateLargeDataset(rows int) []map[string]interface{} {
 
 func TestLargeDatasetWrite(t *testing.T) {
 	tests := []struct {
-		name     string
-		rows     int
+		name      string
+		rows      int
 		chunkSize int64
 	}{
 		{"10K rows", 10000, 1000},
@@ -103,7 +103,7 @@ func TestLargeDatasetWrite(t *testing.T) {
 
 func TestCompressionComparison(t *testing.T) {
 	compressionTypes := []struct {
-		name string
+		name        string
 		compression string
 	}{
 		{"No compression", ""},

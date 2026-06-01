@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
-	
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -26,7 +26,7 @@ func NewHistoryModal(history []string, currentIndex int, screenWidth int) Histor
 	if maxWidth < 40 {
 		maxWidth = 40
 	}
-	
+
 	return HistoryModal{
 		items:        history,
 		selected:     currentIndex,
@@ -52,7 +52,7 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 	if len(hm.items) == 0 {
 		return ""
 	}
-	
+
 	// Commands are stored in the array, let's check what order
 	// Just use them as-is for now
 	displayItems := hm.items
@@ -89,7 +89,6 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 		Align(lipgloss.Center)
 	content = append(content, titleStyle.Render(titleText))
 
-
 	// Show scroll up indicator if not at top
 	if hm.scrollOffset > 0 {
 		scrollStyle := lipgloss.NewStyle().
@@ -120,7 +119,7 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 		}
 		content = append(content, line)
 	}
-	
+
 	// Show scroll down indicator if not at bottom
 	if endIndex < len(displayItems) {
 		scrollStyle := lipgloss.NewStyle().
@@ -128,16 +127,16 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 			Align(lipgloss.Center)
 		content = append(content, scrollStyle.Render("▼ (newer)"))
 	}
-	
+
 	// Instructions - add separator
-	content = append(content, strings.Repeat("─", boxWidth - 2))
-	
+	content = append(content, strings.Repeat("─", boxWidth-2))
+
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Italic(true).
 		Align(lipgloss.Center)
 	content = append(content, instructionStyle.Render("↑↓: Navigate • Enter: Select • Esc: Close"))
-	
+
 	// Join all content
 	modalContent := strings.Join(content, "\n")
 	return modalStyle.Render(modalContent)
@@ -147,7 +146,7 @@ func (hm HistoryModal) RenderContent(styles *Styles) string {
 func (hm HistoryModal) GetOverlay(screenWidth, screenHeight int, styles *Styles) ModalOverlay {
 	content := hm.RenderContent(styles)
 	modalHeight := strings.Count(content, "\n") + 1
-	
+
 	// Calculate the actual width from the rendered content
 	modalLines := strings.Split(content, "\n")
 	modalWidth := 0
@@ -157,17 +156,17 @@ func (hm HistoryModal) GetOverlay(screenWidth, screenHeight int, styles *Styles)
 			modalWidth = lineWidth
 		}
 	}
-	
+
 	// Left align the modal with no margin
 	x := 0
-	
+
 	// Position just above the input line (prompt)
 	// The last two lines are the prompt and status bar
 	y := screenHeight - modalHeight - 2
 	if y < 0 {
 		y = 0
 	}
-	
+
 	return ModalOverlay{
 		Content: content,
 		X:       x,

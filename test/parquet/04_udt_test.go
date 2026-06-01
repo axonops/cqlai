@@ -221,7 +221,7 @@ func TestTupleTypes(t *testing.T) {
 			},
 			{
 				"id":          3,
-				"coordinates": nil, // null tuple
+				"coordinates": nil,                                // null tuple
 				"rgb_color":   mustJSON([]interface{}{0, 0, 255}), // blue
 				"metadata":    nil,
 			},

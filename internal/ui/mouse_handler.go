@@ -280,4 +280,3 @@ func (m *MainModel) formatTableAsJSON() string {
 	}
 	return jsonStr
 }
-

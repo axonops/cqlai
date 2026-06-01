@@ -5,7 +5,7 @@ import "strings"
 // stripComments removes SQL-style comments from CQL statements while respecting quoted strings.
 // It handles:
 // - Single-quoted strings 'like this' (CQL standard)
-// - Escaped quotes '' within strings
+// - Escaped quotes ” within strings
 // - Line comments: -- and //
 // - Block comments: /* ... */
 func stripComments(input string) string {

@@ -264,16 +264,16 @@ func TestEventLogData(t *testing.T) {
 					timestamp := baseTime.AddDate(0, 0, day).Add(time.Duration(i) * time.Minute)
 
 					row := map[string]interface{}{
-						"application":  app,
-						"date_bucket":  dateBucket,
-						"timestamp":    timestamp,
-						"event_id":     fmt.Sprintf("550e8400-e29b-41d4-a716-%012d", rowsWritten),
-						"event_type":   eventTypes[i%len(eventTypes)],
-						"severity":     severities[i%len(severities)],
-						"message":      fmt.Sprintf("Event message for %s at index %d", app, i),
-						"user_id":      fmt.Sprintf("user_%04d", i%100),
-						"session_id":   fmt.Sprintf("6ba7b810-9dad-11d1-80b4-%012d", i),
-						"metadata":     fmt.Sprintf(`{"ip": "192.168.1.%d", "browser": "Chrome", "version": "%d.0"}`, i%255, 90+i%10),
+						"application": app,
+						"date_bucket": dateBucket,
+						"timestamp":   timestamp,
+						"event_id":    fmt.Sprintf("550e8400-e29b-41d4-a716-%012d", rowsWritten),
+						"event_type":  eventTypes[i%len(eventTypes)],
+						"severity":    severities[i%len(severities)],
+						"message":     fmt.Sprintf("Event message for %s at index %d", app, i),
+						"user_id":     fmt.Sprintf("user_%04d", i%100),
+						"session_id":  fmt.Sprintf("6ba7b810-9dad-11d1-80b4-%012d", i),
+						"metadata":    fmt.Sprintf(`{"ip": "192.168.1.%d", "browser": "Chrome", "version": "%d.0"}`, i%255, 90+i%10),
 					}
 
 					err = writer.WriteRow(row)

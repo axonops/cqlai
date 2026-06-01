@@ -6,32 +6,32 @@ import (
 	"io"
 	"os"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/parquet"
 	"github.com/apache/arrow-go/v18/parquet/compress"
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/logger"
 )
 
 // ParquetCaptureWriter handles writing query results to Parquet format
 type ParquetCaptureWriter struct {
-	writer        io.Writer
-	schema        *arrow.Schema
-	builder       *array.RecordBuilder
-	allocator     memory.Allocator
-	chunkSize     int64
-	rowCount      int64
-	totalRows     int64
-	props         *parquet.WriterProperties
-	arrowProps    pqarrow.ArrowWriterProperties
-	records       []arrow.RecordBatch
-	typeMapper    *TypeMapper
-	isClosed      bool
-	firstWrite    bool
-	outputPath    string // for debugging/logging
+	writer     io.Writer
+	schema     *arrow.Schema
+	builder    *array.RecordBuilder
+	allocator  memory.Allocator
+	chunkSize  int64
+	rowCount   int64
+	totalRows  int64
+	props      *parquet.WriterProperties
+	arrowProps pqarrow.ArrowWriterProperties
+	records    []arrow.RecordBatch
+	typeMapper *TypeMapper
+	isClosed   bool
+	firstWrite bool
+	outputPath string // for debugging/logging
 }
 
 // WriterOptions configures the Parquet writer
@@ -74,8 +74,8 @@ func NewParquetCaptureWriter(output string, columnNames []string, columnTypes []
 	props := parquet.NewWriterProperties(
 		parquet.WithCompression(options.Compression),
 		parquet.WithDictionaryDefault(false),
-		parquet.WithDataPageSize(1024*1024),      // 1MB data pages
-		parquet.WithMaxRowGroupLength(100000),     // 100k rows per group
+		parquet.WithDataPageSize(1024*1024),   // 1MB data pages
+		parquet.WithMaxRowGroupLength(100000), // 100k rows per group
 		parquet.WithCreatedBy("CQLAI Parquet Writer"),
 	)
 
@@ -134,8 +134,8 @@ func NewParquetCaptureWriterWithTypeInfo(output string, columnNames []string, co
 	props := parquet.NewWriterProperties(
 		parquet.WithCompression(options.Compression),
 		parquet.WithDictionaryDefault(false),
-		parquet.WithDataPageSize(1024*1024),      // 1MB data pages
-		parquet.WithMaxRowGroupLength(100000),     // 100k rows per group
+		parquet.WithDataPageSize(1024*1024),   // 1MB data pages
+		parquet.WithMaxRowGroupLength(100000), // 100k rows per group
 		parquet.WithCreatedBy("CQLAI Parquet Writer"),
 	)
 

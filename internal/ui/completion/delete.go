@@ -102,4 +102,3 @@ func (ce *CompletionEngine) getDeleteCompletions(words []string, wordPos int) []
 
 	return []string{}
 }
-

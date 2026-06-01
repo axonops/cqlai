@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	openAiBaseURL        = "https://api.openai.com/v1"
-	openRouterBaseURL    = "https://openrouter.ai/api/v1"
-	ollamaBaseURL        = "http://localhost:11434/v1"
-	maxConversations     = 100              // Maximum number of conversations to keep
-	conversationMaxAge   = 24 * time.Hour   // Maximum age before cleanup
+	openAiBaseURL      = "https://api.openai.com/v1"
+	openRouterBaseURL  = "https://openrouter.ai/api/v1"
+	ollamaBaseURL      = "http://localhost:11434/v1"
+	maxConversations   = 100            // Maximum number of conversations to keep
+	conversationMaxAge = 24 * time.Hour // Maximum age before cleanup
 )
 
 // ConversationManager manages ongoing AI conversations

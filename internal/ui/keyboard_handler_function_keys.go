@@ -87,7 +87,7 @@ func (m *MainModel) handleF5() (*MainModel, tea.Cmd) {
 			input := textinput.New()
 			input.Placeholder = ""
 			input.Prompt = "> "
-			input.CharLimit = 4096 // Increased to support long queries
+			input.CharLimit = 4096                    // Increased to support long queries
 			input.Width = m.historyViewport.Width - 2 // Reduced margin for better scrolling
 			input.Focus()
 			m.aiConversationInput = input

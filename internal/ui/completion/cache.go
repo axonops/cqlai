@@ -29,18 +29,18 @@ func (ce *CompletionEngine) getTableNames() []string {
 	if currentKeyspace == "" {
 		return []string{}
 	}
-	
+
 	if _, ok := ce.cache.tables[currentKeyspace]; !ok {
 		ce.refreshTableCache(currentKeyspace)
 	}
-	
+
 	return ce.cache.tables[currentKeyspace]
 }
 
 // getTableAndKeyspaceTableNames returns both local table names and keyspace.table combinations
 func (ce *CompletionEngine) getTableAndKeyspaceTableNames() []string {
 	var suggestions []string
-	
+
 	// Add tables from current keyspace (unqualified)
 	currentKeyspace := ""
 	if ce.sessionManager != nil {
@@ -49,7 +49,7 @@ func (ce *CompletionEngine) getTableAndKeyspaceTableNames() []string {
 	if currentKeyspace != "" {
 		suggestions = append(suggestions, ce.getTableNames()...)
 	}
-	
+
 	// Add keyspace.table combinations for all keyspaces
 	keyspaces := ce.getKeyspaceNames()
 	for _, ks := range keyspaces {
@@ -58,7 +58,7 @@ func (ce *CompletionEngine) getTableAndKeyspaceTableNames() []string {
 			suggestions = append(suggestions, ks+"."+table)
 		}
 	}
-	
+
 	return suggestions
 }
 
@@ -67,11 +67,11 @@ func (ce *CompletionEngine) getTablesForKeyspace(keyspace string) []string {
 	if keyspace == "" {
 		return []string{}
 	}
-	
+
 	if _, ok := ce.cache.tables[keyspace]; !ok {
 		ce.refreshTableCache(keyspace)
 	}
-	
+
 	return ce.cache.tables[keyspace]
 }
 
@@ -110,10 +110,10 @@ func (ce *CompletionEngine) refreshKeyspaceCache() {
 	if ce.session == nil {
 		return
 	}
-	
+
 	iter := ce.session.Query("SELECT keyspace_name FROM system_schema.keyspaces").Iter()
 	ce.cache.keyspaces = []string{}
-	
+
 	var keyspaceName string
 	for iter.Scan(&keyspaceName) {
 		ce.cache.keyspaces = append(ce.cache.keyspaces, keyspaceName)
@@ -126,14 +126,14 @@ func (ce *CompletionEngine) refreshTableCache(keyspace string) {
 	if ce.session == nil {
 		return
 	}
-	
+
 	iter := ce.session.Query(
 		"SELECT table_name FROM system_schema.tables WHERE keyspace_name = ?",
 		keyspace,
 	).Iter()
-	
+
 	ce.cache.tables[keyspace] = []string{}
-	
+
 	var tableName string
 	for iter.Scan(&tableName) {
 		ce.cache.tables[keyspace] = append(ce.cache.tables[keyspace], tableName)
@@ -146,15 +146,15 @@ func (ce *CompletionEngine) refreshColumnCache(keyspace, table string) {
 	if ce.session == nil {
 		return
 	}
-	
+
 	iter := ce.session.Query(
 		"SELECT column_name FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?",
 		keyspace, table,
 	).Iter()
-	
+
 	cacheKey := keyspace + "." + table
 	ce.cache.columns[cacheKey] = []string{}
-	
+
 	var columnName string
 	for iter.Scan(&columnName) {
 		ce.cache.columns[cacheKey] = append(ce.cache.columns[cacheKey], columnName)
@@ -177,10 +177,10 @@ func (ce *CompletionEngine) getColumnNamesForCurrentTable(words []string, fromIn
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
 		parts := strings.Split(tableName, ".")
-		currentKeyspace = strings.ToLower(parts[0])  // Lowercase for case-insensitive lookup
+		currentKeyspace = strings.ToLower(parts[0]) // Lowercase for case-insensitive lookup
 		tableName = strings.ToLower(parts[1])
 	} else {
-		tableName = strings.ToLower(tableName)  // Lowercase for case-insensitive lookup
+		tableName = strings.ToLower(tableName) // Lowercase for case-insensitive lookup
 	}
 
 	if currentKeyspace == "" {
@@ -208,22 +208,22 @@ func (ce *CompletionEngine) getColumnNamesForTable(tableName string) []string {
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
 		parts := strings.Split(tableName, ".")
-		currentKeyspace = strings.ToLower(parts[0])  // Lowercase for case-insensitive lookup
+		currentKeyspace = strings.ToLower(parts[0]) // Lowercase for case-insensitive lookup
 		tableName = strings.ToLower(parts[1])
 	} else {
-		tableName = strings.ToLower(tableName)  // Lowercase for case-insensitive lookup
+		tableName = strings.ToLower(tableName) // Lowercase for case-insensitive lookup
 	}
 
 	if currentKeyspace == "" {
 		return []string{}
 	}
-	
+
 	// Get cached columns or fetch them
 	cacheKey := currentKeyspace + "." + tableName
 	if columns, ok := ce.cache.columns[cacheKey]; ok {
 		return columns
 	}
-	
+
 	// Fetch columns from database
 	ce.refreshColumnCache(currentKeyspace, tableName)
 	return ce.cache.columns[cacheKey]
@@ -235,31 +235,31 @@ func (ce *CompletionEngine) getColumnTypeTemplate(tableName string, columnNames 
 	if ce.sessionManager != nil {
 		currentKeyspace = ce.sessionManager.CurrentKeyspace()
 	}
-	
+
 	// Check if table name includes keyspace
 	if strings.Contains(tableName, ".") {
 		parts := strings.Split(tableName, ".")
 		currentKeyspace = parts[0]
 		tableName = parts[1]
 	}
-	
+
 	if currentKeyspace == "" || ce.session == nil {
 		return ""
 	}
-	
+
 	// Query column types from system_schema
 	iter := ce.session.Query(
 		"SELECT column_name, type FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?",
 		currentKeyspace, tableName,
 	).Iter()
-	
+
 	columnTypes := make(map[string]string)
 	var columnName, columnType string
 	for iter.Scan(&columnName, &columnType) {
 		columnTypes[columnName] = columnType
 	}
 	_ = iter.Close()
-	
+
 	// Build the template
 	var templates []string
 	for _, col := range columnNames {
@@ -269,7 +269,7 @@ func (ce *CompletionEngine) getColumnTypeTemplate(tableName string, columnNames 
 			templates = append(templates, "?")
 		}
 	}
-	
+
 	return strings.Join(templates, ", ")
 }
 

@@ -22,13 +22,13 @@ type ParquetReader struct {
 	schema       *arrow.Schema
 	columnNames  []string
 	columnTypes  []string
-	allColumns   []int // Explicit list of all leaf column indices; nil means "no columns" in pqarrow
-	rowGroupIdx  int   // Current row group being processed
-	numRowGroups int   // Total number of row groups
+	allColumns   []int             // Explicit list of all leaf column indices; nil means "no columns" in pqarrow
+	rowGroupIdx  int               // Current row group being processed
+	numRowGroups int               // Total number of row groups
 	currentBatch arrow.RecordBatch // Current record batch
-	batchIdx     int   // Current row index within current batch
+	batchIdx     int               // Current row index within current batch
 	totalRows    int64
-	exhausted    bool  // True when all data has been read
+	exhausted    bool // True when all data has been read
 }
 
 // NewParquetReader creates a new Parquet reader
@@ -75,7 +75,6 @@ func NewParquetReader(filename string) (*ParquetReader, error) {
 		cassandraType := mapper.ArrowToCassandraType(field.Type)
 		columnTypes[i] = cassandraType
 	}
-
 
 	// Build explicit list of all leaf column indices. pqarrow.ReadRowGroups
 	// treats nil as "no columns", not "all columns" — see ReadTable in

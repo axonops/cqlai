@@ -248,11 +248,11 @@ func TestCreateArrowSchema(t *testing.T) {
 	}
 
 	// Check field types
-	assert.Equal(t, &arrow.FixedSizeBinaryType{ByteWidth: 16}, schema.Field(0).Type)     // uuid
-	assert.Equal(t, arrow.BinaryTypes.String, schema.Field(1).Type)     // text
-	assert.Equal(t, arrow.PrimitiveTypes.Int32, schema.Field(2).Type)   // int
-	assert.Equal(t, arrow.FixedWidthTypes.Boolean, schema.Field(3).Type) // boolean
-	assert.Equal(t, arrow.FixedWidthTypes.Timestamp_ms, schema.Field(4).Type) // timestamp
+	assert.Equal(t, &arrow.FixedSizeBinaryType{ByteWidth: 16}, schema.Field(0).Type) // uuid
+	assert.Equal(t, arrow.BinaryTypes.String, schema.Field(1).Type)                  // text
+	assert.Equal(t, arrow.PrimitiveTypes.Int32, schema.Field(2).Type)                // int
+	assert.Equal(t, arrow.FixedWidthTypes.Boolean, schema.Field(3).Type)             // boolean
+	assert.Equal(t, arrow.FixedWidthTypes.Timestamp_ms, schema.Field(4).Type)        // timestamp
 }
 
 func TestCreateArrowSchemaMismatch(t *testing.T) {

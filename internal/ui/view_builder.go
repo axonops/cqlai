@@ -159,7 +159,6 @@ func (m *MainModel) View() string {
 		}
 	}
 
-
 	// Build the input section
 	var inputSection string
 	if m.viewMode == "ai" && m.aiConversationActive {

@@ -292,6 +292,3 @@ func (ce *CompletionEngine) getTruncateCompletions(words []string, wordPos int) 
 
 	return []string{}
 }
-
-
-

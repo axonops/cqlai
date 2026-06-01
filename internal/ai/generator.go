@@ -17,15 +17,15 @@ func Initialize(session *db.Session) error {
 		Temperature: 0.3,
 		MaxTokens:   2000,
 	}
-	
+
 	var err error
 	globalAI, err = NewAIWithCache(session, config)
 	if err != nil {
 		return fmt.Errorf("failed to initialize AI: %w", err)
 	}
-	
+
 	// Router's AI handler will be initialized separately
-	
+
 	return nil
 }
 

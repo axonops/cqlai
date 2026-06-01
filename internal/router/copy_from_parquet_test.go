@@ -253,7 +253,7 @@ func TestExecuteCopyFromParquet(t *testing.T) {
 		}
 
 		options := map[string]string{
-			"FORMAT":           "parquet",
+			"FORMAT":          "parquet",
 			"MAXINSERTERRORS": "3",
 		}
 

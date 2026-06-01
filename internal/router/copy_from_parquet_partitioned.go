@@ -227,7 +227,7 @@ func (h *MetaCommandHandler) formatParquetValueForInsert(value interface{}, colu
 
 		// Check if this is a UUID (for UUID/TIMEUUID columns)
 		if strings.Contains(strings.ToLower(columnName), "uuid") ||
-		   strings.Contains(strings.ToLower(columnName), "id") {
+			strings.Contains(strings.ToLower(columnName), "id") {
 			// Check if it looks like a UUID (8-4-4-4-12 format)
 			if isUUIDFormat(trimmed) {
 				return trimmed // No quotes for UUIDs

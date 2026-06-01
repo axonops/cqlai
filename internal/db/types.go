@@ -514,7 +514,7 @@ func (h *CQLTypeHandler) formatTuple(val interface{}) string {
 // formatVector formats a vector value with proper comma separation
 // This handles both vector types and other custom types from Cassandra
 func (h *CQLTypeHandler) formatVector(val interface{}) string {
-	
+
 	// Vectors can come through as various slice types
 	switch v := val.(type) {
 	case []float32:
@@ -652,7 +652,7 @@ func (h *CQLTypeHandler) formatStringMap(m map[string]string) string {
 	if len(m) == 0 {
 		return "{}"
 	}
-	
+
 	pairs := make([]string, 0, len(m))
 	count := 0
 	for k, v := range m {
@@ -689,12 +689,12 @@ func (h *CQLTypeHandler) formatStringList(l []string) string {
 	if len(l) == 0 {
 		return "[]"
 	}
-	
+
 	limit := len(l)
 	if h.CollectionLimit > 0 && limit > h.CollectionLimit {
 		limit = h.CollectionLimit
 	}
-	
+
 	result := "[" + strings.Join(l[:limit], ", ")
 	if limit < len(l) {
 		result += ", ..."
