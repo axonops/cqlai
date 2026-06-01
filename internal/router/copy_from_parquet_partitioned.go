@@ -78,6 +78,10 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 	// Get partition filter if specified
 	partitionFilter := options["PARTITION_FILTER"]
 
+	// Load destination table column types so list<...> vs set<...> decisions
+	// come from the schema, not column-name heuristics.
+	columnTypes := h.getTableColumnTypes(table)
+
 	// Process rows
 	rowCount := 0
 	processedRows := 0
@@ -120,7 +124,7 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 			values := make([]string, len(columns))
 			for i, col := range columns {
 				if val, ok := row[col]; ok {
-					values[i] = h.formatParquetValueForInsert(val, col)
+					values[i] = h.formatParquetValueForInsert(val, col, columnTypes)
 				} else {
 					values[i] = "NULL"
 				}
@@ -215,8 +219,10 @@ func matchesPartitionFilter(row map[string]interface{}, filter string) bool {
 	return true
 }
 
-// formatParquetValueForInsert formats a Parquet value for use in an INSERT statement
-func (h *MetaCommandHandler) formatParquetValueForInsert(value interface{}, columnName string) string {
+// formatParquetValueForInsert formats a Parquet value for use in an INSERT statement.
+// columnTypes carries the destination CQL column types so collections are emitted
+// as list (`[...]`) or set (`{...}`) literals matching the actual schema.
+func (h *MetaCommandHandler) formatParquetValueForInsert(value interface{}, columnName string, columnTypes map[string]string) string {
 	if value == nil {
 		return "NULL"
 	}
@@ -254,12 +260,16 @@ func (h *MetaCommandHandler) formatParquetValueForInsert(value interface{}, colu
 		// This is a simplified version - actual implementation would need proper JSON encoding
 		return fmt.Sprintf("'%v'", v)
 	case []interface{}:
-		// Format as list
+		// Emit set literal for set<...> columns; list literal otherwise.
 		items := make([]string, len(v))
 		for i, item := range v {
-			items[i] = h.formatParquetValueForInsert(item, columnName)
+			items[i] = h.formatParquetValueForInsert(item, columnName, columnTypes)
 		}
-		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
+		joined := strings.Join(items, ", ")
+		if h.isSetColumn(columnName, columnTypes) {
+			return fmt.Sprintf("{%s}", joined)
+		}
+		return fmt.Sprintf("[%s]", joined)
 	default:
 		// Default to string representation
 		return fmt.Sprintf("'%v'", v)

@@ -481,6 +481,39 @@ func (h *MetaCommandHandler) getTableColumns(table string) []string {
 	}
 }
 
+// getTableColumnTypes retrieves a map of column name to CQL type (lowercased)
+// for the given table. Returns an empty map if the lookup fails. Used by COPY
+// FROM to disambiguate list<...> vs set<...> columns regardless of column name.
+func (h *MetaCommandHandler) getTableColumnTypes(table string) map[string]string {
+	parts := strings.Split(table, ".")
+	var keyspace, tableName string
+
+	if len(parts) == 2 {
+		keyspace = parts[0]
+		tableName = parts[1]
+	} else {
+		keyspace = h.sessionManager.CurrentKeyspace()
+		if keyspace == "" {
+			return map[string]string{}
+		}
+		tableName = parts[0]
+	}
+
+	query := fmt.Sprintf(`SELECT column_name, type FROM system_schema.columns
+		WHERE keyspace_name = '%s' AND table_name = '%s'`, keyspace, tableName)
+
+	result := h.session.ExecuteCQLQuery(query)
+	types := map[string]string{}
+	if v, ok := result.(db.QueryResult); ok {
+		for _, row := range v.Data {
+			if len(row) >= 2 {
+				types[row[0]] = strings.ToLower(strings.TrimSpace(row[1]))
+			}
+		}
+	}
+	return types
+}
+
 // parseValueForBinding converts a CSV string value to the appropriate Go type
 // for gocql prepared statement binding
 func (h *MetaCommandHandler) parseValueForBinding(value string, _ string, _ string) interface{} {

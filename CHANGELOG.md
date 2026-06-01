@@ -21,3 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Repo-wide `gofmt` pass — formatting only, no behavioural changes.
+
+### Fixed
+
+- `COPY FROM PARQUET` no longer emits set literals (`{...}`) for `list<...>`
+  columns whose names happen to match the old heuristic (`tags`, `*_set`,
+  `*_nums`, anything containing `unique`). Collection brackets are now chosen
+  from the destination table's `system_schema.columns.type` — both for the
+  single-file and partitioned readers. Unblocks `TestRoundTripCollections`
+  on Cassandra 5.0; CI `-skip` flag removed
+  ([#81](https://github.com/axonops/cqlai/issues/81)).
