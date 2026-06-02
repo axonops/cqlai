@@ -494,6 +494,12 @@ func (h *MetaCommandHandler) getTableColumnTypes(table string) map[string]string
 	} else {
 		keyspace = h.sessionManager.CurrentKeyspace()
 		if keyspace == "" {
+			// Fall back to the gocql cluster keyspace — callers that connected
+			// with a keyspace but never invoked USE never populate the session
+			// manager (integration tests, embedded usage).
+			keyspace = h.session.Keyspace()
+		}
+		if keyspace == "" {
 			return map[string]string{}
 		}
 		tableName = parts[0]
