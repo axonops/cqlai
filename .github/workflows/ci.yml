@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.26.1'
+  GO_VERSION: '1.26.3'
 
 jobs:
   # Build the binary once and share it across all jobs
@@ -332,13 +332,7 @@ jobs:
       - name: Run Go integration tests against Cassandra 5
         if: matrix.cassandra.version == '5.0'
         run: |
-          # TestRoundTripCollections is skipped pending fix for
-          # https://github.com/axonops/cqlai/issues/81 (isSetColumn
-          # heuristic emits set literal for list<text> columns).
-          # Remove the -skip flag once that issue is resolved.
-          go test -v -tags integration -timeout 10m -count=1 \
-            -skip '^TestRoundTripCollections$' \
-            ./test/integration/...
+          go test -v -tags integration -timeout 10m -count=1 ./test/integration/...
 
   security-scan:
     name: Security Scan
