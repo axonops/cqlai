@@ -16,9 +16,8 @@
    `test/bdd/steps/` (or in-package under `internal/<pkg>/` when the function
    under test is unexported — see `internal/router/copy_options_bdd_test.go`).
 4. Run locally: `go test -v -count=1 -run BDD ./test/bdd/... ./internal/router/...`
-5. CI uploads every run's BDD artifacts (Gherkin output, JUnit, coverage) to
-   `gs://axonops-cqlai-ci-artifacts/bdd/<sha>/`. See
-   [Accessing previous test runs (GCS)](#accessing-previous-test-runs-gcs).
+5. CI publishes every run's BDD artifacts (Gherkin output, JUnit, coverage) as
+   GitHub Actions workflow artifacts on the `bdd-tests` job.
 
 ---
 
@@ -227,136 +226,40 @@ versions if it touches CQL behaviour.
 
 ---
 
-## Accessing previous test runs (GCS)
+## Accessing previous test runs
 
-CI uploads BDD + integration artifacts (Gherkin reports, JUnit XML, raw `go
-test` output, coverage profiles) to a Google Cloud Storage bucket on every
-run. Use this when triaging flakes, comparing runs, or auditing what
-scenarios actually ran on a given commit.
+CI publishes BDD + integration artifacts (Gherkin reports, JUnit XML, raw `go
+test` output, coverage profiles) as GitHub Actions workflow artifacts on the
+`bdd-tests` job. Use these when triaging flakes, comparing runs, or auditing
+what scenarios actually ran on a given commit.
 
-### Bucket layout
-
-```
-gs://axonops-cqlai-ci-artifacts/
-└── bdd/
-    └── <commit-sha>/
-        ├── <workflow-run-id>/
-        │   ├── bdd-tests/
-        │   │   ├── godog-pretty.log         # human-readable
-        │   │   ├── godog-junit.xml          # machine-readable (Jenkins/JUnit format)
-        │   │   ├── godog-cucumber.json      # Cucumber JSON, for HTML report tooling
-        │   │   └── go-test.log              # raw `go test -v` output
-        │   ├── cassandra-2.1/
-        │   │   └── integration-junit.xml
-        │   ├── cassandra-3.0/...
-        │   ├── cassandra-3.11/...
-        │   ├── cassandra-4.0/...
-        │   ├── cassandra-4.1/...
-        │   ├── cassandra-5.0/...
-        │   └── meta.json                    # branch, PR #, author, timestamp
-        └── latest/                          # symlink to most-recent run for that SHA
-```
-
-Retention: 90 days. Older runs are auto-purged.
-
-### Auth
-
-The bucket is private. Two ways to read it:
-
-**1. Interactive (recommended for humans):**
+Fetch via `gh`:
 
 ```bash
-# One-time
-gcloud auth login <you>@axonops.com
+# List runs for a commit
+gh run list --repo axonops/cqlai --commit <sha>
 
-# Verify you can see the bucket
-gcloud storage ls gs://axonops-cqlai-ci-artifacts/
-```
+# Download all artifacts for a run
+gh run download <run-id> --repo axonops/cqlai --dir ./ci-artifacts/
 
-You need the `roles/storage.objectViewer` role on the bucket. Ask an AxonOps
-GCP project admin (currently: `#cqlai-dev` Slack) if you get
-`AccessDeniedException: 403`.
-
-**2. Service account (CI, scripts, AI assistants):**
-
-```bash
-# Set up once
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
-gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
-```
-
-The CI workflow already authenticates via Workload Identity Federation — see
-`google-github-actions/auth@v2` in `.github/workflows/release.yml`. The same
-pattern is used by the `bdd-tests` job to upload artifacts.
-
-### Common queries
-
-Pretty-printed BDD log for a specific commit:
-
-```bash
-SHA=5c30dee
-gcloud storage cat \
-  gs://axonops-cqlai-ci-artifacts/bdd/${SHA}/latest/bdd-tests/godog-pretty.log
-```
-
-Download every artifact for a PR's head commit:
-
-```bash
+# Download artifacts for a PR's head commit
 SHA=$(gh pr view 82 --repo axonops/cqlai --json headRefOid -q .headRefOid)
-gcloud storage cp -r \
-  "gs://axonops-cqlai-ci-artifacts/bdd/${SHA}/" \
-  ./ci-artifacts/
+RUN=$(gh run list --repo axonops/cqlai --commit "$SHA" --json databaseId -q '.[0].databaseId')
+gh run download "$RUN" --repo axonops/cqlai --dir ./ci-artifacts/
 ```
 
-Compare BDD output between two commits:
-
-```bash
-gcloud storage cat gs://axonops-cqlai-ci-artifacts/bdd/<sha-a>/latest/bdd-tests/godog-pretty.log > /tmp/a.log
-gcloud storage cat gs://axonops-cqlai-ci-artifacts/bdd/<sha-b>/latest/bdd-tests/godog-pretty.log > /tmp/b.log
-diff /tmp/a.log /tmp/b.log
-```
-
-Find which commit first failed a specific scenario:
-
-```bash
-# Walk recent main commits, report the first one whose log mentions the scenario
-for sha in $(git log --pretty=%H -n 50 origin/main); do
-  if gcloud storage cat \
-       "gs://axonops-cqlai-ci-artifacts/bdd/${sha}/latest/bdd-tests/godog-pretty.log" 2>/dev/null \
-       | grep -q "Scenario: emits set literal for list<text>"; then
-    if gcloud storage cat \
-         "gs://axonops-cqlai-ci-artifacts/bdd/${sha}/latest/bdd-tests/godog-junit.xml" 2>/dev/null \
-         | grep -q '<failure'; then
-      echo "First failing commit: ${sha}"
-      break
-    fi
-  fi
-done
-```
+Retention is governed by the repo's GitHub Actions artifact retention policy.
 
 ### Pretty HTML report
 
-The Cucumber JSON output is consumable by any Cucumber HTML reporter. Quick
-render with `cucumber-html-reporter` (Node):
+The Cucumber JSON output is consumable by any Cucumber HTML reporter. After
+downloading the artifact:
 
 ```bash
-gcloud storage cp \
-  "gs://axonops-cqlai-ci-artifacts/bdd/${SHA}/latest/bdd-tests/godog-cucumber.json" \
-  ./report.json
-npx cucumber-html-reporter --cucumber-json report.json --output report.html
+npx cucumber-html-reporter \
+  --cucumber-json ./ci-artifacts/bdd-tests/godog-cucumber.json \
+  --output report.html
 open report.html
-```
-
-### Run-finder helper
-
-A wrapper script lives at `scripts/bdd-artifact.sh` (Linux/macOS) that
-exposes the common queries above. Examples:
-
-```bash
-scripts/bdd-artifact.sh log <sha>            # cat the pretty log
-scripts/bdd-artifact.sh download <sha>       # pull the full tree
-scripts/bdd-artifact.sh diff <sha-a> <sha-b> # diff pretty logs
-scripts/bdd-artifact.sh pr 82                # download artifacts for PR head
 ```
 
 ---
@@ -387,7 +290,6 @@ If you set `### BDD waiver`, justify it in one paragraph and tag a maintainer.
 | Scenario passes locally, fails in CI | Hidden state leaks between scenarios | Reset `world` in `Before`. Never use package-level vars |
 | `bdd-tests` job times out | Suite calls a real network in a step | Mock the network boundary only. Production code stays untouched |
 | Cassandra integration scenario passes on 5.0, fails on 2.1 | CQL grammar / system table differs | Gate the scenario with a tag and version-skip in step setup |
-| `AccessDeniedException: 403` on GCS | Missing IAM | Ask in `#cqlai-dev` for `roles/storage.objectViewer` on `axonops-cqlai-ci-artifacts` |
 | Want to add a step but it duplicates an existing one | You probably don't | Reuse the existing step. Rename for clarity if needed |
 
 ---
@@ -406,8 +308,8 @@ this repo:
    The CI gate will reject it.
 4. If you cannot satisfy a scenario, stop and ask. Do not delete the scenario
    to make CI green.
-5. When triaging a CI failure, fetch the artifact from GCS first
-   (`gcloud storage cat ...`), do not guess from the GitHub Actions log
+5. When triaging a CI failure, download the workflow artifact first
+   (`gh run download ...`), do not guess from the GitHub Actions log
    summary.
 
 ---
@@ -418,5 +320,4 @@ this repo:
 - `go-bootstrap:godog-bdd-tests` skill — Go/godog specifics.
 - [Cucumber Gherkin reference](https://cucumber.io/docs/gherkin/reference/).
 - [godog README](https://github.com/cucumber/godog).
-- DIGITALIS.md — org-wide testing standards.
 - CHANGELOG.md — every PR appends a `Tests` entry referencing the new scenario.

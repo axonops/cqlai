@@ -40,5 +40,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Build
 
-- Bump Go toolchain from `1.26.1` to `1.26.2` across `go.mod`, all GitHub
+- Bump Go toolchain from `1.26.1` to `1.26.3` across `go.mod`, all GitHub
   Actions workflows, and Docker build images.
