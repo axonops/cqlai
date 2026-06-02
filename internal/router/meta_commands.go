@@ -505,17 +505,24 @@ func (h *MetaCommandHandler) getTableColumnTypes(table string) map[string]string
 		tableName = parts[0]
 	}
 
-	query := fmt.Sprintf(`SELECT column_name, type FROM system_schema.columns
-		WHERE keyspace_name = '%s' AND table_name = '%s'`, keyspace, tableName)
-
-	result := h.session.ExecuteCQLQuery(query)
 	types := map[string]string{}
-	if v, ok := result.(db.QueryResult); ok {
-		for _, row := range v.Data {
-			if len(row) >= 2 {
-				types[row[0]] = strings.ToLower(strings.TrimSpace(row[1]))
-			}
-		}
+	if h.session == nil || h.session.Session == nil {
+		return types
+	}
+
+	// Use gocql directly: ExecuteCQLQuery routes unbounded SELECTs through
+	// ExecuteStreamingQuery which returns StreamingQueryResult, not
+	// QueryResult — the type assertion below would silently miss those rows.
+	iter := h.session.Session.Query(
+		`SELECT column_name, type FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?`,
+		keyspace, tableName,
+	).Iter()
+	var colName, colType string
+	for iter.Scan(&colName, &colType) {
+		types[colName] = strings.ToLower(strings.TrimSpace(colType))
+	}
+	if err := iter.Close(); err != nil {
+		logger.DebugfToFile("getTableColumnTypes", "schema lookup failed: %v", err)
 	}
 	return types
 }
