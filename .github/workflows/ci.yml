@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.26.3'
+  GO_VERSION: '1.26.6'
 
 jobs:
   # Build the binary once and share it across all jobs
@@ -394,8 +394,10 @@ jobs:
         run: |
           go list -u -m all
 
+      # Fails the build on vulnerabilities cqlai actually reaches. govulncheck
+      # only reports a finding when a vulnerable symbol is on a live call path,
+      # so this does not fire on unused corners of the dependency tree.
       - name: Check for security vulnerabilities
-        continue-on-error: true
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck -show verbose ./...
