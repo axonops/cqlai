@@ -172,12 +172,12 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 		}
 		return m, nil
 	case tea.KeyUp:
-		// Check for Alt modifier first for scrolling
-		if msg.Alt {
-			// Scroll conversation up by one line
-			m.aiConversationViewport.YOffset = max(0, m.aiConversationViewport.YOffset-1)
-			return m, nil
-		}
+		// Scroll the conversation. Alternate scroll mode delivers wheel events as
+		// plain Up presses, so this is what the wheel does here too. AI command
+		// history is on Ctrl+P.
+		m.aiConversationViewport.YOffset = max(0, m.aiConversationViewport.YOffset-1)
+		return m, nil
+	case tea.KeyCtrlP:
 		// Navigate AI command history (not CQL history)
 		if len(m.aiCommandHistory) > 0 {
 			if m.aiHistoryIndex == -1 {
@@ -191,13 +191,11 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 		}
 		return m, nil
 	case tea.KeyDown:
-		// Check for Alt modifier first for scrolling
-		if msg.Alt {
-			// Scroll conversation down by one line
-			maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height)
-			m.aiConversationViewport.YOffset = min(maxOffset, m.aiConversationViewport.YOffset+1)
-			return m, nil
-		}
+		// See KeyUp: the wheel arrives here too.
+		maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height)
+		m.aiConversationViewport.YOffset = min(maxOffset, m.aiConversationViewport.YOffset+1)
+		return m, nil
+	case tea.KeyCtrlN:
 		// Navigate AI command history (not CQL history)
 		if m.aiHistoryIndex != -1 {
 			if m.aiHistoryIndex < len(m.aiCommandHistory)-1 {

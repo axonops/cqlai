@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -61,9 +59,8 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 
 	// If already confirming, exit. Otherwise show confirmation.
 	if m.confirmExit {
-		// Disable mouse tracking on exit
-		fmt.Print("\x1b[?1000l") // Disable basic mouse tracking
-		fmt.Print("\x1b[?1006l") // Disable SGR mouse mode
+		// Give the wheel back to the terminal on exit.
+		DisableAlternateScroll()
 		return m, tea.Quit
 	}
 	m.confirmExit = true
@@ -76,9 +73,8 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleCtrlD() (*MainModel, tea.Cmd) {
 	// If confirming exit, quit. Otherwise show confirmation.
 	if m.confirmExit {
-		// Disable mouse tracking on exit
-		fmt.Print("\x1b[?1000l") // Disable basic mouse tracking
-		fmt.Print("\x1b[?1006l") // Disable SGR mouse mode
+		// Give the wheel back to the terminal on exit.
+		DisableAlternateScroll()
 		return m, tea.Quit
 	}
 	m.confirmExit = true

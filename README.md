@@ -328,7 +328,7 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Enter` (empty input) | Load next page when more data available | Same |
 | `Alt+↑`/`Alt+↓` | Scroll viewport by single row (respects row boundaries) | `Option+↑`/`Option+↓` |
 | `Alt+←`/`Alt+→` | Scroll table horizontally (wide tables) | `Option+←`/`Option+→` |
-| `↑`/`↓` | Navigate table rows (when in navigation mode) | Same |
+| `↑`/`↓` | Scroll results in the table and trace views. In the normal view they step through command history; `Ctrl+P` recalls history from any view | Same |
 
 #### Navigation Mode (Table/Trace Views)
 Press `Esc` to toggle navigation mode when viewing tables or traces.
@@ -344,15 +344,26 @@ Press `Esc` to toggle navigation mode when viewing tables or traces.
 | `Esc` | Exit navigation mode / Cancel pagination if active |
 
 #### Mouse Support
+
+cqlai leaves the mouse buttons to your terminal, so selecting text, right-click
+paste and middle-click paste all behave exactly as they do in any other program.
+No modifier key needed.
+
+It gets the scroll wheel through alternate scroll mode, where the terminal turns
+wheel spins into `↑`/`↓` key presses. That means the wheel scrolls whatever `↑`
+and `↓` scroll: results in the table view, the trace in the trace view, and the
+conversation in the AI view.
+
 | Action | Function |
 |--------|----------|
 | Mouse Wheel | Scroll vertically with automatic data loading |
-| Alt+Mouse Wheel | Scroll horizontally in tables |
-| Shift+Mouse Wheel | Scroll horizontally (alternative) |
-| Ctrl+Mouse Wheel | Scroll horizontally (alternative) |
-| Shift+Click+Drag | Select text for copying |
-| Ctrl+Shift+C | Copy selected text to clipboard |
+| Click+Drag | Select text (your terminal's own selection) |
+| Right Click | Paste (if your terminal binds it that way) |
 | Middle Click | Paste from selection buffer (Linux/Unix) |
+
+Scroll wide tables sideways with `Alt+←`/`Alt+→`, or `<` and `>` in navigation
+mode. Horizontal scrolling with the wheel is not available, because the terminal
+only reports vertical wheel spins as key presses.
 
 **Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative

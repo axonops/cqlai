@@ -336,18 +336,34 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Create program with alternate screen buffer (like less) and mouse support
-		// This hides the terminal scrollbar and provides a clean full-screen experience
-		p := tea.NewProgram(m,
-			tea.WithAltScreen(),
-			// Don't use WithMouseCellMotion - we'll enable mouse manually in Init
-		)
-
-		if _, err := p.Run(); err != nil {
+		if err := runInteractive(m); err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
 			os.Exit(1)
 		}
 	}
+}
+
+// runInteractive runs the Bubble Tea UI.
+//
+// It exists so the alternate scroll mode set up in the model's Init has a defer
+// to undo it on the way out, whether that is a clean quit, an error or a panic.
+func runInteractive(m tea.Model) error {
+	// Alternate screen buffer (like less) hides the terminal scrollbar and gives
+	// a clean full-screen experience.
+	//
+	// Deliberately no WithMouseCellMotion: taking the mouse buttons would stop the
+	// terminal doing its own text selection and right-click paste. Init turns on
+	// alternate scroll mode instead, which gives us the wheel only.
+	p := tea.NewProgram(m,
+		tea.WithAltScreen(),
+	)
+
+	// Give the wheel back to the terminal however we leave. Bubble Tea already
+	// restores the alternate screen and mouse state itself.
+	defer ui.DisableAlternateScroll()
+
+	_, err := p.Run()
+	return err
 }
 
 // isTerminal checks if stdin is a terminal
