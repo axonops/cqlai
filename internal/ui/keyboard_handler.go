@@ -332,6 +332,13 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m.handleAltScrollUp()
 	}
 
+	// While a result set is on screen, scroll it. Alternate scroll mode delivers
+	// wheel events as plain Up presses, so this is also what the wheel does here.
+	// Command history stays on Up in the normal view.
+	if m.viewportOwnsArrows() {
+		return m.handleAltScrollUp()
+	}
+
 	// Handle command history navigation up
 	return m.handleCommandHistoryUp()
 }
@@ -371,6 +378,11 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 	// If Alt is held, scroll viewport down by one line
 	if msg.Alt {
+		return m.handleAltScrollDown()
+	}
+
+	// See handleUpArrow: the wheel arrives here too while a result set is up.
+	if m.viewportOwnsArrows() {
 		return m.handleAltScrollDown()
 	}
 

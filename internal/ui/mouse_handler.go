@@ -9,7 +9,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// handleMouseInput handles mouse events
+// handleMouseInput handles mouse events.
+//
+// Nothing reaches this today: cqlai no longer turns on mouse reporting, because
+// doing so takes the buttons away from the terminal and breaks its text
+// selection and right-click paste. The wheel arrives as Up/Down key presses via
+// alternate scroll mode instead - see mouse_mode.go.
+//
+// It is kept for the day something clickable needs mouse reporting switched on
+// while it is on screen, which is the point at which wheel events start
+// arriving here again.
 func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 	// Debug log ALL mouse events
 	logger.DebugfToFile("Mouse", "MouseEvent: Action=%v, Button=%v, X=%d, Y=%d, Shift=%v, Alt=%v, Ctrl=%v",
@@ -44,8 +53,10 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		// Native horizontal scroll right (for mice/trackpads that support it)
 		return m.handleMouseWheelRight()
 	default:
-		// Ignore all other button events (left, middle, right clicks)
-		// This allows terminal to handle text selection
+		// Ignore left, middle and right clicks. Note that ignoring them here is
+		// not what lets the terminal select text - by the time an event reaches
+		// this function the terminal has already given the button up. Leaving
+		// mouse reporting off is what does that.
 		return m, nil
 	}
 }

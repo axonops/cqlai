@@ -453,11 +453,10 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 
 // Init initializes the main model.
 func (m *MainModel) Init() tea.Cmd {
-	// Enable ONLY wheel button events (buttons 4 and 5)
-	// This is a special mode that some terminals support
-	// Standard button event mode but we'll try to be more specific
-	fmt.Print("\x1b[?1000h") // Enable basic mouse tracking
-	fmt.Print("\x1b[?1006h") // Use SGR encoding for larger coordinates
+	// Take the wheel without taking the mouse buttons, so the terminal keeps
+	// its own text selection and right-click paste. Wheel events arrive as
+	// Up/Down key presses instead of mouse events.
+	EnableAlternateScroll()
 	return textinput.Blink
 }
 
