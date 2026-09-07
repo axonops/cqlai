@@ -321,7 +321,7 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Enter` (entrada baleira) | Cargar seguinte páxina cando haxa máis datos dispoñibles | Igual |
 | `Alt+↑`/`Alt+↓` | Desprazar vista por unha soa fila (respecta límites de fila) | `Option+↑`/`Option+↓` |
 | `Alt+←`/`Alt+→` | Desprazar táboa horizontalmente (táboas anchas) | `Option+←`/`Option+→` |
-| `↑`/`↓` | Navegar filas de táboa (cando está en modo navegación) | Igual |
+| `↑`/`↓` | Desprazan os resultados nas vistas de táboa e traza. Na vista normal percorren o historial de comandos; `Ctrl+P` recupera o historial desde calquera vista | Igual |
 
 #### Modo de Navegación (Vistas de Táboa/Trazas)
 Preme `Esc` para activar/desactivar o modo de navegación cando vexas táboas ou trazas.
@@ -337,15 +337,25 @@ Preme `Esc` para activar/desactivar o modo de navegación cando vexas táboas ou
 | `Esc` | Saír do modo de navegación / Cancelar paxinación se está activa |
 
 #### Soporte de Rato
+cqlai deixa os botóns do rato ao teu terminal, así que seleccionar texto, pegar
+co botón dereito e pegar co botón central funcionan igual ca en calquera outro
+programa. Non fai falta ningunha tecla modificadora.
+
+A roda chega a través do modo de desprazamento alternativo, no que o terminal
+converte os xiros da roda en pulsacións de `↑`/`↓`. É dicir, a roda despraza o
+mesmo que `↑` e `↓`: os resultados na vista de táboa, a traza na vista de traza
+e a conversa na vista de IA.
+
 | Acción | Función |
 |--------|----------|
 | Roda do Rato | Desprazamento vertical con carga automática de datos |
-| Alt+Roda do Rato | Desprazamento horizontal en táboas |
-| Shift+Roda do Rato | Desprazamento horizontal (alternativa) |
-| Ctrl+Roda do Rato | Desprazamento horizontal (alternativa) |
-| Shift+Clic+Arrastre | Seleccionar texto para copiar |
-| Ctrl+Shift+C | Copiar texto seleccionado ao portapapeis |
+| Clic+Arrastre | Seleccionar texto (a selección propia do teu terminal) |
+| Clic Dereito | Pegar (se o teu terminal o ten asignado así) |
 | Clic do Medio | Pegar desde o búfer de selección (Linux/Unix) |
+
+Para desprazar táboas anchas en horizontal usa `Alt+←`/`Alt+→`, ou `<` e `>` en
+modo navegación. O desprazamento horizontal coa roda non está dispoñible, porque
+o terminal só informa dos xiros verticais como pulsacións de tecla.
 
 **Nota para Usuarios de macOS:**
 - A maioría de atallos `Ctrl` funcionan tal cal en macOS, pero tamén podes usar a tecla `⌘` (Comando) como alternativa

@@ -1,9 +1,9 @@
 package completion
 
 import (
-	"fmt"
-	"os"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // handleKeyspaceTableCompletion handles completions for keyspace.table patterns
@@ -41,10 +41,7 @@ func (ce *CompletionEngine) handleKeyspaceTableCompletion(input string) []string
 					// Let the parser-based completion handle what comes next
 					if isCompleteTable {
 						// Debug logging
-						if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-							fmt.Fprintf(debugFile, "[DEBUG] Complete table name detected: %s.%s, falling through to parser\n", ks, afterDot)
-							defer debugFile.Close()
-						}
+						logger.DebugfToFile("Completion", "Complete table name detected: %s.%s, falling through to parser", ks, afterDot)
 						// Return nil to indicate fall through to parser
 						return nil
 					}

@@ -1,11 +1,10 @@
 package completion
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/session"
 )
 
@@ -36,10 +35,7 @@ func (ce *CompletionEngine) Complete(input string) []string {
 // CompleteNative returns possible completions for the given input using native pattern matching
 func (ce *CompletionEngine) CompleteNative(input string) []string {
 	// Debug output
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Complete called with input: '%s'\n", input)
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "Complete called with input: '%s'", input)
 
 	// For empty input, always return top-level commands
 	if strings.TrimSpace(input) == "" {
@@ -105,40 +101,25 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 			closeCount := strings.Count(afterValues, ")")
 			if closeCount >= openCount && closeCount > 0 {
 				// Complete INSERT statement - return no suggestions
-				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-					fmt.Fprintf(debugFile, "[DEBUG] Complete INSERT statement detected, returning no suggestions\n")
-					defer debugFile.Close()
-				}
+				logger.DebugfToFile("Completion", "Complete INSERT statement detected, returning no suggestions")
 				return []string{}
 			}
 		}
 	}
 
 	// Use the simple completion engine
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Using simple completion for: '%s'\n", input)
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "Using simple completion for: '%s'", input)
 
 	simpleEngine := NewSimpleCompletionEngine(ce)
 	suggestions := simpleEngine.GetTokenCompletions(input)
 
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Parser returned %d suggestions\n", len(suggestions))
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "Parser returned %d suggestions", len(suggestions))
 
 	// If parser doesn't return suggestions, fall back to native pattern matching
 	if len(suggestions) == 0 {
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] Falling back to native completion\n")
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "Falling back to native completion")
 		nativeSuggestions := ce.completeNative(input)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] Native completion returned %d suggestions: %v\n", len(nativeSuggestions), nativeSuggestions)
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "Native completion returned %d suggestions: %v", len(nativeSuggestions), nativeSuggestions)
 		return nativeSuggestions
 	}
 
@@ -178,16 +159,10 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 					filtered = append(filtered, s)
 				}
 			}
-			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-				fmt.Fprintf(debugFile, "[DEBUG] After filtering for '%s': %d matches: %v\n", wordToComplete, len(filtered), filtered)
-				defer debugFile.Close()
-			}
+			logger.DebugfToFile("Completion", "After filtering for '%s': %d matches: %v", wordToComplete, len(filtered), filtered)
 			suggestions = filtered
 		} else {
-			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-				fmt.Fprintf(debugFile, "[DEBUG] Exact match found for '%s', showing next word suggestions: %v\n", wordToComplete, suggestions)
-				defer debugFile.Close()
-			}
+			logger.DebugfToFile("Completion", "Exact match found for '%s', showing next word suggestions: %v", wordToComplete, suggestions)
 		}
 	}
 
@@ -231,44 +206,29 @@ func (ce *CompletionEngine) completeNative(input string) []string {
 	afterSpace := endsWithSpace
 
 	// Debug logging
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] completeNative: input='%s', words=%v, afterSpace=%v, wordToComplete='%s'\n",
-			input, words, afterSpace, wordToComplete)
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "completeNative: input='%s', words=%v, afterSpace=%v, wordToComplete='%s'",
+		input, words, afterSpace, wordToComplete)
 
 	// Get context-aware completions
 	var suggestions []string
 
 	// Debug the decision logic
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] COMPLETION LOGIC: len(words)=%d, afterSpace=%v\n", len(words), afterSpace)
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "COMPLETION LOGIC: len(words)=%d, afterSpace=%v", len(words), afterSpace)
 
 	switch {
 	case len(words) == 0:
 		suggestions = ce.getTopLevelCommands()
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] BRANCH: No words - using top-level commands: %d suggestions\n", len(suggestions))
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "BRANCH: No words - using top-level commands: %d suggestions", len(suggestions))
 	case len(words) == 1 && !afterSpace:
 		// Single partial word - check against top-level commands
 		suggestions = ce.getTopLevelCommands()
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] BRANCH: Single partial word '%s' - using top-level commands: %d suggestions\n", words[0], len(suggestions))
-			if len(suggestions) > 0 {
-				fmt.Fprintf(debugFile, "[DEBUG] First few commands: %v\n", suggestions[:5])
-			}
-			defer debugFile.Close()
+		logger.DebugfToFile("Completion", "BRANCH: Single partial word '%s' - using top-level commands: %d suggestions", words[0], len(suggestions))
+		if len(suggestions) > 0 {
+			logger.DebugfToFile("Completion", "First few commands: %v", suggestions[:min(5, len(suggestions))])
 		}
 	default:
 		suggestions = ce.getCompletionsForContext(words, afterSpace)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] BRANCH: Using context - getCompletionsForContext returned %d suggestions\n", len(suggestions))
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "BRANCH: Using context - getCompletionsForContext returned %d suggestions", len(suggestions))
 	}
 
 	// Filter suggestions based on the partial word (case-insensitive)
@@ -280,10 +240,7 @@ func (ce *CompletionEngine) completeNative(input string) []string {
 				filtered = append(filtered, s)
 			}
 		}
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] After filtering for '%s' (upper: '%s'): %d matches: %v\n", wordToComplete, upperWord, len(filtered), filtered)
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "After filtering for '%s' (upper: '%s'): %d matches: %v", wordToComplete, upperWord, len(filtered), filtered)
 		suggestions = filtered
 	}
 
@@ -500,10 +457,7 @@ func (ce *CompletionEngine) getCompletionsForContext(words []string, afterSpace 
 			return []string{"ON", "OFF"}
 		}
 	case "COPY":
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] getCompletionsForContext: Routing to getCopyCompletions\n")
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "getCompletionsForContext: Routing to getCopyCompletions")
 		return ce.getCopyCompletions(words, wordPos)
 	}
 

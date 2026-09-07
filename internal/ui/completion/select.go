@@ -1,9 +1,6 @@
 package completion
 
-import (
-	"fmt"
-	"os"
-)
+import "github.com/axonops/cqlai/internal/logger"
 
 // getSelectCompletions returns completions for SELECT commands
 func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []string {
@@ -80,15 +77,9 @@ func (ce *CompletionEngine) getSelectCompletions(words []string, wordPos int) []
 		return ce.getTableAndKeyspaceNames()
 	case "WHERE":
 		// After WHERE, suggest column names if we know the table
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] select.go: lastWord=WHERE, calling getColumnNamesForCurrentTable with fromIndex=%d\n", fromIndex)
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "select.go: lastWord=WHERE, calling getColumnNamesForCurrentTable with fromIndex=%d", fromIndex)
 		columns := ce.getColumnNamesForCurrentTable(words, fromIndex)
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] select.go: getColumnNamesForCurrentTable returned %d columns\n", len(columns))
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "select.go: getColumnNamesForCurrentTable returned %d columns", len(columns))
 		return columns
 	case "ORDER":
 		return ByKeyword

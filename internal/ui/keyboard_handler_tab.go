@@ -1,10 +1,9 @@
 package ui
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/ui/completion"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -108,15 +107,9 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 	}
 
 	// Get completions for current input (use fullInput which includes multi-line buffer if applicable)
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Tab pressed: currentInput='%s', fullInput='%s'\n", currentInput, fullInput)
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "Tab pressed: currentInput='%s', fullInput='%s'", currentInput, fullInput)
 	m.completions = m.completionEngine.Complete(fullInput)
-	if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Got %d completions: %v\n", len(m.completions), m.completions)
-		defer debugFile.Close()
-	}
+	logger.DebugfToFile("Completion", "Got %d completions: %v", len(m.completions), m.completions)
 
 	if len(m.completions) == 0 { //nolint:gocritic // more readable as if
 		// No completions available
