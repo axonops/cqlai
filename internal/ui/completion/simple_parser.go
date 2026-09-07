@@ -1,9 +1,9 @@
 package completion
 
 import (
-	"fmt"
-	"os"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/logger"
 )
 
 // SimpleCompletionEngine provides completions without using ANTLR
@@ -90,10 +90,7 @@ func (sce *SimpleCompletionEngine) GetTokenCompletions(input string) []string {
 	case "SELECT":
 		result := sce.getSelectCompletions(words, endsWithSpace)
 		// Debug logging
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] SimpleParser.getSelectCompletions returned %d suggestions: %v\n", len(result), result)
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "SimpleParser.getSelectCompletions returned %d suggestions: %v", len(result), result)
 		return result
 	case "INSERT":
 		return sce.getInsertCompletions(words, endsWithSpace)
@@ -537,17 +534,11 @@ func (sce *SimpleCompletionEngine) getSelectCompletions(words []string, endsWith
 		// Check if we're inside a clause that needs column/value completion
 		// If so, defer to the main CompletionEngine
 		lastWord := words[len(words)-1]
-		if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-			fmt.Fprintf(debugFile, "[DEBUG] SimpleParser SELECT: lastWord=%s, checking if should defer to main engine\n", lastWord)
-			defer debugFile.Close()
-		}
+		logger.DebugfToFile("Completion", "SimpleParser SELECT: lastWord=%s, checking if should defer to main engine", lastWord)
 
 		// If we have a WHERE clause, always defer to main engine for proper AND/OR handling
 		if whereIndex >= 0 {
-			if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-				fmt.Fprintf(debugFile, "[DEBUG] SimpleParser SELECT: whereIndex=%d, deferring to main engine for WHERE handling\n", whereIndex)
-				defer debugFile.Close()
-			}
+			logger.DebugfToFile("Completion", "SimpleParser SELECT: whereIndex=%d, deferring to main engine for WHERE handling", whereIndex)
 			return nil
 		}
 
@@ -556,10 +547,7 @@ func (sce *SimpleCompletionEngine) getSelectCompletions(words []string, endsWith
 		for _, kw := range clauseKeywords {
 			if lastWord == kw {
 				// Inside a clause, let main engine handle column name completion
-				if debugFile, err := os.OpenFile("cqlai_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
-					fmt.Fprintf(debugFile, "[DEBUG] SimpleParser SELECT: lastWord=%s matches %s, returning nil to defer\n", lastWord, kw)
-					defer debugFile.Close()
-				}
+				logger.DebugfToFile("Completion", "SimpleParser SELECT: lastWord=%s matches %s, returning nil to defer", lastWord, kw)
 				return nil
 			}
 		}

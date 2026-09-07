@@ -324,7 +324,7 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Enter` (entrada vacía) | Cargar siguiente página cuando haya más datos disponibles | Igual |
 | `Alt+↑`/`Alt+↓` | Desplazar vista por una sola fila (respeta límites de fila) | `Option+↑`/`Option+↓` |
 | `Alt+←`/`Alt+→` | Desplazar tabla horizontalmente (tablas anchas) | `Option+←`/`Option+→` |
-| `↑`/`↓` | Navegar filas de tabla (cuando está en modo navegación) | Igual |
+| `↑`/`↓` | Desplazan los resultados en las vistas de tabla y traza. En la vista normal recorren el historial de comandos; `Ctrl+P` recupera el historial desde cualquier vista | Igual |
 
 #### Modo de Navegación (Vistas de Tabla/Trazas)
 Presiona `Esc` para activar/desactivar el modo de navegación cuando veas tablas o trazas.
@@ -340,15 +340,25 @@ Presiona `Esc` para activar/desactivar el modo de navegación cuando veas tablas
 | `Esc` | Salir del modo de navegación / Cancelar paginación si está activa |
 
 #### Soporte de Ratón
+cqlai deja los botones del ratón a tu terminal, así que seleccionar texto, pegar
+con el botón derecho y pegar con el botón central funcionan igual que en cualquier
+otro programa. No hace falta ninguna tecla modificadora.
+
+La rueda llega a través del modo de desplazamiento alternativo, en el que el
+terminal convierte los giros de la rueda en pulsaciones de `↑`/`↓`. Es decir, la
+rueda desplaza lo mismo que `↑` y `↓`: los resultados en la vista de tabla, la
+traza en la vista de traza y la conversación en la vista de IA.
+
 | Acción | Función |
 |--------|----------|
 | Rueda del Ratón | Desplazamiento vertical con carga automática de datos |
-| Alt+Rueda del Ratón | Desplazamiento horizontal en tablas |
-| Shift+Rueda del Ratón | Desplazamiento horizontal (alternativa) |
-| Ctrl+Rueda del Ratón | Desplazamiento horizontal (alternativa) |
-| Shift+Clic+Arrastre | Seleccionar texto para copiar |
-| Ctrl+Shift+C | Copiar texto seleccionado al portapapeles |
+| Clic+Arrastre | Seleccionar texto (la selección propia de tu terminal) |
+| Clic Derecho | Pegar (si tu terminal lo tiene asignado así) |
 | Clic del Medio | Pegar desde el búfer de selección (Linux/Unix) |
+
+Para desplazar tablas anchas en horizontal usa `Alt+←`/`Alt+→`, o `<` y `>` en
+modo navegación. El desplazamiento horizontal con la rueda no está disponible,
+porque el terminal solo informa de los giros verticales como pulsaciones de tecla.
 
 **Nota para Usuarios de macOS:**
 - La mayoría de atajos `Ctrl` funcionan tal cual en macOS, pero también puedes usar la tecla `⌘` (Comando) como alternativa
