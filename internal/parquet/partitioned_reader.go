@@ -205,9 +205,15 @@ func (pr *PartitionedParquetReader) GetSchema() ([]string, []string) {
 func (pr *PartitionedParquetReader) ReadAll() ([]map[string]interface{}, error) {
 	var allRows []map[string]interface{}
 
-	// Reset to first file
+	// Reset to first file. Close the reader the constructor opened rather than
+	// dropping it, and clear the row tally so the walk does not count the first
+	// file twice.
+	if pr.currentReader != nil {
+		_ = pr.currentReader.Close()
+		pr.currentReader = nil
+	}
 	pr.currentFileIndex = -1
-	pr.currentReader = nil
+	pr.totalRowCount = 0
 
 	for {
 		if err := pr.nextFile(); err != nil {
@@ -327,7 +333,12 @@ func (pr *PartitionedParquetReader) ReadBatch(batchSize int) ([]map[string]inter
 	return batch, nil
 }
 
-// GetRowCount returns the total row count across all partitions
+// GetRowCount returns the number of rows in the partition files opened so far.
+//
+// Files are opened lazily as reading advances, so this is a running total, not
+// the size of the dataset. Straight after construction it reports the row count
+// of the first file only; it reaches the dataset total once every file has been
+// read. Callers that need the total up front have to sum it themselves.
 func (pr *PartitionedParquetReader) GetRowCount() int64 {
 	return pr.totalRowCount
 }
