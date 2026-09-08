@@ -82,8 +82,6 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	colIter := s.Query(colQuery, keyspace, tableName).Iter()
 
 	var columns []ColumnInfo
-	var partitionKeys []string
-	var clusteringKeys []string
 
 	var colName, colType, colKind string
 	var colPosition int
@@ -95,13 +93,6 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 			Kind:     colKind,
 			Position: colPosition,
 		})
-
-		switch colKind {
-		case "partition_key":
-			partitionKeys = append(partitionKeys, colName)
-		case "clustering":
-			clusteringKeys = append(clusteringKeys, colName)
-		}
 	}
 	_ = colIter.Close()
 
@@ -123,6 +114,23 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 		// Within same kind, sort by position
 		return columns[i].Position < columns[j].Position
 	})
+
+	// Collect the key columns only after sorting. system_schema.columns is
+	// clustered by column_name, so it comes back alphabetically; taking the
+	// keys in iteration order gives "PRIMARY KEY ((a, b, c), x, y, z)" for a
+	// table declared as ((c, a, b), z, y, x). That is not the same table: the
+	// partition key order changes how rows are distributed and the clustering
+	// order changes how they are sorted on disk.
+	var partitionKeys []string
+	var clusteringKeys []string
+	for _, col := range columns {
+		switch col.Kind {
+		case "partition_key":
+			partitionKeys = append(partitionKeys, col.Name)
+		case "clustering":
+			clusteringKeys = append(clusteringKeys, col.Name)
+		}
+	}
 
 	return &TableInfo{
 		KeyspaceName:   keyspace,
