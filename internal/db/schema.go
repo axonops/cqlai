@@ -2,8 +2,10 @@ package db
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/session"
 )
 
@@ -97,12 +99,18 @@ func (s *Session) GetTableSchema(keyspace, table string) (*TableSchema, error) {
 		ClusteringKeys: []string{},
 	}
 
-	// Get columns
+	// Get columns.
+	//
+	// Deliberately no ORDER BY: system_schema.columns is clustered by
+	// column_name, and Cassandra rejects ordering by anything else with
+	// "Order by is currently only supported on the clustered columns of the
+	// PRIMARY KEY". Asking for ORDER BY position failed every call, and the
+	// caller swallowed the error, so no table was ever loaded. Sort in Go
+	// instead.
 	columnQuery := `
-		SELECT column_name, type, kind, position 
-		FROM system_schema.columns 
-		WHERE keyspace_name = ? AND table_name = ?
-		ORDER BY position`
+		SELECT column_name, type, kind, position
+		FROM system_schema.columns
+		WHERE keyspace_name = ? AND table_name = ?`
 
 	iter := s.Query(columnQuery, keyspace, table).Iter()
 
@@ -110,25 +118,39 @@ func (s *Session) GetTableSchema(keyspace, table string) (*TableSchema, error) {
 	var position int
 
 	for iter.Scan(&colName, &colType, &colKind, &position) {
-		col := ColumnSchema{
+		ts.Columns = append(ts.Columns, ColumnSchema{
 			Name:     colName,
 			Type:     colType,
 			Kind:     colKind,
 			Position: position,
-		}
-		ts.Columns = append(ts.Columns, col)
-
-		// Track partition and clustering keys
-		switch colKind {
-		case "partition_key":
-			ts.PartitionKeys = append(ts.PartitionKeys, colName)
-		case "clustering":
-			ts.ClusteringKeys = append(ts.ClusteringKeys, colName)
-		}
+		})
 	}
 
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to retrieve columns: %v", err)
+	}
+
+	// Partition keys first, then clustering keys, then the rest; within a kind,
+	// by position.
+	kindPriority := map[string]int{"partition_key": 0, "clustering": 1, "regular": 2}
+	sort.SliceStable(ts.Columns, func(i, j int) bool {
+		iPriority, jPriority := kindPriority[ts.Columns[i].Kind], kindPriority[ts.Columns[j].Kind]
+		if iPriority != jPriority {
+			return iPriority < jPriority
+		}
+		return ts.Columns[i].Position < ts.Columns[j].Position
+	})
+
+	// Collect the key names only once sorted. Taking them during the scan gives
+	// alphabetical order, which describes a different table: partition key
+	// order decides how rows are distributed, clustering order how they sort.
+	for _, col := range ts.Columns {
+		switch col.Kind {
+		case "partition_key":
+			ts.PartitionKeys = append(ts.PartitionKeys, col.Name)
+		case "clustering":
+			ts.ClusteringKeys = append(ts.ClusteringKeys, col.Name)
+		}
 	}
 
 	if len(ts.Columns) == 0 {
@@ -159,7 +181,10 @@ func (s *Session) loadTablesForKeyspace(ks *KeyspaceSchema) error {
 	for iter.Scan(&tableName) {
 		ts, err := s.GetTableSchema(ks.Name, tableName)
 		if err != nil {
-			continue // Skip tables we can't load
+			// Log rather than skip in silence. A whole schema disappearing
+			// with no message is why the broken query above went unnoticed.
+			logger.DebugfToFile("Schema", "Skipping table %s.%s: %v", ks.Name, tableName, err)
+			continue
 		}
 		ks.Tables[tableName] = ts
 	}
