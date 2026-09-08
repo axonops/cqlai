@@ -107,24 +107,29 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	case "pgdown":
 		return m.handlePageDown(msg)
 
-	case "up":
+	// The modified forms route to the same handlers, which then read msg.Mod
+	// themselves - Alt+arrow scrolls where a bare arrow moves the cursor or
+	// walks history. v1 switched on msg.Type, which ignored modifiers; v2's
+	// String() spells them out, so "alt+left" no longer matches "left" and the
+	// Alt bindings would silently stop working.
+	case "up", "alt+up", "shift+up", "ctrl+up":
 		// If in history search mode, navigate search results
 		if m.historySearchMode {
 			return m.handleHistorySearchUp()
 		}
 		return m.handleUpArrow(msg)
 
-	case "down":
+	case "down", "alt+down", "shift+down", "ctrl+down":
 		// If in history search mode, navigate search results
 		if m.historySearchMode {
 			return m.handleHistorySearchDown()
 		}
 		return m.handleDownArrow(msg)
 
-	case "left":
+	case "left", "alt+left", "shift+left":
 		return m.handleLeftArrow(msg)
 
-	case "right":
+	case "right", "alt+right", "shift+right":
 		return m.handleRightArrow(msg)
 
 	case "enter":
