@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -62,8 +61,9 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 		}
 	}
 
-	// Build column list for INSERT
-	columnList := strings.Join(columns, ", ")
+	// Build the INSERT once. Values are bound, so the statement text never
+	// changes from row to row and nothing from the file reaches it.
+	insertTemplate := buildInsertTemplate(table, columns)
 
 	// Parse numeric options
 	batchSize, _ := strconv.Atoi(options["CHUNKSIZE"])
@@ -89,7 +89,7 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 	skippedRows := 0
 	errorMessages := make([]string, 0, 5) // Store first few error messages
 
-	batch := make([]string, 0, batchSize)
+	batch := make([]batchEntry, 0, batchSize)
 
 	for {
 		// Read a batch of rows
@@ -120,21 +120,11 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 				goto done
 			}
 
-			// Build INSERT statement
-			values := make([]string, len(columns))
-			for i, col := range columns {
-				if val, ok := row[col]; ok {
-					values[i] = h.formatParquetValueForInsert(val, col, columnTypes)
-				} else {
-					values[i] = "NULL"
-				}
-			}
+			// Bind the row's values. Data in a Parquet file is not trusted
+			// input: pasted into CQL text it can alter the statement.
+			bound := bindValuesForInsert(columns, h.extractRowValues(columns, row), columnTypes)
 
-			insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-				table, columnList, strings.Join(values, ", "))
-			logger.DebugfToFile("CopyFromPartitioned", "Insert query: %s", insertQuery)
-
-			batch = append(batch, insertQuery)
+			batch = append(batch, batchEntry{query: insertTemplate, values: bound})
 
 			// Execute batch when full
 			if len(batch) >= batchSize {
@@ -219,71 +209,14 @@ func matchesPartitionFilter(row map[string]interface{}, filter string) bool {
 	return true
 }
 
-// formatParquetValueForInsert formats a Parquet value for use in an INSERT statement.
-// columnTypes carries the destination CQL column types so collections are emitted
-// as list (`[...]`) or set (`{...}`) literals matching the actual schema.
-func (h *MetaCommandHandler) formatParquetValueForInsert(value interface{}, columnName string, columnTypes map[string]string) string {
-	if value == nil {
-		return "NULL"
-	}
-
-	switch v := value.(type) {
-	case string:
-		trimmed := strings.TrimSpace(v)
-
-		// Check if this is a UUID (for UUID/TIMEUUID columns)
-		if strings.Contains(strings.ToLower(columnName), "uuid") ||
-			strings.Contains(strings.ToLower(columnName), "id") {
-			// Check if it looks like a UUID (8-4-4-4-12 format)
-			if isUUIDFormat(trimmed) {
-				return trimmed // No quotes for UUIDs
-			}
-		}
-
-		// Regular string - escape single quotes
-		escaped := strings.ReplaceAll(v, "'", "''")
-		return fmt.Sprintf("'%s'", escaped)
-	case time.Time:
-		// Format timestamp for CQL (use RFC3339 format with quotes)
-		return fmt.Sprintf("'%s'", v.Format(time.RFC3339Nano))
-	case bool:
-		return fmt.Sprintf("%t", v)
-	case float32, float64:
-		return fmt.Sprintf("%f", v)
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%d", v)
-	case []byte:
-		// Format as hex blob
-		return fmt.Sprintf("0x%x", v)
-	case map[string]interface{}:
-		// Format as JSON for complex types
-		// This is a simplified version - actual implementation would need proper JSON encoding
-		return fmt.Sprintf("'%v'", v)
-	case []interface{}:
-		// Emit set literal for set<...> columns; list literal otherwise.
-		items := make([]string, len(v))
-		for i, item := range v {
-			items[i] = h.formatParquetValueForInsert(item, columnName, columnTypes)
-		}
-		joined := strings.Join(items, ", ")
-		if h.isSetColumn(columnName, columnTypes) {
-			return fmt.Sprintf("{%s}", joined)
-		}
-		return fmt.Sprintf("[%s]", joined)
-	default:
-		// Default to string representation
-		return fmt.Sprintf("'%v'", v)
-	}
-}
-
 // executePartitionedBatch executes a batch of INSERT statements for partitioned data
-func (h *MetaCommandHandler) executePartitionedBatch(batch []string, rowIndex int, errorMessages *[]string) int {
+func (h *MetaCommandHandler) executePartitionedBatch(batch []batchEntry, rowIndex int, errorMessages *[]string) int {
 	errorCount := 0
-	for i, query := range batch {
-		result := h.session.ExecuteCQLQuery(query)
+	for i, entry := range batch {
+		result := h.session.ExecuteCQLQueryWithValues(entry.query, entry.values...)
 		if err, ok := result.(error); ok {
 			logger.DebugfToFile("CopyFromPartitioned", "Insert error: %v", err)
-			logger.DebugfToFile("CopyFromPartitioned", "Failed query: %s", query)
+			logger.DebugfToFile("CopyFromPartitioned", "Failed query: %s", entry.query)
 			errorCount++
 
 			// Store first few error messages for user display (limit to 5)
