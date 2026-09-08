@@ -206,8 +206,10 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 	m.lastTableData = allData // Store for pagination
 	m.horizontalOffset = 0    // Reset horizontal scroll
 
-	// Format as expanded vertical table
-	expandStr := FormatExpandTable(allData, m.styles)
+	// Format as expanded vertical table. The boundaries have to come from this
+	// layout: paging snaps to them, and a record here is many lines tall.
+	expandStr, boundaries := FormatExpandTableWithBoundaries(allData, m.styles)
+	m.tableRowBoundaries = boundaries
 	m.tableViewport.SetContent(expandStr)
 	m.tableViewport.GotoTop()
 
@@ -290,6 +292,8 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 		}
 
 		// Set content in table viewport
+		// No record boundaries in this layout; stale ones would cap scrolling.
+		m.tableRowBoundaries = nil
 		m.tableViewport.SetContent(asciiStr)
 		m.tableViewport.GotoTop()
 
@@ -422,6 +426,8 @@ func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, co
 		}
 
 		// Set content in table viewport
+		// No record boundaries in this layout; stale ones would cap scrolling.
+		m.tableRowBoundaries = nil
 		m.tableViewport.SetContent(jsonStr)
 		m.tableViewport.GotoTop()
 
@@ -516,7 +522,8 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 			m.cachedTableLines = nil    // Clear cache for new table
 
 			// Format as expanded vertical table
-			expandOutput := FormatExpandTable(v.Data, m.styles)
+			expandOutput, boundaries := FormatExpandTableWithBoundaries(v.Data, m.styles)
+			m.tableRowBoundaries = boundaries
 			m.tableViewport.SetContent(expandOutput)
 			m.tableViewport.GotoTop() // Start at top of table
 		case config.OutputFormatJSON:
