@@ -125,4 +125,35 @@ func TestBindValueLeavesEverythingElseAlone(t *testing.T) {
 func TestBindValueKeepsNil(t *testing.T) {
 	assert.Nil(t, bindValue(nil, "text"))
 	assert.Nil(t, bindValue(nil, "uuid"))
+	assert.Nil(t, bindValue(nil, "list<text>"))
+	assert.Nil(t, bindValue(nil, ""))
+}
+
+// TestBindValueUnsetsNilUDT covers the one type gocql will not take an untyped
+// nil for. Binding a nil or empty map instead is not a substitute: measured
+// against Cassandra 5.0, that writes a non-null UDT whose fields are all zero,
+// where UnsetValue leaves the column unwritten and so genuinely null.
+func TestBindValueUnsetsNilUDT(t *testing.T) {
+	for _, cqlType := range []string{"profile", "frozen<profile>", "FROZEN<Profile>"} {
+		t.Run(cqlType, func(t *testing.T) {
+			assert.Equal(t, gocql.UnsetValue, bindValue(nil, cqlType))
+		})
+	}
+}
+
+func TestIsUserDefinedType(t *testing.T) {
+	udt := []string{"profile", "frozen<profile>", "my_ks.address"}
+	notUDT := []string{
+		"text", "int", "uuid", "timeuuid", "timestamp", "blob", "varint",
+		"list<text>", "set<int>", "map<text, int>", "tuple<int, text>",
+		"frozen<list<text>>", "frozen<map<text, int>>", "vector<float, 3>",
+		"", "  ",
+	}
+
+	for _, ty := range udt {
+		assert.True(t, isUserDefinedType(ty), "%q should be a UDT", ty)
+	}
+	for _, ty := range notUDT {
+		assert.False(t, isUserDefinedType(ty), "%q should not be a UDT", ty)
+	}
 }

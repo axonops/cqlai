@@ -44,9 +44,52 @@ func bindValuesForInsert(columns []string, values []interface{}, columnTypes map
 	return bound
 }
 
+// cqlPrimitives are the CQL types gocql marshals from a plain Go value,
+// including from an untyped nil.
+var cqlPrimitives = map[string]bool{
+	"ascii": true, "bigint": true, "blob": true, "boolean": true,
+	"counter": true, "date": true, "decimal": true, "double": true,
+	"duration": true, "float": true, "inet": true, "int": true,
+	"smallint": true, "text": true, "time": true, "timestamp": true,
+	"timeuuid": true, "tinyint": true, "uuid": true, "varchar": true,
+	"varint": true,
+}
+
+// normaliseCQLType lowercases a type and unwraps frozen<...>, so frozen<profile>
+// and profile are treated alike.
+func normaliseCQLType(cqlType string) string {
+	t := strings.ToLower(strings.TrimSpace(cqlType))
+	for strings.HasPrefix(t, "frozen<") && strings.HasSuffix(t, ">") {
+		t = strings.TrimSpace(t[len("frozen<") : len(t)-1])
+	}
+	return t
+}
+
+// isUserDefinedType reports whether a column type is a UDT, meaning neither a
+// primitive nor one of the built-in containers.
+func isUserDefinedType(cqlType string) bool {
+	t := normaliseCQLType(cqlType)
+	if t == "" || cqlPrimitives[t] {
+		return false
+	}
+	for _, container := range []string{"list<", "set<", "map<", "tuple<", "vector<"} {
+		if strings.HasPrefix(t, container) {
+			return false
+		}
+	}
+	return true
+}
+
 // bindValue converts a single Parquet value for the destination CQL type.
 func bindValue(val interface{}, cqlType string) interface{} {
 	if val == nil {
+		// gocql marshals an untyped nil for every primitive and container, but
+		// refuses it for a UDT. Binding a nil or empty map there is not a
+		// substitute: that writes a non-null UDT whose fields are all zero.
+		// UnsetValue leaves the column unwritten, which is a real null.
+		if isUserDefinedType(cqlType) {
+			return gocql.UnsetValue
+		}
 		return nil
 	}
 
@@ -57,7 +100,7 @@ func bindValue(val interface{}, cqlType string) interface{} {
 
 	// gocql will not bind a plain string to a uuid column, and Parquet has no
 	// UUID type of its own so these arrive as text.
-	switch strings.ToLower(strings.TrimSpace(cqlType)) {
+	switch normaliseCQLType(cqlType) {
 	case "uuid", "timeuuid":
 		parsed, err := gocql.ParseUUID(strings.TrimSpace(s))
 		if err != nil {
