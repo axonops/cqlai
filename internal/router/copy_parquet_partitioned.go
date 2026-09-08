@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -115,9 +116,14 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 		batch := make([]map[string]interface{}, 0, batchSize)
 
 		// Prepare scan destinations - use cleanHeaders since that's what we'll iterate with
+		cols := v.Iterator.Columns()
 		scanDest := make([]interface{}, len(cleanHeaders))
 		for i := range scanDest {
-			scanDest[i] = new(interface{})
+			var info gocql.TypeInfo
+			if i < len(cols) {
+				info = cols[i].TypeInfo
+			}
+			scanDest[i] = db.NewScanDest(info)
 		}
 
 		for v.Iterator.Scan(scanDest...) {
@@ -125,13 +131,8 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 			rowData := make(map[string]interface{})
 			for i, colName := range cleanHeaders {
 				if i < len(scanDest) {
-					val := *(scanDest[i].(*interface{}))
-					// Handle NULL values
-					if val == nil {
-						rowData[colName] = nil
-					} else {
-						rowData[colName] = val
-					}
+					// nil here is a real NULL, not a zero value standing in for one.
+					rowData[colName] = db.ScanValue(scanDest[i])
 				}
 			}
 

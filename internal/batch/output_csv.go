@@ -82,7 +82,9 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 				}
 			}
 		} else {
-			scanDest[i] = new(interface{})
+			// Not *interface{}: gocql panics on a NULL there, and silently
+			// stores the previous row's zero value once it has one.
+			scanDest[i] = db.NewScanDest(col.TypeInfo)
 		}
 	}
 
@@ -135,7 +137,7 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 					}
 				} else {
 					// Regular column
-					val := *(scanDest[i].(*interface{}))
+					val := db.ScanValue(scanDest[i])
 					if val == nil {
 						row[colIdx] = ""
 					} else {
