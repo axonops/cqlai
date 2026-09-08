@@ -3,18 +3,19 @@ package ui
 import (
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"image/color"
+
+	"charm.land/lipgloss/v2"
 )
 
 // Styles contains the styles for the application.
 type Styles struct {
-	Accent lipgloss.Color
-	Ok     lipgloss.Color
-	Warn   lipgloss.Color
-	Error  lipgloss.Color
-	Muted  lipgloss.Color
-	Border lipgloss.Color
+	Accent color.Color
+	Ok     color.Color
+	Warn   color.Color
+	Error  color.Color
+	Muted  color.Color
+	Border color.Color
 
 	AccentText  lipgloss.Style
 	MutedText   lipgloss.Style
@@ -27,19 +28,20 @@ type Styles struct {
 func DefaultStyles() *Styles {
 	st := &Styles{}
 
-	// Allow users to override color mode if needed
-	// but don't force it by default - let lipgloss auto-detect
-	colorMode := os.Getenv("CQLAI_COLOR_MODE")
-	switch colorMode {
+	// CQLAI_COLOR_MODE used to call lipgloss.SetColorProfile, which v2 removed:
+	// colour handling moved into the renderer, which negotiates with the
+	// terminal itself. Honour the variable by mapping it onto the environment
+	// lipgloss and termenv already read, rather than reaching into the library.
+	switch os.Getenv("CQLAI_COLOR_MODE") {
 	case "ascii":
-		lipgloss.SetColorProfile(termenv.Ascii)
+		_ = os.Setenv("NO_COLOR", "1")
 	case "ansi":
-		lipgloss.SetColorProfile(termenv.ANSI)
+		_ = os.Setenv("TERM", "xterm")
 	case "256":
-		lipgloss.SetColorProfile(termenv.ANSI256)
+		_ = os.Setenv("TERM", "xterm-256color")
 	case "truecolor":
-		lipgloss.SetColorProfile(termenv.TrueColor)
-		// default: let lipgloss auto-detect the best color mode
+		_ = os.Setenv("COLORTERM", "truecolor")
+		// default: let the renderer detect what the terminal supports
 	}
 
 	// Use hex colors for better consistency across terminals

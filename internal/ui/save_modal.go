@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/router"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // renderSaveModal renders the save modal dialog
@@ -113,11 +113,11 @@ func (m *MainModel) renderSaveFilenameInput() string {
 	b.WriteString("Enter file path:\n")
 
 	// Initialize the input if needed
-	if m.saveModalInput.Width == 0 {
+	if m.saveModalInput.Width() == 0 {
 		input := textinput.New()
 		input.Placeholder = defaultName
 		input.CharLimit = 256
-		input.Width = 50
+		input.SetWidth(50)
 		input.Focus()
 		m.saveModalInput = input
 	}
@@ -135,34 +135,34 @@ func (m *MainModel) renderSaveFilenameInput() string {
 }
 
 // handleSaveModalKeyboard handles keyboard input for the save modal
-func (m *MainModel) handleSaveModalKeyboard(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleSaveModalKeyboard(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	if !m.saveModalActive {
 		return m, nil
 	}
 
-	switch msg.Type {
-	case tea.KeyEsc:
+	switch msg.String() {
+	case "esc":
 		// Cancel and close modal
 		m.saveModalActive = false
 		m.saveModalStep = 0
 		m.saveModalFormat = 0
 		m.saveModalFilename = ""
-		if m.saveModalInput.Width > 0 {
+		if m.saveModalInput.Width() > 0 {
 			m.saveModalInput.Reset()
 		}
 		return m, nil
 
-	case tea.KeyEnter:
+	case "enter":
 		if m.saveModalStep == 0 {
 			// Move to filename input step
 			m.saveModalStep = 1
 			m.saveModalFilename = ""
 
 			// Initialize the input if not already done
-			if m.saveModalInput.Width == 0 {
+			if m.saveModalInput.Width() == 0 {
 				input := textinput.New()
 				input.CharLimit = 256
-				input.Width = 50
+				input.SetWidth(50)
 				input.Focus()
 				m.saveModalInput = input
 			} else {
@@ -175,24 +175,24 @@ func (m *MainModel) handleSaveModalKeyboard(msg tea.KeyMsg) (*MainModel, tea.Cmd
 			return m.executeSaveFromModal()
 		}
 
-	case tea.KeyUp:
+	case "up":
 		if m.saveModalStep == 0 && m.saveModalFormat > 0 {
 			m.saveModalFormat--
 		}
 		return m, nil
 
-	case tea.KeyDown:
+	case "down":
 		if m.saveModalStep == 0 && m.saveModalFormat < 2 {
 			m.saveModalFormat++
 		}
 		return m, nil
 
-	case tea.KeyLeft:
+	case "left":
 		if m.saveModalStep == 1 {
 			// Go back to format selection
 			m.saveModalStep = 0
 			m.saveModalFilename = ""
-			if m.saveModalInput.Width > 0 {
+			if m.saveModalInput.Width() > 0 {
 				m.saveModalInput.Reset()
 			}
 			return m, nil
@@ -246,7 +246,7 @@ func (m *MainModel) executeSaveFromModal() (*MainModel, tea.Cmd) {
 	m.saveModalStep = 0
 	m.saveModalFormat = 0
 	m.saveModalFilename = ""
-	if m.saveModalInput.Width > 0 {
+	if m.saveModalInput.Width() > 0 {
 		m.saveModalInput.Reset()
 	}
 

@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleAICommand handles .ai commands
@@ -57,12 +57,12 @@ func (m *MainModel) handleAICommand(command string) (*MainModel, tea.Cmd) {
 		input.Placeholder = ""
 		input.Prompt = "> "
 		input.Focus()
-		input.CharLimit = 4096                    // Increased to support long queries
-		input.Width = m.historyViewport.Width - 2 // Reduced margin for better scrolling
+		input.CharLimit = 4096                        // Increased to support long queries
+		input.SetWidth(m.historyViewport.Width() - 2) // Reduced margin for better scrolling
 		m.aiConversationInput = input
 
 		// Initialize conversation viewport
-		m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
+		m.aiConversationViewport = viewport.New(viewport.WithWidth(m.historyViewport.Width()), viewport.WithHeight(m.historyViewport.Height()))
 		// Clear messages for new conversation
 		m.aiConversationMessages = []AIMessage{}
 	}

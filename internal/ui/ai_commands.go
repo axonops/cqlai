@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // AICQLResultMsg is sent when AI CQL generation completes

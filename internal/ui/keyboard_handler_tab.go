@@ -3,9 +3,9 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/ui/completion"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleTabKey handles Tab key press

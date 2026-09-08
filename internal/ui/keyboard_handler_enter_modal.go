@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleModalConfirmation handles Enter key when a modal is showing

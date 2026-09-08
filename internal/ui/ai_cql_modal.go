@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // AICQLModal represents a modal for displaying AI-generated CQL with execution options

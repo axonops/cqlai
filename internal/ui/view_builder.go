@@ -4,14 +4,33 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/config"
-	"github.com/charmbracelet/lipgloss"
 )
 
+// newView wraps rendered content in the terminal state cqlai wants.
+//
+// v2 makes this declarative: rather than startup options and imperative
+// commands, the alternate screen and mouse mode are fields recomputed on every
+// render, so they cannot drift out of step with what is on screen.
+//
+// MouseMode stays None deliberately. Asking for mouse reporting takes the
+// buttons away from the terminal, which is what stopped text selection and
+// right-click paste working before #86. The wheel arrives as Up/Down key
+// presses through alternate scroll mode instead, which v2 does not manage and
+// mouse_mode.go still sets up.
+func (m *MainModel) newView(content string) tea.View {
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeNone
+	return v
+}
+
 // View renders the main model.
-func (m *MainModel) View() string {
+func (m *MainModel) View() tea.View {
 	if !m.ready {
-		return ""
+		return m.newView("")
 	}
 
 	m.topBar.LastCommand = m.lastCommand
@@ -98,7 +117,7 @@ func (m *MainModel) View() string {
 	}
 
 	// Add scroll indicator if content is scrollable
-	if activeViewport.TotalLineCount() > activeViewport.Height {
+	if activeViewport.TotalLineCount() > activeViewport.Height() {
 		scrollPercent := activeViewport.ScrollPercent()
 		if scrollPercent == 0 { //nolint:gocritic // more readable as if
 			scrollInfo += " [TOP]"
@@ -111,25 +130,25 @@ func (m *MainModel) View() string {
 
 	// Add horizontal scroll indicator if table/trace is wider than viewport
 	switch {
-	case m.viewMode == "trace" && m.hasTrace && m.traceTableWidth > m.traceViewport.Width:
+	case m.viewMode == "trace" && m.hasTrace && m.traceTableWidth > m.traceViewport.Width():
 		if m.traceHorizontalOffset == 0 { //nolint:gocritic // more readable as if
 			scrollInfo += " | H:LEFT"
-		} else if m.traceHorizontalOffset >= m.traceTableWidth-m.traceViewport.Width {
+		} else if m.traceHorizontalOffset >= m.traceTableWidth-m.traceViewport.Width() {
 			scrollInfo += " | H:RIGHT"
 		} else {
 			// Calculate horizontal scroll percentage
-			maxOffset := m.traceTableWidth - m.traceViewport.Width
+			maxOffset := m.traceTableWidth - m.traceViewport.Width()
 			hScrollPercent := float64(m.traceHorizontalOffset) / float64(maxOffset)
 			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
 		}
-	case m.hasTable && m.viewMode == "table" && m.tableWidth > m.tableViewport.Width:
+	case m.hasTable && m.viewMode == "table" && m.tableWidth > m.tableViewport.Width():
 		if m.horizontalOffset == 0 { //nolint:gocritic // more readable as if
 			scrollInfo += " | H:LEFT"
-		} else if m.horizontalOffset >= m.tableWidth-m.tableViewport.Width {
+		} else if m.horizontalOffset >= m.tableWidth-m.tableViewport.Width() {
 			scrollInfo += " | H:RIGHT"
 		} else {
 			// Calculate horizontal scroll percentage
-			maxOffset := m.tableWidth - m.tableViewport.Width
+			maxOffset := m.tableWidth - m.tableViewport.Width()
 			hScrollPercent := float64(m.horizontalOffset) / float64(maxOffset)
 			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
 		}
@@ -200,12 +219,12 @@ func (m *MainModel) View() string {
 	switch {
 	case m.viewMode == "ai" && m.aiConversationActive:
 		// For AI view, just get the viewport content
-		viewportWidth = m.aiConversationViewport.Width
+		viewportWidth = m.aiConversationViewport.Width()
 		viewportContent = m.aiConversationViewport.View()
 	case m.viewMode == "trace":
-		viewportWidth = m.historyViewport.Width
+		viewportWidth = m.historyViewport.Width()
 		if m.hasTrace {
-			viewportWidth = m.traceViewport.Width
+			viewportWidth = m.traceViewport.Width()
 			viewportContent = m.traceViewport.View()
 		} else {
 			// Create a temporary viewport for empty trace message
@@ -215,9 +234,9 @@ func (m *MainModel) View() string {
 			viewportContent = tempViewport.View()
 		}
 	case m.viewMode == "table":
-		viewportWidth = m.historyViewport.Width
+		viewportWidth = m.historyViewport.Width()
 		if m.hasTable {
-			viewportWidth = m.tableViewport.Width
+			viewportWidth = m.tableViewport.Width()
 			viewportContent = m.tableViewport.View()
 		} else {
 			// Create a temporary viewport for empty table message
@@ -228,7 +247,7 @@ func (m *MainModel) View() string {
 		}
 	default:
 		viewportContent = m.historyViewport.View()
-		viewportWidth = m.historyViewport.Width
+		viewportWidth = m.historyViewport.Width()
 	}
 
 	// Build the main view with proper sticky header overlay
@@ -243,7 +262,7 @@ func (m *MainModel) View() string {
 
 	// Build the viewport section with sticky header for tables
 	var viewportSection string
-	if m.viewMode == "table" && m.hasTable && m.tableViewport.YOffset > 0 {
+	if m.viewMode == "table" && m.hasTable && m.tableViewport.YOffset() > 0 {
 		// When table is scrolled, prepend the header
 		header := m.buildTableStickyHeader()
 		if header != "" {
@@ -351,14 +370,14 @@ func (m *MainModel) View() string {
 	if m.aiCQLModal != nil && m.aiCQLModal.Active {
 		content := m.aiCQLModal.Render(screenWidth, screenHeight, m.styles)
 		// The modal renders as a full overlay, so we return it directly
-		return content
+		return m.newView(content)
 	}
 
 	// If AI selection modal is showing, add as a layer
 	if m.aiSelectionModal != nil && m.aiSelectionModal.Active {
 		content := m.aiSelectionModal.Render(screenWidth, screenHeight, m.styles)
 		// The modal renders as a full overlay, so we return it directly
-		return content
+		return m.newView(content)
 	}
 
 	// If save modal is showing, add it as a layer
@@ -382,14 +401,14 @@ func (m *MainModel) View() string {
 		}
 		if screenHeight == 0 {
 			// Fallback if window dimensions not yet set
-			screenHeight = m.historyViewport.Height + 3
+			screenHeight = m.historyViewport.Height() + 3
 		}
 
 		// Render the modal overlay with the current view as background
-		return m.modal.Render(screenWidth, screenHeight, m.styles, finalView)
+		return m.newView(m.modal.Render(screenWidth, screenHeight, m.styles, finalView))
 	}
 
-	return finalView
+	return m.newView(finalView)
 }
 
 // getWelcomeMessage returns the welcome message for the application

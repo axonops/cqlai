@@ -1,8 +1,8 @@
 package ui
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleEscapeKey handles the ESC key press with its many contexts

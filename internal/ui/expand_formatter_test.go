@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/viewport"
+	"charm.land/bubbles/v2/viewport"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,7 +127,7 @@ func TestExpandPagingReachesTheLastRecord(t *testing.T) {
 		m := &MainModel{
 			viewMode:           "table",
 			hasTable:           true,
-			tableViewport:      viewport.New(120, viewportLines),
+			tableViewport:      viewport.New(viewport.WithWidth(120), viewport.WithHeight(viewportLines)),
 			tableRowBoundaries: b,
 		}
 		m.tableViewport.SetContent(content)
@@ -138,12 +138,12 @@ func TestExpandPagingReachesTheLastRecord(t *testing.T) {
 		last := -1
 		for range 500 {
 			m.handleHalfPageDown()
-			if m.tableViewport.YOffset == last {
+			if m.tableViewport.YOffset() == last {
 				break // stuck
 			}
-			last = m.tableViewport.YOffset
+			last = m.tableViewport.YOffset()
 		}
-		return m.tableViewport.YOffset
+		return m.tableViewport.YOffset()
 	}
 
 	maxOffset := totalLines - viewportLines
@@ -165,7 +165,7 @@ func TestExpandPagingReachesTheLastRecord(t *testing.T) {
 	last := -1
 	for range 500 {
 		m.handleHalfPageDown()
-		o := m.tableViewport.YOffset
+		o := m.tableViewport.YOffset()
 		if o == last {
 			break
 		}

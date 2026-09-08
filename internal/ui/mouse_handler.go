@@ -3,9 +3,9 @@ package ui
 import (
 	"encoding/json"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleMouseInput handles mouse events.
@@ -19,36 +19,50 @@ import (
 // while it is on screen, which is the point at which wheel events start
 // arriving here again.
 func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
-	// Debug log ALL mouse events
-	logger.DebugfToFile("Mouse", "MouseEvent: Action=%v, Button=%v, X=%d, Y=%d, Shift=%v, Alt=%v, Ctrl=%v",
-		msg.Action, msg.Button, msg.X, msg.Y, msg.Shift, msg.Alt, msg.Ctrl)
+	mouse := msg.Mouse()
 
-	// Only handle wheel events - pass through everything else
-	switch msg.Button {
-	case tea.MouseButtonWheelUp:
+	logger.DebugfToFile("Mouse", "MouseEvent: %T Button=%v X=%d Y=%d Mod=%v",
+		msg, mouse.Button, mouse.X, mouse.Y, mouse.Mod)
+
+	// Only wheel events matter here. v2 splits clicks, releases, motion and
+	// wheel into separate types, so anything else is simply not ours. Note that
+	// ignoring a click here is not what lets the terminal select text - by the
+	// time an event arrives the terminal has already given the button up.
+	// Leaving MouseMode off is what does that.
+	if _, isWheel := msg.(tea.MouseWheelMsg); !isWheel {
+		return m, nil
+	}
+
+	// Any modifier plus a vertical wheel means horizontal scrolling.
+	modified := mouse.Mod.Contains(tea.ModShift) ||
+		mouse.Mod.Contains(tea.ModAlt) ||
+		mouse.Mod.Contains(tea.ModCtrl)
+
+	switch mouse.Button {
+	case tea.MouseWheelUp:
 		// Check for horizontal scrolling modes
-		if (msg.Shift || msg.Alt || msg.Ctrl) && m.viewMode == "table" && m.hasTable {
+		if modified && m.viewMode == "table" && m.hasTable {
 			// Any modifier + WheelUp = Scroll left
-			logger.DebugfToFile("Mouse", "Modified WheelUp detected (Shift=%v, Alt=%v, Ctrl=%v) - scrolling left",
-				msg.Shift, msg.Alt, msg.Ctrl)
+			logger.DebugfToFile("Mouse", "Modified WheelUp detected (Mod=%v) - scrolling left",
+				mouse.Mod)
 			return m.handleMouseWheelLeft()
 		}
 		// Regular scroll up
 		return m.handleMouseWheelUp()
-	case tea.MouseButtonWheelDown:
+	case tea.MouseWheelDown:
 		// Check for horizontal scrolling modes
-		if (msg.Shift || msg.Alt || msg.Ctrl) && m.viewMode == "table" && m.hasTable {
+		if modified && m.viewMode == "table" && m.hasTable {
 			// Any modifier + WheelDown = Scroll right
-			logger.DebugfToFile("Mouse", "Modified WheelDown detected (Shift=%v, Alt=%v, Ctrl=%v) - scrolling right",
-				msg.Shift, msg.Alt, msg.Ctrl)
+			logger.DebugfToFile("Mouse", "Modified WheelDown detected (Mod=%v) - scrolling right",
+				mouse.Mod)
 			return m.handleMouseWheelRight()
 		}
 		// Regular scroll down
 		return m.handleMouseWheelDown()
-	case tea.MouseButtonWheelLeft:
+	case tea.MouseWheelLeft:
 		// Native horizontal scroll left (for mice/trackpads that support it)
 		return m.handleMouseWheelLeft()
-	case tea.MouseButtonWheelRight:
+	case tea.MouseWheelRight:
 		// Native horizontal scroll right (for mice/trackpads that support it)
 		return m.handleMouseWheelRight()
 	default:
@@ -67,16 +81,16 @@ func (m *MainModel) handleMouseWheelUp() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "ai" && m.aiConversationActive:
 		// Scroll AI conversation up
-		m.aiConversationViewport.YOffset = max(0, m.aiConversationViewport.YOffset-scrollAmount)
+		m.aiConversationViewport.SetYOffset(max(0, m.aiConversationViewport.YOffset()-scrollAmount))
 	case m.viewMode == "trace" && m.hasTrace:
 		// Scroll trace up
-		m.traceViewport.YOffset = max(0, m.traceViewport.YOffset-scrollAmount)
+		m.traceViewport.SetYOffset(max(0, m.traceViewport.YOffset()-scrollAmount))
 	case m.viewMode == "table" && m.hasTable:
 		// Scroll table up
-		m.tableViewport.YOffset = max(0, m.tableViewport.YOffset-scrollAmount)
+		m.tableViewport.SetYOffset(max(0, m.tableViewport.YOffset()-scrollAmount))
 	default:
 		// Scroll history up
-		m.historyViewport.YOffset = max(0, m.historyViewport.YOffset-scrollAmount)
+		m.historyViewport.SetYOffset(max(0, m.historyViewport.YOffset()-scrollAmount))
 	}
 	return m, nil
 }
@@ -88,16 +102,16 @@ func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "ai" && m.aiConversationActive:
 		// Scroll AI conversation down
-		maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height)
-		m.aiConversationViewport.YOffset = min(maxOffset, m.aiConversationViewport.YOffset+scrollAmount)
+		maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height())
+		m.aiConversationViewport.SetYOffset(min(maxOffset, m.aiConversationViewport.YOffset()+scrollAmount))
 	case m.viewMode == "trace" && m.hasTrace:
 		// Scroll trace down
-		maxOffset := max(0, m.traceViewport.TotalLineCount()-m.traceViewport.Height)
-		m.traceViewport.YOffset = min(maxOffset, m.traceViewport.YOffset+scrollAmount)
+		maxOffset := max(0, m.traceViewport.TotalLineCount()-m.traceViewport.Height())
+		m.traceViewport.SetYOffset(min(maxOffset, m.traceViewport.YOffset()+scrollAmount))
 	case m.viewMode == "table" && m.hasTable:
 		// Log initial state
 		logger.DebugfToFile("Mouse", "MouseWheelDown in table: YOffset=%d, TotalLines=%d, Height=%d",
-			m.tableViewport.YOffset, m.tableViewport.TotalLineCount(), m.tableViewport.Height)
+			m.tableViewport.YOffset(), m.tableViewport.TotalLineCount(), m.tableViewport.Height())
 
 		// First, check if we need to load more data BEFORE calculating limits (like PageDown does)
 		if m.slidingWindow != nil {
@@ -106,8 +120,8 @@ func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
 
 			if m.slidingWindow.hasMoreData {
 				totalLines := m.tableViewport.TotalLineCount()
-				viewportHeight := m.tableViewport.Height
-				currentOffset := m.tableViewport.YOffset
+				viewportHeight := m.tableViewport.Height()
+				currentOffset := m.tableViewport.YOffset()
 
 				// Check if scrolling would take us near the bottom
 				potentialOffset := currentOffset + scrollAmount
@@ -130,16 +144,16 @@ func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
 
 		// NOW calculate the limits with potentially updated data
 		totalLines := m.tableViewport.TotalLineCount()
-		viewportHeight := m.tableViewport.Height
+		viewportHeight := m.tableViewport.Height()
 		maxOffset := max(0, totalLines-viewportHeight)
 
 		// Calculate and apply new offset
-		newOffset := min(maxOffset, m.tableViewport.YOffset+scrollAmount)
-		m.tableViewport.YOffset = newOffset
+		newOffset := min(maxOffset, m.tableViewport.YOffset()+scrollAmount)
+		m.tableViewport.SetYOffset(newOffset)
 	default:
 		// Scroll history down
-		maxOffset := max(0, m.historyViewport.TotalLineCount()-m.historyViewport.Height)
-		m.historyViewport.YOffset = min(maxOffset, m.historyViewport.YOffset+scrollAmount)
+		maxOffset := max(0, m.historyViewport.TotalLineCount()-m.historyViewport.Height())
+		m.historyViewport.SetYOffset(min(maxOffset, m.historyViewport.YOffset()+scrollAmount))
 	}
 	return m, nil
 }
@@ -155,7 +169,7 @@ func (m *MainModel) handleMouseWheelLeft() (*MainModel, tea.Cmd) {
 		m.horizontalOffset = max(0, m.horizontalOffset-10)
 
 		logger.DebugfToFile("Mouse", "Scrolling left: oldOffset=%d, newOffset=%d, tableWidth=%d, viewportWidth=%d",
-			oldOffset, m.horizontalOffset, m.tableWidth, m.tableViewport.Width)
+			oldOffset, m.horizontalOffset, m.tableWidth, m.tableViewport.Width())
 
 		// Only re-render if offset actually changed
 		if oldOffset != m.horizontalOffset {
@@ -177,8 +191,8 @@ func (m *MainModel) handleMouseWheelRight() (*MainModel, tea.Cmd) {
 		oldOffset := m.horizontalOffset
 
 		// Calculate max offset based on actual table width
-		if m.tableWidth > m.tableViewport.Width {
-			maxOffset := m.tableWidth - m.tableViewport.Width + 10 // Add some buffer
+		if m.tableWidth > m.tableViewport.Width() {
+			maxOffset := m.tableWidth - m.tableViewport.Width() + 10 // Add some buffer
 			m.horizontalOffset = min(maxOffset, m.horizontalOffset+10)
 		} else {
 			// Table fits in viewport, but allow some scrolling anyway
@@ -186,7 +200,7 @@ func (m *MainModel) handleMouseWheelRight() (*MainModel, tea.Cmd) {
 		}
 
 		logger.DebugfToFile("Mouse", "Scrolling right: oldOffset=%d, newOffset=%d, tableWidth=%d, viewportWidth=%d",
-			oldOffset, m.horizontalOffset, m.tableWidth, m.tableViewport.Width)
+			oldOffset, m.horizontalOffset, m.tableWidth, m.tableViewport.Width())
 
 		// Only re-render if offset actually changed
 		if oldOffset != m.horizontalOffset {

@@ -120,8 +120,8 @@ func visibleLength(s string) int {
 
 // updateHistoryWrapping re-wraps the history content for the current viewport width
 func (m *MainModel) updateHistoryWrapping() {
-	if m.historyViewport.Width > 0 {
-		wrapped := m.wrapHistoryContent(m.historyViewport.Width)
+	if m.historyViewport.Width() > 0 {
+		wrapped := m.wrapHistoryContent(m.historyViewport.Width())
 		m.historyViewport.SetContent(wrapped)
 	}
 }

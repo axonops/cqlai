@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ModalType represents the type of modal
@@ -162,6 +162,5 @@ func (m Modal) Render(screenWidth, screenHeight int, styles *Styles, background 
 		lipgloss.Center,
 		lipgloss.Center,
 		modalBox,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 }

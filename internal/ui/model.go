@@ -14,10 +14,10 @@ import (
 	"github.com/axonops/cqlai/internal/session"
 	"github.com/axonops/cqlai/internal/ui/completion"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // ConnectionOptions holds command-line connection options
@@ -169,10 +169,10 @@ type MainModel struct {
 
 // wrapAIText wraps text to fit the AI conversation viewport width
 func (m *MainModel) wrapAIText(text string) string {
-	viewportWidth := m.aiConversationViewport.Width
+	viewportWidth := m.aiConversationViewport.Width()
 	if viewportWidth == 0 {
 		// Use history viewport width as fallback
-		viewportWidth = m.historyViewport.Width
+		viewportWidth = m.historyViewport.Width()
 		if viewportWidth == 0 {
 			viewportWidth = 80 // Default width
 		}
@@ -274,12 +274,14 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	styles := DefaultStyles()
 
 	ti.Prompt = styles.AccentText.Render("> ")
-	ti.PlaceholderStyle = styles.MutedText
+	tiStyles := ti.Styles()
+	tiStyles.Focused.Placeholder = styles.MutedText
+	ti.SetStyles(tiStyles)
 
 	infoReplyInput := textinput.New()
 	infoReplyInput.Placeholder = "Type your response..."
 	infoReplyInput.CharLimit = 4096 // Increased for consistency
-	infoReplyInput.Width = 50
+	infoReplyInput.SetWidth(50)
 
 	// Load configuration from file and environment
 	cfg, err := config.LoadConfig(options.ConfigFile)
@@ -471,14 +473,17 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		headerHeight := 1 // top bar
 		footerHeight := 1 // status bar
 		inputHeight := 1  // text input
-		newWidth := msg.Width
-		newHeight := msg.Height - headerHeight - footerHeight - inputHeight
+		// Guard against a terminal that reports no size, or one too small to
+		// hold the chrome: v2's components size buffers from these and panic on
+		// a negative value where v1 quietly carried on.
+		newWidth := max(msg.Width, 0)
+		newHeight := max(msg.Height-headerHeight-footerHeight-inputHeight, 0)
 
 		if !m.ready {
 			// Initialize viewports
-			m.historyViewport = viewport.New(newWidth, newHeight)
-			m.tableViewport = viewport.New(newWidth, newHeight)
-			m.traceViewport = viewport.New(newWidth, newHeight)
+			m.historyViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
+			m.tableViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
+			m.traceViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
 			welcomeMsg := m.getWelcomeMessage()
 			m.fullHistoryContent = welcomeMsg
 			// Wrap content for initial display
@@ -487,20 +492,20 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ready = true
 		} else {
 			// Resize viewports
-			m.historyViewport.Width = newWidth
-			m.historyViewport.Height = newHeight
-			m.tableViewport.Width = newWidth
-			m.tableViewport.Height = newHeight
-			m.traceViewport.Width = newWidth
-			m.traceViewport.Height = newHeight
+			m.historyViewport.SetWidth(newWidth)
+			m.historyViewport.SetHeight(newHeight)
+			m.tableViewport.SetWidth(newWidth)
+			m.tableViewport.SetHeight(newHeight)
+			m.traceViewport.SetWidth(newWidth)
+			m.traceViewport.SetHeight(newHeight)
 
 			// Re-wrap history content for new width
 			m.updateHistoryWrapping()
 
 			// Also resize AI conversation viewport if it exists
 			if m.aiConversationActive {
-				m.aiConversationViewport.Width = newWidth
-				m.aiConversationViewport.Height = newHeight
+				m.aiConversationViewport.SetWidth(newWidth)
+				m.aiConversationViewport.SetHeight(newHeight)
 				// Rebuild the conversation with new width for dynamic wrapping
 				if len(m.aiConversationMessages) > 0 {
 					m.rebuildAIConversation()
@@ -508,14 +513,19 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.input.Width = newWidth - 2 // Reduced margin for better scrolling
+		// Reduced margin for better scrolling. Clamped because v2's textinput
+		// sizes its placeholder buffer from the width and panics on a negative
+		// one; v1 tolerated it. A terminal that reports no size, or one only a
+		// couple of columns wide, is enough to hit that.
+		inputWidth := max(newWidth-2, 0)
+		m.input.SetWidth(inputWidth)
 		// Also update AI conversation input width if initialized
 		if m.aiConversationInput.Value() != "" || m.aiConversationActive {
-			m.aiConversationInput.Width = newWidth - 2 // Reduced margin for better scrolling
+			m.aiConversationInput.SetWidth(inputWidth)
 		}
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		updatedModel, cmd := m.handleKeyboardInput(msg)
 		return updatedModel, cmd
 

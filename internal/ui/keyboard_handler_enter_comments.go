@@ -3,8 +3,8 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/router"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleCommentLine handles single-line comments
