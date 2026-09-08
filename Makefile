@@ -47,7 +47,7 @@ NC := \033[0m # No Color
 .DEFAULT_GOAL := build
 
 # Phony targets
-.PHONY: all build clean install uninstall run test lint fmt deps vendor grammar help release-all licenses
+.PHONY: all build clean install uninstall run test lint fmt deps vendor help release-all licenses
 
 ## all: Clean, format, lint, test, and build
 all: clean fmt lint test build
@@ -153,19 +153,6 @@ vendor: deps
 	@echo "$(BLUE)Creating vendor directory...$(NC)"
 	@go mod vendor
 	@echo "$(GREEN)✓ Vendor directory created$(NC)"
-
-## grammar: Regenerate ANTLR grammar files
-grammar:
-	@echo "$(BLUE)Regenerating ANTLR grammar files...$(NC)"
-	@if command -v antlr4 >/dev/null 2>&1; then \
-		cd internal/parser/grammar && \
-		antlr4 -Dlanguage=Go -package grammar CqlLexer.g4 && \
-		antlr4 -Dlanguage=Go -package grammar -visitor CqlParser.g4; \
-		echo "$(GREEN)✓ Grammar files regenerated$(NC)"; \
-	else \
-		echo "$(RED)✗ antlr4 not found. Install with: go install github.com/antlr4-go/antlr/v4/cmd/antlr4@latest$(NC)"; \
-		exit 1; \
-	fi
 
 ## licenses: Generate third-party license attributions
 licenses:
