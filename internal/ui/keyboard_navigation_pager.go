@@ -151,6 +151,31 @@ func snapLineDown(current, viewportHeight int, boundaries []int) int {
 	return current + 1
 }
 
+// snapUpToBoundary aligns an upward scroll to the start of a record.
+//
+// The mirror of snapDownToBoundary: align to a record start when that record
+// fits on screen, and scroll plainly when it does not, so a record taller than
+// the viewport can be read on the way back up as well as down.
+func snapUpToBoundary(current, target, viewportHeight int, boundaries []int) int {
+	if target >= current {
+		return current
+	}
+
+	best := -1
+	for _, boundary := range boundaries {
+		if boundary <= target {
+			best = boundary
+		} else {
+			break
+		}
+	}
+
+	if best >= 0 && current-best <= viewportHeight {
+		return best
+	}
+	return target
+}
+
 // handleHalfPageDown scrolls down by half a page (d key)
 func (m *MainModel) handleHalfPageDown() (*MainModel, tea.Cmd) {
 	scrollAmount := 0

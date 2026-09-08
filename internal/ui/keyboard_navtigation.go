@@ -54,19 +54,10 @@ func (m *MainModel) handlePageUp(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 			newOffset = 0
 		}
 
-		// Snap to row boundary to avoid cutting through multi-line cells
+		// Align to a record start, unless the record is taller than the screen,
+		// in which case scroll within it so every line can be read.
 		if len(m.tableRowBoundaries) > 0 && newOffset > 0 {
-			// Find the closest row boundary that's >= newOffset
-			// When scrolling up, we want to align to the start of a row
-			bestOffset := 0
-			for _, boundary := range m.tableRowBoundaries {
-				if boundary <= newOffset {
-					bestOffset = boundary
-				} else {
-					break
-				}
-			}
-			newOffset = bestOffset
+			newOffset = snapUpToBoundary(m.tableViewport.YOffset(), newOffset, m.tableViewport.Height(), m.tableRowBoundaries)
 		}
 
 		m.tableViewport.SetYOffset(newOffset)
@@ -208,14 +199,12 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 				logger.DebugfToFile("Nav", "PageDown at bottom: lastBoundary=%d, desiredOffset=%d, maxOffset=%d, finalOffset=%d",
 					lastBoundary, desiredOffset, maxOffset, newOffset)
 			} else {
-				// Normal case: find the closest row boundary that's <= newOffset
-				bestOffset := m.tableViewport.YOffset()
-				for _, boundary := range m.tableRowBoundaries {
-					if boundary <= newOffset && boundary > bestOffset {
-						bestOffset = boundary
-					}
-				}
-				newOffset = bestOffset
+				// Align to a record start, but only when the record fits on
+				// screen. A record taller than the viewport has to be scrolled
+				// through, and snapping would step over the part that did not
+				// fit. Sharing the helper keeps this in step with the d key,
+				// which had the same fault.
+				newOffset = snapDownToBoundary(m.tableViewport.YOffset(), newOffset, viewportHeight, m.tableRowBoundaries)
 			}
 		}
 

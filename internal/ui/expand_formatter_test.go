@@ -273,3 +273,53 @@ func TestScrollingThroughATallRecord(t *testing.T) {
 		assert.Equal(t, 12, snapLineDown(1, viewportHeight, short))
 	})
 }
+
+// TestPageKeysScrollLikeTheHalfPageKey guards against the two page handlers
+// drifting apart from the half-page one again.
+//
+// PgDn kept its own copy of the snapping logic and so kept the bug #85 fixed
+// in the d key: with no boundary between the current offset and the target it
+// returned the current offset, and the key did nothing at all. Records taller
+// than the screen make that the normal case, which is why PgUp and PgDn stopped
+// working in EXPAND while the arrows and the wheel carried on.
+func TestPageKeysScrollLikeTheHalfPageKey(t *testing.T) {
+	const viewportHeight = 20
+
+	t.Run("tall records: page down moves within the record", func(t *testing.T) {
+		boundaries := []int{1, 61, 121} // 60-line records
+
+		got := snapDownToBoundary(1, 17, viewportHeight, boundaries)
+		assert.Greater(t, got, 1, "PgDn must move; standing still is the bug")
+		assert.Less(t, got, 61, "and must not skip the rest of the record")
+	})
+
+	t.Run("tall records: page up moves within the record", func(t *testing.T) {
+		// One record 300 lines tall, far more than the screen holds.
+		boundaries := []int{1, 301}
+
+		// Deep inside it, snapping to the record start would jump 180 lines and
+		// skip everything between - unreadable on the way back up.
+		got := snapUpToBoundary(200, 184, viewportHeight, boundaries)
+		assert.Equal(t, 184, got, "PgUp must scroll within a record taller than the screen")
+
+		// Near the top of the record, the start is within a screen, so aligning
+		// to it hides nothing: the lines we were on are still visible.
+		got = snapUpToBoundary(15, 1, viewportHeight, boundaries)
+		assert.Equal(t, 1, got, "close to the record start, aligning to it is safe")
+	})
+
+	t.Run("short records still align to record starts", func(t *testing.T) {
+		boundaries := []int{1, 12, 23, 34}
+
+		assert.Equal(t, 23, snapDownToBoundary(12, 25, viewportHeight, boundaries))
+		assert.Equal(t, 12, snapUpToBoundary(23, 15, viewportHeight, boundaries))
+	})
+
+	t.Run("upward scrolling never moves down or past the top", func(t *testing.T) {
+		boundaries := []int{1, 12, 23}
+
+		assert.Equal(t, 23, snapUpToBoundary(23, 30, viewportHeight, boundaries),
+			"a target below the current offset must not move it")
+		assert.GreaterOrEqual(t, snapUpToBoundary(12, 0, viewportHeight, boundaries), 0)
+	})
+}
