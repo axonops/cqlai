@@ -22,11 +22,12 @@ type ParquetReader struct {
 	schema       *arrow.Schema
 	columnNames  []string
 	columnTypes  []string
-	allColumns   []int             // Explicit list of all leaf column indices; nil means "no columns" in pqarrow
-	rowGroupIdx  int               // Current row group being processed
-	numRowGroups int               // Total number of row groups
-	currentBatch arrow.RecordBatch // Current record batch
-	batchIdx     int               // Current row index within current batch
+	allColumns   []int              // Explicit list of all leaf column indices; nil means "no columns" in pqarrow
+	rowGroupIdx  int                // Next row group to read
+	numRowGroups int                // Total number of row groups
+	tableReader  *array.TableReader // Reader over the current row group
+	currentBatch arrow.RecordBatch  // Current record batch
+	batchIdx     int                // Current row index within current batch
 	totalRows    int64
 	exhausted    bool // True when all data has been read
 }
@@ -137,47 +138,13 @@ func (r *ParquetReader) ReadBatch(batchSize int) ([]map[string]any, error) {
 	for len(rows) < batchSize {
 		// If we don't have a current batch or we've consumed it, get the next one
 		if r.currentBatch == nil || r.batchIdx >= int(r.currentBatch.NumRows()) {
-			// Release previous batch if any
-			if r.currentBatch != nil {
-				r.currentBatch.Release()
-				r.currentBatch = nil
+			more, err := r.nextRecordBatch(ctx)
+			if err != nil {
+				return nil, err
 			}
-
-			// Move to next row group if needed
-			if r.rowGroupIdx >= r.numRowGroups {
+			if !more {
 				r.exhausted = true
 				break
-			}
-
-			// Read the next row group
-			table, err := r.arrowReader.ReadRowGroups(ctx, r.allColumns, []int{r.rowGroupIdx})
-			if err != nil {
-				return nil, fmt.Errorf("failed to read row group %d: %w", r.rowGroupIdx, err)
-			}
-			r.rowGroupIdx++
-
-			if table.NumRows() == 0 {
-				table.Release()
-				continue // Try next row group
-			}
-
-			// Create a record reader from the table
-			chunkSize := int64(batchSize)
-			if chunkSize <= 0 || chunkSize > table.NumRows() {
-				chunkSize = table.NumRows()
-			}
-			tableReader := array.NewTableReader(table, chunkSize)
-
-			if tableReader.Next() {
-				r.currentBatch = tableReader.RecordBatch()
-				r.currentBatch.Retain() // Keep the record alive after releasing tableReader
-				r.batchIdx = 0
-			}
-			tableReader.Release()
-			table.Release()
-
-			if r.currentBatch == nil {
-				continue // Try next row group
 			}
 		}
 
@@ -201,6 +168,54 @@ func (r *ParquetReader) ReadBatch(batchSize int) ([]map[string]any, error) {
 	}
 
 	return rows, nil
+}
+
+// nextRecordBatch advances to the next record batch, opening row groups as it
+// goes, and reports whether one was found.
+//
+// The reader has to hold on to the current row group's TableReader between
+// ReadBatch calls. A row group holds many more rows than a typical batch size,
+// so finishing a batch part-way through a row group is the normal case, and
+// dropping the reader there would discard the rest of that row group.
+func (r *ParquetReader) nextRecordBatch(ctx context.Context) (bool, error) {
+	if r.currentBatch != nil {
+		r.currentBatch.Release()
+		r.currentBatch = nil
+	}
+
+	for {
+		// Finish the row group we are already in before opening another.
+		if r.tableReader != nil {
+			if r.tableReader.Next() {
+				r.currentBatch = r.tableReader.RecordBatch()
+				r.currentBatch.Retain() // Outlives the TableReader
+				r.batchIdx = 0
+				return true, nil
+			}
+			r.tableReader.Release()
+			r.tableReader = nil
+		}
+
+		if r.rowGroupIdx >= r.numRowGroups {
+			return false, nil
+		}
+
+		table, err := r.arrowReader.ReadRowGroups(ctx, r.allColumns, []int{r.rowGroupIdx})
+		if err != nil {
+			return false, fmt.Errorf("failed to read row group %d: %w", r.rowGroupIdx, err)
+		}
+		r.rowGroupIdx++
+
+		if table.NumRows() == 0 {
+			table.Release()
+			continue // Try next row group
+		}
+
+		// Hand the whole row group to the TableReader and let it decide how to
+		// chunk. It retains the table, so releasing our reference is safe.
+		r.tableReader = array.NewTableReader(table, table.NumRows())
+		table.Release()
+	}
 }
 
 // ReadAll reads all rows from the file
@@ -243,6 +258,11 @@ func (r *ParquetReader) ReadAll() ([]map[string]any, error) {
 func (r *ParquetReader) Close() error {
 	if r.currentBatch != nil {
 		r.currentBatch.Release()
+		r.currentBatch = nil
+	}
+	if r.tableReader != nil {
+		r.tableReader.Release()
+		r.tableReader = nil
 	}
 	if r.reader != nil {
 		_ = r.reader.Close()
