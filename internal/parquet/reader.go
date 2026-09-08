@@ -264,11 +264,18 @@ func (r *ParquetReader) Close() error {
 		r.tableReader.Release()
 		r.tableReader = nil
 	}
+	// The parquet reader owns the file handle and closes it, so closing r.file
+	// afterwards would return "file already closed" on every successful Close.
+	// Nil the fields out so a second Close is a no-op rather than an error.
 	if r.reader != nil {
-		_ = r.reader.Close()
+		reader := r.reader
+		r.reader, r.file = nil, nil
+		return reader.Close()
 	}
 	if r.file != nil {
-		return r.file.Close()
+		file := r.file
+		r.file = nil
+		return file.Close()
 	}
 	return nil
 }
