@@ -41,10 +41,6 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
 
-	modeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FF87FF")).
-		Bold(true)
-
 	// AutoFetch styles
 	autoFetchOnStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#87FFD7")).
@@ -53,19 +49,9 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	autoFetchOffStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#5F5F5F"))
 
-	// Start with the mode
-	var modeText string
-	switch viewMode {
-	case "ai":
-		modeText = "AI"
-	case "table":
-		modeText = "TABLE"
-	case "trace":
-		modeText = "TRACE"
-	default:
-		modeText = "CQL"
-	}
-	content := labelStyle.Render("Mode: ") + modeStyle.Render(modeText)
+	// The mode used to be named here. The tab line above shows it now, and
+	// highlights it, so repeating it would only take up room.
+	content := ""
 
 	// Add AutoFetch status
 	autoFetchState := "OFF"
@@ -74,8 +60,7 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 		autoFetchState = "ON"
 		autoFetchStyle = autoFetchOnStyle
 	}
-	content += separatorStyle.Render(" │ ") +
-		labelStyle.Render("AutoFetch: ") + autoFetchStyle.Render(autoFetchState)
+	content += labelStyle.Render("AutoFetch: ") + autoFetchStyle.Render(autoFetchState)
 
 	// Add command information if available
 	if m.LastCommand != "" {

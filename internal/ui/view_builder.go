@@ -15,15 +15,22 @@ import (
 // commands, the alternate screen and mouse mode are fields recomputed on every
 // render, so they cannot drift out of step with what is on screen.
 //
-// MouseMode stays None deliberately. Asking for mouse reporting takes the
-// buttons away from the terminal, which is what stopped text selection and
-// right-click paste working before #86. The wheel arrives as Up/Down key
-// presses through alternate scroll mode instead, which v2 does not manage and
-// mouse_mode.go still sets up.
+// MouseMode is a trade rather than a setting with a right answer. Asking for
+// mouse reporting is what makes the tabs clickable, and it is also what takes
+// the buttons away from the terminal, so text selection needs Shift and
+// right-click paste stops working - the behaviour #86 was about. MOUSE OFF
+// gives those back at the cost of clicking.
+//
+// Either way the wheel still scrolls, through alternate scroll mode, which v2
+// does not manage and mouse_mode.go sets up.
 func (m *MainModel) newView(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeNone
+	if m.mouseEnabled {
+		v.MouseMode = tea.MouseModeCellMotion
+	} else {
+		v.MouseMode = tea.MouseModeNone
+	}
 	return v
 }
 
@@ -178,6 +185,17 @@ func (m *MainModel) View() tea.View {
 		}
 	}
 
+	// Say which way the mouse is set. Without this, someone who has never heard
+	// of the MOUSE command just finds that selecting text needs Shift, with
+	// nothing on screen explaining why.
+	if m.mouseEnabled {
+		mouseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
+		scrollInfo += " " + mouseStyle.Render("[MOUSE]")
+	} else {
+		mouseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5F5F5F"))
+		scrollInfo += " " + mouseStyle.Render("[MOUSE OFF]")
+	}
+
 	// Build the input section
 	var inputSection string
 	if m.viewMode == "ai" && m.aiConversationActive {
@@ -284,8 +302,11 @@ func (m *MainModel) View() tea.View {
 		viewportSection = viewportContent
 	}
 
-	// Build the final view
+	// Build the final view. The tabs get their own line above the status bar so
+	// the modes and their keys are always on screen, rather than something you
+	// have to have read the README to know about.
 	finalView = lipgloss.JoinVertical(lipgloss.Left,
+		m.ViewTabBar(viewportWidth),
 		topBar,
 		viewportSection,
 		inputSection,

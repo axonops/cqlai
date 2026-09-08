@@ -24,11 +24,20 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 	logger.DebugfToFile("Mouse", "MouseEvent: %T Button=%v X=%d Y=%d Mod=%v",
 		msg, mouse.Button, mouse.X, mouse.Y, mouse.Mod)
 
-	// Only wheel events matter here. v2 splits clicks, releases, motion and
-	// wheel into separate types, so anything else is simply not ours. Note that
-	// ignoring a click here is not what lets the terminal select text - by the
-	// time an event arrives the terminal has already given the button up.
-	// Leaving MouseMode off is what does that.
+	// A click on the tab line switches mode. Row 0 is the tabs; everything
+	// below belongs to the view.
+	if _, isClick := msg.(tea.MouseClickMsg); isClick {
+		if mouse.Button == tea.MouseLeft && mouse.Y == 0 {
+			return m.clickTab(mouse.X)
+		}
+		return m, nil
+	}
+
+	// Otherwise only wheel events matter. v2 splits clicks, releases, motion
+	// and wheel into separate types, so anything else is not ours. Note that
+	// ignoring an event here is not what lets the terminal select text - by the
+	// time one arrives the terminal has already given the button up. Leaving
+	// MouseMode off is what does that.
 	if _, isWheel := msg.(tea.MouseWheelMsg); !isWheel {
 		return m, nil
 	}
@@ -287,4 +296,30 @@ func (m *MainModel) formatTableAsJSON() string {
 		}
 	}
 	return jsonStr
+}
+
+// clickTab switches to whichever mode's tab covers a column.
+//
+// A tab with nothing to show is dimmed and reports itself unavailable, so
+// clicking it does nothing rather than dropping you on an empty screen. The
+// F-keys stay unconditional, matching what they did before there were tabs.
+func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
+	mode, available := m.modeAt(m.windowWidth, col)
+	if !available || mode == m.viewMode {
+		return m, nil
+	}
+
+	logger.DebugfToFile("Mouse", "Tab clicked at column %d: switching to %s", col, mode)
+
+	switch mode {
+	case "history":
+		return m.handleF2()
+	case "table":
+		return m.handleF3()
+	case "trace":
+		return m.handleF4()
+	case "ai":
+		return m.handleF5()
+	}
+	return m, nil
 }
