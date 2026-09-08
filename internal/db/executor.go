@@ -285,6 +285,26 @@ func (t *captureTracer) Trace(traceID []byte) {
 	t.traceID = traceID
 }
 
+// ExecuteCQLQueryWithValues executes a statement with bind parameters.
+//
+// Use this for anything built from data rather than typed by the user: values
+// travel to Cassandra as parameters instead of being pasted into the statement
+// text, so they cannot alter it. It returns the same shapes as ExecuteCQLQuery,
+// an error or a QueryResult, so callers can handle both the same way.
+//
+// This is for statements that do not return rows. SELECTs still go through
+// ExecuteCQLQuery, which routes them to the streaming path.
+func (s *Session) ExecuteCQLQueryWithValues(query string, values ...interface{}) interface{} {
+	if s == nil || s.Session == nil {
+		return fmt.Errorf("not connected to database")
+	}
+
+	if err := s.Query(query, values...).Exec(); err != nil {
+		return err
+	}
+	return QueryResult{}
+}
+
 // ExecuteCQLQuery executes a regular CQL query
 func (s *Session) ExecuteCQLQuery(query string) interface{} {
 	logger.DebugfToFile("ExecuteCQLQuery", "Called with query: %s", query)
