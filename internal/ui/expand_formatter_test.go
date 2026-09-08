@@ -208,7 +208,7 @@ func TestSnapDownToBoundaryAlwaysAdvances(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := snapDownToBoundary(tt.current, tt.target, boundaries)
+			got := snapDownToBoundary(tt.current, tt.target, 20, boundaries)
 			assert.Equal(t, tt.want, got)
 			if tt.target > tt.current {
 				assert.Greater(t, got, tt.current, "a downward scroll must make progress")
@@ -218,5 +218,58 @@ func TestSnapDownToBoundaryAlwaysAdvances(t *testing.T) {
 }
 
 func TestSnapDownToBoundaryWithoutBoundaries(t *testing.T) {
-	assert.Equal(t, 10, snapDownToBoundary(0, 10, nil))
+	assert.Equal(t, 10, snapDownToBoundary(0, 10, 20, nil))
+}
+
+// TestScrollingThroughATallRecord covers the case where one record is taller
+// than the screen, which happens in EXPAND as soon as a table has more columns
+// than the terminal has rows.
+//
+// Snapping to record starts is right only while a record fits. When it does
+// not, jumping to the next record start steps over every line that did not fit,
+// and those lines cannot be reached any other way - the columns past the bottom
+// of the screen simply never appear.
+func TestScrollingThroughATallRecord(t *testing.T) {
+	const viewportHeight = 20
+
+	// One 60-line record, then another. Far taller than the screen.
+	boundaries := []int{1, 61, 121}
+
+	t.Run("half page scrolls within the record", func(t *testing.T) {
+		got := snapDownToBoundary(1, 11, viewportHeight, boundaries)
+		assert.Equal(t, 11, got,
+			"a record taller than the screen must be scrolled through, not skipped")
+		assert.NotEqual(t, 61, got, "jumping to the next record hides the rest of this one")
+	})
+
+	t.Run("line scroll advances one line", func(t *testing.T) {
+		assert.Equal(t, 2, snapLineDown(1, viewportHeight, boundaries))
+		assert.Equal(t, 31, snapLineDown(30, viewportHeight, boundaries))
+	})
+
+	t.Run("paging still reaches every line of the record", func(t *testing.T) {
+		at := 1
+		seen := map[int]bool{at: true}
+		for range 200 {
+			next := snapDownToBoundary(at, at+10, viewportHeight, boundaries)
+			if next == at {
+				break
+			}
+			at = next
+			seen[at] = true
+			if at >= 61 {
+				break
+			}
+		}
+		assert.GreaterOrEqual(t, at, 61, "should be able to page out of a tall record")
+		assert.Greater(t, len(seen), 2,
+			"a tall record should take several steps to read, not one jump")
+	})
+
+	t.Run("short records still snap to their start", func(t *testing.T) {
+		short := []int{1, 12, 23, 34}
+		assert.Equal(t, 12, snapDownToBoundary(1, 11, viewportHeight, short),
+			"a record that fits should still be stepped over whole")
+		assert.Equal(t, 12, snapLineDown(1, viewportHeight, short))
+	})
 }

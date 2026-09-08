@@ -23,13 +23,7 @@ func (m *MainModel) handleSingleLineDown() (*MainModel, tea.Cmd) {
 
 			// Respect row boundaries for multi-line cells
 			if len(m.tableRowBoundaries) > 0 {
-				// Find next row boundary
-				for _, boundary := range m.tableRowBoundaries {
-					if boundary > m.tableViewport.YOffset() {
-						newOffset = boundary
-						break
-					}
-				}
+				newOffset = snapLineDown(m.tableViewport.YOffset(), m.tableViewport.Height(), m.tableRowBoundaries)
 			}
 
 			if newOffset > maxOffset {
@@ -104,11 +98,13 @@ func (m *MainModel) handleSingleLineUp() (*MainModel, tea.Cmd) {
 // amount - expand format, or a table with tall multi-line cells - there is no
 // such boundary past the current position, and returning the current offset
 // would wedge scrolling entirely. Step to the next record in that case.
-func snapDownToBoundary(current, target int, boundaries []int) int {
+func snapDownToBoundary(current, target, viewportHeight int, boundaries []int) int {
 	if target <= current {
 		return current
 	}
 
+	// Prefer the last record start at or before the target, so a page lands at
+	// the top of a record rather than part way through one.
 	snapped := current
 	for _, boundary := range boundaries {
 		if boundary <= target && boundary > snapped {
@@ -119,15 +115,40 @@ func snapDownToBoundary(current, target int, boundaries []int) int {
 		return snapped
 	}
 
-	// Nothing between here and the target: move on to the next record.
-	for _, boundary := range boundaries {
-		if boundary > current {
-			return boundary
-		}
+	// Nothing between here and the target. Whether to jump to the next record
+	// depends on whether this one fits on screen.
+	if next, ok := nextBoundary(current, boundaries); ok && next-current <= viewportHeight {
+		// The whole record is visible from here, so skipping to the next one
+		// leaves nothing unread.
+		return next
 	}
 
-	// Past the last record, so ordinary scrolling applies.
+	// Either the record is taller than the screen, or there is no next record.
+	// Scroll within it: jumping to the next record start here would step over
+	// everything that did not fit, which is unreachable any other way.
 	return target
+}
+
+// nextBoundary returns the first record starting after a line.
+func nextBoundary(after int, boundaries []int) (int, bool) {
+	for _, boundary := range boundaries {
+		if boundary > after {
+			return boundary, true
+		}
+	}
+	return 0, false
+}
+
+// snapLineDown advances a single-line scroll, honouring record starts.
+//
+// Aligning to the next record start is only right when the current record fits
+// on screen. A record taller than the viewport has to be scrolled through a
+// line at a time, or the part that did not fit can never be seen.
+func snapLineDown(current, viewportHeight int, boundaries []int) int {
+	if next, ok := nextBoundary(current, boundaries); ok && next-current <= viewportHeight {
+		return next
+	}
+	return current + 1
 }
 
 // handleHalfPageDown scrolls down by half a page (d key)
@@ -165,7 +186,7 @@ func (m *MainModel) handleHalfPageDown() (*MainModel, tea.Cmd) {
 
 		// Snap to row boundary if we have multi-line cells
 		if len(m.tableRowBoundaries) > 0 {
-			newOffset = snapDownToBoundary(m.tableViewport.YOffset(), newOffset, m.tableRowBoundaries)
+			newOffset = snapDownToBoundary(m.tableViewport.YOffset(), newOffset, m.tableViewport.Height(), m.tableRowBoundaries)
 			if newOffset > maxOffset {
 				newOffset = maxOffset
 			}
@@ -539,12 +560,7 @@ func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
 
 			// Find the next row boundary
 			if len(m.tableRowBoundaries) > 0 {
-				for _, boundary := range m.tableRowBoundaries {
-					if boundary > m.tableViewport.YOffset() {
-						newOffset = boundary
-						break
-					}
-				}
+				newOffset = snapLineDown(m.tableViewport.YOffset(), m.tableViewport.Height(), m.tableRowBoundaries)
 			}
 
 			// Special handling for the last boundary (bottom border)
