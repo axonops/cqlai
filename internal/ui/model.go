@@ -475,8 +475,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
 
-		headerHeight := 2 // mode tabs, then the top bar
-		footerHeight := 1 // status bar
+		headerHeight := 1 // mode tabs
+		footerHeight := 2 // query info, then the connection bar
 		inputHeight := 1  // text input
 		// Guard against a terminal that reports no size, or one too small to
 		// hold the chrome: v2's components size buffers from these and panic on

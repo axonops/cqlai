@@ -271,11 +271,13 @@ func (m *MainModel) View() tea.View {
 	// Build the main view with proper sticky header overlay
 	var finalView string
 
-	// Always show the top bar
-	topBar := m.topBar.View(viewportWidth, m.styles, m.viewMode)
-	if topBar == "" {
-		// Ensure top bar is never empty
-		topBar = " " // At least one space to maintain layout
+	// Query facts - AutoFetch, the last command, timing, row count. These sit at
+	// the bottom now, just above the connection bar, so the top of the screen is
+	// only the tabs and the result starts a line higher.
+	infoBar := m.topBar.View(viewportWidth, m.styles, m.viewMode)
+	if infoBar == "" {
+		// Never empty, or the row collapses and the layout shifts
+		infoBar = " "
 	}
 
 	// Build the viewport section with sticky header for tables
@@ -307,9 +309,9 @@ func (m *MainModel) View() tea.View {
 	// have to have read the README to know about.
 	finalView = lipgloss.JoinVertical(lipgloss.Left,
 		m.ViewTabBar(viewportWidth),
-		topBar,
 		viewportSection,
 		inputSection,
+		infoBar,
 		m.statusBar.View(viewportWidth, m.styles, m.viewMode)+scrollInfo,
 	)
 
