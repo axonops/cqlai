@@ -9,7 +9,6 @@ import (
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
-	"github.com/google/uuid"
 )
 
 // copyOptions holds parsed options for COPY operation
@@ -251,12 +250,6 @@ func (h *MetaCommandHandler) extractRowValues(columns []string, row map[string]i
 		}
 	}
 	return values
-}
-
-// isUUIDFormat checks if a string is a valid UUID using the google/uuid library
-func isUUIDFormat(s string) bool {
-	_, err := uuid.Parse(s)
-	return err == nil
 }
 
 // formatListValue formats a list/array value
