@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"encoding/json"
-
-	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
 	tea "github.com/charmbracelet/bubbletea"
@@ -162,48 +159,7 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 					// Clear cache to force rebuild
 					m.cachedTableLines = nil
 
-					// Format based on current output format
-					var contentStr string
-					if m.sessionManager != nil {
-						switch m.sessionManager.GetOutputFormat() {
-						case config.OutputFormatASCII:
-							contentStr = FormatASCIITable(allData)
-						case config.OutputFormatExpand:
-							contentStr = FormatExpandTable(allData, m.styles)
-						case config.OutputFormatJSON:
-							// Check if we have a single [json] column from SELECT JSON
-							if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
-								jsonStr := ""
-								for _, row := range m.slidingWindow.Rows {
-									if len(row) > 0 {
-										jsonStr += row[0] + "\n"
-									}
-								}
-								contentStr = jsonStr
-							} else {
-								// Convert regular table data to JSON
-								jsonStr := ""
-								for _, row := range m.slidingWindow.Rows {
-									jsonMap := make(map[string]interface{})
-									for i, header := range m.slidingWindow.Headers {
-										if i < len(row) {
-											jsonMap[header] = row[i]
-										}
-									}
-									jsonBytes, err := json.Marshal(jsonMap)
-									if err == nil {
-										jsonStr += string(jsonBytes) + "\n"
-									}
-								}
-								contentStr = jsonStr
-							}
-						default:
-							contentStr = m.formatTableForViewport(allData)
-						}
-					} else {
-						contentStr = m.formatTableForViewport(allData)
-					}
-					m.tableViewport.SetContent(contentStr)
+					m.refreshTableContent(allData)
 
 					// Update row count
 					m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)

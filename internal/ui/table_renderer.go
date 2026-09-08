@@ -5,8 +5,47 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 )
+
+// refreshTableContent re-renders the current result in the active output format
+// and sets the viewport content together with the row boundaries describing it.
+//
+// Paging snaps scroll offsets to tableRowBoundaries. Those are line numbers, so
+// they only mean anything for the layout that produced them and have to be
+// replaced whenever the content is. Leaving stale ones behind caps scrolling:
+// boundaries from the boxed table, where a record is one line, cannot reach past
+// the row count in expand format, where a record is as tall as the table is wide.
+//
+// The boxed renderer fills the boundaries in as it builds; the other formats
+// either report them or have none.
+func (m *MainModel) refreshTableContent(allData [][]string) {
+	var (
+		content    string
+		boundaries []int
+	)
+
+	format := config.OutputFormatTable
+	if m.sessionManager != nil {
+		format = m.sessionManager.GetOutputFormat()
+	}
+
+	switch format {
+	case config.OutputFormatASCII:
+		content = FormatASCIITable(allData)
+	case config.OutputFormatExpand:
+		content, boundaries = FormatExpandTableWithBoundaries(allData, m.styles)
+	case config.OutputFormatJSON:
+		content = m.formatTableAsJSON()
+	default:
+		content = m.formatTableForViewport(allData)
+		boundaries = m.tableRowBoundaries // filled in while rendering
+	}
+
+	m.tableRowBoundaries = boundaries
+	m.tableViewport.SetContent(content)
+}
 
 // formatTableForViewport formats a 2D array of strings as a table for the viewport
 func (m *MainModel) formatTableForViewport(data [][]string) string {

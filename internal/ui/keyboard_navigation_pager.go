@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"encoding/json"
-
-	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
 	tea "github.com/charmbracelet/bubbletea"
@@ -100,6 +97,39 @@ func (m *MainModel) handleSingleLineUp() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
+// snapDownToBoundary aligns a downward scroll to the start of a record.
+//
+// It prefers the last boundary at or before the target, so a page lands on a
+// record start rather than mid-record. Where a record is taller than the scroll
+// amount - expand format, or a table with tall multi-line cells - there is no
+// such boundary past the current position, and returning the current offset
+// would wedge scrolling entirely. Step to the next record in that case.
+func snapDownToBoundary(current, target int, boundaries []int) int {
+	if target <= current {
+		return current
+	}
+
+	snapped := current
+	for _, boundary := range boundaries {
+		if boundary <= target && boundary > snapped {
+			snapped = boundary
+		}
+	}
+	if snapped > current {
+		return snapped
+	}
+
+	// Nothing between here and the target: move on to the next record.
+	for _, boundary := range boundaries {
+		if boundary > current {
+			return boundary
+		}
+	}
+
+	// Past the last record, so ordinary scrolling applies.
+	return target
+}
+
 // handleHalfPageDown scrolls down by half a page (d key)
 func (m *MainModel) handleHalfPageDown() (*MainModel, tea.Cmd) {
 	scrollAmount := 0
@@ -135,13 +165,10 @@ func (m *MainModel) handleHalfPageDown() (*MainModel, tea.Cmd) {
 
 		// Snap to row boundary if we have multi-line cells
 		if len(m.tableRowBoundaries) > 0 {
-			bestOffset := m.tableViewport.YOffset
-			for _, boundary := range m.tableRowBoundaries {
-				if boundary <= newOffset && boundary > bestOffset {
-					bestOffset = boundary
-				}
+			newOffset = snapDownToBoundary(m.tableViewport.YOffset, newOffset, m.tableRowBoundaries)
+			if newOffset > maxOffset {
+				newOffset = maxOffset
 			}
-			newOffset = bestOffset
 		}
 
 		m.tableViewport.YOffset = newOffset
@@ -439,48 +466,7 @@ func (m *MainModel) loadMoreTableDataHelper() {
 		m.cachedTableLines = nil
 		// NOTE: Don't update m.lastTableData - formatTableForViewport will handle it
 
-		// Format based on current output format
-		var contentStr string
-		if m.sessionManager != nil {
-			switch m.sessionManager.GetOutputFormat() {
-			case config.OutputFormatASCII:
-				contentStr = FormatASCIITable(allData)
-			case config.OutputFormatExpand:
-				contentStr = FormatExpandTable(allData, m.styles)
-			case config.OutputFormatJSON:
-				// Check if we have a single [json] column from SELECT JSON
-				if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
-					jsonStr := ""
-					for _, row := range m.slidingWindow.Rows {
-						if len(row) > 0 {
-							jsonStr += row[0] + "\n"
-						}
-					}
-					contentStr = jsonStr
-				} else {
-					// Convert regular table data to JSON
-					jsonStr := ""
-					for _, row := range m.slidingWindow.Rows {
-						jsonMap := make(map[string]interface{})
-						for i, header := range m.slidingWindow.Headers {
-							if i < len(row) {
-								jsonMap[header] = row[i]
-							}
-						}
-						jsonBytes, err := json.Marshal(jsonMap)
-						if err == nil {
-							jsonStr += string(jsonBytes) + "\n"
-						}
-					}
-					contentStr = jsonStr
-				}
-			default:
-				contentStr = m.formatTableForViewport(allData)
-			}
-		} else {
-			contentStr = m.formatTableForViewport(allData)
-		}
-		m.tableViewport.SetContent(contentStr)
+		m.refreshTableContent(allData)
 
 		// Update row count
 		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
