@@ -1,13 +1,13 @@
 package ui
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handlePageUp handles PageUp key press
-func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handlePageUp(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	// Cancel exit confirmation if active
 	if m.confirmExit {
 		m.confirmExit = false
@@ -35,57 +35,48 @@ func (m *MainModel) handlePageUp(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	scrollAmount := 0
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		scrollAmount = int(float64(m.traceViewport.Height) * 0.8)
+		scrollAmount = int(float64(m.traceViewport.Height()) * 0.8)
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		newOffset := m.traceViewport.YOffset - scrollAmount
+		newOffset := m.traceViewport.YOffset() - scrollAmount
 		if newOffset < 0 {
 			newOffset = 0
 		}
-		m.traceViewport.YOffset = newOffset
+		m.traceViewport.SetYOffset(newOffset)
 	case m.viewMode == "table" && m.hasTable:
-		scrollAmount = int(float64(m.tableViewport.Height) * 0.8)
+		scrollAmount = int(float64(m.tableViewport.Height()) * 0.8)
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		newOffset := m.tableViewport.YOffset - scrollAmount
+		newOffset := m.tableViewport.YOffset() - scrollAmount
 		if newOffset < 0 {
 			newOffset = 0
 		}
 
-		// Snap to row boundary to avoid cutting through multi-line cells
+		// Align to a record start, unless the record is taller than the screen,
+		// in which case scroll within it so every line can be read.
 		if len(m.tableRowBoundaries) > 0 && newOffset > 0 {
-			// Find the closest row boundary that's >= newOffset
-			// When scrolling up, we want to align to the start of a row
-			bestOffset := 0
-			for _, boundary := range m.tableRowBoundaries {
-				if boundary <= newOffset {
-					bestOffset = boundary
-				} else {
-					break
-				}
-			}
-			newOffset = bestOffset
+			newOffset = snapUpToBoundary(m.tableViewport.YOffset(), newOffset, m.tableViewport.Height(), m.tableRowBoundaries)
 		}
 
-		m.tableViewport.YOffset = newOffset
+		m.tableViewport.SetYOffset(newOffset)
 	default:
-		scrollAmount = int(float64(m.historyViewport.Height) * 0.8)
+		scrollAmount = int(float64(m.historyViewport.Height()) * 0.8)
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		newOffset := m.historyViewport.YOffset - scrollAmount
+		newOffset := m.historyViewport.YOffset() - scrollAmount
 		if newOffset < 0 {
 			newOffset = 0
 		}
-		m.historyViewport.YOffset = newOffset
+		m.historyViewport.SetYOffset(newOffset)
 	}
 	return m, nil
 }
 
 // handlePageDown handles PageDown key press
-func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	// If input has focus and contains text, page right in the input
 	if m.input.Focused() && len(m.input.Value()) > 0 {
 		currentValue := m.input.Value()
@@ -108,21 +99,21 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	scrollAmount := 0
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		scrollAmount = int(float64(m.traceViewport.Height) * 0.8)
+		scrollAmount = int(float64(m.traceViewport.Height()) * 0.8)
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		newOffset := m.traceViewport.YOffset + scrollAmount
+		newOffset := m.traceViewport.YOffset() + scrollAmount
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
-		m.traceViewport.YOffset = newOffset
+		m.traceViewport.SetYOffset(newOffset)
 	case m.viewMode == "table" && m.hasTable:
-		scrollAmount = int(float64(m.tableViewport.Height) * 0.8)
+		scrollAmount = int(float64(m.tableViewport.Height()) * 0.8)
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
@@ -130,8 +121,8 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		// First, check if we need to load more data BEFORE calculating limits
 		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
 			totalLines := m.tableViewport.TotalLineCount()
-			viewportHeight := m.tableViewport.Height
-			currentOffset := m.tableViewport.YOffset
+			viewportHeight := m.tableViewport.Height()
+			currentOffset := m.tableViewport.YOffset()
 
 			// Check if scrolling would take us near the bottom
 			potentialOffset := currentOffset + scrollAmount
@@ -170,12 +161,12 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 
 		// NOW calculate the limits with potentially updated data
 		totalLines := m.tableViewport.TotalLineCount()
-		viewportHeight := m.tableViewport.Height
+		viewportHeight := m.tableViewport.Height()
 		maxOffset := totalLines - viewportHeight
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		newOffset := m.tableViewport.YOffset + scrollAmount
+		newOffset := m.tableViewport.YOffset() + scrollAmount
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
@@ -208,40 +199,38 @@ func (m *MainModel) handlePageDown(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				logger.DebugfToFile("Nav", "PageDown at bottom: lastBoundary=%d, desiredOffset=%d, maxOffset=%d, finalOffset=%d",
 					lastBoundary, desiredOffset, maxOffset, newOffset)
 			} else {
-				// Normal case: find the closest row boundary that's <= newOffset
-				bestOffset := m.tableViewport.YOffset
-				for _, boundary := range m.tableRowBoundaries {
-					if boundary <= newOffset && boundary > bestOffset {
-						bestOffset = boundary
-					}
-				}
-				newOffset = bestOffset
+				// Align to a record start, but only when the record fits on
+				// screen. A record taller than the viewport has to be scrolled
+				// through, and snapping would step over the part that did not
+				// fit. Sharing the helper keeps this in step with the d key,
+				// which had the same fault.
+				newOffset = snapDownToBoundary(m.tableViewport.YOffset(), newOffset, viewportHeight, m.tableRowBoundaries)
 			}
 		}
 
-		m.tableViewport.YOffset = newOffset
+		m.tableViewport.SetYOffset(newOffset)
 
 		// Data loading is now done BEFORE calculating limits, so no need to load here
 	default:
-		scrollAmount = int(float64(m.historyViewport.Height) * 0.8)
+		scrollAmount = int(float64(m.historyViewport.Height()) * 0.8)
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		newOffset := m.historyViewport.YOffset + scrollAmount
+		newOffset := m.historyViewport.YOffset() + scrollAmount
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
-		m.historyViewport.YOffset = newOffset
+		m.historyViewport.SetYOffset(newOffset)
 	}
 	return m, nil
 }
 
 // handleLeftArrow handles Left arrow key press
-func (m *MainModel) handleLeftArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleLeftArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 
 	// If modal is showing, navigate choices
 	if m.modal.Type != ModalNone {
@@ -249,7 +238,7 @@ func (m *MainModel) handleLeftArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 	// If Alt is held, scroll table/trace left
-	if msg.Alt {
+	if msg.Mod.Contains(tea.ModAlt) {
 		switch {
 		case m.viewMode == "trace" && m.hasTrace:
 			// Scroll trace table left
@@ -283,7 +272,7 @@ func (m *MainModel) handleLeftArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 }
 
 // handleRightArrow handles Right arrow key press
-func (m *MainModel) handleRightArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleRightArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 
 	// If modal is showing, navigate choices
 	if m.modal.Type != ModalNone {
@@ -291,12 +280,12 @@ func (m *MainModel) handleRightArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 	// If Alt is held, scroll table/trace right
-	if msg.Alt {
+	if msg.Mod.Contains(tea.ModAlt) {
 		switch {
 		case m.viewMode == "trace" && m.hasTrace:
 			// Scroll trace table right
-			if m.traceTableWidth > m.traceViewport.Width {
-				maxOffset := m.traceTableWidth - m.traceViewport.Width + 10 // Add some buffer
+			if m.traceTableWidth > m.traceViewport.Width() {
+				maxOffset := m.traceTableWidth - m.traceViewport.Width() + 10 // Add some buffer
 				if m.traceHorizontalOffset < maxOffset {
 					m.traceHorizontalOffset += 10
 					if m.traceHorizontalOffset > maxOffset {
@@ -308,8 +297,8 @@ func (m *MainModel) handleRightArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 			}
 		case m.viewMode == "table" && m.hasTable:
 			// Scroll data table right
-			if m.tableWidth > m.tableViewport.Width {
-				maxOffset := m.tableWidth - m.tableViewport.Width + 10 // Add some buffer
+			if m.tableWidth > m.tableViewport.Width() {
+				maxOffset := m.tableWidth - m.tableViewport.Width() + 10 // Add some buffer
 				if m.horizontalOffset < maxOffset {
 					m.horizontalOffset += 10
 					if m.horizontalOffset > maxOffset {

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleEnterKey handles Enter key press
@@ -19,7 +19,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	// If we have more data to load and input is empty, load next page (like PgDn)
 	if m.slidingWindow != nil && m.slidingWindow.hasMoreData && m.input.Value() == "" {
 		// Treat Enter as PageDown when there's more data available
-		return m.handlePageDown(tea.KeyMsg{Type: tea.KeyPgDown})
+		return m.handlePageDown(tea.KeyPressMsg{Code: tea.KeyPgDown})
 	}
 
 	// Handle AI selection modal if active
@@ -138,10 +138,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			newInput := textinput.New()
 			newInput.Placeholder = m.input.Placeholder
 			newInput.CharLimit = m.input.CharLimit
-			newInput.Width = m.input.Width
+			newInput.SetWidth(m.input.Width())
 			newInput.Prompt = m.input.Prompt
-			newInput.PromptStyle = m.input.PromptStyle
-			newInput.PlaceholderStyle = m.input.PlaceholderStyle
+			// v2 keeps the prompt and placeholder styling in one Styles value
+			// rather than separate fields, so carry the whole thing over.
+			newInput.SetStyles(m.input.Styles())
 			newInput.Focus()
 			m.input = newInput
 

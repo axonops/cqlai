@@ -3,11 +3,11 @@ package ui
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // handleSpaceKey handles Space key press
-func (m *MainModel) handleSpaceKey(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleSpaceKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	// AI conversation view input is handled in handleKeyboardInput
 
 	// If we have completions showing, accept the current one and add space

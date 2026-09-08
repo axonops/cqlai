@@ -1,57 +1,51 @@
 package ui
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleSingleLineDown scrolls down by one line (j key)
 func (m *MainModel) handleSingleLineDown() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceViewport.YOffset < m.traceViewport.TotalLineCount()-m.traceViewport.Height {
-			m.traceViewport.YOffset++
+		if m.traceViewport.YOffset() < m.traceViewport.TotalLineCount()-m.traceViewport.Height() {
+			m.traceViewport.SetYOffset(m.traceViewport.YOffset() + 1)
 		}
 	case m.viewMode == "table" && m.hasTable:
-		maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height
+		maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		if m.tableViewport.YOffset < maxOffset {
-			newOffset := m.tableViewport.YOffset + 1
+		if m.tableViewport.YOffset() < maxOffset {
+			newOffset := m.tableViewport.YOffset() + 1
 
 			// Respect row boundaries for multi-line cells
 			if len(m.tableRowBoundaries) > 0 {
-				// Find next row boundary
-				for _, boundary := range m.tableRowBoundaries {
-					if boundary > m.tableViewport.YOffset {
-						newOffset = boundary
-						break
-					}
-				}
+				newOffset = snapLineDown(m.tableViewport.YOffset(), m.tableViewport.Height(), m.tableRowBoundaries)
 			}
 
 			if newOffset > maxOffset {
 				newOffset = maxOffset
 			}
-			m.tableViewport.YOffset = newOffset
+			m.tableViewport.SetYOffset(newOffset)
 
 			// Check if we need to load more data (same as Alt+Down)
 			if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
-				remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
+				remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset() - m.tableViewport.Height()
 				if remainingRows < 10 {
 					m.loadMoreTableDataHelper()
 				}
 			}
 		}
 	default:
-		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		if m.historyViewport.YOffset < maxOffset {
-			m.historyViewport.YOffset++
+		if m.historyViewport.YOffset() < maxOffset {
+			m.historyViewport.SetYOffset(m.historyViewport.YOffset() + 1)
 		}
 	}
 	return m, nil
@@ -61,19 +55,19 @@ func (m *MainModel) handleSingleLineDown() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleSingleLineUp() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceViewport.YOffset > 0 {
-			m.traceViewport.YOffset--
+		if m.traceViewport.YOffset() > 0 {
+			m.traceViewport.SetYOffset(m.traceViewport.YOffset() - 1)
 		}
 	case m.viewMode == "table" && m.hasTable:
-		if m.tableViewport.YOffset > 0 {
-			newOffset := m.tableViewport.YOffset - 1
+		if m.tableViewport.YOffset() > 0 {
+			newOffset := m.tableViewport.YOffset() - 1
 
 			// Respect row boundaries for multi-line cells
 			if len(m.tableRowBoundaries) > 0 {
 				// Find current row
 				currentRowIdx := -1
 				for i, boundary := range m.tableRowBoundaries {
-					if boundary >= m.tableViewport.YOffset {
+					if boundary >= m.tableViewport.YOffset() {
 						currentRowIdx = i
 						break
 					}
@@ -87,11 +81,11 @@ func (m *MainModel) handleSingleLineUp() (*MainModel, tea.Cmd) {
 				}
 			}
 
-			m.tableViewport.YOffset = newOffset
+			m.tableViewport.SetYOffset(newOffset)
 		}
 	default:
-		if m.historyViewport.YOffset > 0 {
-			m.historyViewport.YOffset--
+		if m.historyViewport.YOffset() > 0 {
+			m.historyViewport.SetYOffset(m.historyViewport.YOffset() - 1)
 		}
 	}
 	return m, nil
@@ -104,11 +98,13 @@ func (m *MainModel) handleSingleLineUp() (*MainModel, tea.Cmd) {
 // amount - expand format, or a table with tall multi-line cells - there is no
 // such boundary past the current position, and returning the current offset
 // would wedge scrolling entirely. Step to the next record in that case.
-func snapDownToBoundary(current, target int, boundaries []int) int {
+func snapDownToBoundary(current, target, viewportHeight int, boundaries []int) int {
 	if target <= current {
 		return current
 	}
 
+	// Prefer the last record start at or before the target, so a page lands at
+	// the top of a record rather than part way through one.
 	snapped := current
 	for _, boundary := range boundaries {
 		if boundary <= target && boundary > snapped {
@@ -119,14 +115,64 @@ func snapDownToBoundary(current, target int, boundaries []int) int {
 		return snapped
 	}
 
-	// Nothing between here and the target: move on to the next record.
+	// Nothing between here and the target. Whether to jump to the next record
+	// depends on whether this one fits on screen.
+	if next, ok := nextBoundary(current, boundaries); ok && next-current <= viewportHeight {
+		// The whole record is visible from here, so skipping to the next one
+		// leaves nothing unread.
+		return next
+	}
+
+	// Either the record is taller than the screen, or there is no next record.
+	// Scroll within it: jumping to the next record start here would step over
+	// everything that did not fit, which is unreachable any other way.
+	return target
+}
+
+// nextBoundary returns the first record starting after a line.
+func nextBoundary(after int, boundaries []int) (int, bool) {
 	for _, boundary := range boundaries {
-		if boundary > current {
-			return boundary
+		if boundary > after {
+			return boundary, true
+		}
+	}
+	return 0, false
+}
+
+// snapLineDown advances a single-line scroll, honouring record starts.
+//
+// Aligning to the next record start is only right when the current record fits
+// on screen. A record taller than the viewport has to be scrolled through a
+// line at a time, or the part that did not fit can never be seen.
+func snapLineDown(current, viewportHeight int, boundaries []int) int {
+	if next, ok := nextBoundary(current, boundaries); ok && next-current <= viewportHeight {
+		return next
+	}
+	return current + 1
+}
+
+// snapUpToBoundary aligns an upward scroll to the start of a record.
+//
+// The mirror of snapDownToBoundary: align to a record start when that record
+// fits on screen, and scroll plainly when it does not, so a record taller than
+// the viewport can be read on the way back up as well as down.
+func snapUpToBoundary(current, target, viewportHeight int, boundaries []int) int {
+	if target >= current {
+		return current
+	}
+
+	best := -1
+	for _, boundary := range boundaries {
+		if boundary <= target {
+			best = boundary
+		} else {
+			break
 		}
 	}
 
-	// Past the last record, so ordinary scrolling applies.
+	if best >= 0 && current-best <= viewportHeight {
+		return best
+	}
 	return target
 }
 
@@ -135,66 +181,66 @@ func (m *MainModel) handleHalfPageDown() (*MainModel, tea.Cmd) {
 	scrollAmount := 0
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		scrollAmount = m.traceViewport.Height / 2
+		scrollAmount = m.traceViewport.Height() / 2
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		newOffset := m.traceViewport.YOffset + scrollAmount
+		newOffset := m.traceViewport.YOffset() + scrollAmount
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
-		m.traceViewport.YOffset = newOffset
+		m.traceViewport.SetYOffset(newOffset)
 
 	case m.viewMode == "table" && m.hasTable:
-		scrollAmount = m.tableViewport.Height / 2
+		scrollAmount = m.tableViewport.Height() / 2
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height
+		maxOffset := m.tableViewport.TotalLineCount() - m.tableViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		newOffset := m.tableViewport.YOffset + scrollAmount
+		newOffset := m.tableViewport.YOffset() + scrollAmount
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
 
 		// Snap to row boundary if we have multi-line cells
 		if len(m.tableRowBoundaries) > 0 {
-			newOffset = snapDownToBoundary(m.tableViewport.YOffset, newOffset, m.tableRowBoundaries)
+			newOffset = snapDownToBoundary(m.tableViewport.YOffset(), newOffset, m.tableViewport.Height(), m.tableRowBoundaries)
 			if newOffset > maxOffset {
 				newOffset = maxOffset
 			}
 		}
 
-		m.tableViewport.YOffset = newOffset
+		m.tableViewport.SetYOffset(newOffset)
 
 		// Check if we need to load more data
 		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
-			remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
+			remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset() - m.tableViewport.Height()
 			if remainingRows < 10 {
 				m.loadMoreTableDataHelper()
 			}
 		}
 
 	default:
-		scrollAmount = m.historyViewport.Height / 2
+		scrollAmount = m.historyViewport.Height() / 2
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		newOffset := m.historyViewport.YOffset + scrollAmount
+		newOffset := m.historyViewport.YOffset() + scrollAmount
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}
-		m.historyViewport.YOffset = newOffset
+		m.historyViewport.SetYOffset(newOffset)
 	}
 	return m, nil
 }
@@ -204,22 +250,22 @@ func (m *MainModel) handleHalfPageUp() (*MainModel, tea.Cmd) {
 	scrollAmount := 0
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		scrollAmount = m.traceViewport.Height / 2
+		scrollAmount = m.traceViewport.Height() / 2
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		newOffset := m.traceViewport.YOffset - scrollAmount
+		newOffset := m.traceViewport.YOffset() - scrollAmount
 		if newOffset < 0 {
 			newOffset = 0
 		}
-		m.traceViewport.YOffset = newOffset
+		m.traceViewport.SetYOffset(newOffset)
 
 	case m.viewMode == "table" && m.hasTable:
-		scrollAmount = m.tableViewport.Height / 2
+		scrollAmount = m.tableViewport.Height() / 2
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		newOffset := m.tableViewport.YOffset - scrollAmount
+		newOffset := m.tableViewport.YOffset() - scrollAmount
 		if newOffset < 0 {
 			newOffset = 0
 		}
@@ -237,18 +283,18 @@ func (m *MainModel) handleHalfPageUp() (*MainModel, tea.Cmd) {
 			newOffset = bestOffset
 		}
 
-		m.tableViewport.YOffset = newOffset
+		m.tableViewport.SetYOffset(newOffset)
 
 	default:
-		scrollAmount = m.historyViewport.Height / 2
+		scrollAmount = m.historyViewport.Height() / 2
 		if scrollAmount < 1 {
 			scrollAmount = 1
 		}
-		newOffset := m.historyViewport.YOffset - scrollAmount
+		newOffset := m.historyViewport.YOffset() - scrollAmount
 		if newOffset < 0 {
 			newOffset = 0
 		}
-		m.historyViewport.YOffset = newOffset
+		m.historyViewport.SetYOffset(newOffset)
 	}
 	return m, nil
 }
@@ -257,11 +303,11 @@ func (m *MainModel) handleHalfPageUp() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleGoToTop() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		m.traceViewport.YOffset = 0
+		m.traceViewport.SetYOffset(0)
 	case m.viewMode == "table" && m.hasTable:
-		m.tableViewport.YOffset = 0
+		m.tableViewport.SetYOffset(0)
 	default:
-		m.historyViewport.YOffset = 0
+		m.historyViewport.SetYOffset(0)
 	}
 	return m, nil
 }
@@ -270,15 +316,15 @@ func (m *MainModel) handleGoToTop() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleGoToBottom() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		m.traceViewport.YOffset = maxOffset
+		m.traceViewport.SetYOffset(maxOffset)
 
 	case m.viewMode == "table" && m.hasTable:
 		totalLines := m.tableViewport.TotalLineCount()
-		viewportHeight := m.tableViewport.Height
+		viewportHeight := m.tableViewport.Height()
 		maxOffset := totalLines - viewportHeight
 		if maxOffset < 0 {
 			maxOffset = 0
@@ -299,7 +345,7 @@ func (m *MainModel) handleGoToBottom() (*MainModel, tea.Cmd) {
 			}
 		}
 
-		m.tableViewport.YOffset = maxOffset
+		m.tableViewport.SetYOffset(maxOffset)
 
 		// Load all remaining data if we have more
 		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
@@ -308,11 +354,11 @@ func (m *MainModel) handleGoToBottom() (*MainModel, tea.Cmd) {
 		}
 
 	default:
-		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		m.historyViewport.YOffset = maxOffset
+		m.historyViewport.SetYOffset(maxOffset)
 	}
 	return m, nil
 }
@@ -347,7 +393,7 @@ func (m *MainModel) handlePageLeftScroll() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
 		if m.traceHorizontalOffset > 0 {
-			scrollAmount := m.traceViewport.Width / 2
+			scrollAmount := m.traceViewport.Width() / 2
 			if scrollAmount < 10 {
 				scrollAmount = 10
 			}
@@ -359,7 +405,7 @@ func (m *MainModel) handlePageLeftScroll() (*MainModel, tea.Cmd) {
 		}
 	case m.viewMode == "table" && m.hasTable:
 		if m.horizontalOffset > 0 {
-			scrollAmount := m.tableViewport.Width / 2
+			scrollAmount := m.tableViewport.Width() / 2
 			if scrollAmount < 10 {
 				scrollAmount = 10
 			}
@@ -379,12 +425,12 @@ func (m *MainModel) handlePageLeftScroll() (*MainModel, tea.Cmd) {
 func (m *MainModel) handlePageRightScroll() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceTableWidth > m.traceViewport.Width {
-			scrollAmount := m.traceViewport.Width / 2
+		if m.traceTableWidth > m.traceViewport.Width() {
+			scrollAmount := m.traceViewport.Width() / 2
 			if scrollAmount < 10 {
 				scrollAmount = 10
 			}
-			maxOffset := m.traceTableWidth - m.traceViewport.Width + 10
+			maxOffset := m.traceTableWidth - m.traceViewport.Width() + 10
 			m.traceHorizontalOffset += scrollAmount
 			if m.traceHorizontalOffset > maxOffset {
 				m.traceHorizontalOffset = maxOffset
@@ -392,12 +438,12 @@ func (m *MainModel) handlePageRightScroll() (*MainModel, tea.Cmd) {
 			m.refreshTraceView()
 		}
 	case m.viewMode == "table" && m.hasTable:
-		if m.tableWidth > m.tableViewport.Width {
-			scrollAmount := m.tableViewport.Width / 2
+		if m.tableWidth > m.tableViewport.Width() {
+			scrollAmount := m.tableViewport.Width() / 2
 			if scrollAmount < 10 {
 				scrollAmount = 10
 			}
-			maxOffset := m.tableWidth - m.tableViewport.Width + 10
+			maxOffset := m.tableWidth - m.tableViewport.Width() + 10
 			m.horizontalOffset += scrollAmount
 			if m.horizontalOffset > maxOffset {
 				m.horizontalOffset = maxOffset
@@ -414,8 +460,8 @@ func (m *MainModel) handlePageRightScroll() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleHorizontalScrollRight() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceTableWidth > m.traceViewport.Width {
-			maxOffset := m.traceTableWidth - m.traceViewport.Width + 10
+		if m.traceTableWidth > m.traceViewport.Width() {
+			maxOffset := m.traceTableWidth - m.traceViewport.Width() + 10
 			if m.traceHorizontalOffset < maxOffset {
 				m.traceHorizontalOffset += 10
 				if m.traceHorizontalOffset > maxOffset {
@@ -425,8 +471,8 @@ func (m *MainModel) handleHorizontalScrollRight() (*MainModel, tea.Cmd) {
 			}
 		}
 	case m.viewMode == "table" && m.hasTable:
-		if m.tableWidth > m.tableViewport.Width {
-			maxOffset := m.tableWidth - m.tableViewport.Width + 10
+		if m.tableWidth > m.tableViewport.Width() {
+			maxOffset := m.tableWidth - m.tableViewport.Width() + 10
 			if m.horizontalOffset < maxOffset {
 				m.horizontalOffset += 10
 				if m.horizontalOffset > maxOffset {
@@ -479,18 +525,18 @@ func (m *MainModel) handleAltScrollUp() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
 		// Scroll trace up by one line
-		if m.traceViewport.YOffset > 0 {
-			m.traceViewport.YOffset--
+		if m.traceViewport.YOffset() > 0 {
+			m.traceViewport.SetYOffset(m.traceViewport.YOffset() - 1)
 		}
 	case m.viewMode == "table" && m.hasTable:
 		// Scroll table up to previous row boundary
-		if m.tableViewport.YOffset > 0 {
-			newOffset := m.tableViewport.YOffset - 1
+		if m.tableViewport.YOffset() > 0 {
+			newOffset := m.tableViewport.YOffset() - 1
 
 			// Find the previous row boundary
 			if len(m.tableRowBoundaries) > 0 {
 				for i := len(m.tableRowBoundaries) - 1; i >= 0; i-- {
-					if m.tableRowBoundaries[i] < m.tableViewport.YOffset {
+					if m.tableRowBoundaries[i] < m.tableViewport.YOffset() {
 						newOffset = m.tableRowBoundaries[i]
 						break
 					}
@@ -499,12 +545,12 @@ func (m *MainModel) handleAltScrollUp() (*MainModel, tea.Cmd) {
 				// Don't jump to top (0) as that's too aggressive
 			}
 
-			m.tableViewport.YOffset = newOffset
+			m.tableViewport.SetYOffset(newOffset)
 		}
 	default:
 		// Scroll history up by one line
-		if m.historyViewport.YOffset > 0 {
-			m.historyViewport.YOffset--
+		if m.historyViewport.YOffset() > 0 {
+			m.historyViewport.SetYOffset(m.historyViewport.YOffset() - 1)
 		}
 	}
 	return m, nil
@@ -515,17 +561,17 @@ func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
 	switch {
 	case m.viewMode == "trace" && m.hasTrace:
 		// Scroll trace down by one line
-		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height
+		maxOffset := m.traceViewport.TotalLineCount() - m.traceViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		if m.traceViewport.YOffset < maxOffset {
-			m.traceViewport.YOffset++
+		if m.traceViewport.YOffset() < maxOffset {
+			m.traceViewport.SetYOffset(m.traceViewport.YOffset() + 1)
 		}
 	case m.viewMode == "table" && m.hasTable:
 		// Scroll table down to next row boundary
 		totalLines := m.tableViewport.TotalLineCount()
-		viewportHeight := m.tableViewport.Height
+		viewportHeight := m.tableViewport.Height()
 		maxOffset := totalLines - viewportHeight
 		if maxOffset < 0 {
 			maxOffset = 0
@@ -534,17 +580,12 @@ func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
 		// Check if we're at the end with no more data
 		noMoreData := m.slidingWindow == nil || !m.slidingWindow.hasMoreData
 
-		if m.tableViewport.YOffset < maxOffset {
-			newOffset := m.tableViewport.YOffset + 1
+		if m.tableViewport.YOffset() < maxOffset {
+			newOffset := m.tableViewport.YOffset() + 1
 
 			// Find the next row boundary
 			if len(m.tableRowBoundaries) > 0 {
-				for _, boundary := range m.tableRowBoundaries {
-					if boundary > m.tableViewport.YOffset {
-						newOffset = boundary
-						break
-					}
-				}
+				newOffset = snapLineDown(m.tableViewport.YOffset(), m.tableViewport.Height(), m.tableRowBoundaries)
 			}
 
 			// Special handling for the last boundary (bottom border)
@@ -566,12 +607,12 @@ func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
 				newOffset = maxOffset
 			}
 
-			m.tableViewport.YOffset = newOffset
+			m.tableViewport.SetYOffset(newOffset)
 
 			// Check if we need to load more data
 			if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
 				// If we're within 10 rows of the bottom, load more
-				remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset - m.tableViewport.Height
+				remainingRows := m.tableViewport.TotalLineCount() - m.tableViewport.YOffset() - m.tableViewport.Height()
 				if remainingRows < 10 {
 					// Load more data using the helper function
 					m.loadMoreTableDataHelper()
@@ -580,12 +621,12 @@ func (m *MainModel) handleAltScrollDown() (*MainModel, tea.Cmd) {
 		}
 	default:
 		// Scroll history down by one line
-		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height
+		maxOffset := m.historyViewport.TotalLineCount() - m.historyViewport.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
-		if m.historyViewport.YOffset < maxOffset {
-			m.historyViewport.YOffset++
+		if m.historyViewport.YOffset() < maxOffset {
+			m.historyViewport.SetYOffset(m.historyViewport.YOffset() + 1)
 		}
 	}
 	return m, nil

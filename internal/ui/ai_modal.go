@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // AIModalState represents the state of the AI modal
@@ -58,11 +58,11 @@ func (m *AIModal) Update(msg tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		cmds = append(cmds, cmd)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		logger.DebugfToFile("AI", "AIModal: KeyMsg received, key=%s, state=%v", msg.String(), m.State)
 		// Only handle key messages if we're in preview state
 		if m.State == AIModalStatePreview {
-			oldYOffset := m.viewport.YOffset
+			oldYOffset := m.viewport.YOffset()
 			oldScrollPercent := m.viewport.ScrollPercent()
 
 			var cmd tea.Cmd
@@ -70,9 +70,9 @@ func (m *AIModal) Update(msg tea.Msg) tea.Cmd {
 			cmds = append(cmds, cmd)
 
 			logger.DebugfToFile("AI", "AIModal: After viewport.Update - YOffset: %d->%d, ScrollPercent: %.2f->%.2f, TotalLines: %d, Height: %d",
-				oldYOffset, m.viewport.YOffset,
+				oldYOffset, m.viewport.YOffset(),
 				oldScrollPercent, m.viewport.ScrollPercent(),
-				m.viewport.TotalLineCount(), m.viewport.Height)
+				m.viewport.TotalLineCount(), m.viewport.Height())
 		} else {
 			logger.DebugfToFile("AI", "AIModal: Ignoring key because state is %v", m.State)
 		}
@@ -91,7 +91,7 @@ func (m *AIModal) Update(msg tea.Msg) tea.Cmd {
 
 // NewAIModal creates a new AI modal for generating CQL
 func NewAIModal(userRequest string) AIModal {
-	vp := viewport.New(70, 10) // Width will be adjusted, height is for content area
+	vp := viewport.New(viewport.WithWidth(70), viewport.WithHeight(10)) // Width will be adjusted, height is for content area
 	vp.Style = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFFFFF")).
 		Background(lipgloss.Color("#2D2D2D"))
@@ -212,7 +212,6 @@ func (m *AIModal) Render(screenWidth, screenHeight int, styles *Styles) string {
 		lipgloss.Center,
 		lipgloss.Center,
 		modalBox,
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("#1A1A1A")),
 	)
 }
 
@@ -275,9 +274,9 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 	viewportHeight := max(5, min(screenHeight-reservedHeight, 25))
 
 	// Set viewport dimensions if they've changed
-	if m.viewport.Width != m.Width-6 || m.viewport.Height != viewportHeight {
-		m.viewport.Width = m.Width - 6 // Adjusted to match content box width
-		m.viewport.Height = viewportHeight
+	if m.viewport.Width() != m.Width-6 || m.viewport.Height() != viewportHeight {
+		m.viewport.SetWidth(m.Width - 6) // Adjusted to match content box width
+		m.viewport.SetHeight(viewportHeight)
 		m.viewportReady = true
 	}
 
@@ -446,12 +445,12 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 
 	// Update viewport content if it has changed or if width changed
 	contentChanged := currentContent != m.lastContent
-	widthChanged := m.viewport.Width != m.lastWidth
+	widthChanged := m.viewport.Width() != m.lastWidth
 
 	// logger.DebugfToFile("AI", "renderPreview: Content check - changed=%v, len(current)=%d, len(last)=%d",
 	// 	contentChanged, len(currentContent), len(m.lastContent))
 	// logger.DebugfToFile("AI", "renderPreview: Width check - changed=%v, current=%d, last=%d",
-	// 	widthChanged, m.viewport.Width, m.lastWidth)
+	// 	widthChanged, m.viewport.Width(), m.lastWidth)
 
 	if contentChanged || widthChanged {
 		logger.DebugfToFile("AI", "renderPreview: Setting viewport content because content or width changed")
@@ -460,7 +459,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 
 		// Process content line by line for proper wrapping
 		lines := strings.Split(currentContent, "\n")
-		wrapStyle := lipgloss.NewStyle().Width(m.viewport.Width)
+		wrapStyle := lipgloss.NewStyle().Width(m.viewport.Width())
 		var wrappedLines []string
 		for _, line := range lines {
 			// Wrap each line to fit viewport width
@@ -471,7 +470,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 		m.viewport.SetContent(wrappedContent)
 
 		logger.DebugfToFile("AI", "renderPreview: After SetContent - TotalLines=%d, Height=%d, YOffset=%d",
-			m.viewport.TotalLineCount(), m.viewport.Height, m.viewport.YOffset)
+			m.viewport.TotalLineCount(), m.viewport.Height(), m.viewport.YOffset())
 
 		// Only go to top if this is new content, not just a width change
 		if currentContent != m.lastContent {
@@ -479,11 +478,11 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 			logger.DebugfToFile("AI", "renderPreview: Called GotoTop because content changed")
 			m.lastContent = currentContent
 		}
-		m.lastWidth = m.viewport.Width
+		m.lastWidth = m.viewport.Width()
 		m.viewportReady = true // Mark viewport as ready after content is set
 	}
 	//  else {
-	// 	logger.DebugfToFile("AI", "renderPreview: Content unchanged, not calling SetContent. YOffset=%d", m.viewport.YOffset)
+	// 	logger.DebugfToFile("AI", "renderPreview: Content unchanged, not calling SetContent. YOffset=%d", m.viewport.YOffset())
 	// }
 
 	// Add confidence indicator
@@ -495,7 +494,7 @@ func (m *AIModal) renderPreview(titleStyle lipgloss.Style, styles *Styles, scree
 
 	viewportContent := m.viewport.View()
 	// logger.DebugfToFile("AI", "renderPreview: viewport.View() returned %d chars, YOffset=%d, ScrollPercent=%.2f",
-	// 	len(viewportContent), m.viewport.YOffset, m.viewport.ScrollPercent())
+	// 	len(viewportContent), m.viewport.YOffset(), m.viewport.ScrollPercent())
 
 	// Simply use the viewport content for now
 	// We'll show scroll position in the instructions instead of a visual scrollbar

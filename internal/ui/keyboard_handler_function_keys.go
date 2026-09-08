@@ -3,9 +3,9 @@ package ui
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // handleF2 handles F2 key - switch to query/history view
@@ -83,18 +83,18 @@ func (m *MainModel) handleF5() (*MainModel, tea.Cmd) {
 
 		// Initialize AI conversation input if not initialized
 		// Check if Width is 0 as a proxy for uninitialized state
-		if m.aiConversationInput.Width == 0 {
+		if m.aiConversationInput.Width() == 0 {
 			input := textinput.New()
 			input.Placeholder = ""
 			input.Prompt = "> "
-			input.CharLimit = 4096                    // Increased to support long queries
-			input.Width = m.historyViewport.Width - 2 // Reduced margin for better scrolling
+			input.CharLimit = 4096                        // Increased to support long queries
+			input.SetWidth(m.historyViewport.Width() - 2) // Reduced margin for better scrolling
 			input.Focus()
 			m.aiConversationInput = input
 
 			// Initialize conversation viewport if needed
-			if m.aiConversationViewport.Width == 0 {
-				m.aiConversationViewport = viewport.New(m.historyViewport.Width, m.historyViewport.Height)
+			if m.aiConversationViewport.Width() == 0 {
+				m.aiConversationViewport = viewport.New(viewport.WithWidth(m.historyViewport.Width()), viewport.WithHeight(m.historyViewport.Height()))
 			}
 		} else {
 			// If already initialized, just clear and focus

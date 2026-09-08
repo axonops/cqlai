@@ -143,7 +143,7 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 
 	// Apply horizontal scrolling to cached lines
 	if m.horizontalOffset > 0 && m.cachedTableLines != nil {
-		scrolledLines := applyHorizontalScrollWithANSI(m.cachedTableLines, m.horizontalOffset, m.tableViewport.Width)
+		scrolledLines := applyHorizontalScrollWithANSI(m.cachedTableLines, m.horizontalOffset, m.tableViewport.Width())
 		return strings.Join(scrolledLines, "\n")
 	}
 
@@ -264,17 +264,17 @@ func (m *MainModel) refreshTableView() {
 		tableStr := m.formatTableForViewport(m.lastTableData)
 
 		// Store the current scroll position
-		currentYOffset := m.tableViewport.YOffset
+		currentYOffset := m.tableViewport.YOffset()
 
 		// Update the table viewport content
 		m.tableViewport.SetContent(tableStr)
 
 		// Debug: Log viewport state
 		logger.DebugfToFile("Table", "refreshTableView: TotalLineCount=%d, Height=%d, YOffset=%d, cachedLines=%d",
-			m.tableViewport.TotalLineCount(), m.tableViewport.Height, currentYOffset, len(m.cachedTableLines))
+			m.tableViewport.TotalLineCount(), m.tableViewport.Height(), currentYOffset, len(m.cachedTableLines))
 
 		// Restore scroll position
-		m.tableViewport.YOffset = currentYOffset
+		m.tableViewport.SetYOffset(currentYOffset)
 	}
 }
 
@@ -325,8 +325,8 @@ func (m *MainModel) buildTableStickyHeader() string {
 	lines = append(lines, separator)
 
 	// Apply horizontal scrolling if needed
-	if m.horizontalOffset > 0 || m.tableWidth > m.tableViewport.Width {
-		scrolledLines := applyHorizontalScrollWithANSI(lines, m.horizontalOffset, m.tableViewport.Width)
+	if m.horizontalOffset > 0 || m.tableWidth > m.tableViewport.Width() {
+		scrolledLines := applyHorizontalScrollWithANSI(lines, m.horizontalOffset, m.tableViewport.Width())
 		return strings.Join(scrolledLines, "\n")
 	}
 

@@ -3,12 +3,12 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleKeyboardInput handles keyboard input events
-func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	// Check for save modal first (highest priority)
 	if m.saveModalActive {
 		return m.handleSaveModalKeyboard(msg)
@@ -35,47 +35,47 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		// Key wasn't handled, let it fall through to main switch
 	}
 
-	switch msg.Type {
-	case tea.KeyCtrlC:
+	switch msg.String() {
+	case "ctrl+c":
 		return m.handleCtrlC()
 
-	case tea.KeyCtrlD:
+	case "ctrl+d":
 		return m.handleCtrlD()
 
-	case tea.KeyCtrlR:
+	case "ctrl+r":
 		return m.handleCtrlR()
 
-	case tea.KeyCtrlK:
+	case "ctrl+k":
 		return m.handleCtrlK()
 
-	case tea.KeyCtrlU:
+	case "ctrl+u":
 		return m.handleCtrlU()
 
-	case tea.KeyCtrlW:
+	case "ctrl+w":
 		return m.handleCtrlW()
 
-	case tea.KeyCtrlP:
+	case "ctrl+p":
 		return m.handleCtrlP()
 
-	case tea.KeyCtrlA:
+	case "ctrl+a":
 		return m.handleCtrlA()
 
-	case tea.KeyCtrlE:
+	case "ctrl+e":
 		return m.handleCtrlE()
 
-	case tea.KeyCtrlLeft:
+	case "ctrl+left":
 		return m.handleCtrlLeft()
 
-	case tea.KeyCtrlRight:
+	case "ctrl+right":
 		return m.handleCtrlRight()
 
-	case tea.KeyCtrlY:
+	case "ctrl+y":
 		return m.handleCtrlY()
 
-	case tea.KeyEsc:
+	case "esc":
 		return m.handleEscapeKey()
 
-	case tea.KeyTab:
+	case "tab":
 		// If modal is showing, navigate choices
 		if m.modal.Type != ModalNone {
 			m.modal.NextChoice()
@@ -83,51 +83,56 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		}
 		return m.handleTabKey()
 
-	case tea.KeyF2:
+	case "f2":
 		return m.handleF2()
 
-	case tea.KeyF3:
+	case "f3":
 		return m.handleF3()
 
-	case tea.KeyF4:
+	case "f4":
 		return m.handleF4()
 
-	case tea.KeyF5:
+	case "f5":
 		return m.handleF5()
 
-	case tea.KeyF6:
+	case "f6":
 		return m.handleF6()
 
-	case tea.KeySpace:
+	case "space":
 		return m.handleSpaceKey(msg)
 
-	case tea.KeyPgUp:
+	case "pgup":
 		return m.handlePageUp(msg)
 
-	case tea.KeyPgDown:
+	case "pgdown":
 		return m.handlePageDown(msg)
 
-	case tea.KeyUp:
+	// The modified forms route to the same handlers, which then read msg.Mod
+	// themselves - Alt+arrow scrolls where a bare arrow moves the cursor or
+	// walks history. v1 switched on msg.Type, which ignored modifiers; v2's
+	// String() spells them out, so "alt+left" no longer matches "left" and the
+	// Alt bindings would silently stop working.
+	case "up", "alt+up", "shift+up", "ctrl+up":
 		// If in history search mode, navigate search results
 		if m.historySearchMode {
 			return m.handleHistorySearchUp()
 		}
 		return m.handleUpArrow(msg)
 
-	case tea.KeyDown:
+	case "down", "alt+down", "shift+down", "ctrl+down":
 		// If in history search mode, navigate search results
 		if m.historySearchMode {
 			return m.handleHistorySearchDown()
 		}
 		return m.handleDownArrow(msg)
 
-	case tea.KeyLeft:
+	case "left", "alt+left", "shift+left":
 		return m.handleLeftArrow(msg)
 
-	case tea.KeyRight:
+	case "right", "alt+right", "shift+right":
 		return m.handleRightArrow(msg)
 
-	case tea.KeyEnter:
+	case "enter":
 		// If in history search mode, select the current entry
 		if m.historySearchMode {
 			return m.handleHistorySearchSelect()
@@ -229,8 +234,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 				}
 			default:
 				// Add character to search query if it's a printable character
-				if len(msg.Runes) > 0 && len(m.historySearchQuery) < 100 {
-					m.historySearchQuery += string(msg.Runes)
+				if len(msg.Text) > 0 && len(m.historySearchQuery) < 100 {
+					m.historySearchQuery += string(msg.Text)
 				}
 			}
 
@@ -293,7 +298,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 		return m, cmd
 	}
 }
-func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleUpArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	logger.DebugfToFile("AI", "handleUpArrow called.")
 
 	// If completions are showing, navigate up
@@ -328,7 +333,7 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	}
 
 	// If Alt is held, scroll viewport up by one line
-	if msg.Alt {
+	if msg.Mod.Contains(tea.ModAlt) {
 		return m.handleAltScrollUp()
 	}
 
@@ -344,7 +349,7 @@ func (m *MainModel) handleUpArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 }
 
 // handleDownArrow handles Down arrow key press
-func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleDownArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	logger.DebugfToFile("AI", "handleDownArrow called.")
 
 	// If completions are showing, navigate down
@@ -377,7 +382,7 @@ func (m *MainModel) handleDownArrow(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 	}
 
 	// If Alt is held, scroll viewport down by one line
-	if msg.Alt {
+	if msg.Mod.Contains(tea.ModAlt) {
 		return m.handleAltScrollDown()
 	}
 

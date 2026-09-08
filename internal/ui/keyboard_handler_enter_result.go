@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // processCommandResult processes the result from a command execution
@@ -674,7 +674,7 @@ func (m *MainModel) processStringResult(command string, v string) (*MainModel, t
 	// Clear query metadata from top bar
 	m.topBar.HasQueryData = false
 	// Wrap long lines to prevent truncation
-	wrappedResult := wrapLongLines(v, m.historyViewport.Width)
+	wrappedResult := wrapLongLines(v, m.historyViewport.Width())
 
 	m.fullHistoryContent += "\n" + wrappedResult
 	m.updateHistoryWrapping()

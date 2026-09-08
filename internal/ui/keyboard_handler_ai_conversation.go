@@ -3,16 +3,16 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleAIConversationInput handles keyboard input for the AI conversation view
-func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleAIConversationInput(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	// Handle history search mode in AI view
 	if m.historySearchMode {
-		switch msg.Type {
-		case tea.KeyCtrlR, tea.KeyCtrlC, tea.KeyEscape:
+		switch msg.String() {
+		case "ctrl+r", "ctrl+c", "esc":
 			// Exit history search mode
 			m.historySearchMode = false
 			m.historySearchQuery = ""
@@ -20,7 +20,7 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 			m.historySearchIndex = 0
 			m.historySearchScrollOffset = 0
 			return m, nil
-		case tea.KeyEnter:
+		case "enter":
 			// Select the current history entry
 			if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
 				// Set the AI input value to the selected history entry
@@ -33,7 +33,7 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 				m.historySearchScrollOffset = 0
 			}
 			return m, nil
-		case tea.KeyUp:
+		case "up":
 			// Navigate search results
 			if m.historySearchIndex > 0 {
 				m.historySearchIndex--
@@ -43,7 +43,7 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 				}
 			}
 			return m, nil
-		case tea.KeyDown:
+		case "down":
 			// Navigate search results
 			if m.historySearchIndex < len(m.historySearchResults)-1 {
 				m.historySearchIndex++
@@ -62,8 +62,8 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 				}
 			default:
 				// Add character to search query if it's a printable character
-				if len(msg.Runes) > 0 && len(m.historySearchQuery) < 100 {
-					m.historySearchQuery += string(msg.Runes)
+				if len(msg.Text) > 0 && len(m.historySearchQuery) < 100 {
+					m.historySearchQuery += string(msg.Text)
 				}
 			}
 
@@ -87,7 +87,7 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 	}
 
 	// Check for Ctrl+R to toggle history search mode
-	if msg.Type == tea.KeyCtrlR {
+	if msg.String() == "ctrl+r" {
 		if m.historySearchMode {
 			// Exit history search mode
 			m.historySearchMode = false
@@ -123,15 +123,15 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 	}
 
 	// Check for specific keys that should bypass AI input
-	switch msg.Type {
-	case tea.KeyEscape, tea.KeyCtrlC:
+	switch msg.String() {
+	case "esc", "ctrl+c":
 		// Exit AI mode and return to history
 		m.aiConversationActive = false
 		m.viewMode = "history"
 		m.aiConversationInput.SetValue("")
 		m.aiProcessing = false
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		// Submit message to AI
 		message := strings.TrimSpace(m.aiConversationInput.Value())
 		if message != "" && !m.aiProcessing {
@@ -171,13 +171,13 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 			}
 		}
 		return m, nil
-	case tea.KeyUp:
+	case "up":
 		// Scroll the conversation. Alternate scroll mode delivers wheel events as
 		// plain Up presses, so this is what the wheel does here too. AI command
 		// history is on Ctrl+P.
-		m.aiConversationViewport.YOffset = max(0, m.aiConversationViewport.YOffset-1)
+		m.aiConversationViewport.SetYOffset(max(0, m.aiConversationViewport.YOffset()-1))
 		return m, nil
-	case tea.KeyCtrlP:
+	case "ctrl+p":
 		// Navigate AI command history (not CQL history)
 		if len(m.aiCommandHistory) > 0 {
 			if m.aiHistoryIndex == -1 {
@@ -190,12 +190,12 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 			m.aiConversationInput.SetValue(m.aiCommandHistory[m.aiHistoryIndex])
 		}
 		return m, nil
-	case tea.KeyDown:
+	case "down":
 		// See KeyUp: the wheel arrives here too.
-		maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height)
-		m.aiConversationViewport.YOffset = min(maxOffset, m.aiConversationViewport.YOffset+1)
+		maxOffset := max(0, m.aiConversationViewport.TotalLineCount()-m.aiConversationViewport.Height())
+		m.aiConversationViewport.SetYOffset(min(maxOffset, m.aiConversationViewport.YOffset()+1))
 		return m, nil
-	case tea.KeyCtrlN:
+	case "ctrl+n":
 		// Navigate AI command history (not CQL history)
 		if m.aiHistoryIndex != -1 {
 			if m.aiHistoryIndex < len(m.aiCommandHistory)-1 {
@@ -208,15 +208,15 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyMsg) (*MainModel, tea.C
 			}
 		}
 		return m, nil
-	case tea.KeyPgUp:
+	case "pgup":
 		// Scroll conversation up by multiple lines
 		m.aiConversationViewport.ScrollUp(3)
 		return m, nil
-	case tea.KeyPgDown:
+	case "pgdown":
 		// Scroll conversation down by multiple lines
 		m.aiConversationViewport.ScrollDown(3)
 		return m, nil
-	case tea.KeyF2, tea.KeyF3, tea.KeyF4, tea.KeyF5:
+	case "f2", "f3", "f4", "f5":
 		// Don't handle function keys here - let them fall through to main handler
 		// by not returning anything in this case
 	default:

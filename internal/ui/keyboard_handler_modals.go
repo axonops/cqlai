@@ -1,11 +1,11 @@
 package ui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // handleAICQLModal handles keyboard input for the AI CQL execution modal
-func (m *MainModel) handleAICQLModal(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleAICQLModal(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	switch msg.String() {
 	case "left", "h":
 		m.aiCQLModal.PrevChoice()
@@ -59,16 +59,16 @@ func (m *MainModel) handleAICQLModal(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
 }
 
 // handleAISelectionModal handles keyboard input for the AI selection modal
-func (m *MainModel) handleAISelectionModal(msg tea.KeyMsg) (*MainModel, tea.Cmd) {
+func (m *MainModel) handleAISelectionModal(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	if m.aiSelectionModal.InputMode {
 		// In custom input mode
-		switch msg.Type {
-		case tea.KeyEscape:
+		switch msg.String() {
+		case "esc":
 			// Exit input mode
 			m.aiSelectionModal.InputMode = false
 			m.aiSelectionModal.CustomInput = ""
 			return m, nil
-		case tea.KeyEnter:
+		case "enter":
 			// Submit custom input
 			if m.aiSelectionModal.CustomInput != "" {
 				return m, func() tea.Msg {
@@ -80,15 +80,15 @@ func (m *MainModel) handleAISelectionModal(msg tea.KeyMsg) (*MainModel, tea.Cmd)
 				}
 			}
 			return m, nil
-		case tea.KeyBackspace:
+		case "backspace":
 			if len(m.aiSelectionModal.CustomInput) > 0 {
 				m.aiSelectionModal.CustomInput = m.aiSelectionModal.CustomInput[:len(m.aiSelectionModal.CustomInput)-1]
 			}
 			return m, nil
 		default:
 			// Add character to custom input
-			if msg.Type == tea.KeyRunes {
-				m.aiSelectionModal.CustomInput += string(msg.Runes)
+			if msg.Text != "" {
+				m.aiSelectionModal.CustomInput += string(msg.Text)
 			}
 			return m, nil
 		}

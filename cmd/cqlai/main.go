@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/batch"
 	"github.com/axonops/cqlai/internal/ui"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
@@ -348,15 +348,10 @@ func main() {
 // It exists so the alternate scroll mode set up in the model's Init has a defer
 // to undo it on the way out, whether that is a clean quit, an error or a panic.
 func runInteractive(m tea.Model) error {
-	// Alternate screen buffer (like less) hides the terminal scrollbar and gives
-	// a clean full-screen experience.
-	//
-	// Deliberately no WithMouseCellMotion: taking the mouse buttons would stop the
-	// terminal doing its own text selection and right-click paste. Init turns on
-	// alternate scroll mode instead, which gives us the wheel only.
-	p := tea.NewProgram(m,
-		tea.WithAltScreen(),
-	)
+	// v2 has no startup flags for terminal state: the alternate screen and the
+	// mouse mode are fields on the View returned each render. See MainModel.View,
+	// which asks for the alternate screen and leaves the mouse to the terminal.
+	p := tea.NewProgram(m)
 
 	// Give the wheel back to the terminal however we leave. Bubble Tea already
 	// restores the alternate screen and mouse state itself.
