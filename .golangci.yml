@@ -16,8 +16,6 @@ linters:
   disable:
     - errcheck
   exclusions:
-    paths:
-      - internal/parser/grammar
     rules:
       # Exclude test files from gosec linter
       - path: _test\.go
