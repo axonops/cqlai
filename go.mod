@@ -2,8 +2,6 @@ module github.com/axonops/cqlai
 
 go 1.26.6
 
-replace github.com/axonops/cqlai => ./
-
 require (
 	github.com/anthropics/anthropic-sdk-go v1.30.0
 	github.com/apache/arrow-go/v18 v18.7.0
