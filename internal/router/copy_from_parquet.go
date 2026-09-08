@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -152,9 +150,6 @@ func (h *MetaCommandHandler) processParquetFile(table string, columns []string, 
 		}
 	}
 
-	// Get schema for type information
-	_, parquetTypes := reader.GetSchema()
-
 	// Process data in batches
 	for opts.maxRows <= 0 || stats.processedRows < opts.maxRows {
 		batch, err := reader.ReadBatch(opts.batchSize)
@@ -175,7 +170,7 @@ func (h *MetaCommandHandler) processParquetFile(table string, columns []string, 
 
 			stats.processedRows++
 
-			if err := h.insertRow(table, columns, row, parquetTypes, opts, stats, columnTypes); err != nil {
+			if err := h.insertRow(table, columns, row, opts, stats, columnTypes); err != nil {
 				// Error already handled in insertRow
 				if opts.maxInsertErrors > 0 && stats.insertErrorCount >= opts.maxInsertErrors {
 					return fmt.Errorf("aborted after %d insert errors. Successfully imported %d rows",
@@ -211,20 +206,20 @@ func (h *MetaCommandHandler) skipRows(reader *parquet.ParquetReader, opts *copyO
 }
 
 // insertRow inserts a single row into Cassandra
-func (h *MetaCommandHandler) insertRow(table string, columns []string, row map[string]interface{}, parquetTypes []string, opts *copyOptions, stats *copyStats, columnTypes map[string]string) error {
+func (h *MetaCommandHandler) insertRow(table string, columns []string, row map[string]interface{}, opts *copyOptions, stats *copyStats, columnTypes map[string]string) error {
 	// Build values array for the INSERT
 	values := h.extractRowValues(columns, row)
 
-	// Format values for CQL
-	valueStrings := h.formatValuesForCQL(values, columns, parquetTypes, columnTypes)
-
-	// Build and execute the INSERT query
-	query := h.buildInsertQuery(table, columns, valueStrings)
+	// Bind the values rather than formatting them into the statement. Data in a
+	// Parquet file is not trusted input: pasted into CQL text it can alter the
+	// statement, and it round-trips badly for blobs, floats and timestamps.
+	query := buildInsertTemplate(table, columns)
+	bound := bindValuesForInsert(columns, values, columnTypes)
 
 	logger.DebugfToFile("CopyFromParquet", "INSERT query: %s", query)
 
 	// Execute the query
-	result := h.session.ExecuteCQLQuery(query)
+	result := h.session.ExecuteCQLQueryWithValues(query, bound...)
 
 	// Check for errors
 	if err, isError := result.(error); isError {
@@ -258,153 +253,10 @@ func (h *MetaCommandHandler) extractRowValues(columns []string, row map[string]i
 	return values
 }
 
-// formatValuesForCQL formats values for use in CQL INSERT statement
-func (h *MetaCommandHandler) formatValuesForCQL(values []interface{}, columns []string, parquetTypes []string, columnTypes map[string]string) []string {
-	valueStrings := make([]string, len(values))
-	for i, val := range values {
-		valueStrings[i] = h.formatValue(val, columns[i], getColumnType(i, parquetTypes), columnTypes)
-	}
-	return valueStrings
-}
-
-// getColumnType safely gets column type from parquetTypes array
-func getColumnType(index int, parquetTypes []string) string {
-	if index < len(parquetTypes) {
-		return parquetTypes[index]
-	}
-	return ""
-}
-
-// formatValue formats a single value for CQL based on its type
-func (h *MetaCommandHandler) formatValue(val interface{}, columnName string, parquetType string, columnTypes map[string]string) string {
-	if val == nil {
-		return "null"
-	}
-
-	switch v := val.(type) {
-	case string:
-		return h.formatStringValue(v, columnName, parquetType, columnTypes)
-	case time.Time:
-		return fmt.Sprintf("'%s'", v.Format(time.RFC3339Nano))
-	case bool:
-		return fmt.Sprintf("%t", v)
-	case []byte:
-		return fmt.Sprintf("0x%x", v)
-	case []interface{}:
-		return h.formatListValue(v, columnName, columnTypes)
-	case map[string]interface{}:
-		return h.formatUDTValue(v)
-	case map[interface{}]interface{}:
-		return h.formatMapValue(v)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
-
-// formatStringValue handles formatting of string values
-func (h *MetaCommandHandler) formatStringValue(value string, columnName string, parquetType string, columnTypes map[string]string) string {
-	trimmed := strings.TrimSpace(value)
-
-	// Check if this is a UUID
-	if h.isUUIDColumn(columnName, parquetType) && isUUIDFormat(trimmed) {
-		return trimmed // No quotes for UUIDs
-	}
-
-	// Check for collections and special formats
-	if formatted, isSpecial := h.formatSpecialStringValue(trimmed, columnName, columnTypes); isSpecial {
-		return formatted
-	}
-
-	// Regular string value
-	return fmt.Sprintf("'%s'", strings.ReplaceAll(trimmed, "'", "''"))
-}
-
-// isUUIDColumn checks if a column should be treated as UUID
-// Only matches columns where the parquet type or column name explicitly contains "uuid".
-// Avoids false positives for columns like "provider_id" or "valid" that might store
-// UUID-formatted strings in TEXT columns.
-func (h *MetaCommandHandler) isUUIDColumn(columnName string, parquetType string) bool {
-	lowerType := strings.ToLower(parquetType)
-	lowerCol := strings.ToLower(columnName)
-
-	return strings.Contains(lowerType, "uuid") ||
-		strings.Contains(lowerCol, "uuid")
-}
-
 // isUUIDFormat checks if a string is a valid UUID using the google/uuid library
 func isUUIDFormat(s string) bool {
 	_, err := uuid.Parse(s)
 	return err == nil
-}
-
-// formatSpecialStringValue handles special string formats (collections, UDTs, etc)
-func (h *MetaCommandHandler) formatSpecialStringValue(value string, columnName string, columnTypes map[string]string) (string, bool) {
-	switch {
-	case strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]"):
-		return h.formatListString(value, columnName, columnTypes), true
-	case strings.HasPrefix(value, "map[") && strings.HasSuffix(value, "]"):
-		return h.formatMapString(value), true
-	case strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") &&
-		strings.Contains(value, ":") && strings.Contains(value, "\""):
-		return h.formatJSONUDTString(value), true
-	default:
-		return "", false
-	}
-}
-
-// formatListString formats a list/set string value
-func (h *MetaCommandHandler) formatListString(value string, columnName string, columnTypes map[string]string) string {
-	inner := strings.Trim(value, "[]")
-	if inner == "" {
-		return h.getEmptyCollectionSyntax(columnName, columnTypes)
-	}
-
-	parts := strings.Fields(inner)
-	quotedParts := make([]string, len(parts))
-	for i, part := range parts {
-		quotedParts[i] = h.quoteValueIfNeeded(part)
-	}
-
-	if h.isSetColumn(columnName, columnTypes) {
-		return "{" + strings.Join(quotedParts, ", ") + "}"
-	}
-	return "[" + strings.Join(quotedParts, ", ") + "]"
-}
-
-// formatMapString formats a map string value
-func (h *MetaCommandHandler) formatMapString(value string) string {
-	inner := strings.TrimPrefix(value, "map[")
-	inner = strings.TrimSuffix(inner, "]")
-
-	if inner == "" {
-		return "{}"
-	}
-
-	pairs := strings.Fields(inner)
-	mapPairs := make([]string, 0, len(pairs))
-
-	for _, pair := range pairs {
-		kv := strings.SplitN(pair, ":", 2)
-		if len(kv) == 2 {
-			key := fmt.Sprintf("'%s'", strings.ReplaceAll(kv[0], "'", "''"))
-			val := h.quoteValueIfNeeded(kv[1])
-			mapPairs = append(mapPairs, fmt.Sprintf("%s: %s", key, val))
-		}
-	}
-
-	return "{" + strings.Join(mapPairs, ", ") + "}"
-}
-
-// formatJSONUDTString formats a JSON-like UDT string
-func (h *MetaCommandHandler) formatJSONUDTString(value string) string {
-	// Remove quotes from all field names using regex (generic approach)
-	// Matches patterns like: "field_name": and replaces with: field_name:
-	re := regexp.MustCompile(`"([a-zA-Z_][a-zA-Z0-9_]*)" *:`)
-	udtValue := re.ReplaceAllString(value, "$1:")
-
-	// Replace remaining double quotes with single quotes for string values
-	udtValue = strings.ReplaceAll(udtValue, "\"", "'")
-	return udtValue
 }
 
 // formatListValue formats a list/array value
@@ -437,79 +289,6 @@ func (h *MetaCommandHandler) formatListItem(item interface{}) string {
 	}
 }
 
-// formatUDTValue formats a UDT (User-Defined Type) value
-func (h *MetaCommandHandler) formatUDTValue(v map[string]interface{}) string {
-	if len(v) == 0 {
-		return "{}"
-	}
-
-	udtPairs := make([]string, 0, len(v))
-	for fieldName, fieldValue := range v {
-		formattedValue := h.formatUDTField(fieldValue)
-		udtPairs = append(udtPairs, fmt.Sprintf("%s: %s", fieldName, formattedValue))
-	}
-
-	return "{" + strings.Join(udtPairs, ", ") + "}"
-}
-
-// formatUDTField formats a single field in a UDT
-func (h *MetaCommandHandler) formatUDTField(fieldValue interface{}) string {
-	if fieldValue == nil {
-		return "null"
-	}
-
-	switch fv := fieldValue.(type) {
-	case string:
-		return fmt.Sprintf("'%s'", strings.ReplaceAll(fv, "'", "''"))
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%v", fv)
-	case float32, float64:
-		return fmt.Sprintf("%v", fv)
-	case bool:
-		return fmt.Sprintf("%t", fv)
-	default:
-		return fmt.Sprintf("'%v'", fv)
-	}
-}
-
-// formatMapValue formats a map value
-func (h *MetaCommandHandler) formatMapValue(v map[interface{}]interface{}) string {
-	if len(v) == 0 {
-		return "{}"
-	}
-
-	mapPairs := make([]string, 0, len(v))
-	for key, val := range v {
-		quotedKey := h.formatMapKey(key)
-		quotedVal := h.formatMapValue2(val)
-		mapPairs = append(mapPairs, fmt.Sprintf("%s: %s", quotedKey, quotedVal))
-	}
-
-	return "{" + strings.Join(mapPairs, ", ") + "}"
-}
-
-// formatMapKey formats a map key
-func (h *MetaCommandHandler) formatMapKey(key interface{}) string {
-	switch k := key.(type) {
-	case string:
-		return fmt.Sprintf("'%s'", strings.ReplaceAll(k, "'", "''"))
-	default:
-		return fmt.Sprintf("'%v'", k)
-	}
-}
-
-// formatMapValue2 formats a map value (named to avoid conflict with main function)
-func (h *MetaCommandHandler) formatMapValue2(val interface{}) string {
-	switch vt := val.(type) {
-	case string:
-		return fmt.Sprintf("'%s'", strings.ReplaceAll(vt, "'", "''"))
-	case int, int32, int64, float32, float64:
-		return fmt.Sprintf("%v", vt)
-	default:
-		return fmt.Sprintf("'%v'", vt)
-	}
-}
-
 // Helper functions
 
 // isSetColumn determines if a column is a CQL set type by looking up the
@@ -533,36 +312,6 @@ func (h *MetaCommandHandler) getEmptyCollectionSyntax(columnName string, columnT
 		return "{}"
 	}
 	return "[]"
-}
-
-// quoteValueIfNeeded quotes a value if it's not a number
-func (h *MetaCommandHandler) quoteValueIfNeeded(value string) string {
-	// Check if it's a number
-	if _, err := strconv.Atoi(value); err == nil {
-		return value
-	}
-	if _, err := strconv.ParseFloat(value, 64); err == nil {
-		return value
-	}
-	return fmt.Sprintf("'%s'", strings.ReplaceAll(value, "'", "''"))
-}
-
-// buildInsertQuery builds the INSERT query
-func (h *MetaCommandHandler) buildInsertQuery(table string, columns []string, valueStrings []string) string {
-	fullyQualifiedTable := h.getFullyQualifiedTableName(table)
-	columnList := strings.Join(columns, ", ")
-	valueList := strings.Join(valueStrings, ", ")
-
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		fullyQualifiedTable, columnList, valueList)
-}
-
-// getFullyQualifiedTableName returns the fully qualified table name
-func (h *MetaCommandHandler) getFullyQualifiedTableName(table string) string {
-	if h.session.Keyspace() != "" && !strings.Contains(table, ".") {
-		return fmt.Sprintf("%s.%s", h.session.Keyspace(), table)
-	}
-	return table
 }
 
 // formatCopyResult formats the final result message
