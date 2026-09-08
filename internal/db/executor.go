@@ -534,32 +534,16 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 			// Create a slice to scan into - use RawBytes for UDT columns
 			scanDest := make([]interface{}, len(filteredColumns))
 			for i, col := range filteredColumns {
-				// Handle nil TypeInfo (can happen with virtual tables)
-				if col.TypeInfo == nil {
-					scanDest[i] = new(interface{})
-					continue
-				}
-
-				// Use defer/recover to catch any panic from Type() call
-				// TypeInfo might be non-nil but internally invalid
-				func(idx int) {
+				// TypeInfo can be non-nil but internally invalid on virtual
+				// tables, where Type() panics; fall back to a plain destination.
+				func(idx int, info gocql.TypeInfo) {
 					defer func() {
 						if r := recover(); r != nil {
-							// TypeInfo is invalid, treat as regular column
 							scanDest[idx] = new(interface{})
 						}
 					}()
-
-					switch col.TypeInfo.Type() {
-					case gocql.TypeUDT:
-						// Use map[string]interface{} for UDT columns
-						// Note: gocql doesn't populate UDTs properly when scanning into interface{}
-						// but it does work when scanning into *map[string]interface{}
-						scanDest[idx] = new(map[string]interface{})
-					default:
-						scanDest[idx] = new(interface{})
-					}
-				}(i)
+					scanDest[idx] = NewScanDest(info)
+				}(i, col.TypeInfo)
 			}
 
 			// Scan the row
@@ -574,24 +558,8 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 			row := make([]string, len(filteredColumns))
 
 			for i, col := range filteredColumns {
-				// Extract value based on type
-				var val interface{}
-				switch {
-				case col.TypeInfo == nil:
-					// Handle nil TypeInfo (virtual tables)
-					val = *(scanDest[i].(*interface{}))
-				case col.TypeInfo.Type() == gocql.TypeUDT:
-					// For UDT columns, we used *map[string]interface{}
-					udtMap := scanDest[i].(*map[string]interface{})
-					if udtMap != nil && *udtMap != nil {
-						val = *udtMap
-					} else {
-						val = nil
-					}
-				default:
-					// Regular column - dereference the pointer
-					val = *(scanDest[i].(*interface{}))
-				}
+				// nil here is a real NULL, not a zero value standing in for one.
+				val := ScanValue(scanDest[i])
 
 				if val == nil {
 					rawRow[cleanHeaders[i]] = nil

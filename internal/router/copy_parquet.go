@@ -5,22 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/apache/cassandra-gocql-driver/v2"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
 )
-
-// isNullValue checks if a value from gocql scanning represents a NULL value.
-// LIMITATION: When scanning into interface{}, gocql doesn't preserve NULL information.
-// It returns zero values (empty string, 0, empty slice, etc.) for NULL columns.
-// There's no way to distinguish between a NULL and an actual zero value when using interface{}.
-// This would require scanning into typed pointers instead of interface{}.
-func isNullValue(val interface{}) bool {
-	// Only return true for actual nil values
-	// We cannot reliably detect other NULL values when scanning into interface{}
-	return val == nil
-}
 
 // executeCopyToParquet executes COPY TO operation for Parquet format
 func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string, filename string, options map[string]string) interface{} {
@@ -146,14 +135,11 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 		columns := v.Iterator.Columns()
 		scanDest := make([]interface{}, len(cleanHeaders))
 		for i := range scanDest {
-			// Check if this column is a UDT
-			if i < len(columns) && columns[i].TypeInfo != nil &&
-				columns[i].TypeInfo.Type() == gocql.TypeUDT {
-				// Use map[string]interface{} for UDT columns to get populated data
-				scanDest[i] = new(map[string]interface{})
-			} else {
-				scanDest[i] = new(interface{})
+			var info gocql.TypeInfo
+			if i < len(columns) {
+				info = columns[i].TypeInfo
 			}
+			scanDest[i] = db.NewScanDest(info)
 		}
 
 		for v.Iterator.Scan(scanDest...) {
@@ -162,30 +148,8 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 			cleanedRow := make(map[string]interface{})
 			for i := range cleanHeaders {
 				if i < len(scanDest) {
-					var val interface{}
-
-					// Extract value based on how it was scanned
-					if i < len(columns) && columns[i].TypeInfo != nil &&
-						columns[i].TypeInfo.Type() == gocql.TypeUDT {
-						// For UDT columns, we scanned into *map[string]interface{}
-						udtMap := scanDest[i].(*map[string]interface{})
-						if udtMap != nil && *udtMap != nil {
-							val = *udtMap
-						} else {
-							val = nil
-						}
-					} else {
-						// Regular column
-						val = *(scanDest[i].(*interface{}))
-					}
-
-					// Check if the value is a "zero" value that should be NULL
-					// gocql returns typed zero values for NULL columns
-					if isNullValue(val) {
-						cleanedRow[cleanHeaders[i]] = nil
-					} else {
-						cleanedRow[cleanHeaders[i]] = val
-					}
+					// nil here is a real NULL, not a zero value standing in for one.
+					cleanedRow[cleanHeaders[i]] = db.ScanValue(scanDest[i])
 				}
 			}
 

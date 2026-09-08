@@ -7,7 +7,7 @@ replace github.com/axonops/cqlai => ./
 require (
 	github.com/anthropics/anthropic-sdk-go v1.30.0
 	github.com/apache/arrow-go/v18 v18.7.0
-	github.com/apache/cassandra-gocql-driver/v2 v2.1.0
+	github.com/apache/cassandra-gocql-driver/v2 v2.1.2
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
