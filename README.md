@@ -312,13 +312,18 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Ctrl+Y` | Paste previously cut text | Same |
 
 #### View Switching
-| Shortcut | Action |
-|----------|--------|
-| `F2` | Switch to query/history view |
-| `F3` | Switch to table view |
-| `F4` | Switch to trace view (when tracing enabled) |
-| `F5` | Switch to AI conversation view |
-| `F6` | Toggle column data types in table headers |
+
+The four views are shown as tabs along the top, so you can see which one you are
+in and what the others are. Click a tab, or use the key on it. A view with
+nothing to show yet is dimmed.
+
+| Shortcut | Tab | Shows |
+|----------|-----|-------|
+| `F2` | Console | The running transcript of commands and messages |
+| `F3` | Results | The last query's output, in whatever `OUTPUT` format is set |
+| `F4` | Trace | Query trace, when tracing is enabled |
+| `F5` | AI | The AI conversation |
+| `F6` | | Toggle column data types in table headers |
 
 #### Scrolling & Table Navigation
 | Shortcut | Action | macOS Alternative |
@@ -345,9 +350,17 @@ Press `Esc` to toggle navigation mode when viewing tables or traces.
 
 #### Mouse Support
 
-cqlai leaves the mouse buttons to your terminal, so selecting text, right-click
-paste and middle-click paste all behave exactly as they do in any other program.
-No modifier key needed.
+By default cqlai asks the terminal for mouse events, so you can click the mode
+tabs at the top. The cost is that the terminal no longer handles the buttons
+itself: **selecting text needs Shift held down, and right-click paste does not
+work**.
+
+`MOUSE OFF` hands the buttons back, so selection and paste behave as they do in
+any other program, at the cost of the tabs no longer being clickable. `MOUSE ON`
+turns clicking back on, and `MOUSE` on its own says which is active. The status
+bar shows `[MOUSE]` or `[MOUSE OFF]`.
+
+The F-keys switch mode either way, so nothing forces you into mouse mode.
 
 It gets the scroll wheel through alternate scroll mode, where the terminal turns
 wheel spins into `↑`/`↓` key presses. That means the wheel scrolls whatever `↑`
@@ -357,8 +370,10 @@ conversation in the AI view.
 | Action | Function |
 |--------|----------|
 | Mouse Wheel | Scroll vertically with automatic data loading |
-| Click+Drag | Select text (your terminal's own selection) |
-| Right Click | Paste (if your terminal binds it that way) |
+| Click a tab | Switch mode, with `MOUSE` on (the default) |
+| Shift+Click+Drag | Select text, with `MOUSE` on |
+| Click+Drag | Select text with no modifier, after `MOUSE OFF` |
+| Right Click | Paste, after `MOUSE OFF` |
 | Middle Click | Paste from selection buffer (Linux/Unix) |
 
 Scroll wide tables sideways with `Alt+←`/`Alt+→`, or `<` and `>` in navigation

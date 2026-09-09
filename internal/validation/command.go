@@ -31,7 +31,7 @@ func ValidateCommandSyntax(command string) error {
 		"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT",
 		"PAGING", "AUTOFETCH", "TRACING", "SOURCE",
 		"COPY", "SHOW", "EXPAND", "CAPTURE",
-		"HELP", "SAVE",
+		"HELP", "SAVE", "MOUSE",
 	}
 
 	// Check if command starts with any valid keyword

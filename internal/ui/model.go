@@ -114,6 +114,7 @@ type MainModel struct {
 	hasTable                 bool              // Whether we're currently displaying a table
 	cachedTableLines         []string          // Cache rendered table lines for fast scrolling
 	navigationMode           bool              // Toggle between navigation keys and input mode
+	mouseEnabled             bool              // Whether to ask the terminal for mouse reporting
 	viewMode                 string            // "history", "table", "trace", or "ai_info"
 	showDataTypes            bool              // Whether to show column data types in table headers
 	columnTypes              []string          // Store column data types
@@ -415,29 +416,33 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	statusBar.Consistency = dbSession.Consistency()
 
 	return &MainModel{
-		topBar:                    NewTopBarModel(),
-		statusBar:                 statusBar,
-		input:                     ti,
-		session:                   dbSession,
-		sessionManager:            sessionMgr,
-		config:                    cfg,
-		aiConfig:                  cfg.AI,
-		styles:                    styles,
-		commandHistory:            commandHistory,
-		historyIndex:              -1,
-		fullHistoryContent:        "", // Will be initialized with welcome message in Init()
-		completionEngine:          completionEngine,
-		completions:               []string{},
-		completionIndex:           -1,
-		showCompletions:           false,
-		completionScrollOffset:    0,
-		horizontalOffset:          0,
-		lastTableData:             nil,
-		tableWidth:                0,
-		tableHeaders:              nil,
-		columnWidths:              nil,
-		hasTable:                  false,
-		viewMode:                  "history",
+		topBar:                 NewTopBarModel(),
+		statusBar:              statusBar,
+		input:                  ti,
+		session:                dbSession,
+		sessionManager:         sessionMgr,
+		config:                 cfg,
+		aiConfig:               cfg.AI,
+		styles:                 styles,
+		commandHistory:         commandHistory,
+		historyIndex:           -1,
+		fullHistoryContent:     "", // Will be initialized with welcome message in Init()
+		completionEngine:       completionEngine,
+		completions:            []string{},
+		completionIndex:        -1,
+		showCompletions:        false,
+		completionScrollOffset: 0,
+		horizontalOffset:       0,
+		lastTableData:          nil,
+		tableWidth:             0,
+		tableHeaders:           nil,
+		columnWidths:           nil,
+		hasTable:               false,
+		viewMode:               "history",
+		// On by default so the mode tabs are clickable without anyone having to
+		// find a setting first. The cost is that selecting text needs Shift and
+		// right-click paste stops working, which MOUSE OFF gives back.
+		mouseEnabled:              true,
 		hasTrace:                  false,
 		traceData:                 nil,
 		traceHeaders:              nil,
@@ -470,8 +475,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
 
-		headerHeight := 1 // top bar
-		footerHeight := 1 // status bar
+		headerHeight := 1 // mode tabs
+		footerHeight := 2 // query info, then the connection bar
 		inputHeight := 1  // text input
 		// Guard against a terminal that reports no size, or one too small to
 		// hold the chrome: v2's components size buffers from these and panic on
