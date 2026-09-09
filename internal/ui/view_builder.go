@@ -40,6 +40,16 @@ func (m *MainModel) newView(content string) tea.View {
 	return v
 }
 
+// aiKeyHint is the "F5: AI" part of the key hints, or nothing when there is no
+// provider configured. Advertising a key that then tells you it cannot do
+// anything is the same defect as showing the tab.
+func aiKeyHint(m *MainModel) string {
+	if !m.aiAvailable() {
+		return ""
+	}
+	return " | F5: AI"
+}
+
 // View renders the main model.
 func (m *MainModel) View() tea.View {
 	if !m.ready {
@@ -108,21 +118,23 @@ func (m *MainModel) View() tea.View {
 	case "trace":
 		modeIndicator := m.styles.AccentText.Render("[TRACE VIEW]")
 		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI]")
+		scrollInfo += " " + m.styles.MutedText.Render("[F2: History"+aiKeyHint(m)+"]")
 		if m.hasTable {
 			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
 		}
 	case "table":
 		modeIndicator := m.styles.AccentText.Render("[TABLE VIEW]")
 		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F2: History | F5: AI | F6: Toggle Types]")
+		scrollInfo += " " + m.styles.MutedText.Render("[F2: History"+aiKeyHint(m)+" | F6: Toggle Types]")
 		if m.hasTrace {
 			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
 		}
 	default: // history view
 		modeIndicator := m.styles.MutedText.Render("[CQL VIEW]")
 		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F5: AI]")
+		if hint := aiKeyHint(m); hint != "" {
+			scrollInfo += " " + m.styles.MutedText.Render("["+strings.TrimPrefix(hint, " | ")+"]")
+		}
 		if m.hasTable {
 			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
 		}
@@ -469,8 +481,10 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.MutedText.Render("  • F4 - Switch to trace view"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to AI assistant mode"))
-	welcome.WriteString("\n")
+	if m.aiAvailable() {
+		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to AI assistant mode"))
+		welcome.WriteString("\n")
+	}
 	welcome.WriteString(m.styles.MutedText.Render("  • F6 - Toggle column data types (in table view)"))
 	welcome.WriteString("\n\n")
 
