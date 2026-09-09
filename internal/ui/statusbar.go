@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"charm.land/lipgloss/v2"
 )
 
@@ -19,6 +21,7 @@ type StatusBarModel struct {
 	Keyspace     string
 	Version      string
 	OutputFormat string
+	Capturing    bool
 }
 
 // NewStatusBarModel creates a new StatusBarModel.
@@ -88,12 +91,19 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 		return hostStyle
 	}
 
+	segs := placeSegments(m.segments(), width)
+
 	statusText := ""
-	for i, seg := range m.segments() {
-		if i > 0 {
+	col := statusBarPadding
+	for i, seg := range segs {
+		switch {
+		case seg.right:
+			statusText += strings.Repeat(" ", max(seg.start-col, 0))
+		case i > 0:
 			statusText += separatorStyle.Render(statusSeparator)
 		}
 		statusText += labelStyle.Render(seg.label) + styleFor(seg).Render(seg.value)
+		col = seg.end
 	}
 
 	// Apply style to the entire bar without forced background

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/router"
 )
 
 // SimpleCompletionEngine provides completions without using ANTLR
@@ -73,6 +74,8 @@ func (sce *SimpleCompletionEngine) GetTokenCompletions(input string) []string {
 		return sce.getListCompletions(words, endsWithSpace)
 	case "SHOW":
 		return sce.getShowCompletions(words, endsWithSpace)
+	case "CAPTURE":
+		return sce.getCaptureCompletions(words, endsWithSpace)
 	case "CONSISTENCY":
 		return sce.getConsistencyCompletions(words, endsWithSpace)
 	case "OUTPUT":
@@ -626,6 +629,127 @@ func (sce *SimpleCompletionEngine) getTopLevelKeywords() []string {
 		"QUIT", "REVOKE", "SELECT", "SHOW", "SOURCE", "TRACING", "TRUNCATE",
 		"UPDATE", "USE",
 	}
+}
+
+// getCaptureCompletions walks the whole CAPTURE grammar:
+//
+//	CAPTURE [JSON|CSV|PARQUET] 'filename' [WITH option=value AND ...]
+//	CAPTURE OFF
+//
+// The filename itself is completed against the filesystem rather than from a
+// list, which the prompt handles; everything else is here.
+func (sce *SimpleCompletionEngine) getCaptureCompletions(words []string, endsWithSpace bool) []string {
+	// CAPTURE <format|OFF>
+	if len(words) == 1 {
+		if endsWithSpace {
+			return sce.getCaptureFormats()
+		}
+		return nil
+	}
+	if len(words) == 2 && !endsWithSpace {
+		return matching(sce.getCaptureFormats(), words[1])
+	}
+	if strings.EqualFold(words[1], "OFF") {
+		return nil // nothing follows OFF
+	}
+
+	// WITH option=value AND ...
+	with := -1
+	for i, word := range words {
+		if strings.EqualFold(word, "WITH") {
+			with = i
+			break
+		}
+	}
+
+	last := words[len(words)-1]
+
+	if with < 0 {
+		// The filename. Once it is closed, WITH is what can follow.
+		if endsWithSpace && isQuoted(last) {
+			return []string{"WITH"}
+		}
+		return nil
+	}
+
+	switch {
+	case endsWithSpace && (strings.EqualFold(last, "WITH") || strings.EqualFold(last, "AND")):
+		return router.CaptureOptions()
+
+	case strings.HasSuffix(last, "="):
+		return sce.captureOptionValues(strings.TrimSuffix(last, "="))
+
+	case strings.Contains(last, "="):
+		name, value, _ := strings.Cut(last, "=")
+		if endsWithSpace || isCompleteValue(value) {
+			return []string{"AND"}
+		}
+		return matching(sce.captureOptionValues(name), value)
+
+	case !endsWithSpace:
+		return matching(router.CaptureOptions(), last)
+	}
+	return router.CaptureOptions()
+}
+
+// captureOptionValues are the values an option takes, where they are known.
+// PARTITION takes column names and MAX_FILE_SIZE a number, so neither has a
+// list to offer.
+func (sce *SimpleCompletionEngine) captureOptionValues(option string) []string {
+	if strings.EqualFold(option, "COMPRESSION") {
+		return ParquetCompressionTypes
+	}
+	return nil
+}
+
+// getCaptureFormats are the words CAPTURE takes after itself, from the command
+// that parses them, plus OFF which stops it.
+func (sce *SimpleCompletionEngine) getCaptureFormats() []string {
+	return append(router.CaptureFormats(), "OFF")
+}
+
+// matching keeps the candidates that start with what has been typed, leaving
+// out the one that is already complete.
+func matching(candidates []string, typed string) []string {
+	kept := []string{}
+	for _, candidate := range candidates {
+		if strings.HasPrefix(strings.ToLower(candidate), strings.ToLower(typed)) &&
+			!strings.EqualFold(candidate, typed) {
+			kept = append(kept, candidate)
+		}
+	}
+	return kept
+}
+
+// isQuoted reports whether a word is a finished quoted string.
+func isQuoted(word string) bool {
+	for _, q := range []string{"'", `"`} {
+		if len(word) > 1 && strings.HasPrefix(word, q) && strings.HasSuffix(word, q) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCompleteValue reports whether an option has been given a value, so what
+// follows is AND rather than more of the value.
+func isCompleteValue(value string) bool {
+	switch {
+	case value == "":
+		return false
+	case isQuoted(value):
+		return true
+	case strings.EqualFold(value, "TRUE"), strings.EqualFold(value, "FALSE"):
+		return true
+	}
+
+	// A number, which is what MAX_FILE_SIZE takes.
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // getConsistencyLevels returns valid consistency levels

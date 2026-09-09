@@ -9,6 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// statusTestWidth is the terminal width the status line tests render at. It has
+// to be wide enough for the right-anchored fields to fit.
+const statusTestWidth = 140
+
+// placedStatus is the status line's segments with their columns worked out,
+// which is what both rendering and hit testing use.
+func placedStatus(m StatusBarModel) []statusSegment {
+	return placeSegments(m.segments(), statusTestWidth)
+}
+
 func testStatusBar() StatusBarModel {
 	return StatusBarModel{
 		Username:    "cassandra",
@@ -31,7 +41,7 @@ func TestSegmentsMatchTheRenderedLine(t *testing.T) {
 
 	rendered := []rune(stripAnsiForTest(m.View(140, DefaultStyles(), "history")))
 
-	for _, seg := range m.segments() {
+	for _, seg := range placedStatus(m) {
 		require.LessOrEqual(t, seg.end, len(rendered),
 			"segment %q runs past the end of the line", seg.label)
 
@@ -46,12 +56,12 @@ func TestSegmentsMatchTheRenderedLine(t *testing.T) {
 func TestSettingAtResolvesClicks(t *testing.T) {
 	m := testStatusBar()
 
-	for _, seg := range m.segments() {
+	for _, seg := range placedStatus(m) {
 		if !seg.clickable() {
 			continue
 		}
 		for _, col := range []int{seg.start, (seg.start + seg.end) / 2, seg.end - 1} {
-			setting, at, ok := m.settingAt(col)
+			setting, at, ok := m.settingAt(statusTestWidth, col)
 			assert.True(t, ok, "column %d is inside %q and should be clickable", col, seg.setting)
 			assert.Equal(t, seg.setting, setting)
 			assert.Equal(t, seg.start, at, "the chooser anchors to the start of the field")
@@ -65,11 +75,11 @@ func TestSettingAtResolvesClicks(t *testing.T) {
 func TestConnectionFactsAreNotClickable(t *testing.T) {
 	m := testStatusBar()
 
-	for _, seg := range m.segments() {
+	for _, seg := range placedStatus(m) {
 		if seg.clickable() {
 			continue
 		}
-		_, _, ok := m.settingAt((seg.start + seg.end) / 2)
+		_, _, ok := m.settingAt(statusTestWidth, (seg.start+seg.end)/2)
 		assert.False(t, ok, "%q is a fact, not a setting", seg.label)
 	}
 }
@@ -77,16 +87,16 @@ func TestConnectionFactsAreNotClickable(t *testing.T) {
 func TestSettingAtOutsideAnyField(t *testing.T) {
 	m := testStatusBar()
 
-	_, _, ok := m.settingAt(0) // the padding column
+	_, _, ok := m.settingAt(statusTestWidth, 0) // the padding column
 	assert.False(t, ok)
 
-	_, _, ok = m.settingAt(10000) // past the end
+	_, _, ok = m.settingAt(statusTestWidth, 10000) // past the end
 	assert.False(t, ok)
 }
 
 // TestSegmentsDoNotOverlap: overlapping ranges would make a click ambiguous.
 func TestSegmentsDoNotOverlap(t *testing.T) {
-	segs := testStatusBar().segments()
+	segs := placedStatus(testStatusBar())
 	require.NotEmpty(t, segs)
 
 	for i := 1; i < len(segs); i++ {
@@ -145,7 +155,7 @@ func TestOutputFormatIsOnTheLineAndClickable(t *testing.T) {
 
 	var seg statusSegment
 	var found bool
-	for _, s := range m.segments() {
+	for _, s := range placedStatus(m) {
 		if s.setting == settingOutput {
 			seg, found = s, true
 		}
@@ -153,7 +163,7 @@ func TestOutputFormatIsOnTheLineAndClickable(t *testing.T) {
 	require.True(t, found, "there is no Output field on the status line")
 	assert.Equal(t, "ASCII", seg.value)
 
-	setting, _, ok := m.settingAt((seg.start + seg.end) / 2)
+	setting, _, ok := m.settingAt(statusTestWidth, (seg.start+seg.end)/2)
 	require.True(t, ok)
 	assert.Equal(t, settingOutput, setting)
 }
@@ -161,7 +171,7 @@ func TestOutputFormatIsOnTheLineAndClickable(t *testing.T) {
 // TestOutputSitsAfterConsistency, where it was asked for.
 func TestOutputSitsAfterConsistency(t *testing.T) {
 	order := []string{}
-	for _, s := range testStatusBar().segments() {
+	for _, s := range placedStatus(testStatusBar()) {
 		order = append(order, s.setting)
 	}
 

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/config"
+	"github.com/axonops/cqlai/internal/router"
 )
 
 // newView wraps rendered content in the terminal state cqlai wants.
@@ -99,6 +100,10 @@ func (m *MainModel) View() tea.View {
 		} else {
 			m.statusBar.OutputFormat = "TABLE"
 		}
+	}
+
+	if handler := router.GetMetaHandler(); handler != nil {
+		m.statusBar.Capturing = handler.IsCapturing()
 	}
 
 	// Get the active viewport for scroll info
@@ -393,6 +398,9 @@ func (m *MainModel) View() tea.View {
 	// Apply all layers to the final view
 	// The settings chooser sits above everything: it is the thing just clicked.
 	if layer, ok := m.viewSettingChooser(screenWidth, screenHeight); ok {
+		layerManager.AddLayer(layer)
+	}
+	if layer, ok := m.viewCapturePanel(screenWidth, screenHeight); ok {
 		layerManager.AddLayer(layer)
 	}
 

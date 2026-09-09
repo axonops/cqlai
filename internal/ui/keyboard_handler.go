@@ -43,6 +43,12 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		}
 	}
 
+	// The capture window takes keys while it is open: it was opened by a click
+	// a moment ago and it has a text field in it.
+	if m.capture.active {
+		return m.handleCaptureKey(msg)
+	}
+
 	// The settings chooser takes keys while it is open: it was opened by a
 	// click a moment ago, so it is what the next keypress is aimed at.
 	if m.chooser.active {

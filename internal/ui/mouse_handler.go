@@ -38,6 +38,17 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		return m.endSelection()
 
 	case tea.MouseWheelMsg:
+		// The candidate list has the wheel while it is showing.
+		if m.capture.active && len(m.capture.matches) > 0 {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.showMatch(m.capture.match - wheelLines)
+			case tea.MouseWheelDown:
+				m.showMatch(m.capture.match + wheelLines)
+			}
+			return m, nil
+		}
+
 		// The help window is over everything, so it has the wheel first.
 		if m.help.active {
 			switch mouse.Button {
@@ -94,6 +105,32 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		}
 		m.help = helpWindow{}
 		return m, nil
+	}
+
+	// A press inside the capture window picks a format; anywhere else closes
+	// it, rather than acting on something underneath it.
+	if m.capture.active {
+		if i, hit := m.formatAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			m.capture.format = i
+			return m.chooseCaptureFormat()
+		}
+		if i, hit := m.matchAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			m.capture.match = i
+			return m.useMatch()
+		}
+		if m.inCapturePanel(m.windowWidth, m.windowHeight, mouse.X, mouse.Y) {
+			// The path step: a press in the box is aimed at the text field, so
+			// leave what has been typed alone.
+			return m, nil
+		}
+
+		m.closeCapturePanel()
+		// Clicking Capture again should not reopen it in the same press.
+		if mouse.Y == m.windowHeight-1 {
+			if setting, _, ok := m.statusBar.settingAt(m.windowWidth, mouse.X); ok && setting == settingCapture {
+				return m, nil
+			}
+		}
 	}
 
 	// A press inside the open list picks that value.
@@ -369,7 +406,7 @@ func (m *MainModel) clickStatusSetting(col int) (*MainModel, tea.Cmd) {
 	wasOpen, openSetting := m.chooser.active, m.chooser.setting
 	m.closeSettingChooser()
 
-	setting, anchorX, ok := m.statusBar.settingAt(col)
+	setting, anchorX, ok := m.statusBar.settingAt(m.windowWidth, col)
 	if !ok {
 		return m, nil
 	}
@@ -387,6 +424,12 @@ func (m *MainModel) clickStatusSetting(col int) (*MainModel, tea.Cmd) {
 	if setting == settingConnection {
 		m.openConnectionPanel(anchorX)
 		return m, nil
+	}
+
+	// Capture is not one either: it takes a format and then a path, which is a
+	// step more than a list of values can do.
+	if setting == settingCapture {
+		return m.openCapturePanel(anchorX)
 	}
 
 	current := m.currentSettingValue(setting)
