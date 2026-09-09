@@ -114,7 +114,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - A multi-layer, full-screen terminal application with alternate screen buffer (preserves terminal history).
     - Virtualized, scrollable table for results with automatic data loading, preventing memory overload from large queries.
     - Advanced navigation modes with vim-style keyboard shortcuts.
-    - Full mouse support including wheel scrolling and text selection.
+    - Full mouse support: clickable tabs and settings, click-and-drag text selection with no modifier key, and wheel scrolling.
     - Sticky footer/status bar showing connection details, query latency, and session status (consistency, tracing).
     - Modal overlays for history, help, and command completion.
 - **Apache Parquet Support:**
@@ -350,31 +350,49 @@ Press `Esc` to toggle navigation mode when viewing tables or traces.
 
 #### Mouse Support
 
-By default cqlai asks the terminal for mouse events, so you can click the mode
-tabs at the top. The cost is that the terminal no longer handles the buttons
-itself: **selecting text needs Shift held down, and right-click paste does not
-work**.
+The mouse is on by default. Click the mode tabs at the top, click `KS`, `CL`,
+`Pg`, `Trace` or `Fetch` on the bottom line to change them, and click and drag
+anywhere in the output to select text. No modifier key for any of it.
 
-`MOUSE OFF` hands the buttons back, so selection and paste behave as they do in
-any other program, at the cost of the tabs no longer being clickable. `MOUSE ON`
-turns clicking back on, and `MOUSE` on its own says which is active. The status
-bar shows `[MOUSE]` or `[MOUSE OFF]`.
+Releasing a drag copies the selection to your system clipboard. Double-click
+selects a word, triple-click selects a line, and dragging past the top or bottom
+edge scrolls, so a selection can run further than one screen. `Esc`, or a click
+somewhere else, clears it.
 
-The F-keys switch mode either way, so nothing forces you into mouse mode.
+The copy goes out as OSC 52, the escape sequence a terminal program uses to
+write the clipboard. That works through `ssh` and through `tmux`, where shelling
+out to `xclip` or `pbcopy` would put the text on the wrong machine.
 
-It gets the scroll wheel through alternate scroll mode, where the terminal turns
-wheel spins into `↑`/`↓` key presses. That means the wheel scrolls whatever `↑`
-and `↓` scroll: results in the table view, the trace in the trace view, and the
-conversation in the AI view.
+**There is no right-click paste.** Reading the clipboard needs OSC 52 *read*,
+which iTerm2, kitty, foot and WezTerm all refuse by default, for good reason -
+any program on the far end of an ssh session could otherwise help itself to
+whatever you last copied. Whatever your terminal binds paste to, usually
+`Shift`+right-click or `Ctrl+Shift+V`, still works.
+
+`MOUSE OFF` hands the mouse back to the terminal, so its own selection, its
+right-click paste and its middle-click paste behave as they do in any other
+program - at the cost of the tabs and the settings no longer being clickable.
+`MOUSE ON` takes it back, and `MOUSE` on its own says which is active. The
+status bar shows `[MOUSE]` or `[MOUSE OFF]`.
+
+The F-keys switch view either way, and every setting on the bottom line has a
+command, so nothing is only reachable with the mouse.
+
+The wheel scrolls in both modes. With the mouse on it arrives as a wheel event;
+with it off, alternate scroll mode has the terminal turn wheel spins into
+`↑`/`↓` key presses, which scroll whatever `↑` and `↓` scroll: results in the
+table view, the trace in the trace view, the conversation in the AI view.
 
 | Action | Function |
 |--------|----------|
 | Mouse Wheel | Scroll vertically with automatic data loading |
-| Click a tab | Switch mode, with `MOUSE` on (the default) |
-| Shift+Click+Drag | Select text, with `MOUSE` on |
-| Click+Drag | Select text with no modifier, after `MOUSE OFF` |
-| Right Click | Paste, after `MOUSE OFF` |
-| Middle Click | Paste from selection buffer (Linux/Unix) |
+| Click+Drag | Select text; releasing copies it to the clipboard |
+| Double Click | Select a word |
+| Triple Click | Select a line |
+| Click a tab | Switch view |
+| Click a setting | Change KS, CL, Pg, Trace or Fetch; KS lists the cluster's keyspaces |
+| Right Click | Nothing; use whatever your terminal binds paste to |
+| `Esc` | Clear the selection |
 
 Scroll wide tables sideways with `Alt+←`/`Alt+→`, or `<` and `>` in navigation
 mode. Horizontal scrolling with the wheel is not available, because the terminal

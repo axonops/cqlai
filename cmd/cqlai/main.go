@@ -356,6 +356,7 @@ func runInteractive(m tea.Model) error {
 	// Give the wheel back to the terminal however we leave. Bubble Tea already
 	// restores the alternate screen and mouse state itself.
 	defer ui.DisableAlternateScroll()
+	defer ui.ResetMouseReporting()
 
 	_, err := p.Run()
 	return err

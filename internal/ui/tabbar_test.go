@@ -256,17 +256,56 @@ func TestMouseCommandTogglesReporting(t *testing.T) {
 	assert.Contains(t, m.fullHistoryContent, "Usage: MOUSE")
 }
 
-// TestMouseModeFollowsTheSetting checks the View actually carries it, since
-// that is what the terminal acts on.
-func TestMouseModeFollowsTheSetting(t *testing.T) {
-	m := &MainModel{mouseEnabled: true}
-	assert.Equal(t, tea.MouseModeCellMotion, m.newView("").MouseMode,
-		"reporting must be on for the tabs to be clickable")
+// TestMouseReportingFollowsTheSetting checks what the terminal is actually
+// asked for, which is where the behaviour lives.
+//
+// CellMotion is DECSET 1002: presses, releases, the wheel and motion while a
+// button is held. The drag events are the point - cqlai draws its own text
+// selection, which is what lets the tabs be clickable and text still be
+// selectable at the same time.
+func TestMouseReportingFollowsTheSetting(t *testing.T) {
+	input := textinput.New()
+	m := &MainModel{
+		input:           input,
+		styles:          DefaultStyles(),
+		historyViewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(10)),
+	}
 
-	m.mouseEnabled = false
+	on := captureStdout(t, func() { m.handleSpecialCommands("MOUSE ON") })
+	assert.True(t, m.mouseEnabled)
+	assert.Equal(t, tea.MouseModeCellMotion, m.newView("").MouseMode)
+	assert.Empty(t, on, "the mode is a field on the View, not something written by hand")
+
+	off := captureStdout(t, func() { m.handleSpecialCommands("MOUSE OFF") })
+	assert.False(t, m.mouseEnabled)
 	assert.Equal(t, tea.MouseModeNone, m.newView("").MouseMode,
-		"MOUSE OFF must hand the buttons back to the terminal")
+		"MOUSE OFF must hand the mouse back to the terminal")
+	assert.Empty(t, off)
 
-	// The alternate screen is asked for either way.
 	assert.True(t, m.newView("").AltScreen)
+}
+
+// TestMouseIsOnByDefault: it has to be, or the tabs and the settings on the
+// bottom line do nothing until you have found a command nobody knows about.
+// It costs nothing now that selection is drawn rather than left to the
+// terminal.
+func TestMouseIsOnByDefault(t *testing.T) {
+	m := &MainModel{}
+	assert.False(t, m.mouseEnabled, "the zero value is not the default")
+
+	assert.True(t, defaultMouseEnabled,
+		"new sessions start with the mouse on")
+}
+
+// TestRenderDoesNotTouchTheTerminal: escape sequences written from View fight
+// the renderer for the screen, so the mouse mode is set from the command
+// handler instead.
+func TestRenderDoesNotTouchTheTerminal(t *testing.T) {
+	m := &MainModel{mouseEnabled: true}
+
+	out := captureStdout(t, func() {
+		m.newView("")
+		m.newView("")
+	})
+	assert.Empty(t, out, "rendering should write nothing directly to the terminal")
 }
