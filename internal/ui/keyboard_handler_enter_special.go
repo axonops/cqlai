@@ -30,7 +30,7 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 		m.input.Reset()
 		m.lastCommand = ""
 		m.rowCount = 0
-		m.horizontalOffset = 0
+		m.resetHorizontalScroll()
 		m.lastTableData = nil
 		m.tableWidth = 0
 		m.tableHeaders = nil

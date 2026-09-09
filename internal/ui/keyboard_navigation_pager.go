@@ -375,11 +375,8 @@ func (m *MainModel) handleHorizontalScrollLeft() (*MainModel, tea.Cmd) {
 			}
 			m.refreshTraceView()
 		}
-	case m.viewMode == "table" && m.hasTable:
-		if m.horizontalOffset > 0 {
-			m.horizontalOffset = max(m.horizontalOffset-horizontalStep, 0)
-			m.applyHorizontalOffset()
-		}
+	default:
+		m.scrollHorizontally(-horizontalStep)
 	}
 	return m, nil
 }
@@ -399,20 +396,8 @@ func (m *MainModel) handlePageLeftScroll() (*MainModel, tea.Cmd) {
 			}
 			m.refreshTraceView()
 		}
-	case m.viewMode == "table" && m.hasTable:
-		if m.horizontalOffset > 0 {
-			scrollAmount := m.tableViewport.Width() / 2
-			if scrollAmount < 10 {
-				scrollAmount = 10
-			}
-			m.horizontalOffset -= scrollAmount
-			if m.horizontalOffset < 0 {
-				m.horizontalOffset = 0
-			}
-			if m.lastTableData != nil {
-				m.refreshTableView()
-			}
-		}
+	default:
+		m.scrollHorizontally(-m.halfScreen())
 	}
 	return m, nil
 }
@@ -433,21 +418,8 @@ func (m *MainModel) handlePageRightScroll() (*MainModel, tea.Cmd) {
 			}
 			m.refreshTraceView()
 		}
-	case m.viewMode == "table" && m.hasTable:
-		if m.tableWidth > m.tableViewport.Width() {
-			scrollAmount := m.tableViewport.Width() / 2
-			if scrollAmount < 10 {
-				scrollAmount = 10
-			}
-			maxOffset := m.tableWidth - m.tableViewport.Width() + 10
-			m.horizontalOffset += scrollAmount
-			if m.horizontalOffset > maxOffset {
-				m.horizontalOffset = maxOffset
-			}
-			if m.lastTableData != nil {
-				m.refreshTableView()
-			}
-		}
+	default:
+		m.scrollHorizontally(m.halfScreen())
 	}
 	return m, nil
 }
@@ -466,20 +438,51 @@ func (m *MainModel) handleHorizontalScrollRight() (*MainModel, tea.Cmd) {
 				m.refreshTraceView()
 			}
 		}
-	case m.viewMode == "table" && m.hasTable:
-		if m.tableWidth > m.tableViewport.Width() {
-			maxOffset := m.tableWidth - m.tableViewport.Width() + horizontalStep
-			if m.horizontalOffset < maxOffset {
-				m.horizontalOffset = min(m.horizontalOffset+horizontalStep, maxOffset)
-				m.applyHorizontalOffset()
-			}
-		}
+	default:
+		m.scrollHorizontally(horizontalStep)
 	}
 	return m, nil
 }
 
-// horizontalStep is how far one press scrolls sideways.
+// horizontalStep is how far one press of h, l or an arrow scrolls sideways.
 const horizontalStep = 10
+
+// halfScreen is how far < and > scroll: half the width on screen, so a page
+// sideways leaves half of what you were reading in view.
+func (m *MainModel) halfScreen() int {
+	return max(m.tableViewport.Width()/2, horizontalStep)
+}
+
+// scrollHorizontally moves the Results view sideways by n columns.
+//
+// Every route sideways comes through here - h and l, the arrows, < and >, and
+// the wheel. They used to be six copies of the same clamp-then-rebuild, in
+// three files, and #115 fixed two of them: the other four went on rebuilding
+// ASCII output as a boxed table the moment you scrolled.
+func (m *MainModel) scrollHorizontally(n int) {
+	if m.viewMode != "table" || !m.hasTable {
+		return
+	}
+
+	maxOffset := max(m.tableWidth-m.tableViewport.Width()+horizontalStep, 0)
+	offset := min(max(m.horizontalOffset+n, 0), maxOffset)
+	if offset == m.horizontalOffset {
+		return
+	}
+
+	m.horizontalOffset = offset
+	m.applyHorizontalOffset()
+}
+
+// resetHorizontalScroll puts a new result back at the left-hand edge.
+//
+// Both halves matter: the offset the table renderer reads, and the viewport's
+// own, which is what slides text sideways. Resetting only the first left ASCII
+// output still scrolled off the left when the next query landed.
+func (m *MainModel) resetHorizontalScroll() {
+	m.horizontalOffset = 0
+	m.tableViewport.SetXOffset(0)
+}
 
 // applyHorizontalOffset moves the Results view sideways.
 //
@@ -525,7 +528,6 @@ func (m *MainModel) loadMoreTableDataHelper() {
 		m.refreshTableContent(allData)
 
 		// Update row count
-		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 	}
 }
