@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -312,6 +313,7 @@ func TestStickyHeaderRowsAreNotSelectable(t *testing.T) {
 		styles:        DefaultStyles(),
 		viewMode:      "table",
 		hasTable:      true,
+		resultFormat:  config.OutputFormatTable,
 		tableViewport: vp,
 		tableHeaders:  []string{"id"},
 		lastTableData: [][]string{{"id"}},

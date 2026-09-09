@@ -226,54 +226,29 @@ func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
 
 // handleMouseWheelLeft handles horizontal scrolling left
 func (m *MainModel) handleMouseWheelLeft() (*MainModel, tea.Cmd) {
-	logger.DebugfToFile("Mouse", "handleMouseWheelLeft: viewMode=%s, hasTable=%v, hasData=%v",
-		m.viewMode, m.hasTable, m.lastTableData != nil)
+	if m.viewMode != "table" || !m.hasTable {
+		return m, nil
+	}
 
-	if m.viewMode == "table" && m.hasTable && m.lastTableData != nil {
-		// Scroll left by 10 columns
-		oldOffset := m.horizontalOffset
-		m.horizontalOffset = max(0, m.horizontalOffset-10)
-
-		logger.DebugfToFile("Mouse", "Scrolling left: oldOffset=%d, newOffset=%d, tableWidth=%d, viewportWidth=%d",
-			oldOffset, m.horizontalOffset, m.tableWidth, m.tableViewport.Width())
-
-		// Only re-render if offset actually changed
-		if oldOffset != m.horizontalOffset {
-			// Refresh the table view (same as arrow keys do)
-			m.refreshTableView()
-			logger.DebugfToFile("Mouse", "Table refreshed with left scroll")
-		}
+	if m.horizontalOffset > 0 {
+		m.horizontalOffset = max(m.horizontalOffset-horizontalStep, 0)
+		m.applyHorizontalOffset()
 	}
 	return m, nil
 }
 
 // handleMouseWheelRight handles horizontal scrolling right
 func (m *MainModel) handleMouseWheelRight() (*MainModel, tea.Cmd) {
-	logger.DebugfToFile("Mouse", "handleMouseWheelRight: viewMode=%s, hasTable=%v, hasData=%v",
-		m.viewMode, m.hasTable, m.lastTableData != nil)
+	if m.viewMode != "table" || !m.hasTable {
+		return m, nil
+	}
 
-	if m.viewMode == "table" && m.hasTable && m.lastTableData != nil {
-		// Scroll right by 10 columns
-		oldOffset := m.horizontalOffset
-
-		// Calculate max offset based on actual table width
-		if m.tableWidth > m.tableViewport.Width() {
-			maxOffset := m.tableWidth - m.tableViewport.Width() + 10 // Add some buffer
-			m.horizontalOffset = min(maxOffset, m.horizontalOffset+10)
-		} else {
-			// Table fits in viewport, but allow some scrolling anyway
-			m.horizontalOffset += 10
-		}
-
-		logger.DebugfToFile("Mouse", "Scrolling right: oldOffset=%d, newOffset=%d, tableWidth=%d, viewportWidth=%d",
-			oldOffset, m.horizontalOffset, m.tableWidth, m.tableViewport.Width())
-
-		// Only re-render if offset actually changed
-		if oldOffset != m.horizontalOffset {
-			// Refresh the table view (same as arrow keys do)
-			m.refreshTableView()
-			logger.DebugfToFile("Mouse", "Table refreshed with right scroll")
-		}
+	// Stop where the content ends. It used to scroll on past the end when the
+	// content was narrower than the window, leaving you looking at nothing.
+	maxOffset := max(m.tableWidth-m.tableViewport.Width()+horizontalStep, 0)
+	if m.horizontalOffset < maxOffset {
+		m.horizontalOffset = min(m.horizontalOffset+horizontalStep, maxOffset)
+		m.applyHorizontalOffset()
 	}
 	return m, nil
 }

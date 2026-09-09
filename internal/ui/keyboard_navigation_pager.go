@@ -2,6 +2,7 @@ package ui
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
 )
@@ -376,13 +377,8 @@ func (m *MainModel) handleHorizontalScrollLeft() (*MainModel, tea.Cmd) {
 		}
 	case m.viewMode == "table" && m.hasTable:
 		if m.horizontalOffset > 0 {
-			m.horizontalOffset -= 10
-			if m.horizontalOffset < 0 {
-				m.horizontalOffset = 0
-			}
-			if m.lastTableData != nil {
-				m.refreshTableView()
-			}
+			m.horizontalOffset = max(m.horizontalOffset-horizontalStep, 0)
+			m.applyHorizontalOffset()
 		}
 	}
 	return m, nil
@@ -472,19 +468,33 @@ func (m *MainModel) handleHorizontalScrollRight() (*MainModel, tea.Cmd) {
 		}
 	case m.viewMode == "table" && m.hasTable:
 		if m.tableWidth > m.tableViewport.Width() {
-			maxOffset := m.tableWidth - m.tableViewport.Width() + 10
+			maxOffset := m.tableWidth - m.tableViewport.Width() + horizontalStep
 			if m.horizontalOffset < maxOffset {
-				m.horizontalOffset += 10
-				if m.horizontalOffset > maxOffset {
-					m.horizontalOffset = maxOffset
-				}
-				if m.lastTableData != nil {
-					m.refreshTableView()
-				}
+				m.horizontalOffset = min(m.horizontalOffset+horizontalStep, maxOffset)
+				m.applyHorizontalOffset()
 			}
 		}
 	}
 	return m, nil
+}
+
+// horizontalStep is how far one press scrolls sideways.
+const horizontalStep = 10
+
+// applyHorizontalOffset moves the Results view sideways.
+//
+// A boxed table is rebuilt, because it drops whole columns rather than cutting
+// one down the middle. Everything else is text - ASCII art, JSON lines - and is
+// slid under the viewport instead. Rebuilding those as a table is what replaced
+// what you were reading with a mangled one on the first sideways scroll.
+func (m *MainModel) applyHorizontalOffset() {
+	if m.resultFormat == config.OutputFormatTable {
+		if m.lastTableData != nil {
+			m.refreshTableView()
+		}
+		return
+	}
+	m.tableViewport.SetXOffset(m.horizontalOffset)
 }
 
 // loadMoreTableDataHelper loads more rows when scrolling near the bottom
