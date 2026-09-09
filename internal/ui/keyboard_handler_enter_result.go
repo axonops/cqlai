@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
@@ -196,6 +197,7 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 	// EXPAND format - use table viewport for pagination support
 	m.tableHeaders = headers
 	m.columnTypes = columnTypes
+	m.resultFormat = config.OutputFormatExpand
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
@@ -217,6 +219,132 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 	return m, nil
 }
 
+// showQueryResult draws a result that arrived complete, in whatever format
+// OUTPUT is set to.
+func (m *MainModel) showQueryResult(data [][]string, columnTypes []string, outputFormat config.OutputFormat) {
+	if len(data) == 0 {
+		return
+	}
+
+	// Every format goes to the Results view. ASCII and JSON used to be
+	// written into the console as text instead, where it is wrapped to the
+	// window - which breaks an ASCII table's borders mid-row and gives up
+	// the sideways scrolling that wide output needs.
+	m.lastTableData = data
+	m.tableHeaders = data[0]
+	m.columnTypes = columnTypes
+	m.resultFormat = outputFormat
+	m.horizontalOffset = 0
+	m.hasTable = true
+	m.viewMode = "table"
+	m.initialColumnWidths = nil // Reset initial widths for new table
+	m.cachedTableLines = nil    // Clear cache for new table
+	m.tableRowBoundaries = nil
+
+	var content string
+	switch outputFormat {
+	case config.OutputFormatASCII:
+		content = FormatASCIITable(data)
+	case config.OutputFormatJSON:
+		content = formatRowsAsJSON(data)
+	case config.OutputFormatExpand:
+		var boundaries []int
+		content, boundaries = FormatExpandTableWithBoundaries(data, m.styles)
+		m.tableRowBoundaries = boundaries
+	default:
+		content = m.formatTableForViewport(data)
+	}
+	if content == "" {
+		content = "No results"
+	}
+
+	m.tableViewport.SetContent(content)
+	m.tableViewport.GotoTop()
+	m.tableWidth = widestLine(content)
+}
+
+// jsonLines renders rows as one JSON object per line.
+//
+// A SELECT JSON already comes back as JSON in a single "[json]" column, so that
+// is passed through rather than wrapped in an object a second time.
+func jsonLines(headers []string, rows [][]string) string {
+	var b strings.Builder
+
+	if len(headers) == 1 && headers[0] == "[json]" {
+		for _, row := range rows {
+			if len(row) > 0 {
+				b.WriteString(row[0] + "\n")
+			}
+		}
+		return b.String()
+	}
+
+	for _, row := range rows {
+		object := make(map[string]interface{}, len(headers))
+		for i, header := range headers {
+			if i < len(row) {
+				object[header] = row[i]
+			}
+		}
+		if encoded, err := json.Marshal(object); err == nil {
+			b.WriteString(string(encoded) + "\n")
+		}
+	}
+	return b.String()
+}
+
+// formatRowsAsJSON renders a result whose first row is its headers.
+func formatRowsAsJSON(data [][]string) string {
+	if len(data) < 2 {
+		return ""
+	}
+	return jsonLines(data[0], data[1:])
+}
+
+// widestLine is the width of the longest line, for horizontal scrolling.
+func widestLine(s string) int {
+	widest := 0
+	for _, line := range strings.Split(s, "\n") {
+		if w := lipgloss.Width(line); w > widest {
+			widest = w
+		}
+	}
+	return widest
+}
+
+// fetchAllPages pulls the rest of a streaming result in, when AutoFetch is on.
+//
+// It says nothing about where the result is then shown. AutoFetch decides how
+// much is fetched; the OUTPUT format decides how it is drawn. Tangling the two
+// is what sent ASCII and JSON results to the console rather than the Results
+// view, wrapped to the window and with their borders broken in half.
+func (m *MainModel) fetchAllPages(format string) {
+	if m.session == nil || !m.session.AutoFetch() ||
+		!m.slidingWindow.hasMoreData || m.slidingWindow.streamingResult == nil {
+		return
+	}
+
+	logger.DebugfToFile("HandleEnterKey", "%s format with AutoFetch ON: fetching all remaining pages", format)
+
+	totalFetched := 0
+	for m.slidingWindow.hasMoreData {
+		pageSize := m.session.PageSize()
+		if pageSize == 0 {
+			pageSize = 100 // Default page size
+		}
+		loadedRows := m.slidingWindow.LoadMoreRows(pageSize)
+		if loadedRows == 0 {
+			break
+		}
+		totalFetched += loadedRows
+	}
+	logger.DebugfToFile("HandleEnterKey", "%s format: fetched %d rows, total rows: %d",
+		format, totalFetched, m.slidingWindow.TotalRowsSeen)
+
+	m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
+	m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+}
+
 // displayASCIIFormat displays results in ASCII table format
 func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (*MainModel, tea.Cmd) {
 	logger.DebugToFile("HandleEnterKey", "Formatting output as ASCII")
@@ -224,89 +352,39 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 	// Store headers and types for table view
 	m.tableHeaders = headers
 	m.columnTypes = columnTypes
+	m.resultFormat = config.OutputFormatASCII
 
-	// Check if AutoFetch is ON
-	if m.session != nil && m.session.AutoFetch() && m.slidingWindow.hasMoreData && m.slidingWindow.streamingResult != nil {
-		logger.DebugToFile("HandleEnterKey", "ASCII format with AutoFetch ON: fetching all remaining pages")
+	// AutoFetch only decides how much is pulled in; the result goes to the
+	// Results view either way, the same as TABLE and EXPAND.
+	m.fetchAllPages("ASCII")
 
-		// Keep loading until we have all data
-		totalFetched := 0
-		for m.slidingWindow.hasMoreData {
-			pageSize := m.session.PageSize()
-			if pageSize == 0 {
-				pageSize = 100 // Default page size
-			}
-			loadedRows := m.slidingWindow.LoadMoreRows(pageSize)
-			if loadedRows == 0 {
-				break
-			}
-			totalFetched += loadedRows
-			logger.DebugfToFile("HandleEnterKey", "ASCII format: fetched %d more rows, total fetched: %d",
-				loadedRows, totalFetched)
-		}
-		logger.DebugfToFile("HandleEnterKey", "ASCII format: finished fetching, total rows: %d",
-			m.slidingWindow.TotalRowsSeen)
+	m.hasTable = true
+	m.viewMode = "table"
+	m.horizontalOffset = 0
+	m.initialColumnWidths = nil // Reset initial widths for new table
+	m.cachedTableLines = nil    // Clear cache for new table
 
-		// Update row count in top bar
-		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
-		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+	allData := append([][]string{headers}, m.slidingWindow.Rows...)
+	m.lastTableData = allData
 
-		// When AutoFetch is ON, display all ASCII in history view
-		m.hasTable = false
-		m.viewMode = "history"
+	asciiStr := FormatASCIITable(allData)
 
-		// Format all data as ASCII table
-		allData := append([][]string{headers}, m.slidingWindow.Rows...)
-		asciiStr := FormatASCIITable(allData)
-
-		// Add to history
-		if asciiStr != "" {
-			m.fullHistoryContent += "\n" + asciiStr
-		} else {
-			m.fullHistoryContent += "\nNo results"
-		}
-		m.updateHistoryWrapping()
-		m.historyViewport.GotoBottom()
-	} else {
-		// AutoFetch is OFF - use table view for progressive loading
-		logger.DebugfToFile("HandleEnterKey", "ASCII format with AutoFetch OFF: using table view for progressive loading")
-
-		m.hasTable = true
-		m.viewMode = "table"
-		m.horizontalOffset = 0
-		m.initialColumnWidths = nil // Reset initial widths for new table
-		m.cachedTableLines = nil    // Clear cache for new table
-
-		// Build initial ASCII display
-		allData := append([][]string{headers}, m.slidingWindow.Rows...)
-		m.lastTableData = allData
-
-		// Format as ASCII table
-		asciiStr := FormatASCIITable(allData)
-
-		// Add notice about more data if applicable
-		if m.slidingWindow.hasMoreData {
-			asciiStr += "\n" + m.styles.MutedText.Render(
-				fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
-					len(m.slidingWindow.Rows)))
-		}
-
-		// Set content in table viewport
-		// No record boundaries in this layout; stale ones would cap scrolling.
-		m.tableRowBoundaries = nil
-		m.tableViewport.SetContent(asciiStr)
-		m.tableViewport.GotoTop()
-
-		// Calculate width for horizontal scrolling
-		lines := strings.Split(asciiStr, "\n")
-		maxWidth := 0
-		for _, line := range lines {
-			if width := len(stripAnsi(line)); width > maxWidth {
-				maxWidth = width
-			}
-		}
-		m.tableWidth = maxWidth
+	// Add notice about more data if applicable. AutoFetch will have taken the
+	// lot already, so this only shows when it is off.
+	if m.slidingWindow.hasMoreData {
+		asciiStr += "\n" + m.styles.MutedText.Render(
+			fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
+				len(m.slidingWindow.Rows)))
 	}
+
+	// Set content in table viewport
+	// No record boundaries in this layout; stale ones would cap scrolling.
+	m.tableRowBoundaries = nil
+	m.tableViewport.SetContent(asciiStr)
+	m.tableViewport.GotoTop()
+
+	// Calculate width for horizontal scrolling
+	m.tableWidth = widestLine(asciiStr)
 
 	m.input.Reset()
 	return m, nil
@@ -319,128 +397,39 @@ func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, co
 	// Store headers and types for table view
 	m.tableHeaders = headers
 	m.columnTypes = columnTypes
+	m.resultFormat = config.OutputFormatJSON
 
-	// Check if AutoFetch is ON
-	if m.session != nil && m.session.AutoFetch() && m.slidingWindow.hasMoreData && m.slidingWindow.streamingResult != nil {
-		logger.DebugToFile("HandleEnterKey", "JSON format with AutoFetch ON: fetching all remaining pages")
+	// AutoFetch only decides how much is pulled in; the result goes to the
+	// Results view either way, the same as TABLE and EXPAND.
+	m.fetchAllPages("JSON")
 
-		// Keep loading until we have all data
-		totalFetched := 0
-		for m.slidingWindow.hasMoreData {
-			pageSize := m.session.PageSize()
-			if pageSize == 0 {
-				pageSize = 100 // Default page size
-			}
-			loadedRows := m.slidingWindow.LoadMoreRows(pageSize)
-			if loadedRows == 0 {
-				break
-			}
-			totalFetched += loadedRows
-			logger.DebugfToFile("HandleEnterKey", "JSON format: fetched %d more rows, total fetched: %d",
-				loadedRows, totalFetched)
-		}
-		logger.DebugfToFile("HandleEnterKey", "JSON format: finished fetching, total rows: %d",
-			m.slidingWindow.TotalRowsSeen)
+	m.hasTable = true
+	m.viewMode = "table"
+	m.horizontalOffset = 0
+	m.initialColumnWidths = nil // Reset initial widths for new table
+	m.cachedTableLines = nil    // Clear cache for new table
 
-		// Update row count in top bar
-		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
-		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
+	allData := append([][]string{headers}, m.slidingWindow.Rows...)
+	m.lastTableData = allData
 
-		// When AutoFetch is ON, display all JSON in history view
-		m.hasTable = false
-		m.viewMode = "history"
+	jsonStr := jsonLines(headers, m.slidingWindow.Rows)
 
-		// Convert all data to JSON
-		jsonStr := ""
-		if len(headers) == 1 && headers[0] == "[json]" {
-			for _, row := range m.slidingWindow.Rows {
-				if len(row) > 0 {
-					jsonStr += row[0] + "\n"
-				}
-			}
-		} else {
-			for _, row := range m.slidingWindow.Rows {
-				jsonMap := make(map[string]interface{})
-				for i, header := range headers {
-					if i < len(row) {
-						jsonMap[header] = row[i]
-					}
-				}
-				jsonBytes, err := json.Marshal(jsonMap)
-				if err == nil {
-					jsonStr += string(jsonBytes) + "\n"
-				}
-			}
-		}
-
-		// Add to history
-		if jsonStr != "" {
-			m.fullHistoryContent += "\n" + jsonStr
-		} else {
-			m.fullHistoryContent += "\nNo results"
-		}
-		m.updateHistoryWrapping()
-		m.historyViewport.GotoBottom()
-	} else {
-		// AutoFetch is OFF - use table view for progressive loading
-		logger.DebugfToFile("HandleEnterKey", "JSON format with AutoFetch OFF: using table view for progressive loading")
-
-		m.hasTable = true
-		m.viewMode = "table"
-		m.horizontalOffset = 0
-		m.initialColumnWidths = nil // Reset initial widths for new table
-		m.cachedTableLines = nil    // Clear cache for new table
-
-		// Build initial JSON display
-		allData := append([][]string{headers}, m.slidingWindow.Rows...)
-		m.lastTableData = allData
-
-		// Convert to JSON format
-		jsonStr := ""
-		if len(headers) == 1 && headers[0] == "[json]" {
-			for _, row := range m.slidingWindow.Rows {
-				if len(row) > 0 {
-					jsonStr += row[0] + "\n"
-				}
-			}
-		} else {
-			for _, row := range m.slidingWindow.Rows {
-				jsonMap := make(map[string]interface{})
-				for i, header := range headers {
-					if i < len(row) {
-						jsonMap[header] = row[i]
-					}
-				}
-				jsonBytes, err := json.Marshal(jsonMap)
-				if err == nil {
-					jsonStr += string(jsonBytes) + "\n"
-				}
-			}
-		}
-
-		// Add notice about more data if applicable
-		if m.slidingWindow.hasMoreData {
-			jsonStr += "\n" + m.styles.MutedText.Render(
-				fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
-					len(m.slidingWindow.Rows)))
-		}
-
-		// Set content in table viewport
-		// No record boundaries in this layout; stale ones would cap scrolling.
-		m.tableRowBoundaries = nil
-		m.tableViewport.SetContent(jsonStr)
-		m.tableViewport.GotoTop()
-
-		// Calculate width for horizontal scrolling
-		lines := strings.Split(jsonStr, "\n")
-		maxWidth := 0
-		for _, line := range lines {
-			if width := len(stripAnsi(line)); width > maxWidth {
-				maxWidth = width
-			}
-		}
-		m.tableWidth = maxWidth
+	// Add notice about more data if applicable. AutoFetch will have taken the
+	// lot already, so this only shows when it is off.
+	if m.slidingWindow.hasMoreData {
+		jsonStr += "\n" + m.styles.MutedText.Render(
+			fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
+				len(m.slidingWindow.Rows)))
 	}
+
+	// Set content in table viewport
+	// No record boundaries in this layout; stale ones would cap scrolling.
+	m.tableRowBoundaries = nil
+	m.tableViewport.SetContent(jsonStr)
+	m.tableViewport.GotoTop()
+
+	// Calculate width for horizontal scrolling
+	m.tableWidth = widestLine(jsonStr)
 
 	m.input.Reset()
 	return m, nil
@@ -451,6 +440,7 @@ func (m *MainModel) displayTableFormat(headers []string, columnTypes []string) (
 	// TABLE format - use table viewport
 	m.tableHeaders = headers
 	m.columnTypes = columnTypes
+	m.resultFormat = config.OutputFormatTable
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
@@ -489,104 +479,7 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 		}
 		logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", outputFormat)
 
-		// Check output format
-		switch outputFormat {
-		case config.OutputFormatASCII:
-			// ASCII format - display in CQL view as text
-			m.hasTable = false     // No table, just text
-			m.viewMode = "history" // Use history view for text output
-
-			// Format as ASCII table
-			asciiOutput := FormatASCIITable(v.Data)
-
-			// Add ASCII output to history content
-			if asciiOutput != "" {
-				m.fullHistoryContent += "\n" + asciiOutput
-			} else {
-				m.fullHistoryContent += "\nNo results"
-			}
-
-			// Update with wrapped content
-			m.updateHistoryWrapping()
-			m.historyViewport.GotoBottom()
-		case config.OutputFormatExpand:
-			// EXPAND format - use table viewport for scrolling support
-			// Store table data and headers
-			m.lastTableData = v.Data
-			m.tableHeaders = v.Data[0]    // Store the header row
-			m.columnTypes = v.ColumnTypes // Store column types
-			m.horizontalOffset = 0
-			m.hasTable = true
-			m.viewMode = "table"
-			m.initialColumnWidths = nil // Reset initial widths for new table
-			m.cachedTableLines = nil    // Clear cache for new table
-
-			// Format as expanded vertical table
-			expandOutput, boundaries := FormatExpandTableWithBoundaries(v.Data, m.styles)
-			m.tableRowBoundaries = boundaries
-			m.tableViewport.SetContent(expandOutput)
-			m.tableViewport.GotoTop() // Start at top of table
-		case config.OutputFormatJSON:
-			// JSON format - display in CQL view as text
-			m.hasTable = false     // No table, just text
-			m.viewMode = "history" // Use history view for text output
-
-			// Check if this is already JSON from SELECT JSON
-			jsonOutput := ""
-			if len(v.Data) > 1 {
-				headers := v.Data[0]
-				// Check if we have a single [json] column from SELECT JSON
-				if len(headers) == 1 && headers[0] == "[json]" {
-					// This is already JSON from SELECT JSON - just extract it
-					for _, row := range v.Data[1:] {
-						if len(row) > 0 {
-							jsonOutput += row[0] + "\n"
-						}
-					}
-				} else {
-					// Convert regular table data to JSON
-					for _, row := range v.Data[1:] {
-						jsonMap := make(map[string]interface{})
-						for i, header := range headers {
-							if i < len(row) {
-								jsonMap[header] = row[i]
-							}
-						}
-						jsonBytes, err := json.Marshal(jsonMap)
-						if err == nil {
-							jsonOutput += string(jsonBytes) + "\n"
-						}
-					}
-				}
-			}
-
-			// Add JSON output to history content
-			if jsonOutput != "" {
-				m.fullHistoryContent += "\n" + jsonOutput
-			} else {
-				m.fullHistoryContent += "\nNo results"
-			}
-
-			// Update with wrapped content
-			m.updateHistoryWrapping()
-			m.historyViewport.GotoBottom()
-		default:
-			// Use table viewport for TABLE format
-			// Store table data and headers
-			m.lastTableData = v.Data
-			m.tableHeaders = v.Data[0]    // Store the header row
-			m.columnTypes = v.ColumnTypes // Store column types
-			m.horizontalOffset = 0
-			m.hasTable = true
-			m.viewMode = "table"
-			m.initialColumnWidths = nil // Reset initial widths for new table
-			m.cachedTableLines = nil    // Clear cache for new table
-
-			// Format and display in table viewport
-			tableStr := m.formatTableForViewport(v.Data)
-			m.tableViewport.SetContent(tableStr)
-			m.tableViewport.GotoTop() // Start at top of table
-		}
+		m.showQueryResult(v.Data, v.ColumnTypes, outputFormat)
 
 		// Write to capture file if capturing
 		metaHandler := router.GetMetaHandler()
@@ -619,6 +512,7 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 		// Store table data and headers
 		m.lastTableData = v
 		m.tableHeaders = v[0] // Store the header row
+		m.resultFormat = config.OutputFormatTable
 		m.horizontalOffset = 0
 		m.hasTable = true
 		m.viewMode = "table"

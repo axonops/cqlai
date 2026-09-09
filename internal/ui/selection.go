@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -108,6 +109,12 @@ func (m *MainModel) selectionTarget() (*viewport.Model, string) {
 // something other than what is under the pointer. View draws the header only
 // when this is non-zero, so the two agree by construction.
 func (m *MainModel) stickyHeaderRows() int {
+	// Only a boxed table has a header to freeze. ASCII art and JSON lines are
+	// text, and drawing a table header over them puts columns on screen that
+	// nothing below them lines up with.
+	if m.resultFormat != config.OutputFormatTable {
+		return 0
+	}
 	if m.viewMode == "table" && m.hasTable && m.tableViewport.YOffset() > 0 &&
 		len(m.tableHeaders) > 0 && m.lastTableData != nil && m.columnWidths != nil {
 		return stickyHeaderHeight
