@@ -21,14 +21,16 @@ type settingChooser struct {
 	setting  string // which status field this belongs to
 	label    string // shown above the list, e.g. "CL"
 	choices  []string
-	selected int    // only used to centre the scroll window on the current value
+	selected int    // the value already set, which the list opens centred on
 	current  string // marked in the list
 	anchorX  int    // column the field starts at
-}
 
-// chooserMaxHeight caps the list so it cannot cover the whole screen. Anything
-// longer scrolls.
-const chooserMaxHeight = 10
+	// Where the visible window starts, once the wheel has moved it. Until then
+	// window() centres on selected instead, so a long list opens showing where
+	// you already are rather than its alphabetical start.
+	scroll   int
+	scrolled bool
+}
 
 // openSettingChooser opens the list for a status field.
 func (m *MainModel) openSettingChooser(setting string, anchorX int, choices []string, current string) {
@@ -54,28 +56,81 @@ func (m *MainModel) openSettingChooser(setting string, anchorX int, choices []st
 	}
 }
 
+const (
+	// chooserMinHeight keeps the list usable on a terminal too short for half
+	// of it to be worth having.
+	chooserMinHeight = 5
+
+	// chooserScrollStep is how far one wheel notch moves the list. The same as
+	// the viewports scroll by, so the wheel feels the same wherever it is.
+	chooserScrollStep = 3
+)
+
 // closeSettingChooser dismisses the list without changing anything.
 func (m *MainModel) closeSettingChooser() {
 	m.chooser = settingChooser{}
 }
 
-// chooserWindow returns the slice of choices to draw, and where the selection
-// sits within it, so a list longer than the space available scrolls.
+// window returns the slice of choices to draw, so a list longer than there is
+// room for scrolls rather than losing its tail.
 func (c settingChooser) window(height int) (start, end int) {
 	if height <= 0 || height >= len(c.choices) {
 		return 0, len(c.choices)
 	}
 
-	// Keep the current value in view, roughly centred, so a long list opens
-	// showing where you already are.
-	start = c.selected - height/2
-	if start < 0 {
-		start = 0
+	start = c.scroll
+	if !c.scrolled {
+		// Roughly centred on the value already set.
+		start = c.selected - height/2
 	}
-	if start+height > len(c.choices) {
-		start = len(c.choices) - height
-	}
+	start = min(max(start, 0), len(c.choices)-height)
 	return start, start + height
+}
+
+// scrollChooser moves the open list by n rows.
+//
+// Without this the wheel went to the view behind the list, so on a cluster with
+// more keyspaces than the box has rows the rest of them could not be reached at
+// all: there is no keyboard navigation here by design, and nothing else moved
+// the window.
+func (m *MainModel) scrollChooser(n int) (*MainModel, tea.Cmd) {
+	g, ok := m.chooserGeometry(m.windowWidth, m.windowHeight)
+	if !ok {
+		return m, nil
+	}
+
+	// g.first is where the window sits now, so this moves from wherever the
+	// list happened to open. window() does the clamping.
+	m.chooser.scroll = g.first + n
+	m.chooser.scrolled = true
+	return m, nil
+}
+
+// scrollbarColumn returns one entry per visible row, true where the thumb is.
+//
+// The thumb's size says how much of the list is showing and its position says
+// where in the list you are, which is the thing a long keyspace list needs and
+// a plain box cannot tell you. It is empty when the whole list fits, since a
+// bar that is always full says nothing.
+func scrollbarColumn(rows, first, total int) []bool {
+	thumb := make([]bool, max(rows, 0))
+	if rows <= 0 || total <= rows {
+		return thumb
+	}
+
+	size := max(rows*rows/total, 1)
+
+	// Scaled so the thumb reaches the bottom exactly when the last choice is
+	// showing, rather than stopping a row short.
+	start := 0
+	if lastFirst := total - rows; lastFirst > 0 {
+		start = first * (rows - size) / lastFirst
+	}
+
+	for i := start; i < start+size && i < rows; i++ {
+		thumb[i] = true
+	}
+	return thumb
 }
 
 // chooserGeometry works out where the list sits and which choices it shows.
@@ -96,8 +151,14 @@ func (m *MainModel) chooserGeometry(screenWidth, screenHeight int) (chooserGeome
 	}
 
 	// Rows above the status line, less the box's own border.
+	//
+	// Half of that, at most. A fixed cap was wrong in both directions: ten rows
+	// wasted a tall terminal, and no cap at all let a long keyspace list cover
+	// everything but the status line. Half leaves you able to see what is
+	// behind the list whatever size the terminal is, and short lists still take
+	// only the rows they need.
 	available := screenHeight - 1 - 2
-	rows := min(len(c.choices), min(chooserMaxHeight, available))
+	rows := min(len(c.choices), min(max(available/2, chooserMinHeight), available))
 	if rows <= 0 {
 		return chooserGeometry{}, false
 	}
@@ -110,8 +171,8 @@ func (m *MainModel) chooserGeometry(screenWidth, screenHeight int) (chooserGeome
 			inner = w
 		}
 	}
-	// A leading space, a gap, and the current-value marker.
-	inner += 3
+	// A leading space, a gap, the current-value marker, and the scrollbar.
+	inner += 4
 
 	// A keyspace name can be long enough to push the box off the screen, so the
 	// box is capped and the names inside it are truncated to fit.
@@ -181,6 +242,13 @@ func (m *MainModel) viewSettingChooser(screenWidth, screenHeight int) (Layer, bo
 		Foreground(lipgloss.Color("#87FFD7")).
 		Bold(true)
 
+	thumbStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#87D7FF"))
+	trackStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#3a3a3a"))
+
+	thumb := scrollbarColumn(g.last-g.first, g.first, len(c.choices))
+
 	var b strings.Builder
 	for i := g.first; i < g.last; i++ {
 		choice := c.choices[i]
@@ -193,13 +261,22 @@ func (m *MainModel) viewSettingChooser(screenWidth, screenHeight int) (Layer, bo
 		}
 
 		// Exactly innerWidth columns: a leading space, the name padded out,
-		// then the marker. Anything else and the box's borders do not line up
-		// with the width chooserGeometry reports, which is what choiceAt tests
-		// clicks against.
-		text := ansi.Truncate(choice, max(g.innerWidth-2, 0), "…")
-		fill := max(g.innerWidth-lipgloss.Width(text)-2, 0)
-		line := " " + text + strings.Repeat(" ", fill) + marker
-		b.WriteString(style.Render(line))
+		// the marker, then the scrollbar. Anything else and the box's borders
+		// do not line up with the width chooserGeometry reports, which is what
+		// choiceAt tests clicks against.
+		text := ansi.Truncate(choice, max(g.innerWidth-3, 0), "…")
+		fill := max(g.innerWidth-lipgloss.Width(text)-3, 0)
+		b.WriteString(style.Render(" " + text + strings.Repeat(" ", fill) + marker))
+
+		switch {
+		case len(thumb) == 0 || len(c.choices) <= g.last-g.first:
+			b.WriteString(" ")
+		case thumb[i-g.first]:
+			b.WriteString(thumbStyle.Render("\u2588"))
+		default:
+			b.WriteString(trackStyle.Render("\u2591"))
+		}
+
 		if i < g.last-1 {
 			b.WriteString("\n")
 		}
@@ -289,6 +366,8 @@ func settingCommand(setting, choice string) string {
 		return "CONSISTENCY " + choice
 	case settingPaging:
 		return "PAGING " + choice
+	case settingOutput:
+		return "OUTPUT " + choice
 	case settingTracing:
 		return "TRACING " + choice
 	case settingAutoFetch:

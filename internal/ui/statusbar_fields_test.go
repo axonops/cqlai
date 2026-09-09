@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"slices"
 	"testing"
 
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -132,4 +134,59 @@ func TestSettingChoicesUnknownSetting(t *testing.T) {
 	// Keyspaces come from the cluster, so they are not baked in here.
 	choices, _ = settingChoices(settingKeyspace, "system")
 	assert.Nil(t, choices)
+}
+
+// TestOutputFormatIsOnTheLineAndClickable: OUTPUT changes what every result
+// looks like, so it belongs next to the other session settings rather than
+// only being reachable by typing it.
+func TestOutputFormatIsOnTheLineAndClickable(t *testing.T) {
+	m := testStatusBar()
+	m.OutputFormat = "ASCII"
+
+	var seg statusSegment
+	var found bool
+	for _, s := range m.segments() {
+		if s.setting == settingOutput {
+			seg, found = s, true
+		}
+	}
+	require.True(t, found, "there is no Output field on the status line")
+	assert.Equal(t, "ASCII", seg.value)
+
+	setting, _, ok := m.settingAt((seg.start + seg.end) / 2)
+	require.True(t, ok)
+	assert.Equal(t, settingOutput, setting)
+}
+
+// TestOutputSitsAfterConsistency, where it was asked for.
+func TestOutputSitsAfterConsistency(t *testing.T) {
+	order := []string{}
+	for _, s := range testStatusBar().segments() {
+		order = append(order, s.setting)
+	}
+
+	cl := slices.Index(order, settingConsistency)
+	out := slices.Index(order, settingOutput)
+	require.NotEqual(t, -1, cl)
+	require.Equal(t, cl+1, out, "Output should follow CL: %v", order)
+}
+
+// TestOutputChoicesComeFromConfig: the formats are decided by
+// ParseOutputFormat, so the list must not carry its own copy of them.
+func TestOutputChoicesComeFromConfig(t *testing.T) {
+	choices, _ := settingChoices(settingOutput, "TABLE")
+	assert.Equal(t, config.OutputFormats(), choices)
+}
+
+// TestEveryOfferedFormatCanBeSet is the guard the consistency levels went
+// without.
+func TestEveryOfferedFormatCanBeSet(t *testing.T) {
+	choices, _ := settingChoices(settingOutput, "TABLE")
+	require.NotEmpty(t, choices)
+
+	for _, choice := range choices {
+		_, err := config.ParseOutputFormat(choice)
+		assert.NoError(t, err, "%s is offered but OUTPUT will not take it", choice)
+		assert.Equal(t, "OUTPUT "+choice, settingCommand(settingOutput, choice))
+	}
 }

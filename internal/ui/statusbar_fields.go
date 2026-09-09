@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"charm.land/lipgloss/v2"
+	"github.com/axonops/cqlai/internal/config"
+	"github.com/axonops/cqlai/internal/db"
 )
 
 // Clickable settings on the status line.
@@ -15,8 +17,10 @@ import (
 
 // Setting keys, used to tie a click to what it changes.
 const (
+	settingConnection  = "Connection"
 	settingKeyspace    = "KS"
 	settingConsistency = "CL"
+	settingOutput      = "Output"
 	settingPaging      = "Pg"
 	settingTracing     = "Trace"
 	settingAutoFetch   = "Fetch"
@@ -24,8 +28,8 @@ const (
 
 // statusSegment is one "Label: value" pair on the status line.
 //
-// A segment with an empty setting is information rather than a control - the
-// server version, the user, the host - and ignores clicks.
+// A segment with an empty setting is information rather than a control and
+// ignores clicks.
 type statusSegment struct {
 	setting    string // one of the setting constants, or "" if not clickable
 	label      string
@@ -51,11 +55,6 @@ func (m StatusBarModel) segments() []statusSegment {
 		keyspace = "(none)"
 	}
 
-	username := m.Username
-	if username == "" {
-		username = "(anonymous)"
-	}
-
 	onOff := func(b bool) string {
 		if b {
 			return "ON"
@@ -63,19 +62,18 @@ func (m StatusBarModel) segments() []statusSegment {
 		return "OFF"
 	}
 
-	var segs []statusSegment
-	if m.Version != "" {
-		segs = append(segs, statusSegment{label: "v", value: m.Version})
+	// The version, the user and the host were three fields taking a third of
+	// the line to say things that rarely change. They are one field now, and
+	// clicking it opens the lot, encryption included.
+	segs := []statusSegment{
+		{setting: settingConnection, label: "Connection", value: ""},
+		{setting: settingKeyspace, label: "KS: ", value: keyspace},
+		{setting: settingConsistency, label: "CL: ", value: m.Consistency},
+		{setting: settingOutput, label: "Output: ", value: m.OutputFormat},
+		{setting: settingPaging, label: "Pg: ", value: fmt.Sprintf("%d", m.PagingSize)},
+		{setting: settingTracing, label: "Trace: ", value: onOff(m.Tracing)},
+		{setting: settingAutoFetch, label: "Fetch: ", value: onOff(m.AutoFetch)},
 	}
-	segs = append(segs,
-		statusSegment{label: "User: ", value: username},
-		statusSegment{label: "Host: ", value: m.Host},
-		statusSegment{setting: settingKeyspace, label: "KS: ", value: keyspace},
-		statusSegment{setting: settingConsistency, label: "CL: ", value: m.Consistency},
-		statusSegment{setting: settingPaging, label: "Pg: ", value: fmt.Sprintf("%d", m.PagingSize)},
-		statusSegment{setting: settingTracing, label: "Trace: ", value: onOff(m.Tracing)},
-		statusSegment{setting: settingAutoFetch, label: "Fetch: ", value: onOff(m.AutoFetch)},
-	)
 
 	// Columns, not bytes. The separator is three columns wide but five bytes,
 	// because of the box-drawing character, and lipgloss.Width also gets
@@ -109,14 +107,18 @@ func (m StatusBarModel) settingAt(col int) (setting string, at int, ok bool) {
 // settingChoices lists the values a setting can take, and which is current.
 //
 // Keyspaces are not here: they come from the cluster, so the caller supplies
-// them.
+// them. Neither is Connection, which is not a setting at all - it opens a panel
+// of facts rather than a list of values.
 func settingChoices(setting string, current string) (choices []string, selected int) {
 	switch setting {
 	case settingConsistency:
-		choices = []string{
-			"ANY", "ONE", "TWO", "THREE", "QUORUM", "ALL",
-			"LOCAL_QUORUM", "EACH_QUORUM", "LOCAL_ONE", "SERIAL", "LOCAL_SERIAL",
-		}
+		// From the same table CONSISTENCY applies, so the list cannot offer a
+		// level that then fails to set.
+		choices = db.ConsistencyLevels()
+	case settingOutput:
+		// From config, which is where ParseOutputFormat reads them, so the list
+		// cannot offer a format OUTPUT then refuses.
+		choices = config.OutputFormats()
 	case settingPaging:
 		// The values PAGING accepts, plus OFF, which is how it is turned off.
 		choices = []string{"OFF", "50", "100", "500", "1000", "5000"}

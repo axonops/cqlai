@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,16 +43,13 @@ func TestClickingASettingOpensItsChoices(t *testing.T) {
 		"the list should open on the value already set")
 }
 
-func TestClickingAConnectionFactOpensNothing(t *testing.T) {
+func TestClickingPastTheEndOfTheLineOpensNothing(t *testing.T) {
 	m := chooserModel()
 
-	for _, seg := range m.statusBar.segments() {
-		if seg.clickable() {
-			continue
-		}
-		m.clickStatusSetting((seg.start + seg.end) / 2)
-		assert.False(t, m.chooser.active, "%q is not a setting", seg.label)
-	}
+	last := m.statusBar.segments()[len(m.statusBar.segments())-1]
+	m.clickStatusSetting(last.end + 4)
+
+	assert.False(t, m.chooser.active, "there is no field out there")
 }
 
 // TestChooserDismissedByAnyKey: there is no keyboard navigation, so a keypress
@@ -316,5 +316,264 @@ func TestClickingKSWithNoConnectionOpensNothing(t *testing.T) {
 		}
 	}
 
+	assert.False(t, m.chooser.active)
+}
+
+// TestConsistencyChoicesComeFromTheSessionsOwnList: the chooser must not carry
+// its own set of levels, or it drifts from the one CONSISTENCY applies. That
+// drift is what made picking SERIAL print an error rather than change
+// anything.
+func TestConsistencyChoicesComeFromTheSessionsOwnList(t *testing.T) {
+	choices, _ := settingChoices(settingConsistency, "ONE")
+	assert.Equal(t, db.ConsistencyLevels(), choices)
+}
+
+// chooserWithChoices opens a list of n numbered choices on a screen of the
+// given height, which is how a long keyspace list is reproduced.
+func chooserWithChoices(n, screenHeight int) (*MainModel, []string) {
+	choices := make([]string, n)
+	for i := range choices {
+		choices[i] = fmt.Sprintf("keyspace_%02d", i)
+	}
+
+	m := chooserModel()
+	m.windowHeight = screenHeight
+	m.openSettingChooser(settingKeyspace, 4, choices, choices[0])
+	return m, choices
+}
+
+// TestEveryChoiceIsReachableByScrolling is the bug: a cluster with more
+// keyspaces than the box had rows showed the first few and no way to the rest.
+// There is no keyboard navigation here by design, so the wheel is the only way
+// the window can move.
+func TestEveryChoiceIsReachableByScrolling(t *testing.T) {
+	const screenHeight = 20
+	m, choices := chooserWithChoices(40, screenHeight)
+
+	seen := map[string]bool{}
+	record := func() {
+		g, ok := m.chooserGeometry(m.windowWidth, screenHeight)
+		require.True(t, ok)
+		for i := g.first; i < g.last; i++ {
+			seen[choices[i]] = true
+		}
+	}
+
+	record()
+	require.Less(t, len(seen), len(choices), "the list should not fit, or this proves nothing")
+
+	// Wheel to the bottom, then back to the top.
+	for range len(choices) {
+		m.scrollChooser(chooserScrollStep)
+		record()
+	}
+	for range len(choices) {
+		m.scrollChooser(-chooserScrollStep)
+		record()
+	}
+
+	for _, choice := range choices {
+		assert.True(t, seen[choice], "%s could never be scrolled to", choice)
+	}
+}
+
+// TestScrollingStopsAtTheEnds: the wheel must not run the window off either
+// end and leave the box empty or short.
+func TestScrollingStopsAtTheEnds(t *testing.T) {
+	const screenHeight = 20
+	m, choices := chooserWithChoices(40, screenHeight)
+
+	for range 200 {
+		m.scrollChooser(chooserScrollStep)
+	}
+	g, ok := m.chooserGeometry(m.windowWidth, screenHeight)
+	require.True(t, ok)
+	assert.Equal(t, len(choices), g.last, "scrolling down should stop with the last choice showing")
+	assert.Equal(t, g.height-2, g.last-g.first, "the box should still be full")
+
+	for range 200 {
+		m.scrollChooser(-chooserScrollStep)
+	}
+	g, _ = m.chooserGeometry(m.windowWidth, screenHeight)
+	assert.Equal(t, 0, g.first, "scrolling up should stop at the first choice")
+	assert.Equal(t, g.height-2, g.last-g.first)
+}
+
+// TestTheListUsesTheRoomAvailable: it used to be capped at ten rows however
+// tall the terminal was.
+func TestTheListUsesTheRoomAvailable(t *testing.T) {
+	short, _ := chooserWithChoices(40, 14)
+	tall, _ := chooserWithChoices(40, 40)
+
+	sg, ok := short.chooserGeometry(short.windowWidth, 14)
+	require.True(t, ok)
+	tg, ok := tall.chooserGeometry(tall.windowWidth, 40)
+	require.True(t, ok)
+
+	assert.Greater(t, tg.height, sg.height, "a taller terminal should show more choices")
+	assert.Greater(t, tg.last-tg.first, 10, "the ten row cap is gone")
+}
+
+// TestShortListsStayShort: only the long ones grow. A box covering the screen
+// to offer ON and OFF would be absurd.
+func TestShortListsStayShort(t *testing.T) {
+	m := chooserModel()
+	m.windowHeight = 40
+	m.openSettingChooser(settingTracing, 10, []string{"ON", "OFF"}, "OFF")
+
+	g, ok := m.chooserGeometry(m.windowWidth, 40)
+	require.True(t, ok)
+	assert.Equal(t, 2+2, g.height, "two choices and two borders")
+}
+
+// TestTheScrollbarSaysWhereYouAre: without it, a box holding ten of your
+// thirty keyspaces looks exactly like one holding all of them, and there is no
+// way to tell how far down the list you have got.
+func TestTheScrollbarSaysWhereYouAre(t *testing.T) {
+	const screenHeight = 24
+	m, _ := chooserWithChoices(40, screenHeight)
+
+	// The scrollbar is the last column inside the box.
+	bar := func() string {
+		layer, ok := m.viewSettingChooser(m.windowWidth, screenHeight)
+		require.True(t, ok)
+
+		var col []rune
+		for _, row := range strings.Split(stripAnsiForTest(layer.Content), "\n")[1:] {
+			runes := []rune(row)
+			if len(runes) < 2 {
+				continue
+			}
+			col = append(col, runes[len(runes)-2])
+		}
+		return string(col[:len(col)-1]) // drop the bottom border
+	}
+
+	atTop := bar()
+	assert.Equal(t, '\u2588', []rune(atTop)[0], "the thumb should start at the top: %q", atTop)
+	assert.Contains(t, atTop, "\u2591", "and there should be track below it")
+
+	for range 200 {
+		m.scrollChooser(chooserScrollStep)
+	}
+	atBottom := bar()
+	assert.Equal(t, '\u2588', []rune(atBottom)[len([]rune(atBottom))-1],
+		"scrolled to the end, the thumb should reach the bottom: %q", atBottom)
+	assert.Equal(t, '\u2591', []rune(atBottom)[0], "and there should be track above it")
+}
+
+// TestNoScrollbarWhenTheListFits: a bar that is always full says nothing.
+func TestNoScrollbarWhenTheListFits(t *testing.T) {
+	m := chooserModel()
+	m.windowHeight = 24
+	m.openSettingChooser(settingTracing, 10, []string{"ON", "OFF"}, "OFF")
+
+	layer, ok := m.viewSettingChooser(m.windowWidth, 24)
+	require.True(t, ok)
+
+	plain := stripAnsiForTest(layer.Content)
+	assert.NotContains(t, plain, "\u2588")
+	assert.NotContains(t, plain, "\u2591")
+}
+
+// TestTheThumbGrowsWithTheProportionShowing.
+func TestTheThumbGrowsWithTheProportionShowing(t *testing.T) {
+	count := func(thumb []bool) int {
+		n := 0
+		for _, t := range thumb {
+			if t {
+				n++
+			}
+		}
+		return n
+	}
+
+	assert.Equal(t, 0, count(scrollbarColumn(10, 0, 10)), "a list that fits has no thumb")
+	assert.Greater(t, count(scrollbarColumn(10, 0, 20)), count(scrollbarColumn(10, 0, 200)),
+		"showing half the list should give a bigger thumb than showing a twentieth")
+	assert.GreaterOrEqual(t, count(scrollbarColumn(10, 0, 1000)), 1,
+		"a huge list still needs a thumb you can see")
+}
+
+// TestTheWheelScrollsTheListNotTheViewBehindIt.
+func TestTheWheelScrollsTheListNotTheViewBehindIt(t *testing.T) {
+	const screenHeight = 20
+	m, _ := chooserWithChoices(40, screenHeight)
+	m.historyViewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(10))
+	m.historyViewport.SetContent(strings.Repeat("line\n", 100))
+	m.viewMode = "history"
+
+	before := m.historyViewport.YOffset()
+	m.handleMouseInput(tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 5, Y: 5})
+
+	g, ok := m.chooserGeometry(m.windowWidth, screenHeight)
+	require.True(t, ok)
+	assert.Equal(t, chooserScrollStep, g.first, "the wheel should have moved the list")
+	assert.Equal(t, before, m.historyViewport.YOffset(), "the view behind must not have moved")
+}
+
+// settingColumn is the middle of a setting's field on the status line.
+func settingColumn(m *MainModel, setting string) int {
+	for _, seg := range m.statusBar.segments() {
+		if seg.setting == setting {
+			return (seg.start + seg.end) / 2
+		}
+	}
+	return -1
+}
+
+// pressAt delivers a left button press, the way the terminal does.
+func pressAt(m *MainModel, col, row int) {
+	m.handleMouseInput(tea.MouseClickMsg{Button: tea.MouseLeft, X: col, Y: row})
+}
+
+// TestClickingTheSameSettingClosesItsList is the bug: the press closed the list
+// and reopened it in the same breath, so it never appeared to go away and you
+// had to click somewhere else to be rid of it.
+func TestClickingTheSameSettingClosesItsList(t *testing.T) {
+	m := chooserModel()
+	col := settingColumn(m, settingConsistency)
+	require.Positive(t, col)
+
+	pressAt(m, col, m.windowHeight-1)
+	require.True(t, m.chooser.active, "the first click should open the list")
+
+	pressAt(m, col, m.windowHeight-1)
+	assert.False(t, m.chooser.active, "clicking the same setting again should close it")
+}
+
+// TestClickingAnotherSettingSwitchesLists.
+func TestClickingAnotherSettingSwitchesLists(t *testing.T) {
+	m := chooserModel()
+
+	pressAt(m, settingColumn(m, settingConsistency), m.windowHeight-1)
+	require.Equal(t, settingConsistency, m.chooser.setting)
+
+	pressAt(m, settingColumn(m, settingTracing), m.windowHeight-1)
+	assert.True(t, m.chooser.active, "clicking a different setting should open that one")
+	assert.Equal(t, settingTracing, m.chooser.setting)
+}
+
+// TestClickingEmptyStatusLineClosesTheList: a click on the bar but not on a
+// field dismisses whatever was open.
+func TestClickingEmptyStatusLineClosesTheList(t *testing.T) {
+	m := chooserModel()
+	pressAt(m, settingColumn(m, settingConsistency), m.windowHeight-1)
+	require.True(t, m.chooser.active)
+
+	segs := m.statusBar.segments()
+	pressAt(m, segs[len(segs)-1].end+4, m.windowHeight-1)
+
+	assert.False(t, m.chooser.active)
+}
+
+// TestClickingTheTabsClosesTheList.
+func TestClickingTheTabsClosesTheList(t *testing.T) {
+	m := chooserModel()
+	m.viewMode = "history"
+	pressAt(m, settingColumn(m, settingConsistency), m.windowHeight-1)
+	require.True(t, m.chooser.active)
+
+	pressAt(m, 2, 0)
 	assert.False(t, m.chooser.active)
 }

@@ -299,61 +299,6 @@ func loadConfig(customConfigPath string) (*config.Config, error) {
 	return conf, nil
 }
 
-// Consistency returns the current consistency level
-func (s *Session) Consistency() string {
-	switch s.consistency {
-	case gocql.Any:
-		return "ANY"
-	case gocql.One:
-		return "ONE"
-	case gocql.Two:
-		return "TWO"
-	case gocql.Three:
-		return "THREE"
-	case gocql.Quorum:
-		return "QUORUM"
-	case gocql.All:
-		return "ALL"
-	case gocql.LocalQuorum:
-		return "LOCAL_QUORUM"
-	case gocql.EachQuorum:
-		return "EACH_QUORUM"
-	case gocql.LocalOne:
-		return "LOCAL_ONE"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// SetConsistency sets the consistency level
-func (s *Session) SetConsistency(level string) error {
-	var consistency gocql.Consistency
-	switch level {
-	case "ANY":
-		consistency = gocql.Any
-	case "ONE":
-		consistency = gocql.One
-	case "TWO":
-		consistency = gocql.Two
-	case "THREE":
-		consistency = gocql.Three
-	case "QUORUM":
-		consistency = gocql.Quorum
-	case "ALL":
-		consistency = gocql.All
-	case "LOCAL_QUORUM":
-		consistency = gocql.LocalQuorum
-	case "EACH_QUORUM":
-		consistency = gocql.EachQuorum
-	case "LOCAL_ONE":
-		consistency = gocql.LocalOne
-	default:
-		return fmt.Errorf("invalid consistency level: %s", level)
-	}
-	s.consistency = consistency
-	return nil
-}
-
 // PageSize returns the current page size
 func (s *Session) PageSize() int {
 	return s.pageSize

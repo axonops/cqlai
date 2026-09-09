@@ -318,7 +318,8 @@ func handleOutputCommand(command string, session *db.Session) interface{} {
 		formatStr := parts[1]
 		format, err := config.ParseOutputFormat(formatStr)
 		if err != nil {
-			return fmt.Sprintf("Invalid output format '%s'. Valid formats are: TABLE, ASCII, EXPAND, JSON", formatStr)
+			return fmt.Sprintf("Invalid output format '%s'. Valid formats are: %s",
+				formatStr, strings.Join(config.OutputFormats(), ", "))
 		}
 		if err := sessionManager.SetOutputFormat(format); err != nil {
 			return fmt.Sprintf("Failed to set output format: %v", err)
@@ -326,7 +327,7 @@ func handleOutputCommand(command string, session *db.Session) interface{} {
 		return fmt.Sprintf("Now using %s output format", formatStr)
 	}
 
-	return "Usage: OUTPUT [TABLE|ASCII|EXPAND|JSON]"
+	return "Usage: OUTPUT [" + strings.Join(config.OutputFormats(), "|") + "]"
 }
 
 // IsDangerousCommand checks if a command requires confirmation
