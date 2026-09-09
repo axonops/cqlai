@@ -254,9 +254,42 @@ func TestTheButtonGivesWayToTheTabNames(t *testing.T) {
 	assert.Contains(t, medium, "Help")
 
 	// Room for the names only. The button goes rather than the names.
-	tight := stripAnsiForTest(m.ViewTabBar(44))
+	tight := stripAnsiForTest(m.ViewTabBar(40))
 	assert.Contains(t, tight, "Console")
 	assert.NotContains(t, tight, "Help")
+}
+
+// TestTheButtonNamesBothKeys. F1 does not reach the application on Terminator
+// and others, so a button naming only F1 names a key that does nothing there.
+func TestTheButtonNamesBothKeys(t *testing.T) {
+	m := helpModel()
+
+	wide := stripAnsiForTest(m.ViewTabBar(100))
+	assert.Contains(t, wide, "Help (F1/Alt+H)")
+}
+
+// TestTheLabelShortensBeforeTheButtonGoes: a terminal with room for "Help" but
+// not for both keys keeps the button.
+func TestTheLabelShortensBeforeTheButtonGoes(t *testing.T) {
+	m := helpModel()
+
+	for _, width := range []int{70, 50, 44} {
+		bar := stripAnsiForTest(m.ViewTabBar(width))
+		assert.Contains(t, bar, "Help", "width %d should still offer the button: %q", width, bar)
+	}
+}
+
+// TestTheTabsDoNotGiveUpTheirNamesForALabelThatWillNotBeDrawn.
+//
+// The room reserved for the button is its shortest useful label, not its
+// longest: reserving for "Help (F1/Alt+H)" on a terminal that was only ever
+// going to fit "Help" would shorten the tab names for nothing.
+func TestTheTabsDoNotGiveUpTheirNamesForALabelThatWillNotBeDrawn(t *testing.T) {
+	m := helpModel()
+
+	bar := stripAnsiForTest(m.ViewTabBar(44))
+	assert.Contains(t, bar, "Console", "the names should survive here")
+	assert.Contains(t, bar, "Help")
 }
 
 // TestTheTabLineNeverWrapsWithTheButtonOnIt, at any width.
