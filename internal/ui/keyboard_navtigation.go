@@ -153,7 +153,6 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 					m.refreshTableContent(allData)
 
 					// Update row count
-					m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 					m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 				}
 			}
@@ -250,18 +249,8 @@ func (m *MainModel) handleLeftArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 				// Refresh the trace view using existing table renderer
 				m.refreshTraceView()
 			}
-		case m.viewMode == "table" && m.hasTable:
-			// Scroll data table left
-			if m.horizontalOffset > 0 {
-				m.horizontalOffset -= 10
-				if m.horizontalOffset < 0 {
-					m.horizontalOffset = 0
-				}
-				// Refresh the table view if we have table data
-				if m.lastTableData != nil {
-					m.refreshTableView()
-				}
-			}
+		default:
+			m.scrollHorizontally(-horizontalStep)
 		}
 		return m, nil
 	}
@@ -295,21 +284,8 @@ func (m *MainModel) handleRightArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 					m.refreshTraceView()
 				}
 			}
-		case m.viewMode == "table" && m.hasTable:
-			// Scroll data table right
-			if m.tableWidth > m.tableViewport.Width() {
-				maxOffset := m.tableWidth - m.tableViewport.Width() + 10 // Add some buffer
-				if m.horizontalOffset < maxOffset {
-					m.horizontalOffset += 10
-					if m.horizontalOffset > maxOffset {
-						m.horizontalOffset = maxOffset
-					}
-					// Refresh the table view if we have table data
-					if m.lastTableData != nil {
-						m.refreshTableView()
-					}
-				}
-			}
+		default:
+			m.scrollHorizontally(horizontalStep)
 		}
 		return m, nil
 	}

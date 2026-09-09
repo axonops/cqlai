@@ -75,6 +75,24 @@ func (m *MainModel) processCommandResult(command string, result interface{}, sta
 	return m, nil
 }
 
+// rowsWithoutPaging is the batch to fetch when PAGING is off and there is no
+// page size to take it from.
+const rowsWithoutPaging = 100
+
+// initialRowsToLoad is how many rows to fetch before drawing anything: one
+// page, which is what PAGING sets.
+//
+// It was a hardcoded 100, so PAGING 500 still showed 100 first and PAGING 50
+// still showed 100. It matching the default was a coincidence.
+func (m *MainModel) initialRowsToLoad() int {
+	if m.session != nil {
+		if pageSize := m.session.PageSize(); pageSize > 0 {
+			return pageSize
+		}
+	}
+	return rowsWithoutPaging
+}
+
 // processStreamingQueryResult handles streaming query results
 func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQueryResult, startTime time.Time) (*MainModel, tea.Cmd) {
 	// Use the new StreamingProcessor from the database layer
@@ -96,7 +114,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 
 	// Load initial batch of rows using the streaming processor
 	ctx := context.Background()
-	maxInitialRows := 100 // Show first 100 rows immediately
+	maxInitialRows := m.initialRowsToLoad()
 
 	// Load initial rows from the streaming processor
 	initialRows, hasMore, err := streamingResult.LoadMore(ctx, maxInitialRows)
@@ -167,10 +185,9 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	// Update UI
 	m.topBar.HasQueryData = true
 	m.topBar.QueryTime = time.Since(v.StartTime)
-	m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 	m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 
-	logger.DebugfToFile("HandleEnterKey", "TopBar.RowCount set to %d", m.topBar.RowCount)
+	logger.DebugfToFile("HandleEnterKey", "Row count set to %d", m.rowCount)
 
 	// Prepare display based on format
 	outputFormat := config.OutputFormatTable
@@ -206,7 +223,7 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 	// Format initial data as expanded vertical format
 	allData := append([][]string{headers}, m.slidingWindow.Rows...)
 	m.lastTableData = allData // Store for pagination
-	m.horizontalOffset = 0    // Reset horizontal scroll
+	m.resetHorizontalScroll()
 
 	// Format as expanded vertical table. The boundaries have to come from this
 	// layout: paging snaps to them, and a record here is many lines tall.
@@ -234,7 +251,7 @@ func (m *MainModel) showQueryResult(data [][]string, columnTypes []string, outpu
 	m.tableHeaders = data[0]
 	m.columnTypes = columnTypes
 	m.resultFormat = outputFormat
-	m.horizontalOffset = 0
+	m.resetHorizontalScroll()
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
@@ -341,7 +358,6 @@ func (m *MainModel) fetchAllPages(format string) {
 	logger.DebugfToFile("HandleEnterKey", "%s format: fetched %d rows, total rows: %d",
 		format, totalFetched, m.slidingWindow.TotalRowsSeen)
 
-	m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 	m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 }
 
@@ -360,7 +376,7 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 
 	m.hasTable = true
 	m.viewMode = "table"
-	m.horizontalOffset = 0
+	m.resetHorizontalScroll()
 	m.initialColumnWidths = nil // Reset initial widths for new table
 	m.cachedTableLines = nil    // Clear cache for new table
 
@@ -405,7 +421,7 @@ func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, co
 
 	m.hasTable = true
 	m.viewMode = "table"
-	m.horizontalOffset = 0
+	m.resetHorizontalScroll()
 	m.initialColumnWidths = nil // Reset initial widths for new table
 	m.cachedTableLines = nil    // Clear cache for new table
 
@@ -449,7 +465,7 @@ func (m *MainModel) displayTableFormat(headers []string, columnTypes []string) (
 	// Format initial data for display
 	allData := append([][]string{headers}, m.slidingWindow.Rows...)
 	m.lastTableData = allData // Store for horizontal scrolling
-	m.horizontalOffset = 0    // Reset horizontal scroll
+	m.resetHorizontalScroll()
 	logger.DebugfToFile("HandleEnterKey", "Formatting table with %d rows (including header)", len(allData))
 	tableStr := m.formatTableForViewport(allData)
 	logger.DebugfToFile("HandleEnterKey", "Table string length: %d", len(tableStr))
@@ -467,7 +483,6 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 	if len(v.Data) > 0 {
 		// Update top bar with query metadata
 		m.topBar.QueryTime = v.Duration
-		m.topBar.RowCount = v.RowCount
 		m.topBar.HasQueryData = true
 
 		m.rowCount = v.RowCount
@@ -509,11 +524,12 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 	// Table data without metadata (for backward compatibility)
 	if len(v) > 0 {
 		m.rowCount = len(v) - 1 // Exclude header
+		m.topBar.HasQueryData = true
 		// Store table data and headers
 		m.lastTableData = v
 		m.tableHeaders = v[0] // Store the header row
 		m.resultFormat = config.OutputFormatTable
-		m.horizontalOffset = 0
+		m.resetHorizontalScroll()
 		m.hasTable = true
 		m.viewMode = "table"
 		m.initialColumnWidths = nil // Reset initial widths for new table

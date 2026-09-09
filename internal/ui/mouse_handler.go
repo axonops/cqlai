@@ -247,30 +247,13 @@ func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
 
 // handleMouseWheelLeft handles horizontal scrolling left
 func (m *MainModel) handleMouseWheelLeft() (*MainModel, tea.Cmd) {
-	if m.viewMode != "table" || !m.hasTable {
-		return m, nil
-	}
-
-	if m.horizontalOffset > 0 {
-		m.horizontalOffset = max(m.horizontalOffset-horizontalStep, 0)
-		m.applyHorizontalOffset()
-	}
+	m.scrollHorizontally(-horizontalStep)
 	return m, nil
 }
 
 // handleMouseWheelRight handles horizontal scrolling right
 func (m *MainModel) handleMouseWheelRight() (*MainModel, tea.Cmd) {
-	if m.viewMode != "table" || !m.hasTable {
-		return m, nil
-	}
-
-	// Stop where the content ends. It used to scroll on past the end when the
-	// content was narrower than the window, leaving you looking at nothing.
-	maxOffset := max(m.tableWidth-m.tableViewport.Width()+horizontalStep, 0)
-	if m.horizontalOffset < maxOffset {
-		m.horizontalOffset = min(m.horizontalOffset+horizontalStep, maxOffset)
-		m.applyHorizontalOffset()
-	}
+	m.scrollHorizontally(horizontalStep)
 	return m, nil
 }
 
@@ -311,7 +294,6 @@ func (m *MainModel) loadMoreTableData() {
 		m.refreshTableContent(allData)
 
 		// Update row count
-		m.topBar.RowCount = int(m.slidingWindow.TotalRowsSeen)
 		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 	}
 }

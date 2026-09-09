@@ -57,6 +57,11 @@ func (m *MainModel) View() tea.View {
 	}
 
 	m.topBar.LastCommand = m.latestCommand()
+
+	// The row count comes from the model rather than being pushed into the bar
+	// by each handler. It was assigned as a pair in six places and the DESCRIBE
+	// path forgot, so its results never reached the bar at all.
+	m.topBar.RowCount = m.rowCount
 	if m.session != nil {
 		autoFetch := m.session.AutoFetch()
 		m.statusBar.AutoFetch = autoFetch

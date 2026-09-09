@@ -500,7 +500,6 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	rawData := make([]map[string]interface{}, 0)
 
 	logger.DebugToFile("executeSelectQuery", "Starting row scan with MapScan...")
-	rowNum := 0
 
 	// Extract clean column names (without PK/C indicators)
 	cleanHeaders := make([]string, len(filteredColumns))
@@ -508,164 +507,38 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 		cleanHeaders[i] = col.Name
 	}
 
-	// Use MapScan for all tables to safely handle NULL values
-	// gocql can panic when scanning NULLs into interface{} with regular Scan()
-	// MapScan handles NULLs gracefully by omitting them from the map
-	if true { // Always use MapScan for safety
-		virtualResults := make([][]string, 0)
-		for {
-			rowMap := make(map[string]interface{})
-			if !iter.MapScan(rowMap) {
-				break
-			}
-
-			// Convert map to row array in column order
-			row := make([]string, len(filteredColumns))
-			rawRow := make(map[string]interface{})
-
-			for i, col := range filteredColumns {
-				val, exists := rowMap[col.Name]
-				if !exists {
-					val = nil
-				}
-				rawRow[col.Name] = val
-				row[i] = FormatValue(val)
-			}
-
-			virtualResults = append(virtualResults, row)
-			rawData = append(rawData, rawRow)
+	// MapScan for every table: scanning a NULL into an interface{} with Scan
+	// panics, and MapScan leaves the key out of the map instead.
+	scanned := make([][]string, 0)
+	for {
+		rowMap := make(map[string]interface{})
+		if !iter.MapScan(rowMap) {
+			break
 		}
-		results = append(results, virtualResults...)
-	} else {
-		// Use Scan with interface{} slice for regular tables to get raw bytes for UDTs
-		// MapScan returns empty maps for UDTs, but we need to use RawBytes for UDT columns
-		for {
-			// Create a slice to scan into - use RawBytes for UDT columns
-			scanDest := make([]interface{}, len(filteredColumns))
-			for i, col := range filteredColumns {
-				// TypeInfo can be non-nil but internally invalid on virtual
-				// tables, where Type() panics; fall back to a plain destination.
-				func(idx int, info gocql.TypeInfo) {
-					defer func() {
-						if r := recover(); r != nil {
-							scanDest[idx] = new(interface{})
-						}
-					}()
-					scanDest[idx] = NewScanDest(info)
-				}(i, col.TypeInfo)
+
+		// Convert map to row array in column order
+		row := make([]string, len(filteredColumns))
+		rawRow := make(map[string]interface{})
+
+		for i, col := range filteredColumns {
+			val, exists := rowMap[col.Name]
+			if !exists {
+				val = nil
 			}
-
-			// Scan the row
-			if !iter.Scan(scanDest...) {
-				logger.DebugToFile("executeSelectQuery", "Scan returned false - no more rows or error")
-				break
-			}
-
-			// Store raw data for JSON export (preserves types)
-			rawRow := make(map[string]interface{})
-			// Create formatted row for display
-			row := make([]string, len(filteredColumns))
-
-			for i, col := range filteredColumns {
-				// nil here is a real NULL, not a zero value standing in for one.
-				val := ScanValue(scanDest[i])
-
-				if val == nil {
-					rawRow[cleanHeaders[i]] = nil
-					row[i] = "null"
-				} else {
-					// Special handling for UDTs and complex types
-					typeStr := columnTypes[i]
-
-					// Parse the type string to get structured type information
-					typeInfo, parseErr := ParseCQLType(typeStr)
-
-					// Add debug logging to understand what we're getting
-					logger.DebugfToFile("ExecuteSelectQuery", "Column %s: typeStr=%s, gocqlType=%v, parsedType=%v, parseErr=%v, valType=%T",
-						col.Name, typeStr, col.TypeInfo.Type(), typeInfo, parseErr, val)
-
-					// Determine the data type category
-					isUDT := col.TypeInfo.Type() == gocql.TypeUDT || (typeInfo != nil && typeInfo.BaseType == "udt")
-					isCollection := typeInfo != nil && (typeInfo.BaseType == "list" || typeInfo.BaseType == "set" ||
-						typeInfo.BaseType == "map" || typeInfo.BaseType == "tuple")
-
-					switch {
-					case isUDT:
-						// UDT handling - try to decode if we got raw bytes
-						if bytes, ok := val.([]byte); ok && len(bytes) > 0 {
-							logger.DebugfToFile("ExecuteSelectQuery", "UDT %s came as bytes: %d bytes", col.Name, len(bytes))
-
-							// Use our binary decoder to decode the UDT
-							decoder := NewBinaryDecoder(s.udtRegistry)
-
-							// Determine the keyspace - prefer query keyspace, then current
-							keyspace := currentKeyspace
-							if keyspace == "" {
-								keyspace = s.Keyspace()
-								if keyspace == "" && s.cluster != nil {
-									keyspace = s.cluster.Keyspace
-								}
-							}
-
-							// Try to decode the UDT
-							if typeInfo != nil {
-								decoded, err := decoder.Decode(bytes, typeInfo, keyspace)
-								if err != nil {
-									logger.DebugfToFile("ExecuteSelectQuery", "Failed to decode UDT %s: %v", col.Name, err)
-									// Fall back to showing raw bytes info
-									rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
-									row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
-								} else {
-									// Successfully decoded UDT
-									rawRow[cleanHeaders[i]] = decoded
-									// Format for display
-									if m, ok := decoded.(map[string]interface{}); ok {
-										row[i] = formatUDTMap(m)
-									} else {
-										row[i] = fmt.Sprintf("%v", decoded)
-									}
-								}
-							} else {
-								// Couldn't parse type, show raw bytes
-								rawRow[cleanHeaders[i]] = map[string]interface{}{"_raw_bytes": fmt.Sprintf("%x", bytes)}
-								row[i] = fmt.Sprintf("{_raw_bytes:%d}", len(bytes))
-							}
-						} else if m, ok := val.(map[string]interface{}); ok {
-							// Sometimes gocql returns a map directly
-							if len(m) > 0 {
-								rawRow[cleanHeaders[i]] = m
-								row[i] = formatUDTMap(m)
-							} else {
-								// Empty map - common issue with gocql and UDTs
-								logger.DebugfToFile("ExecuteSelectQuery", "UDT %s returned empty map", col.Name)
-								rawRow[cleanHeaders[i]] = m
-								row[i] = "{}"
-							}
-						} else {
-							// Other format - just display as is
-							rawRow[cleanHeaders[i]] = val
-							row[i] = fmt.Sprintf("%v", val)
-						}
-
-					case isCollection:
-						// Collections are already decoded by gocql, just format them
-						rawRow[cleanHeaders[i]] = val
-						row[i] = FormatValue(val)
-
-					default:
-						// Store the actual value for JSON
-						rawRow[cleanHeaders[i]] = val
-
-						// Format for display - use formatValue which handles collections properly
-						row[i] = FormatValue(val)
-					}
-				}
-			}
-			rawData = append(rawData, rawRow)
-			results = append(results, row)
-			rowNum++
+			rawRow[col.Name] = val
+			row[i] = FormatValue(val)
 		}
+
+		scanned = append(scanned, row)
+		rawData = append(rawData, rawRow)
 	}
+	results = append(results, scanned...)
+
+	// Count what was collected. This used to be a counter incremented beside
+	// the append, in the other half of an "if true ... else": the rows came
+	// back from the half that runs and the count from the half that cannot, so
+	// every non-streaming SELECT reported no rows however many it returned.
+	rowNum := len(scanned)
 	logger.DebugfToFile("executeSelectQuery", "Scan completed. Total rows: %d", rowNum)
 
 	if err := iter.Close(); err != nil {
@@ -697,16 +570,20 @@ func (s *Session) shouldUseStreaming(query string) bool {
 	// Always use streaming unless there's a small LIMIT
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
 
-	// Check for LIMIT clause
-	if strings.Contains(upperQuery, " LIMIT ") {
-		// Extract limit value - simple regex for "LIMIT n"
+	// A LIMIT small enough to fit in one page has nothing to page through, so
+	// fetch it in one go.
+	//
+	// This used to compare the limit against a hardcoded 1000, which had no
+	// relationship to the page size: PAGING 100 with LIMIT 300 fetched all 300
+	// at once and PAGING was ignored. Measuring against the page size is what
+	// makes PAGING mean something.
+	if pageSize := s.PageSize(); pageSize > 0 && strings.Contains(upperQuery, " LIMIT ") {
 		re := regexp.MustCompile(`LIMIT\s+(\d+)`)
 		matches := re.FindStringSubmatch(upperQuery)
 		if len(matches) > 1 {
 			limit, err := strconv.Atoi(matches[1])
-			if err == nil && limit <= 1000 {
-				// Small limit, don't use streaming
-				logger.DebugfToFile("shouldUseStreaming", "Query has LIMIT %d, not using streaming", limit)
+			if err == nil && limit <= pageSize {
+				logger.DebugfToFile("shouldUseStreaming", "LIMIT %d fits in a page of %d, not using streaming", limit, pageSize)
 				return false
 			}
 		}
