@@ -73,54 +73,51 @@ type AIInfoResponseMsg struct {
 
 // MainModel is the main Bubble Tea model for the application.
 type MainModel struct {
-	historyViewport          viewport.Model // For command history
-	tableViewport            viewport.Model // For current table display
-	input                    textinput.Model
-	topBar                   TopBarModel
-	statusBar                StatusBarModel
-	lastCommand              string
-	commandHistory           []string
-	historyIndex             int
-	currentInput             string // Temporary storage for current input when navigating history
-	fullHistoryContent       string // Full history content (not limited by viewport)
-	clipboardBuffer          string // Buffer for cut/copy operations (Ctrl+K, Ctrl+U, Ctrl+Y)
-	session                  *db.Session
-	sessionManager           *session.Manager // Application state manager
-	config                   *config.Config   // Full configuration
-	aiConfig                 *config.AIConfig // AI configuration
-	styles                   *Styles
-	ready                    bool
-	lastQueryTime            time.Duration
-	rowCount                 int
-	completionEngine         *completion.CompletionEngine
-	completions              []string
-	completionIndex          int
-	showCompletions          bool
-	completionScrollOffset   int // Track scroll position in completion list
-	confirmExit              bool
-	modal                    Modal
-	aiConversationID         string            // Current AI conversation ID for stateful interactions
-	aiSelectionModal         *AISelectionModal // AI selection modal for user choices
-	aiCQLModal               *AICQLModal       // AI CQL execution modal
-	showHistoryModal         bool              // Whether to show command history modal
-	historyModalIndex        int               // Currently selected item in history modal
-	historyModalScrollOffset int               // Track scroll position in history modal
-	horizontalOffset         int               // For horizontal scrolling of tables
-	lastTableData            [][]string        // Store the last table data for horizontal scrolling
-	tableWidth               int               // Width of the full table (before truncation)
-	tableHeaders             []string          // Store column headers for sticky display
-	columnWidths             []int             // Store column widths for proper alignment
-	initialColumnWidths      []int             // Store initial column widths to maintain consistency
-	hasTable                 bool              // Whether we're currently displaying a table
-	cachedTableLines         []string          // Cache rendered table lines for fast scrolling
-	navigationMode           bool              // Toggle between navigation keys and input mode
-	mouseEnabled             bool              // Whether to ask the terminal for mouse reporting
-	chooser                  settingChooser    // Open list of values for a status bar setting
-	selection                textSelection     // Text being dragged out with the mouse, if any
-	viewMode                 string            // "history", "table", "trace", or "ai_info"
-	showDataTypes            bool              // Whether to show column data types in table headers
-	columnTypes              []string          // Store column data types
-	tableRowBoundaries       []int             // Line numbers where table rows start
+	historyViewport        viewport.Model // For command history
+	tableViewport          viewport.Model // For current table display
+	input                  textinput.Model
+	topBar                 TopBarModel
+	statusBar              StatusBarModel
+	lastCommand            string
+	commandHistory         []string
+	historyIndex           int
+	currentInput           string // Temporary storage for current input when navigating history
+	fullHistoryContent     string // Full history content (not limited by viewport)
+	clipboardBuffer        string // Buffer for cut/copy operations (Ctrl+K, Ctrl+U, Ctrl+Y)
+	session                *db.Session
+	sessionManager         *session.Manager // Application state manager
+	config                 *config.Config   // Full configuration
+	aiConfig               *config.AIConfig // AI configuration
+	styles                 *Styles
+	ready                  bool
+	lastQueryTime          time.Duration
+	rowCount               int
+	completionEngine       *completion.CompletionEngine
+	completions            []string
+	completionIndex        int
+	showCompletions        bool
+	completionScrollOffset int // Track scroll position in completion list
+	confirmExit            bool
+	modal                  Modal
+	aiConversationID       string            // Current AI conversation ID for stateful interactions
+	aiSelectionModal       *AISelectionModal // AI selection modal for user choices
+	aiCQLModal             *AICQLModal       // AI CQL execution modal
+	horizontalOffset       int               // For horizontal scrolling of tables
+	lastTableData          [][]string        // Store the last table data for horizontal scrolling
+	tableWidth             int               // Width of the full table (before truncation)
+	tableHeaders           []string          // Store column headers for sticky display
+	columnWidths           []int             // Store column widths for proper alignment
+	initialColumnWidths    []int             // Store initial column widths to maintain consistency
+	hasTable               bool              // Whether we're currently displaying a table
+	cachedTableLines       []string          // Cache rendered table lines for fast scrolling
+	navigationMode         bool              // Toggle between navigation keys and input mode
+	mouseEnabled           bool              // Whether to ask the terminal for mouse reporting
+	chooser                settingChooser    // Open list of values for a status bar setting
+	selection              textSelection     // Text being dragged out with the mouse, if any
+	viewMode               string            // "history", "table", "trace", or "ai_info"
+	showDataTypes          bool              // Whether to show column data types in table headers
+	columnTypes            []string          // Store column data types
+	tableRowBoundaries     []int             // Line numbers where table rows start
 
 	// AI conversation view
 	aiConversationActive   bool            // Whether AI conversation view is active

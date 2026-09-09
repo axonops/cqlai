@@ -63,7 +63,7 @@ const (
 
 	// chooserScrollStep is how far one wheel notch moves the list. The same as
 	// the viewports scroll by, so the wheel feels the same wherever it is.
-	chooserScrollStep = 3
+	chooserScrollStep = wheelLines
 )
 
 // closeSettingChooser dismisses the list without changing anything.

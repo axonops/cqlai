@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -25,9 +24,11 @@ func NewTopBarModel() TopBarModel {
 	return TopBarModel{}
 }
 
-// View renders the top status bar.
+// View renders the query info bar.
+//
+// It draws the segment list, which is also what fieldAt tests clicks against,
+// so the History field cannot be drawn in one place and clicked in another.
 func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
-	// Define component styles
 	labelStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#888888"))
 
@@ -46,37 +47,28 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 
 	// The mode used to be named here. The tab line above shows it now, and
 	// highlights it, so repeating it would only take up room.
+	styleFor := func(seg infoSegment) lipgloss.Style {
+		switch {
+		case seg.field == infoHistory:
+			return commandStyle
+		case seg.label == "Rows: ":
+			return rowCountStyle
+		default:
+			return queryTimeStyle
+		}
+	}
+
 	content := ""
-
-	// Add command information if available
-	if m.LastCommand != "" {
-		// Truncate long commands to fit in the top bar
-		displayCommand := m.LastCommand
-		maxCommandLength := 50
-		if len(displayCommand) > maxCommandLength {
-			displayCommand = displayCommand[:maxCommandLength] + "..."
+	for i, seg := range m.segments() {
+		if i > 0 {
+			content += separatorStyle.Render(statusSeparator)
 		}
-		content += separatorStyle.Render(" │ ") +
-			labelStyle.Render("Last: ") + commandStyle.Render(displayCommand)
-
-		if m.HasQueryData {
-			content += separatorStyle.Render(" │ ") +
-				labelStyle.Render("Query: ") + queryTimeStyle.Render(fmt.Sprintf("%v", m.QueryTime.Round(time.Millisecond))) +
-				separatorStyle.Render(" │ ") +
-				labelStyle.Render("Rows: ")
-
-			// Show row count with "+" if more data is available
-			if m.HasMoreData && !m.AutoFetch {
-				content += rowCountStyle.Render(fmt.Sprintf("%d+", m.RowCount))
-			} else {
-				content += rowCountStyle.Render(fmt.Sprintf("%d", m.RowCount))
-			}
-		}
+		content += labelStyle.Render(seg.label) + styleFor(seg).Render(seg.value)
 	}
 
 	// Apply style to the entire bar without forced background
 	barStyle := lipgloss.NewStyle().
-		Padding(0, 1).
+		Padding(0, infoBarPadding).
 		Width(width)
 
 	return barStyle.Render(content)

@@ -116,12 +116,24 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m.handleF6()
 
 	case "space":
+		// A space is part of what you are searching for. Without this it went
+		// to the pager instead and never reached the query, so searching for
+		// anything with a space in it silently matched nothing.
+		if m.historySearchMode {
+			return m.typeIntoHistorySearch(msg)
+		}
 		return m.handleSpaceKey(msg)
 
 	case "pgup":
+		if m.historySearchMode {
+			return m.moveHistorySelection(-historyModalRows)
+		}
 		return m.handlePageUp(msg)
 
 	case "pgdown":
+		if m.historySearchMode {
+			return m.moveHistorySelection(historyModalRows)
+		}
 		return m.handlePageDown(msg)
 
 	// The modified forms route to the same handlers, which then read msg.Mod
@@ -153,10 +165,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		// If in history search mode, select the current entry
 		if m.historySearchMode {
 			return m.handleHistorySearchSelect()
-		}
-		// If history modal is showing, select the current entry
-		if m.showHistoryModal {
-			return m.handleHistoryModalSelect()
 		}
 		return m.handleEnterKey()
 
@@ -243,47 +251,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 
 		// If in history search mode, handle typing for search query
 		if m.historySearchMode {
-			// Update search query based on key press
-			switch msg.String() {
-			case "backspace", "delete":
-				if len(m.historySearchQuery) > 0 {
-					m.historySearchQuery = m.historySearchQuery[:len(m.historySearchQuery)-1]
-				}
-			default:
-				// Add character to search query if it's a printable character
-				if len(msg.Text) > 0 && len(m.historySearchQuery) < 100 {
-					m.historySearchQuery += string(msg.Text)
-				}
-			}
-
-			// Update search results
-			if m.historyManager != nil {
-				m.historySearchResults = m.historyManager.SearchHistory(m.historySearchQuery)
-			} else {
-				// Fallback to in-memory history search
-				m.historySearchResults = []string{}
-				queryLower := strings.ToLower(m.historySearchQuery)
-				for i := len(m.commandHistory) - 1; i >= 0; i-- {
-					if strings.Contains(strings.ToLower(m.commandHistory[i]), queryLower) {
-						m.historySearchResults = append(m.historySearchResults, m.commandHistory[i])
-					}
-				}
-			}
-
-			// Start at the bottom (newest matching command) if results changed
-			if len(m.historySearchResults) > 0 {
-				m.historySearchIndex = len(m.historySearchResults) - 1
-				// Set scroll offset to show the bottom
-				if len(m.historySearchResults) > 10 {
-					m.historySearchScrollOffset = len(m.historySearchResults) - 10
-				} else {
-					m.historySearchScrollOffset = 0
-				}
-			} else {
-				m.historySearchIndex = 0
-				m.historySearchScrollOffset = 0
-			}
-			return m, nil
+			return m.typeIntoHistorySearch(msg)
 		}
 
 		// Pass the key to the input field for regular typing
@@ -336,19 +304,6 @@ func (m *MainModel) handleUpArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If history modal is showing, navigate up (go to older command)
-	if m.showHistoryModal && len(m.commandHistory) > 0 {
-		// Navigate to older commands (decrease index in original array)
-		if m.historyModalIndex > 0 {
-			m.historyModalIndex--
-			// Adjust scroll offset if selection moves out of view
-			if m.historyModalIndex < m.historyModalScrollOffset {
-				m.historyModalScrollOffset = m.historyModalIndex
-			}
-		}
-		return m, nil
-	}
-
 	// If Alt is held, scroll viewport up by one line
 	if msg.Mod.Contains(tea.ModAlt) {
 		return m.handleAltScrollUp()
@@ -381,19 +336,6 @@ func (m *MainModel) handleDownArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 		// Adjust scroll offset if selection moves out of view
 		if m.completionIndex >= m.completionScrollOffset+10 {
 			m.completionScrollOffset = m.completionIndex - 9
-		}
-		return m, nil
-	}
-
-	// If history modal is showing, navigate down (go to newer command)
-	if m.showHistoryModal && len(m.commandHistory) > 0 {
-		// Navigate to newer commands (increase index in original array)
-		if m.historyModalIndex < len(m.commandHistory)-1 {
-			m.historyModalIndex++
-			// Adjust scroll offset if selection moves out of view
-			if m.historyModalIndex >= m.historyModalScrollOffset+10 {
-				m.historyModalScrollOffset = m.historyModalIndex - 9
-			}
 		}
 		return m, nil
 	}

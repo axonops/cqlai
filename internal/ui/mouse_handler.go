@@ -38,6 +38,19 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		return m.endSelection()
 
 	case tea.MouseWheelMsg:
+		// The command list has the wheel while it is open, for the same reason
+		// the settings lists do: otherwise it goes to the view behind and a
+		// list longer than the box cannot be got through.
+		if m.historySearchMode {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				return m.moveHistorySelection(-wheelLines)
+			case tea.MouseWheelDown:
+				return m.moveHistorySelection(wheelLines)
+			}
+			return m, nil
+		}
+
 		// While the list is open the wheel belongs to it rather than to the
 		// view behind it, or the choices past the first screenful cannot be
 		// reached at all.
@@ -67,22 +80,31 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		if choice, inside := m.choiceAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); inside {
 			return m.applySettingChoice(choice)
 		}
-		// Anywhere else dismisses it, except on the tabs and the status line,
-		// which still act on the click. The status line is left to close the
-		// list itself, because it has to see which field the list belongs to
-		// before it can tell a close from a reopen.
-		if mouse.Y != 0 && mouse.Y != m.windowHeight-1 {
+		// Anywhere else dismisses it, except on the tabs and the two bars at
+		// the bottom, which still act on the click. The status line is left to
+		// close the list itself, because it has to see which field the list
+		// belongs to before it can tell a close from a reopen.
+		if mouse.Y != 0 && mouse.Y < m.windowHeight-2 {
 			m.closeSettingChooser()
 			return m, nil
 		}
 	}
 
-	// Row 0 is the tabs and the last row is the connection bar; everything
-	// between them is content, and a press there starts a selection.
+	// A press on a command in either history list puts it in the prompt. This
+	// comes before the rows below, because the lists are drawn over them.
+	if updated, cmd, hit := m.clickHistoryCommand(mouse.X, mouse.Y); hit {
+		return updated, cmd
+	}
+
+	// Row 0 is the tabs, the last row is the connection bar and the one above
+	// it carries the query facts; everything else is content, and a press there
+	// starts a selection.
 	switch mouse.Y {
 	case 0:
 		m.closeSettingChooser()
 		return m.clickTab(mouse.X)
+	case m.windowHeight - 2:
+		return m.clickInfoField(mouse.X)
 	case m.windowHeight - 1:
 		return m.clickStatusSetting(mouse.X)
 	}
@@ -120,7 +142,7 @@ func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 
 // handleMouseWheelUp handles mouse wheel up scrolling
 func (m *MainModel) handleMouseWheelUp() (*MainModel, tea.Cmd) {
-	scrollAmount := 3 // Lines to scroll per wheel event
+	scrollAmount := wheelLines
 
 	switch {
 	case m.viewMode == "ai" && m.aiConversationActive:
@@ -141,7 +163,7 @@ func (m *MainModel) handleMouseWheelUp() (*MainModel, tea.Cmd) {
 
 // handleMouseWheelDown handles mouse wheel down scrolling
 func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
-	scrollAmount := 3 // Lines to scroll per wheel event
+	scrollAmount := wheelLines
 
 	switch {
 	case m.viewMode == "ai" && m.aiConversationActive:
@@ -402,6 +424,17 @@ func (m *MainModel) clickStatusSetting(col int) (*MainModel, tea.Cmd) {
 	logger.DebugfToFile("Mouse", "Status setting %q clicked at column %d, current %q", setting, col, current)
 	m.openSettingChooser(setting, anchorX, choices, current)
 	return m, nil
+}
+
+// clickInfoField acts on a press on the query info bar.
+func (m *MainModel) clickInfoField(col int) (*MainModel, tea.Cmd) {
+	field, ok := m.topBar.fieldAt(col)
+	if !ok || field != infoHistory {
+		return m, nil
+	}
+
+	logger.DebugfToFile("Mouse", "History clicked at column %d", col)
+	return m.openHistoryList()
 }
 
 // keyspaceChoices lists the keyspaces to offer for KS.
