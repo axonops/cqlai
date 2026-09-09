@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/axonops/cqlai/internal/ai"
 )
 
 // The mode tabs across the top.
@@ -49,14 +50,39 @@ func (m *MainModel) tabAvailable(mode string) bool {
 	}
 }
 
+// visibleTabs is the tabs to draw.
+//
+// AI is left out rather than dimmed when there is no provider configured.
+// Results and Trace are dimmed because they fill in as you work; whether AI is
+// set up cannot change while cqlai is running, so a permanently dimmed tab
+// would only be taking room from the others.
+func (m *MainModel) visibleTabs() []modeTab {
+	if m.aiAvailable() {
+		return modeTabs
+	}
+
+	tabs := make([]modeTab, 0, len(modeTabs))
+	for _, t := range modeTabs {
+		if t.mode != "ai" {
+			tabs = append(tabs, t)
+		}
+	}
+	return tabs
+}
+
+// aiAvailable reports whether the AI view has a provider behind it.
+func (m *MainModel) aiAvailable() bool {
+	return ai.IsConfigured(m.aiConfig)
+}
+
 // tabText renders the tab labels at one of three widths. The bar must never
 // wrap onto a second line, so it drops the key hints and then shortens the
 // names before anything is left out.
-func tabText(width int) []string {
-	full := make([]string, len(modeTabs))
-	plain := make([]string, len(modeTabs))
-	short := make([]string, len(modeTabs))
-	for i, t := range modeTabs {
+func tabText(tabs []modeTab, width int) []string {
+	full := make([]string, len(tabs))
+	plain := make([]string, len(tabs))
+	short := make([]string, len(tabs))
+	for i, t := range tabs {
 		full[i] = t.label + " (" + t.key + ")"
 		plain[i] = t.label
 		// Not label[:1]: two labels can share a first letter, and a bar of
@@ -103,11 +129,12 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 		return nil
 	}
 
-	labels := tabText(width)
+	tabs := m.visibleTabs()
+	labels := tabText(tabs, width)
 
-	spans := make([]tabSpan, 0, len(modeTabs))
+	spans := make([]tabSpan, 0, len(tabs))
 	col := 0
-	for i, t := range modeTabs {
+	for i, t := range tabs {
 		next := col
 		if i > 0 {
 			next += len(tabSeparator)

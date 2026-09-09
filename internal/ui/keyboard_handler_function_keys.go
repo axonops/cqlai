@@ -73,6 +73,16 @@ func (m *MainModel) handleF4() (*MainModel, tea.Cmd) {
 
 // handleF5 handles F5 key - switch to AI view
 func (m *MainModel) handleF5() (*MainModel, tea.Cmd) {
+	// Say why rather than doing nothing. A key that silently does nothing is
+	// how someone concludes the build is broken.
+	if !m.aiAvailable() {
+		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("AI is not configured.") +
+			m.styles.MutedText.Render(" Set a provider and key in cqlai.json, or export ANTHROPIC_API_KEY.") + "\n"
+		m.updateHistoryWrapping()
+		m.historyViewport.GotoBottom()
+		return m, nil
+	}
+
 	if m.viewMode != "ai" {
 		m.viewMode = "ai"
 		m.aiConversationActive = true

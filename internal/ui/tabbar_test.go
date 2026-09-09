@@ -7,13 +7,20 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/axonops/cqlai/internal/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// configuredAI is an AI setup good enough to count as configured, so the
+// layout tests get all four tabs.
+func configuredAI() *config.AIConfig {
+	return &config.AIConfig{Provider: "anthropic", APIKey: "test-key"}
+}
+
 func TestTabBarNeverWraps(t *testing.T) {
-	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 
 	// Every width from unusable to generous.
 	for width := 1; width <= 200; width++ {
@@ -27,7 +34,7 @@ func TestTabBarNeverWraps(t *testing.T) {
 }
 
 func TestTabBarShowsKeysWhenThereIsRoom(t *testing.T) {
-	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 
 	wide := stripAnsiForTest(m.ViewTabBar(120))
 	for _, want := range []string{"Console (F2)", "Results (F3)", "Trace (F4)", "AI (F5)"} {
@@ -62,7 +69,7 @@ func TestShortLabelsAreDistinct(t *testing.T) {
 // TestNarrowBarStaysDistinct is the same guarantee through the rendered output,
 // so it holds for whatever the layout actually draws.
 func TestNarrowBarStaysDistinct(t *testing.T) {
-	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 
 	bar := stripAnsiForTest(m.ViewTabBar(20))
 	fields := strings.Fields(bar)
@@ -81,7 +88,7 @@ func TestNarrowBarStaysDistinct(t *testing.T) {
 func TestTabBarMarksTheCurrentMode(t *testing.T) {
 	for _, mode := range []string{"history", "table", "trace", "ai"} {
 		t.Run(mode, func(t *testing.T) {
-			m := &MainModel{viewMode: mode, hasTable: true, hasTrace: true}
+			m := &MainModel{viewMode: mode, hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 
 			active := []string{}
 			for _, span := range m.layoutTabs(120) {
@@ -99,7 +106,7 @@ func TestTabBarMarksTheCurrentMode(t *testing.T) {
 // TestTabBarUnknownModeHighlightsNothing guards the edge where viewMode is
 // something the bar does not list, so it must not pick an arbitrary tab.
 func TestTabBarUnknownModeHighlightsNothing(t *testing.T) {
-	m := &MainModel{viewMode: "ai_info", hasTable: true, hasTrace: true}
+	m := &MainModel{viewMode: "ai_info", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 	for _, span := range m.layoutTabs(120) {
 		assert.False(t, span.active, "%q should not be marked active", span.mode)
 	}
@@ -107,13 +114,13 @@ func TestTabBarUnknownModeHighlightsNothing(t *testing.T) {
 
 // TestTabAvailability covers the "modes with no data look unavailable" rule.
 func TestTabAvailability(t *testing.T) {
-	empty := &MainModel{viewMode: "history"}
+	empty := &MainModel{viewMode: "history", aiConfig: configuredAI()}
 	assert.True(t, empty.tabAvailable("history"))
 	assert.True(t, empty.tabAvailable("ai"))
 	assert.False(t, empty.tabAvailable("table"), "no results yet, so nothing to show")
 	assert.False(t, empty.tabAvailable("trace"), "no trace yet, so nothing to show")
 
-	loaded := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+	loaded := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 	assert.True(t, loaded.tabAvailable("table"))
 	assert.True(t, loaded.tabAvailable("trace"))
 }
@@ -122,7 +129,7 @@ func TestTabAvailability(t *testing.T) {
 // tab line has to resolve back to the mode drawn there.
 func TestModeAtMapsClicksToTabs(t *testing.T) {
 	const width = 120
-	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 
 	spans := m.layoutTabs(width)
 	require.Len(t, spans, 4)
@@ -150,7 +157,7 @@ func TestModeAtMapsClicksToTabs(t *testing.T) {
 // unavailable must not respond.
 func TestUnavailableTabsIgnoreClicks(t *testing.T) {
 	const width = 120
-	m := &MainModel{viewMode: "history"} // no results, no trace
+	m := &MainModel{viewMode: "history", aiConfig: configuredAI()} // no results, no trace
 
 	for _, span := range m.layoutTabs(width) {
 		mode, ok := m.modeAt(width, (span.start+span.end)/2)
@@ -308,4 +315,115 @@ func TestRenderDoesNotTouchTheTerminal(t *testing.T) {
 		m.newView("")
 	})
 	assert.Empty(t, out, "rendering should write nothing directly to the terminal")
+}
+
+// TestTheAITabIsHiddenWithoutAProvider.
+//
+// Without one, the AI client falls back to a mock that returns canned replies,
+// so the view looked like it worked. Leaving the tab out rather than dimming
+// it: Results and Trace fill in as you work, but whether AI is configured
+// cannot change while cqlai is running.
+func TestTheAITabIsHiddenWithoutAProvider(t *testing.T) {
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+
+	bar := stripAnsiForTest(m.ViewTabBar(120))
+	assert.NotContains(t, bar, "AI")
+	for _, want := range []string{"Console", "Results", "Trace"} {
+		assert.Contains(t, bar, want, "the other tabs should be untouched")
+	}
+
+	for _, span := range m.layoutTabs(120) {
+		assert.NotEqual(t, "ai", span.mode)
+	}
+}
+
+// TestTheAITabIsThereWhenItIsConfigured.
+func TestTheAITabIsThereWhenItIsConfigured(t *testing.T) {
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
+
+	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(120)), "AI")
+}
+
+// TestTheHiddenTabTakesNoColumns: the tabs after it must not be laid out around
+// a gap, and a click has to land on what is drawn.
+func TestTheHiddenTabTakesNoColumns(t *testing.T) {
+	const width = 120
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+
+	spans := m.layoutTabs(width)
+	require.Len(t, spans, 3)
+
+	for _, span := range spans {
+		mode, ok := m.modeAt(width, (span.start+span.end)/2)
+		assert.Equal(t, span.mode, mode)
+		assert.True(t, ok)
+	}
+
+	// Nothing answers past the last tab, where AI used to be.
+	_, ok := m.modeAt(width, spans[len(spans)-1].end+2)
+	assert.False(t, ok)
+}
+
+// TestTheBarStillFitsWithoutAI at every width.
+func TestTheBarStillFitsWithoutAI(t *testing.T) {
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+
+	for width := 1; width <= 200; width++ {
+		bar := m.ViewTabBar(width)
+		assert.NotContains(t, bar, "\n", "the tab bar wrapped at width %d", width)
+
+		plain := stripAnsiForTest(bar)
+		assert.LessOrEqual(t, len([]rune(strings.TrimRight(plain, " "))), width,
+			"tab bar overflowed at width %d: %q", width, plain)
+	}
+}
+
+// TestF5SaysWhyWhenAIIsNotConfigured. A key that silently does nothing is how
+// someone concludes the build is broken.
+func TestF5SaysWhyWhenAIIsNotConfigured(t *testing.T) {
+	m := &MainModel{
+		viewMode:        "history",
+		styles:          DefaultStyles(),
+		input:           newTestInput(),
+		historyViewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(10)),
+	}
+
+	m.handleF5()
+
+	assert.Equal(t, "history", m.viewMode, "F5 should not have opened an empty AI view")
+	assert.False(t, m.aiConversationActive)
+
+	said := stripAnsiForTest(m.fullHistoryContent)
+	assert.Contains(t, said, "AI is not configured")
+	assert.Contains(t, said, "cqlai.json", "it should say where to set it")
+}
+
+// TestF5StillOpensAIWhenConfigured.
+func TestF5StillOpensAIWhenConfigured(t *testing.T) {
+	m := &MainModel{
+		viewMode:        "history",
+		styles:          DefaultStyles(),
+		input:           newTestInput(),
+		aiConfig:        configuredAI(),
+		historyViewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(10)),
+	}
+
+	m.handleF5()
+
+	assert.Equal(t, "ai", m.viewMode)
+	assert.True(t, m.aiConversationActive)
+	assert.Empty(t, m.fullHistoryContent, "nothing to explain when it is configured")
+}
+
+// TestF5IsNotAdvertisedWhenAIIsNotConfigured. Suggesting a key that then tells
+// you it cannot do anything is the same defect as showing the tab.
+func TestF5IsNotAdvertisedWhenAIIsNotConfigured(t *testing.T) {
+	without := &MainModel{styles: DefaultStyles()}
+	with := &MainModel{styles: DefaultStyles(), aiConfig: configuredAI()}
+
+	assert.Empty(t, aiKeyHint(without))
+	assert.Contains(t, aiKeyHint(with), "F5")
+
+	assert.NotContains(t, stripAnsiForTest(without.getWelcomeMessage()), "F5")
+	assert.Contains(t, stripAnsiForTest(with.getWelcomeMessage()), "F5")
 }
