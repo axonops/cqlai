@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 )
 
@@ -269,8 +270,7 @@ func exportToCSV(filename string, data [][]string, options map[string]interface{
 			cleanCell := stripAnsi(cell)
 			// For header row, remove (PK) and (C) indicators
 			if i == 0 {
-				cleanCell = strings.TrimSuffix(cleanCell, " (PK)")
-				cleanCell = strings.TrimSuffix(cleanCell, " (C)")
+				cleanCell = db.StripKeyMarker(cleanCell)
 			}
 			cleanRow[j] = cleanCell
 		}
@@ -331,13 +331,10 @@ func exportToJSON(filename string, data [][]string, options map[string]interface
 	headers := data[0]
 	rows := data[1:]
 
-	// Clean headers - remove (PK) and (C) indicators
+	// Clean headers - the key markers are for the screen, not for a file.
 	cleanHeaders := make([]string, len(headers))
 	for i, header := range headers {
-		cleanHeader := stripAnsi(header)
-		cleanHeader = strings.TrimSuffix(cleanHeader, " (PK)")
-		cleanHeader = strings.TrimSuffix(cleanHeader, " (C)")
-		cleanHeaders[i] = cleanHeader
+		cleanHeaders[i] = db.StripKeyMarker(stripAnsi(header))
 	}
 
 	// Convert to array of objects
@@ -380,10 +377,8 @@ func exportToASCII(filename string, data [][]string, options map[string]interfac
 	for rowIdx, row := range data {
 		for i, cell := range row {
 			cleanCell := stripAnsi(cell)
-			// For headers, remove (PK) and (C) before calculating width
 			if rowIdx == 0 {
-				cleanCell = strings.TrimSuffix(cleanCell, " (PK)")
-				cleanCell = strings.TrimSuffix(cleanCell, " (C)")
+				cleanCell = db.StripKeyMarker(cleanCell)
 			}
 			cellWidth := len(cleanCell)
 			if cellWidth > colWidths[i] {
@@ -405,10 +400,7 @@ func exportToASCII(filename string, data [][]string, options map[string]interfac
 	if len(data) > 0 {
 		output.WriteString("|")
 		for i, header := range data[0] {
-			// Clean header - remove ANSI and (PK)/(C) indicators
-			cleanHeader := stripAnsi(header)
-			cleanHeader = strings.TrimSuffix(cleanHeader, " (PK)")
-			cleanHeader = strings.TrimSuffix(cleanHeader, " (C)")
+			cleanHeader := db.StripKeyMarker(stripAnsi(header))
 			padding := colWidths[i] - len(cleanHeader)
 			output.WriteString(" " + cleanHeader + strings.Repeat(" ", padding) + " |")
 		}

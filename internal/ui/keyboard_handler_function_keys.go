@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/axonops/cqlai/internal/db"
 )
 
 // handleF2 handles F2 key - switch to query/history view
@@ -140,15 +141,8 @@ func (m *MainModel) handleF6() (*MainModel, tea.Cmd) {
 					}
 
 					// Extract base name and key indicator
-					baseName := original
-					keyIndicator := ""
-					if strings.HasSuffix(original, " (PK)") {
-						baseName = strings.TrimSuffix(original, " (PK)")
-						keyIndicator = " (PK)"
-					} else if strings.HasSuffix(original, " (C)") {
-						baseName = strings.TrimSuffix(original, " (C)")
-						keyIndicator = " (C)"
-					}
+					baseName := db.StripKeyMarker(original)
+					keyIndicator := strings.TrimPrefix(original, baseName)
 
 					// Build the new header
 					newHeader := baseName

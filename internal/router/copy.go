@@ -446,20 +446,11 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		if err != nil {
 			return fmt.Sprintf("Error reading header: %v", err)
 		}
-		// Clean column names - remove (PK) and (C) suffixes that may be present
-		// from COPY TO exports with HEADER=TRUE
+		// A COPY TO export with HEADER=TRUE carries the key markers, so strip
+		// them to get back to the column names Cassandra knows.
 		headerColumns = make([]string, len(headerRow))
 		for i, col := range headerRow {
-			cleanCol := strings.TrimSpace(col)
-			// Remove (PK) suffix for primary key columns
-			if idx := strings.Index(cleanCol, " (PK)"); idx != -1 {
-				cleanCol = cleanCol[:idx]
-			}
-			// Remove (C) suffix for clustering columns
-			if idx := strings.Index(cleanCol, " (C)"); idx != -1 {
-				cleanCol = cleanCol[:idx]
-			}
-			headerColumns[i] = strings.TrimSpace(cleanCol)
+			headerColumns[i] = strings.TrimSpace(db.StripKeyMarker(strings.TrimSpace(col)))
 		}
 	}
 

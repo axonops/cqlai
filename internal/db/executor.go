@@ -492,18 +492,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 			columnTypes[i] = fullType
 		}
 
-		// Add indicators for key columns
-		if keyInfo, exists := keyColumns[col.Name]; exists {
-			logger.DebugfToFile("executeSelectQuery", "Adding indicator for %s: %s", col.Name, keyInfo.Kind)
-			switch keyInfo.Kind {
-			case "partition_key":
-				headers[i] += " (PK)"
-			case "clustering":
-				headers[i] += " (C)"
-			}
-		} else {
-			logger.DebugfToFile("executeSelectQuery", "No key info for column %s", col.Name)
-		}
+		headers[i] += keyColumns.Marker(col.Name)
 	}
 
 	// Collect results - use MapScan for better type handling
@@ -829,15 +818,7 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 			columnTypes[i] = fullType
 		}
 
-		// Add indicators for key columns
-		if keyInfo, exists := keyColumns[col.Name]; exists {
-			switch keyInfo.Kind {
-			case "partition_key":
-				headers[i] += " (PK)"
-			case "clustering":
-				headers[i] += " (C)"
-			}
-		}
+		headers[i] += keyColumns.Marker(col.Name)
 	}
 
 	// Return streaming result with iterator
@@ -881,13 +862,13 @@ func ConvertToJSONQuery(query string) string {
 }
 
 // GetKeyColumns returns information about partition and clustering columns for a table
-func (s *Session) GetKeyColumns(query string) map[string]KeyColumnInfo {
-	keyColumns := make(map[string]KeyColumnInfo)
+func (s *Session) GetKeyColumns(query string) KeyColumns {
+	keyColumns := make(KeyColumns)
 
 	// Try to extract table name from the SELECT query
-	// Handle patterns like: SELECT ... FROM keyspace.table or FROM table
-	re := regexp.MustCompile(`(?i)FROM\s+(?:([a-zA-Z_][a-zA-Z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)`)
-	matches := re.FindStringSubmatch(query)
+	// Handle patterns like: SELECT ... FROM keyspace.table or FROM table,
+	// with either part quoted.
+	matches := fromClause.FindStringSubmatch(query)
 
 	logger.DebugfToFile("getKeyColumns", "Query: %s", query)
 	logger.DebugfToFile("getKeyColumns", "Regex matches: %v", matches)
@@ -897,13 +878,17 @@ func (s *Session) GetKeyColumns(query string) map[string]KeyColumnInfo {
 		return keyColumns
 	}
 
-	keyspaceName := matches[1] // May be empty
-	tableName := matches[2]
+	keyspaceName := cqlIdentifier(matches[1]) // May be empty
+	tableName := cqlIdentifier(matches[2])
 
-	// If no keyspace specified, we can't determine key columns
-	// The UI/router layer should track the current keyspace
+	// An unqualified query means the keyspace the session is on, which is what
+	// USE sets. Giving up here is why the markers only ever appeared when the
+	// query happened to name the keyspace.
 	if keyspaceName == "" {
-		logger.DebugToFile("getKeyColumns", "No keyspace specified")
+		keyspaceName = s.Keyspace()
+	}
+	if keyspaceName == "" {
+		logger.DebugToFile("getKeyColumns", "No keyspace in the query and none set on the session")
 		return keyColumns
 	}
 

@@ -82,14 +82,8 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 		cleanHeaders := make([]string, len(headers))
 
 		for i, header := range headers {
-			// Clean header for Parquet
-			if idx := strings.Index(header, " (PK)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else if idx := strings.Index(header, " (C)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else {
-				cleanHeaders[i] = header
-			}
+			// Parquet wants the column name Cassandra knows.
+			cleanHeaders[i] = db.StripKeyMarker(header)
 		}
 
 		// Set up Parquet writer options with optimizations
@@ -182,14 +176,8 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 		headers := v.Headers
 		cleanHeaders := make([]string, len(headers))
 		for i, header := range headers {
-			// Clean header for Parquet
-			if idx := strings.Index(header, " (PK)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else if idx := strings.Index(header, " (C)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else {
-				cleanHeaders[i] = header
-			}
+			// Parquet wants the column name Cassandra knows.
+			cleanHeaders[i] = db.StripKeyMarker(header)
 		}
 
 		// Set up Parquet writer options

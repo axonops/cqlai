@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
 )
@@ -413,20 +414,8 @@ func (h *MetaCommandHandler) WriteCaptureResultWithTypes(command string, headers
 		// Create partitioned writer if not exists
 		if h.partitionedWriter == nil {
 			logger.DebugfToFile("WriteCaptureResultWithTypes", "Creating partitioned writer for path: %s", h.captureFile)
-			// Clean column names for Parquet - remove (PK) and (C) suffixes
-			cleanHeaders := make([]string, len(headers))
-			for i, header := range headers {
-				// Remove (PK) suffix
-				if idx := strings.Index(header, " (PK)"); idx != -1 {
-					cleanHeaders[i] = header[:idx]
-				} else if idx := strings.Index(header, " (C)"); idx != -1 {
-					// Remove (C) suffix
-					cleanHeaders[i] = header[:idx]
-				} else {
-					// No suffix to remove
-					cleanHeaders[i] = header
-				}
-			}
+			// Parquet wants the column names Cassandra knows.
+			cleanHeaders := db.StripKeyMarkers(headers)
 
 			// Parse options for compression and file size
 			compressionStr := ""
