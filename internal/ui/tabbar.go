@@ -16,16 +16,23 @@ import (
 type modeTab struct {
 	mode  string // matches MainModel.viewMode
 	label string
+	short string // one or two letters for a terminal too narrow for the label
 	key   string
 }
 
 // modeTabs lists the tabs in display order. F6 is deliberately absent: it sits
 // next to these keys but toggles data types rather than switching mode.
 var modeTabs = []modeTab{
-	{mode: "history", label: "CQL", key: "F2"},
-	{mode: "table", label: "Table", key: "F3"},
-	{mode: "trace", label: "Trace", key: "F4"},
-	{mode: "ai", label: "AI", key: "F5"},
+	// "Console" rather than "History": Ctrl+R searches command history, which
+	// is a different thing, and this view is the running transcript of what you
+	// typed and what came back.
+	{mode: "history", label: "Console", short: "C", key: "F2"},
+	// "Results" rather than "Table": the same view shows EXPAND, ASCII and JSON
+	// output, none of which is a table, and "table" already means a schema
+	// object to anyone using this.
+	{mode: "table", label: "Results", short: "R", key: "F3"},
+	{mode: "trace", label: "Trace", short: "T", key: "F4"},
+	{mode: "ai", label: "AI", short: "A", key: "F5"},
 }
 
 // tabAvailable reports whether a tab has anything to show. An unavailable tab
@@ -52,7 +59,9 @@ func tabText(width int) []string {
 	for i, t := range modeTabs {
 		full[i] = t.label + " (" + t.key + ")"
 		plain[i] = t.label
-		short[i] = t.label[:1]
+		// Not label[:1]: two labels can share a first letter, and a bar of
+		// indistinguishable letters is worse than no bar.
+		short[i] = t.short
 	}
 
 	for _, candidate := range [][]string{full, plain, short} {

@@ -312,13 +312,18 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Ctrl+Y` | Paste previously cut text | Same |
 
 #### View Switching
-| Shortcut | Action |
-|----------|--------|
-| `F2` | Switch to query/history view |
-| `F3` | Switch to table view |
-| `F4` | Switch to trace view (when tracing enabled) |
-| `F5` | Switch to AI conversation view |
-| `F6` | Toggle column data types in table headers |
+
+The four views are shown as tabs along the top, so you can see which one you are
+in and what the others are. Click a tab, or use the key on it. A view with
+nothing to show yet is dimmed.
+
+| Shortcut | Tab | Shows |
+|----------|-----|-------|
+| `F2` | Console | The running transcript of commands and messages |
+| `F3` | Results | The last query's output, in whatever `OUTPUT` format is set |
+| `F4` | Trace | Query trace, when tracing is enabled |
+| `F5` | AI | The AI conversation |
+| `F6` | | Toggle column data types in table headers |
 
 #### Scrolling & Table Navigation
 | Shortcut | Action | macOS Alternative |

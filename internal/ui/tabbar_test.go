@@ -30,15 +30,49 @@ func TestTabBarShowsKeysWhenThereIsRoom(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
 
 	wide := stripAnsiForTest(m.ViewTabBar(120))
-	for _, want := range []string{"CQL (F2)", "Table (F3)", "Trace (F4)", "AI (F5)"} {
+	for _, want := range []string{"Console (F2)", "Results (F3)", "Trace (F4)", "AI (F5)"} {
 		assert.Contains(t, wide, want)
 	}
 
 	// Narrower: names survive, key hints are dropped rather than wrapping.
-	medium := stripAnsiForTest(m.ViewTabBar(30))
-	assert.Contains(t, medium, "CQL")
-	assert.Contains(t, medium, "Table")
+	medium := stripAnsiForTest(m.ViewTabBar(40))
+	assert.Contains(t, medium, "Console")
+	assert.Contains(t, medium, "Results")
 	assert.NotContains(t, medium, "(F2)")
+}
+
+// TestShortLabelsAreDistinct guards the narrow-terminal fallback.
+//
+// Truncating to the first letter is the obvious approach and it is wrong: two
+// labels can share one. A bar reading "C T T A" tells you nothing about which
+// tab is which, so the short forms are chosen rather than derived.
+func TestShortLabelsAreDistinct(t *testing.T) {
+	seen := map[string]string{}
+	for _, tab := range modeTabs {
+		require.NotEmpty(t, tab.short, "%q has no short label", tab.label)
+
+		if other, clash := seen[tab.short]; clash {
+			t.Errorf("%q and %q both shorten to %q, so they cannot be told apart on a narrow terminal",
+				other, tab.label, tab.short)
+		}
+		seen[tab.short] = tab.label
+	}
+}
+
+// TestNarrowBarStaysDistinct is the same guarantee through the rendered output,
+// so it holds for whatever the layout actually draws.
+func TestNarrowBarStaysDistinct(t *testing.T) {
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+
+	bar := stripAnsiForTest(m.ViewTabBar(20))
+	fields := strings.Fields(bar)
+	require.NotEmpty(t, fields)
+
+	seen := map[string]bool{}
+	for _, f := range fields {
+		assert.False(t, seen[f], "the narrow bar repeats %q, so two tabs look the same", f)
+		seen[f] = true
+	}
 }
 
 // TestTabBarMarksTheCurrentMode checks exactly one tab is the active one, and

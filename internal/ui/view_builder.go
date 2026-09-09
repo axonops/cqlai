@@ -42,7 +42,9 @@ func (m *MainModel) View() tea.View {
 
 	m.topBar.LastCommand = m.lastCommand
 	if m.session != nil {
-		m.topBar.AutoFetch = m.session.AutoFetch()
+		autoFetch := m.session.AutoFetch()
+		m.statusBar.AutoFetch = autoFetch
+		m.topBar.AutoFetch = autoFetch // drives the "+" on the row count
 	}
 	if m.slidingWindow != nil {
 		m.topBar.HasMoreData = m.slidingWindow.hasMoreData

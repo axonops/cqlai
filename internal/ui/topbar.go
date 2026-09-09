@@ -13,8 +13,11 @@ type TopBarModel struct {
 	QueryTime    time.Duration
 	RowCount     int
 	HasQueryData bool
-	AutoFetch    bool
-	HasMoreData  bool // Indicates if there's more data to fetch
+	// Not displayed here any more - the status bar shows it with the other
+	// session settings - but still needed to decide whether the row count is
+	// shown as "100+" with more to fetch.
+	AutoFetch   bool
+	HasMoreData bool // Indicates if there's more data to fetch
 }
 
 // NewTopBarModel creates a new TopBarModel.
@@ -41,26 +44,9 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
 
-	// AutoFetch styles
-	autoFetchOnStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#87FFD7")).
-		Bold(true)
-
-	autoFetchOffStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#5F5F5F"))
-
 	// The mode used to be named here. The tab line above shows it now, and
 	// highlights it, so repeating it would only take up room.
 	content := ""
-
-	// Add AutoFetch status
-	autoFetchState := "OFF"
-	autoFetchStyle := autoFetchOffStyle
-	if m.AutoFetch {
-		autoFetchState = "ON"
-		autoFetchStyle = autoFetchOnStyle
-	}
-	content += labelStyle.Render("AutoFetch: ") + autoFetchStyle.Render(autoFetchState)
 
 	// Add command information if available
 	if m.LastCommand != "" {
