@@ -119,6 +119,7 @@ type MainModel struct {
 	navigationMode     bool           // Toggle between navigation keys and input mode
 	mouseEnabled       bool           // Whether to ask the terminal for mouse reporting
 	chooser            settingChooser // Open list of values for a status bar setting
+	help               helpWindow     // Open help window, if any
 	selection          textSelection  // Text being dragged out with the mouse, if any
 	viewMode           string         // "history", "table", "trace", or "ai_info"
 	showDataTypes      bool           // Whether to show column data types in table headers

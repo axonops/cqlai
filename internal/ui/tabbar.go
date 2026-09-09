@@ -75,10 +75,11 @@ func (m *MainModel) aiAvailable() bool {
 	return ai.IsConfigured(m.aiConfig)
 }
 
-// tabText renders the tab labels at one of three widths. The bar must never
-// wrap onto a second line, so it drops the key hints and then shortens the
-// names before anything is left out.
-func tabText(tabs []modeTab, width int) []string {
+// tabLabelTiers renders the tab labels at three widths, widest first.
+//
+// The bar must never wrap onto a second line, so it drops the key hints and
+// then shortens the names before anything is left out.
+func tabLabelTiers(tabs []modeTab) [][]string {
 	full := make([]string, len(tabs))
 	plain := make([]string, len(tabs))
 	short := make([]string, len(tabs))
@@ -89,13 +90,30 @@ func tabText(tabs []modeTab, width int) []string {
 		// indistinguishable letters is worse than no bar.
 		short[i] = t.short
 	}
+	return [][]string{full, plain, short}
+}
 
-	for _, candidate := range [][]string{full, plain, short} {
-		if tabBarWidth(candidate) <= width {
-			return candidate
+// fitTabs picks the labels to draw and whether the Help button fits beside
+// them.
+//
+// The order says what is worth giving up first. Key hints go before the button,
+// because the keys are also in the help the button opens. The names do not: a
+// bar of single letters is harder to read than a line with no button on it, and
+// F1 still opens the help either way.
+func fitTabs(tabs []modeTab, width int) ([]string, bool) {
+	tiers := tabLabelTiers(tabs)
+
+	for i, labels := range tiers {
+		if tabBarWidth(labels) <= width-helpReserve {
+			return labels, true
+		}
+		// Names survive at the button's expense; the first tier, which is
+		// names plus key hints, does not.
+		if i > 0 && tabBarWidth(labels) <= width {
+			return labels, false
 		}
 	}
-	return short
+	return tiers[len(tiers)-1], tabBarWidth(tiers[len(tiers)-1]) <= width-helpReserve
 }
 
 // tabSeparator sits between tabs; the padding is part of each tab's click area.
@@ -130,7 +148,7 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 	}
 
 	tabs := m.visibleTabs()
-	labels := tabText(tabs, width)
+	labels, withHelp := fitTabs(tabs, width)
 
 	spans := make([]tabSpan, 0, len(tabs))
 	col := 0
@@ -154,7 +172,42 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 		})
 		col = end
 	}
+
+	if withHelp {
+		if help, ok := helpSpan(width, col); ok {
+			spans = append(spans, help)
+		}
+	}
 	return spans
+}
+
+// helpReserve is the room the Help button wants: its longest label plus the
+// space either side of it.
+var helpReserve = lipgloss.Width(" Help (F1) ")
+
+// helpMode is the pseudo-mode the Help button reports. It is not a view: it
+// opens a window over whichever view you are in and leaves it there.
+const helpMode = "help"
+
+// helpSpan is where the Help button sits, at the right-hand end of the line.
+//
+// It shortens before it disappears, and it disappears before it would sit on
+// top of a tab: losing the button is better than a line where a click lands on
+// whatever happens to be underneath it.
+func helpSpan(width, tabsEnd int) (tabSpan, bool) {
+	for _, label := range []string{"Help (F1)", "Help", "?"} {
+		start := width - lipgloss.Width(label) - 2
+		if start > tabsEnd {
+			return tabSpan{
+				mode:      helpMode,
+				label:     label,
+				start:     start,
+				end:       width,
+				available: true,
+			}, true
+		}
+	}
+	return tabSpan{}, false
 }
 
 // modeAt returns the mode whose tab covers a column, and whether it can be
@@ -190,8 +243,14 @@ func (m *MainModel) ViewTabBar(width int) string {
 		Foreground(lipgloss.Color("#3a3a3a"))
 
 	var b strings.Builder
+	col := 0
 	for i, span := range spans {
-		if i > 0 {
+		// The Help button is placed against the right edge rather than after
+		// the tab before it, so pad out to wherever it starts.
+		switch {
+		case span.mode == helpMode:
+			b.WriteString(strings.Repeat(" ", max(span.start-col, 0)))
+		case i > 0:
 			b.WriteString(separatorStyle.Render(tabSeparator))
 		}
 
@@ -204,11 +263,12 @@ func (m *MainModel) ViewTabBar(width int) string {
 		default:
 			b.WriteString(unavailableStyle.Render(text))
 		}
+		col = span.end
 	}
 
 	// Pad by hand rather than with lipgloss Width, which wraps instead of
 	// truncating when the content is wider than the line.
-	if pad := width - spans[len(spans)-1].end; pad > 0 {
+	if pad := width - col; pad > 0 {
 		b.WriteString(strings.Repeat(" ", pad))
 	}
 

@@ -13,6 +13,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// modeSpans is the tabs that switch view, without the Help button.
+func modeSpans(spans []tabSpan) []tabSpan {
+	tabs := make([]tabSpan, 0, len(spans))
+	for _, span := range spans {
+		if span.mode != helpMode {
+			tabs = append(tabs, span)
+		}
+	}
+	return tabs
+}
+
 // configuredAI is an AI setup good enough to count as configured, so the
 // layout tests get all four tabs.
 func configuredAI() *config.AIConfig {
@@ -132,7 +143,7 @@ func TestModeAtMapsClicksToTabs(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI()}
 
 	spans := m.layoutTabs(width)
-	require.Len(t, spans, 4)
+	require.Len(t, modeSpans(spans), 4)
 
 	for _, span := range spans {
 		for _, col := range []int{span.start, (span.start + span.end) / 2, span.end - 1} {
@@ -142,8 +153,9 @@ func TestModeAtMapsClicksToTabs(t *testing.T) {
 		}
 	}
 
-	// Past the last tab there is nothing to click.
-	_, ok := m.modeAt(width, spans[len(spans)-1].end+1)
+	// Between the last tab and the Help button there is nothing to click.
+	tabs := modeSpans(spans)
+	_, ok := m.modeAt(width, tabs[len(tabs)-1].end+1)
 	assert.False(t, ok)
 
 	// Spans do not overlap and are in display order.
@@ -350,7 +362,7 @@ func TestTheHiddenTabTakesNoColumns(t *testing.T) {
 	const width = 120
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
 
-	spans := m.layoutTabs(width)
+	spans := modeSpans(m.layoutTabs(width))
 	require.Len(t, spans, 3)
 
 	for _, span := range spans {

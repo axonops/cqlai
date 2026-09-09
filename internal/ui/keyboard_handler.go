@@ -5,10 +5,33 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/router"
 )
 
 // handleKeyboardInput handles keyboard input events
 func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
+	// The help window takes the keys while it is open: it is over everything
+	// else, so it is what a keypress is aimed at.
+	if m.help.active {
+		switch msg.String() {
+		case "esc", "f1", "alt+h", "q":
+			return m.toggleHelp()
+		case "up":
+			return m.scrollHelp(-1)
+		case "down":
+			return m.scrollHelp(1)
+		case "pgup":
+			return m.scrollHelp(-helpPageRows)
+		case "pgdown":
+			return m.scrollHelp(helpPageRows)
+		case "home":
+			return m.scrollHelp(-len(router.HelpRows()))
+		case "end":
+			return m.scrollHelp(len(router.HelpRows()))
+		}
+		return m, nil
+	}
+
 	// Any keypress drops the mouse selection: whatever happens next is likely
 	// to move or replace the text under it, and a highlight left behind on
 	// different text is worse than no highlight. Escape does nothing else, so
@@ -108,6 +131,12 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 
 	case "f4":
 		return m.handleF4()
+
+	// Alt+H as well as F1: Terminator, Konsole and others take F1 for their
+	// own help before an application ever sees it, so a key that only works on
+	// some terminals cannot be the only one.
+	case "f1", "alt+h":
+		return m.toggleHelp()
 
 	case "f5":
 		return m.handleF5()

@@ -38,6 +38,17 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		return m.endSelection()
 
 	case tea.MouseWheelMsg:
+		// The help window is over everything, so it has the wheel first.
+		if m.help.active {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				return m.scrollHelp(-wheelLines)
+			case tea.MouseWheelDown:
+				return m.scrollHelp(wheelLines)
+			}
+			return m, nil
+		}
+
 		// The command list has the wheel while it is open, for the same reason
 		// the settings lists do: otherwise it goes to the view behind and a
 		// list longer than the box cannot be got through.
@@ -74,6 +85,16 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// A press anywhere drops whatever was selected.
 	m.clearSelection()
+
+	// With the help open, a press dismisses it rather than acting on whatever
+	// is underneath - which you cannot see to aim at.
+	if m.help.active {
+		if mode, _ := m.modeAt(m.windowWidth, mouse.X); mouse.Y == 0 && mode == helpMode {
+			return m.toggleHelp()
+		}
+		m.help = helpWindow{}
+		return m, nil
+	}
 
 	// A press inside the open list picks that value.
 	if m.chooser.active {
@@ -342,6 +363,10 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 	}
 
 	logger.DebugfToFile("Mouse", "Tab clicked at column %d: switching to %s", col, mode)
+
+	if mode == helpMode {
+		return m.toggleHelp()
+	}
 
 	switch mode {
 	case "history":
