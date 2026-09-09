@@ -181,9 +181,17 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 	return spans
 }
 
-// helpReserve is the room the Help button wants: its longest label plus the
-// space either side of it.
-var helpReserve = lipgloss.Width(" Help (F1) ")
+// helpLabels are the Help button's labels, longest first.
+//
+// Both keys, because F1 does not reach the application on Terminator, Konsole
+// and others - they take it for their own help - so a button naming only F1
+// names a key that does nothing on those terminals.
+var helpLabels = []string{"Help (F1/Alt+H)", "Help", "?"}
+
+// helpReserve is the room the tabs give up for the button: its *shortest*
+// useful label, not its longest. Reserving for the longest would shorten the
+// tab names on a terminal that was only ever going to fit "Help".
+var helpReserve = lipgloss.Width(" Help ")
 
 // helpMode is the pseudo-mode the Help button reports. It is not a view: it
 // opens a window over whichever view you are in and leaves it there.
@@ -195,7 +203,7 @@ const helpMode = "help"
 // top of a tab: losing the button is better than a line where a click lands on
 // whatever happens to be underneath it.
 func helpSpan(width, tabsEnd int) (tabSpan, bool) {
-	for _, label := range []string{"Help (F1)", "Help", "?"} {
+	for _, label := range helpLabels {
 		start := width - lipgloss.Width(label) - 2
 		if start > tabsEnd {
 			return tabSpan{
