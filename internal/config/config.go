@@ -397,20 +397,36 @@ func OverrideWithEnvVars(config *Config) {
 	}
 }
 
+// outputFormats are the formats OUTPUT accepts, in the order to offer them.
+var outputFormats = []OutputFormat{
+	OutputFormatTable,
+	OutputFormatASCII,
+	OutputFormatExpand,
+	OutputFormatJSON,
+}
+
+// OutputFormats names every format ParseOutputFormat accepts.
+//
+// Anything that offers a choice of format, or lists the valid ones in an error,
+// reads this rather than writing the four out again - the consistency levels
+// were spelled out in five places and had drifted in three of them.
+func OutputFormats() []string {
+	names := make([]string, 0, len(outputFormats))
+	for _, f := range outputFormats {
+		names = append(names, string(f))
+	}
+	return names
+}
+
 // ParseOutputFormat converts a string to OutputFormat
 func ParseOutputFormat(format string) (OutputFormat, error) {
-	switch strings.ToUpper(format) {
-	case "TABLE":
-		return OutputFormatTable, nil
-	case "ASCII":
-		return OutputFormatASCII, nil
-	case "EXPAND":
-		return OutputFormatExpand, nil
-	case "JSON":
-		return OutputFormatJSON, nil
-	default:
-		return "", fmt.Errorf("unknown output format: %s", format)
+	want := strings.ToUpper(format)
+	for _, f := range outputFormats {
+		if string(f) == want {
+			return f, nil
+		}
 	}
+	return "", fmt.Errorf("unknown output format: %s", format)
 }
 
 // loadCQLSHRC loads configuration from a CQLSHRC file

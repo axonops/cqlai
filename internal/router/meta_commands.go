@@ -104,7 +104,7 @@ func (h *MetaCommandHandler) handleConsistency(command string) interface{} {
 		return fmt.Sprintf("Consistency level set to %s", level)
 	}
 
-	return "Usage: CONSISTENCY [level]\nValid levels: ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE"
+	return "Usage: CONSISTENCY [level]\nValid levels: " + strings.Join(db.ConsistencyLevels(), ", ")
 }
 
 // handleShow handles SHOW commands

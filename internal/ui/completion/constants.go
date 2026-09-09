@@ -1,5 +1,7 @@
 package completion
 
+import "github.com/axonops/cqlai/internal/db"
+
 // CQL Keywords and Constants used across completion files
 // This file centralizes all keyword lists to avoid duplication
 
@@ -32,19 +34,10 @@ var LogicalOperators = []string{"AND", "OR"}
 var SortOrders = []string{"ASC", "DESC"}
 
 // Consistency levels
-var ConsistencyLevels = []string{
-	"ALL",
-	"EACH_QUORUM",
-	"QUORUM",
-	"LOCAL_QUORUM",
-	"ONE",
-	"TWO",
-	"THREE",
-	"LOCAL_ONE",
-	"ANY",
-	"SERIAL",
-	"LOCAL_SERIAL",
-}
+// ConsistencyLevels are the levels CONSISTENCY accepts. Completing a level that
+// cannot then be set is worse than not completing it at all, so this comes from
+// the same table that applies them.
+var ConsistencyLevels = db.ConsistencyLevels()
 
 // Data types for CREATE TABLE
 var CQLDataTypes = []string{

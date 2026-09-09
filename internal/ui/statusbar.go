@@ -54,6 +54,9 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 	pageStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#87FFD7"))
 
+	outputStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#87D7FF"))
+
 	tracingOnStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF5F5F")).
 		Bold(true)
@@ -72,6 +75,8 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 			return keyspaceStyle
 		case settingConsistency:
 			return consistencyStyle
+		case settingOutput:
+			return outputStyle
 		case settingPaging:
 			return pageStyle
 		case settingTracing, settingAutoFetch:
@@ -79,9 +84,6 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 				return tracingOnStyle
 			}
 			return tracingOffStyle
-		}
-		if seg.label == "v" {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#B8B8B8"))
 		}
 		return hostStyle
 	}

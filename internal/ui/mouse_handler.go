@@ -38,6 +38,18 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		return m.endSelection()
 
 	case tea.MouseWheelMsg:
+		// While the list is open the wheel belongs to it rather than to the
+		// view behind it, or the choices past the first screenful cannot be
+		// reached at all.
+		if m.chooser.active {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				return m.scrollChooser(-chooserScrollStep)
+			case tea.MouseWheelDown:
+				return m.scrollChooser(chooserScrollStep)
+			}
+			return m, nil
+		}
 		return m.handleMouseWheel(mouse)
 	}
 
@@ -55,10 +67,12 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		if choice, inside := m.choiceAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); inside {
 			return m.applySettingChoice(choice)
 		}
-		// Anywhere else closes it. Clicking the status line again may then
-		// open a different one, which is what the switch below decides.
-		m.closeSettingChooser()
-		if mouse.Y != m.windowHeight-1 && mouse.Y != 0 {
+		// Anywhere else dismisses it, except on the tabs and the status line,
+		// which still act on the click. The status line is left to close the
+		// list itself, because it has to see which field the list belongs to
+		// before it can tell a close from a reopen.
+		if mouse.Y != 0 && mouse.Y != m.windowHeight-1 {
+			m.closeSettingChooser()
 			return m, nil
 		}
 	}
@@ -67,6 +81,7 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// between them is content, and a press there starts a selection.
 	switch mouse.Y {
 	case 0:
+		m.closeSettingChooser()
 		return m.clickTab(mouse.X)
 	case m.windowHeight - 1:
 		return m.clickStatusSetting(mouse.X)
@@ -344,10 +359,29 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// clickStatusSetting opens the list of values for a setting on the status line.
+// clickStatusSetting opens the list of values for a setting on the status line,
+// or closes the one already open.
 func (m *MainModel) clickStatusSetting(col int) (*MainModel, tea.Cmd) {
+	wasOpen, openSetting := m.chooser.active, m.chooser.setting
+	m.closeSettingChooser()
+
 	setting, anchorX, ok := m.statusBar.settingAt(col)
 	if !ok {
+		return m, nil
+	}
+
+	// Clicking the field whose list is already open closes it. Without this the
+	// press closed the list and reopened it in the same breath, so the list
+	// never appeared to go away and the only way to dismiss it was to click
+	// somewhere else entirely.
+	if wasOpen && openSetting == setting {
+		return m, nil
+	}
+
+	// Connection is not a setting: it opens a panel of facts about how we are
+	// connected, with nothing to pick.
+	if setting == settingConnection {
+		m.openConnectionPanel(anchorX)
 		return m, nil
 	}
 

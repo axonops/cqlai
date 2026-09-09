@@ -630,8 +630,5 @@ func (sce *SimpleCompletionEngine) getTopLevelKeywords() []string {
 
 // getConsistencyLevels returns valid consistency levels
 func (sce *SimpleCompletionEngine) getConsistencyLevels() []string {
-	return []string{
-		"ALL", "EACH_QUORUM", "QUORUM", "LOCAL_QUORUM", "ONE", "TWO", "THREE",
-		"LOCAL_ONE", "ANY", "SERIAL", "LOCAL_SERIAL",
-	}
+	return ConsistencyLevels
 }
