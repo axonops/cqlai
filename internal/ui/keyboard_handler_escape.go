@@ -56,12 +56,6 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 	}
 
 	// If history modal is showing, close it
-	if m.showHistoryModal {
-		m.showHistoryModal = false
-		m.historyModalIndex = 0
-		m.historyModalScrollOffset = 0
-		return m, nil
-	}
 
 	// Toggle navigation mode in table/trace views - HIGH PRIORITY
 	// Check this early because it's a common operation

@@ -46,7 +46,7 @@ func (m *MainModel) View() tea.View {
 		return m.newView("")
 	}
 
-	m.topBar.LastCommand = m.lastCommand
+	m.topBar.LastCommand = m.latestCommand()
 	if m.session != nil {
 		autoFetch := m.session.AutoFetch()
 		m.statusBar.AutoFetch = autoFetch
@@ -345,51 +345,10 @@ func (m *MainModel) View() tea.View {
 		layerManager.AddLayer(layer)
 	}
 
-	// If history modal is showing, add as a layer
-	if m.showHistoryModal && len(m.commandHistory) > 0 {
-		historyModal := NewHistoryModal(m.commandHistory, m.historyModalIndex, viewportWidth)
-		historyModal.scrollOffset = m.historyModalScrollOffset
-		content := historyModal.RenderContent(m.styles)
-
-		// Position at bottom left, just above the prompt
-		modalHeight := strings.Count(content, "\n") + 1
-		layer := Layer{
-			Content: content,
-			X:       0,
-			Y:       screenHeight - modalHeight - 2,
-			Width:   lipgloss.Width(content),
-			Height:  modalHeight,
-			ZIndex:  100,
-		}
-		layerManager.AddLayer(layer)
-	}
-
-	// If history search modal is showing, add as a layer
-	if m.historySearchMode {
-		searchModal := NewHistorySearchModal(m.historySearchQuery, m.historySearchResults, m.historySearchIndex, viewportWidth)
-		searchModal.scrollOffset = m.historySearchScrollOffset
-		content := searchModal.RenderContent(m.styles)
-
-		// Calculate the actual width from the rendered content
-		modalLines := strings.Split(content, "\n")
-		modalWidth := 0
-		for _, line := range modalLines {
-			lineWidth := lipgloss.Width(line)
-			if lineWidth > modalWidth {
-				modalWidth = lineWidth
-			}
-		}
-
-		// Position at bottom left, just above the prompt
-		modalHeight := len(modalLines)
-		layer := Layer{
-			Content: content,
-			X:       0,
-			Y:       screenHeight - modalHeight - 2,
-			Width:   modalWidth,
-			Height:  modalHeight,
-			ZIndex:  100,
-		}
+	// The command list. It is placed by the same function the mouse tests
+	// clicks against, so a click cannot land on a different row from the one
+	// drawn there.
+	if _, layer, ok := m.historyOverlay(viewportWidth, screenHeight); ok {
 		layerManager.AddLayer(layer)
 	}
 

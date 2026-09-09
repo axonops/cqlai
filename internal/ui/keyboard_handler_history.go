@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -88,17 +90,38 @@ func (m *MainModel) handleHistorySearchSelect() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// handleHistoryModalSelect selects the current entry from history modal
-func (m *MainModel) handleHistoryModalSelect() (*MainModel, tea.Cmd) {
-	if len(m.commandHistory) > 0 {
-		// Use the index directly - the modal display handles the reversal
-		if m.historyModalIndex >= 0 && m.historyModalIndex < len(m.commandHistory) {
-			m.input.SetValue(m.commandHistory[m.historyModalIndex])
+// typeIntoHistorySearch adds a keypress to the search query and re-filters.
+//
+// Both the ordinary typing path and the space key come through here: a space is
+// part of what you are searching for, and it used to be swallowed by the pager
+// before it got this far.
+func (m *MainModel) typeIntoHistorySearch(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
+	switch msg.String() {
+	case "backspace", "delete":
+		if len(m.historySearchQuery) > 0 {
+			m.historySearchQuery = m.historySearchQuery[:len(m.historySearchQuery)-1]
 		}
-		// Close the modal
-		m.showHistoryModal = false
-		m.historyModalIndex = 0
-		m.historyModalScrollOffset = 0
+	default:
+		if len(msg.Text) > 0 && len(m.historySearchQuery) < 100 {
+			m.historySearchQuery += msg.Text
+		}
 	}
+
+	if m.historyManager != nil {
+		m.historySearchResults = m.historyManager.SearchHistory(m.historySearchQuery)
+	} else {
+		// Fallback to in-memory history search
+		m.historySearchResults = []string{}
+		queryLower := strings.ToLower(m.historySearchQuery)
+		for i := len(m.commandHistory) - 1; i >= 0; i-- {
+			if strings.Contains(strings.ToLower(m.commandHistory[i]), queryLower) {
+				m.historySearchResults = append(m.historySearchResults, m.commandHistory[i])
+			}
+		}
+	}
+
+	// Start on the newest match, with the window showing the end of the list.
+	m.historySearchIndex = max(len(m.historySearchResults)-1, 0)
+	m.historySearchScrollOffset = max(len(m.historySearchResults)-historyModalRows, 0)
 	return m, nil
 }

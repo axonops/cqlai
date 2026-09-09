@@ -62,3 +62,8 @@ func (m *MainModel) viewportOwnsArrows() bool {
 		return false
 	}
 }
+
+// wheelLines is how far one notch of the wheel moves anything: the viewports,
+// the settings lists and the command list. One figure, so the wheel feels the
+// same wherever the pointer happens to be.
+const wheelLines = 3
