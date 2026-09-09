@@ -391,6 +391,12 @@ func (m *MainModel) View() tea.View {
 		layerManager.AddLayer(layer)
 	}
 
+	// The help window is drawn over everything, including the modals: it was
+	// just asked for, so it is what you are looking at.
+	if layer, ok := m.viewHelp(screenWidth, screenHeight); ok {
+		layerManager.AddLayer(layer)
+	}
+
 	finalView = layerManager.Render(finalView)
 
 	// If modal is showing, render it as an overlay

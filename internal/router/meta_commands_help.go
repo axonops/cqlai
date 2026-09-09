@@ -2,7 +2,16 @@ package router
 
 // handleHelp handles HELP command
 func (h *MetaCommandHandler) handleHelp() interface{} {
-	help := [][]string{
+	return HelpRows()
+}
+
+// HelpRows is the help text, as category, command and description.
+//
+// One source, rendered twice: HELP prints it into the console and the Help
+// window on the tab line shows the same rows. Written out twice they would
+// drift, and the one nobody looks at would be the one that goes stale.
+func HelpRows() [][]string {
+	return [][]string{
 		{"Category", "Command", "Description"},
 		{"━━━━━━━━━", "━━━━━━━━", "━━━━━━━━━━━"},
 
@@ -77,7 +86,8 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},
-		{"Keys", "↑/↓ or Ctrl+P/N", "Navigate command history"},
+		{"Keys", "F1 or Alt+H", "Open this help (F1 is taken by some terminals)"},
+		{"", "↑/↓ or Ctrl+P/N", "Navigate command history"},
 		{"", "Ctrl+R", "Search history"},
 		{"", "Tab", "Auto-complete"},
 		{"", "Ctrl+L", "Clear screen"},
@@ -109,6 +119,4 @@ func (h *MetaCommandHandler) handleHelp() interface{} {
 		{"", "", ""},
 		{"", "Type 'HELP <topic>' for more details", ""},
 	}
-
-	return help
 }
