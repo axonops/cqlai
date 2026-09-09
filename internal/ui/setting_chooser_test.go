@@ -28,7 +28,7 @@ func TestClickingASettingOpensItsChoices(t *testing.T) {
 	m := chooserModel()
 
 	var col int
-	for _, seg := range m.statusBar.segments() {
+	for _, seg := range placeSegments(m.statusBar.segments(), m.windowWidth) {
 		if seg.setting == settingConsistency {
 			col = (seg.start + seg.end) / 2
 		}
@@ -46,7 +46,7 @@ func TestClickingASettingOpensItsChoices(t *testing.T) {
 func TestClickingPastTheEndOfTheLineOpensNothing(t *testing.T) {
 	m := chooserModel()
 
-	last := m.statusBar.segments()[len(m.statusBar.segments())-1]
+	last := placeSegments(m.statusBar.segments(), m.windowWidth)[len(placeSegments(m.statusBar.segments(), m.windowWidth))-1]
 	m.clickStatusSetting(last.end + 4)
 
 	assert.False(t, m.chooser.active, "there is no field out there")
@@ -310,7 +310,7 @@ func TestKeyspacesAreNotAConstantList(t *testing.T) {
 func TestClickingKSWithNoConnectionOpensNothing(t *testing.T) {
 	m := chooserModel()
 
-	for _, seg := range m.statusBar.segments() {
+	for _, seg := range placeSegments(m.statusBar.segments(), m.windowWidth) {
 		if seg.setting == settingKeyspace {
 			m.clickStatusSetting((seg.start + seg.end) / 2)
 		}
@@ -514,7 +514,7 @@ func TestTheWheelScrollsTheListNotTheViewBehindIt(t *testing.T) {
 
 // settingColumn is the middle of a setting's field on the status line.
 func settingColumn(m *MainModel, setting string) int {
-	for _, seg := range m.statusBar.segments() {
+	for _, seg := range placeSegments(m.statusBar.segments(), m.windowWidth) {
 		if seg.setting == setting {
 			return (seg.start + seg.end) / 2
 		}
@@ -561,7 +561,7 @@ func TestClickingEmptyStatusLineClosesTheList(t *testing.T) {
 	pressAt(m, settingColumn(m, settingConsistency), m.windowHeight-1)
 	require.True(t, m.chooser.active)
 
-	segs := m.statusBar.segments()
+	segs := placeSegments(m.statusBar.segments(), m.windowWidth)
 	pressAt(m, segs[len(segs)-1].end+4, m.windowHeight-1)
 
 	assert.False(t, m.chooser.active)

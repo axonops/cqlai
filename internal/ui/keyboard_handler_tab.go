@@ -19,6 +19,13 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 
 	currentInput := m.input.Value()
 
+	// A file path completes against the filesystem rather than the schema.
+	// Every command that takes a file used to offer nothing after the keyword,
+	// so paths had to be typed out in full and correctly.
+	if updated, cmd, handled := m.completePathAtPrompt(currentInput); handled {
+		return updated, cmd
+	}
+
 	// If in multi-line mode, combine the buffer with current input for completion
 	fullInput := currentInput
 	if m.multiLineMode && len(m.multiLineBuffer) > 0 {
@@ -172,6 +179,7 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 	} else {
 		// Multiple completions - show modal
 		m.showCompletions = true
+		m.completingPath = false     // these are CQL words, not filenames
 		m.completionIndex = 0        // Start with first item selected
 		m.completionScrollOffset = 0 // Reset scroll position
 	}

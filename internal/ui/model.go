@@ -114,17 +114,22 @@ type MainModel struct {
 	// applies to a boxed table. ASCII art and JSON lines are text, and running
 	// them through it draws a header over content that has none and replaces
 	// what you are reading with a table the moment you scroll sideways.
-	resultFormat       config.OutputFormat
-	cachedTableLines   []string       // Cache rendered table lines for fast scrolling
-	navigationMode     bool           // Toggle between navigation keys and input mode
-	mouseEnabled       bool           // Whether to ask the terminal for mouse reporting
-	chooser            settingChooser // Open list of values for a status bar setting
-	help               helpWindow     // Open help window, if any
-	selection          textSelection  // Text being dragged out with the mouse, if any
-	viewMode           string         // "history", "table", "trace", or "ai_info"
-	showDataTypes      bool           // Whether to show column data types in table headers
-	columnTypes        []string       // Store column data types
-	tableRowBoundaries []int          // Line numbers where table rows start
+	resultFormat     config.OutputFormat
+	cachedTableLines []string       // Cache rendered table lines for fast scrolling
+	navigationMode   bool           // Toggle between navigation keys and input mode
+	mouseEnabled     bool           // Whether to ask the terminal for mouse reporting
+	chooser          settingChooser // Open list of values for a status bar setting
+	help             helpWindow     // Open help window, if any
+	capture          capturePanel   // Open capture window, if any
+	// completingPath says the candidates on offer are filenames rather than
+	// CQL words. Applying one has to keep the directory in front of it; the
+	// word-based path would replace /tmp/rep with report.csv and lose the /tmp.
+	completingPath     bool
+	selection          textSelection // Text being dragged out with the mouse, if any
+	viewMode           string        // "history", "table", "trace", or "ai_info"
+	showDataTypes      bool          // Whether to show column data types in table headers
+	columnTypes        []string      // Store column data types
+	tableRowBoundaries []int         // Line numbers where table rows start
 
 	// AI conversation view
 	aiConversationActive   bool            // Whether AI conversation view is active

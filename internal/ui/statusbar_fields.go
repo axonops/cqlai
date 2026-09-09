@@ -24,6 +24,7 @@ const (
 	settingPaging      = "Pg"
 	settingTracing     = "Trace"
 	settingAutoFetch   = "Fetch"
+	settingCapture     = "Capture"
 )
 
 // statusSegment is one "Label: value" pair on the status line.
@@ -34,7 +35,8 @@ type statusSegment struct {
 	setting    string // one of the setting constants, or "" if not clickable
 	label      string
 	value      string
-	start, end int // column range covering label and value, end exclusive
+	start, end int  // column range covering label and value, end exclusive
+	right      bool // placed against the right-hand edge rather than in the flow
 }
 
 // clickable reports whether this segment changes something.
@@ -75,11 +77,24 @@ func (m StatusBarModel) segments() []statusSegment {
 		{setting: settingAutoFetch, label: "Fetch: ", value: onOff(m.AutoFetch)},
 	}
 
+	// Capture sits against the right-hand edge rather than in the flow, like
+	// the Help button on the tab line: it is a thing you do, not a fact about
+	// the session, and the line is already busy on the left.
+	segs = append(segs, statusSegment{
+		setting: settingCapture,
+		label:   "Capture: ",
+		value:   onOff(m.Capturing),
+		right:   true,
+	})
+
 	// Columns, not bytes. The separator is three columns wide but five bytes,
 	// because of the box-drawing character, and lipgloss.Width also gets
 	// double-width characters right, which a keyspace name can contain.
 	col := statusBarPadding
 	for i := range segs {
+		if segs[i].right {
+			continue
+		}
 		if i > 0 {
 			col += lipgloss.Width(statusSeparator)
 		}
@@ -90,10 +105,42 @@ func (m StatusBarModel) segments() []statusSegment {
 	return segs
 }
 
+// place gives the right-anchored segments their columns, once the width of the
+// line is known.
+//
+// Rendering and hit testing both call this, so a click on Capture lands on
+// Capture however wide the terminal is. It is dropped rather than overlapped
+// when the line is too full, for the same reason the Help button is.
+func placeSegments(segs []statusSegment, width int) []statusSegment {
+	end := statusBarPadding
+	for _, seg := range segs {
+		if !seg.right {
+			end = max(end, seg.end)
+		}
+	}
+
+	placed := make([]statusSegment, 0, len(segs))
+	for _, seg := range segs {
+		if !seg.right {
+			placed = append(placed, seg)
+			continue
+		}
+
+		w := lipgloss.Width(seg.label) + lipgloss.Width(seg.value)
+		seg.start = width - w - statusBarPadding
+		seg.end = seg.start + w
+		if seg.start <= end+lipgloss.Width(statusSeparator) {
+			continue // no room; leave it off rather than on top of a field
+		}
+		placed = append(placed, seg)
+	}
+	return placed
+}
+
 // settingAt returns the setting whose segment covers a column, and where that
 // segment starts, so a chooser can be anchored to it.
-func (m StatusBarModel) settingAt(col int) (setting string, at int, ok bool) {
-	for _, seg := range m.segments() {
+func (m StatusBarModel) settingAt(width, col int) (setting string, at int, ok bool) {
+	for _, seg := range placeSegments(m.segments(), width) {
 		if col >= seg.start && col < seg.end {
 			if !seg.clickable() {
 				return "", 0, false

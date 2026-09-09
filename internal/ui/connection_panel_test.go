@@ -90,10 +90,10 @@ func TestConnectionIsClickable(t *testing.T) {
 	m := testStatusBar()
 
 	var found bool
-	for _, seg := range m.segments() {
+	for _, seg := range placeSegments(m.segments(), statusTestWidth) {
 		if seg.setting == settingConnection {
 			found = true
-			setting, _, ok := m.settingAt((seg.start + seg.end) / 2)
+			setting, _, ok := m.settingAt(statusTestWidth, (seg.start+seg.end)/2)
 			require.True(t, ok)
 			assert.Equal(t, settingConnection, setting)
 		}

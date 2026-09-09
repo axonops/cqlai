@@ -339,8 +339,19 @@ func (m *MainModel) applySettingChoice(choice string) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Same path as typing it, so the transcript shows what changed and the
-	// status line updates the way it always has.
+	return m.runCommand(command)
+}
+
+// runCommand runs a meta-command the way typing it would, for the controls on
+// the bottom line.
+//
+// Same path as the prompt, so the transcript records what happened and the
+// status line updates as it always has. Doing the effects here instead is how
+// the two routes end up behaving differently.
+//
+// It does not switch view: you clicked a control, so whatever you were reading
+// should still be in front of you.
+func (m *MainModel) runCommand(command string) (*MainModel, tea.Cmd) {
 	result := router.ProcessCommand(command, m.session, m.sessionManager)
 
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
@@ -348,9 +359,7 @@ func (m *MainModel) applySettingChoice(choice string) (*MainModel, tea.Cmd) {
 		m.fullHistoryContent += "\n" + text
 
 		// A USE leaves three places tracking the keyspace to be told, the same
-		// as when one is typed at the prompt. Not switching to the console
-		// view, though: you clicked a setting, so whatever you were reading
-		// should still be in front of you.
+		// as when one is typed at the prompt.
 		m.adoptKeyspace(text)
 	}
 	m.updateHistoryWrapping()

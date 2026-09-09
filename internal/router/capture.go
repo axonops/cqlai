@@ -8,12 +8,34 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
 )
+
+// captureFormats are the formats CAPTURE takes in front of a filename. Without
+// one it writes text.
+var captureFormats = []string{"CSV", "JSON", "PARQUET"}
+
+// captureOptions are the options CAPTURE takes after WITH.
+var captureOptions = []string{"COMPRESSION", "MAX_FILE_SIZE", "PARTITION"}
+
+// CaptureOptions names the options CAPTURE accepts after WITH.
+func CaptureOptions() []string {
+	return slices.Clone(captureOptions)
+}
+
+// CaptureFormats names the formats CAPTURE accepts.
+//
+// Anything offering a choice of format reads this rather than writing the list
+// out again. The consistency levels, the output formats and the key column
+// markers were each spelled out in several places and each drifted.
+func CaptureFormats() []string {
+	return slices.Clone(captureFormats)
+}
 
 // handleCapture handles CAPTURE command to save output to file
 func (h *MetaCommandHandler) handleCapture(command string) interface{} {
@@ -49,8 +71,7 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	// Check for format specifier
 	if len(parts) >= 2 {
 		upperFormat := strings.ToUpper(parts[1])
-		switch upperFormat {
-		case "JSON", "CSV", "PARQUET":
+		if slices.Contains(captureFormats, upperFormat) {
 			format = strings.ToLower(upperFormat)
 			filenameStart = 2
 		}

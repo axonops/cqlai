@@ -11,6 +11,12 @@ func (m *MainModel) handleCompletionSelection() (*MainModel, tea.Cmd) {
 	// Get the selected completion (just the next word)
 	selectedCompletion := m.completions[m.completionIndex]
 
+	// A filename is not a word: the directory in front of it has to survive.
+	if m.completingPath {
+		m.applyPathCompletion(selectedCompletion)
+		return m, nil
+	}
+
 	// Apply the completion by appending to current input
 	currentInput := m.input.Value()
 	newValue := ""
