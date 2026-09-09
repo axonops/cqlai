@@ -63,13 +63,7 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 		// Clean headers
 		cleanHeaders := make([]string, len(v.Headers))
 		for i, header := range v.Headers {
-			if idx := strings.Index(header, " (PK)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else if idx := strings.Index(header, " (C)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else {
-				cleanHeaders[i] = header
-			}
+			cleanHeaders[i] = db.StripKeyMarker(header)
 		}
 
 		// Create compression option
@@ -176,13 +170,7 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 		// Clean headers
 		cleanHeaders := make([]string, len(v.Headers))
 		for i, header := range v.Headers {
-			if idx := strings.Index(header, " (PK)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else if idx := strings.Index(header, " (C)"); idx != -1 {
-				cleanHeaders[i] = header[:idx]
-			} else {
-				cleanHeaders[i] = header
-			}
+			cleanHeaders[i] = db.StripKeyMarker(header)
 		}
 
 		// Create compression option
