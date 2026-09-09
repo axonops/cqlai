@@ -1,30 +1,24 @@
 package ui
 
-import (
-	"fmt"
-)
+import "fmt"
 
 // Alternate scroll mode (DECSET 1007).
 //
-// cqlai runs on the alternate screen and only ever wanted the scroll wheel.
-// Asking for that with mouse reporting (DECSET 1000) is too blunt: the terminal
-// then hands us every click, so its own text selection and right-click paste
-// stop working and users have to hold Shift to select anything.
+// This is the one terminal mode Bubble Tea does not manage for us. The rest -
+// the alternate screen, and whether the mouse is reported at all - are fields
+// on the View returned each render; see newView.
 //
-// Alternate scroll mode gets the wheel without the buttons. While the alternate
-// screen is active and mouse reporting is off, the terminal turns wheel events
-// into Up/Down key presses and sends those instead, so it keeps the buttons and
-// we still get to scroll. See handleUpArrow/handleDownArrow for the receiving
-// end.
+// It matters only while mouse reporting is off, which MOUSE OFF does. With no
+// mouse events arriving, alternate scroll mode is what still lets the wheel
+// scroll: on the alternate screen the terminal turns a wheel spin into Up and
+// Down key presses and sends those instead. See handleUpArrow/handleDownArrow
+// for the receiving end.
 const (
 	seqEnableAlternateScroll  = "\x1b[?1007h"
 	seqDisableAlternateScroll = "\x1b[?1007l"
 )
 
 // EnableAlternateScroll turns on alternate scroll mode.
-//
-// Bubble Tea has no command for this mode, so it is written straight to stdout
-// the same way the mouse sequences used to be.
 func EnableAlternateScroll() {
 	fmt.Print(seqEnableAlternateScroll)
 }
@@ -32,6 +26,16 @@ func EnableAlternateScroll() {
 // DisableAlternateScroll gives the wheel back to the terminal.
 func DisableAlternateScroll() {
 	fmt.Print(seqDisableAlternateScroll)
+}
+
+// ResetMouseReporting turns every mouse reporting mode off.
+//
+// Bubble Tea already does this as it tears the screen down, so this is
+// insurance for the paths that leave without it - a panic, or a signal - where
+// the alternative is a terminal that keeps printing escape sequences at the
+// shell every time the mouse moves.
+func ResetMouseReporting() {
+	fmt.Print("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l")
 }
 
 // viewportOwnsArrows reports whether a bare Up/Down should scroll the current

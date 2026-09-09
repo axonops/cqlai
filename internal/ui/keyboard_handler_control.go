@@ -59,8 +59,9 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 
 	// If already confirming, exit. Otherwise show confirmation.
 	if m.confirmExit {
-		// Give the wheel back to the terminal on exit.
+		// Give the wheel and the buttons back to the terminal on exit.
 		DisableAlternateScroll()
+		ResetMouseReporting()
 		return m, tea.Quit
 	}
 	m.confirmExit = true
@@ -73,8 +74,9 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleCtrlD() (*MainModel, tea.Cmd) {
 	// If confirming exit, quit. Otherwise show confirmation.
 	if m.confirmExit {
-		// Give the wheel back to the terminal on exit.
+		// Give the wheel and the buttons back to the terminal on exit.
 		DisableAlternateScroll()
+		ResetMouseReporting()
 		return m, tea.Quit
 	}
 	m.confirmExit = true

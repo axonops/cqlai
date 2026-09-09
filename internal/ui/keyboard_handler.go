@@ -9,6 +9,23 @@ import (
 
 // handleKeyboardInput handles keyboard input events
 func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
+	// Any keypress drops the mouse selection: whatever happens next is likely
+	// to move or replace the text under it, and a highlight left behind on
+	// different text is worse than no highlight. Escape does nothing else, so
+	// it is the way to take one down deliberately.
+	if m.selection.active {
+		m.clearSelection()
+		if msg.String() == "esc" {
+			return m, nil
+		}
+	}
+
+	// The settings chooser takes keys while it is open: it was opened by a
+	// click a moment ago, so it is what the next keypress is aimed at.
+	if m.chooser.active {
+		return m.handleSettingChooserKey(msg)
+	}
+
 	// Check for save modal first (highest priority)
 	if m.saveModalActive {
 		return m.handleSaveModalKeyboard(msg)

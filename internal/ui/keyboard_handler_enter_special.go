@@ -11,8 +11,9 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 	upperCommand := strings.ToUpper(command)
 
 	if upperCommand == "EXIT" || upperCommand == "QUIT" {
-		// Give the wheel back to the terminal on exit.
+		// Give the wheel and the buttons back to the terminal on exit.
 		DisableAlternateScroll()
+		ResetMouseReporting()
 		return m, tea.Quit, true
 	}
 
@@ -45,10 +46,15 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 
 // handleMouseCommand turns mouse reporting on or off.
 //
-// The two are exclusive at the terminal level, so this is a choice between
-// clicking the mode tabs and the terminal's own text selection. Saying which is
-// active matters: someone who has never heard of this command would otherwise
-// just find that selecting text stopped working, with no clue why.
+// On, which is the default, cqlai has the mouse: the tabs and the settings on
+// the bottom line are clickable and dragging selects text, because cqlai draws
+// the selection itself. Off hands the mouse back to the terminal, for anyone
+// who would rather have its selection, its right-click paste and its own idea
+// of what a double click means.
+//
+// Nothing is written to the terminal here. MouseMode is a field on the View, so
+// the next render carries the change; writing escape sequences from under the
+// renderer fights it for the screen.
 func (m *MainModel) handleMouseCommand(upperCommand string) (*MainModel, tea.Cmd, bool) {
 	arg := strings.TrimSpace(strings.TrimPrefix(upperCommand, "MOUSE"))
 
@@ -57,6 +63,7 @@ func (m *MainModel) handleMouseCommand(upperCommand string) (*MainModel, tea.Cmd
 		m.mouseEnabled = true
 	case "OFF":
 		m.mouseEnabled = false
+		m.clearSelection()
 	case "":
 		// Report rather than change, the way SHOW does.
 		m.appendMouseStatus()
@@ -76,14 +83,14 @@ func (m *MainModel) handleMouseCommand(upperCommand string) (*MainModel, tea.Cmd
 	return m, nil, true
 }
 
-// appendMouseStatus writes the current mouse mode and what it costs.
+// appendMouseStatus writes which mode the mouse is in and what each one does.
 func (m *MainModel) appendMouseStatus() {
 	if m.mouseEnabled {
 		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("Mouse: ON") +
-			m.styles.MutedText.Render(" - tabs are clickable; hold Shift to select text") + "\n"
+			m.styles.MutedText.Render(" - click the tabs and the settings on the bottom line; drag to select, and the text goes to the clipboard") + "\n"
 	} else {
 		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("Mouse: OFF") +
-			m.styles.MutedText.Render(" - select and paste as usual; tabs are not clickable") + "\n"
+			m.styles.MutedText.Render(" - the terminal handles selection and paste; the tabs and settings are not clickable") + "\n"
 	}
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()

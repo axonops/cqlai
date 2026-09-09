@@ -10,38 +10,73 @@ import (
 
 // handleMouseInput handles mouse events.
 //
-// Nothing reaches this today: cqlai no longer turns on mouse reporting, because
-// doing so takes the buttons away from the terminal and breaks its text
-// selection and right-click paste. The wheel arrives as Up/Down key presses via
-// alternate scroll mode instead - see mouse_mode.go.
-//
-// It is kept for the day something clickable needs mouse reporting switched on
-// while it is on screen, which is the point at which wheel events start
-// arriving here again.
+// cqlai owns the mouse while reporting is on, which is what makes the tabs and
+// the settings on the bottom line clickable. It also means the terminal will
+// not select text for us any more, so we do that ourselves - see selection.go.
+// MOUSE OFF hands the mouse back and the terminal behaves as it always did.
 func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 	mouse := msg.Mouse()
 
-	logger.DebugfToFile("Mouse", "MouseEvent: %T Button=%v X=%d Y=%d Mod=%v",
-		msg, mouse.Button, mouse.X, mouse.Y, mouse.Mod)
-
-	// A click on the tab line switches mode. Row 0 is the tabs; everything
-	// below belongs to the view.
-	if _, isClick := msg.(tea.MouseClickMsg); isClick {
-		if mouse.Button == tea.MouseLeft && mouse.Y == 0 {
-			return m.clickTab(mouse.X)
+	switch msg.(type) {
+	case tea.MouseClickMsg:
+		logger.DebugfToFile("Mouse", "Press Button=%v X=%d Y=%d Mod=%v",
+			mouse.Button, mouse.X, mouse.Y, mouse.Mod)
+		// Only the left button does anything. A right click is left alone so
+		// the terminal's own context menu, and whatever it binds paste to,
+		// still work.
+		if mouse.Button != tea.MouseLeft {
+			return m, nil
 		}
-		return m, nil
+		return m.handleMousePress(mouse)
+
+	case tea.MouseMotionMsg:
+		// Motion only arrives with a button held, and only matters mid-drag;
+		// extendSelection returns straight away otherwise.
+		return m.extendSelection(mouse.X, mouse.Y)
+
+	case tea.MouseReleaseMsg:
+		return m.endSelection()
+
+	case tea.MouseWheelMsg:
+		return m.handleMouseWheel(mouse)
 	}
 
-	// Otherwise only wheel events matter. v2 splits clicks, releases, motion
-	// and wheel into separate types, so anything else is not ours. Note that
-	// ignoring an event here is not what lets the terminal select text - by the
-	// time one arrives the terminal has already given the button up. Leaving
-	// MouseMode off is what does that.
-	if _, isWheel := msg.(tea.MouseWheelMsg); !isWheel {
-		return m, nil
+	return m, nil
+}
+
+// handleMousePress routes a left button press: the controls first, then the
+// viewport, where a press starts a selection.
+func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
+	// A press anywhere drops whatever was selected.
+	m.clearSelection()
+
+	// A press inside the open list picks that value.
+	if m.chooser.active {
+		if choice, inside := m.choiceAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); inside {
+			return m.applySettingChoice(choice)
+		}
+		// Anywhere else closes it. Clicking the status line again may then
+		// open a different one, which is what the switch below decides.
+		m.closeSettingChooser()
+		if mouse.Y != m.windowHeight-1 && mouse.Y != 0 {
+			return m, nil
+		}
 	}
 
+	// Row 0 is the tabs and the last row is the connection bar; everything
+	// between them is content, and a press there starts a selection.
+	switch mouse.Y {
+	case 0:
+		return m.clickTab(mouse.X)
+	case m.windowHeight - 1:
+		return m.clickStatusSetting(mouse.X)
+	}
+
+	return m.beginSelection(mouse.X, mouse.Y)
+}
+
+// handleMouseWheel scrolls the view under the pointer.
+func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// Any modifier plus a vertical wheel means horizontal scrolling.
 	modified := mouse.Mod.Contains(tea.ModShift) ||
 		mouse.Mod.Contains(tea.ModAlt) ||
@@ -49,36 +84,21 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 
 	switch mouse.Button {
 	case tea.MouseWheelUp:
-		// Check for horizontal scrolling modes
 		if modified && m.viewMode == "table" && m.hasTable {
-			// Any modifier + WheelUp = Scroll left
-			logger.DebugfToFile("Mouse", "Modified WheelUp detected (Mod=%v) - scrolling left",
-				mouse.Mod)
 			return m.handleMouseWheelLeft()
 		}
-		// Regular scroll up
 		return m.handleMouseWheelUp()
 	case tea.MouseWheelDown:
-		// Check for horizontal scrolling modes
 		if modified && m.viewMode == "table" && m.hasTable {
-			// Any modifier + WheelDown = Scroll right
-			logger.DebugfToFile("Mouse", "Modified WheelDown detected (Mod=%v) - scrolling right",
-				mouse.Mod)
 			return m.handleMouseWheelRight()
 		}
-		// Regular scroll down
 		return m.handleMouseWheelDown()
 	case tea.MouseWheelLeft:
-		// Native horizontal scroll left (for mice/trackpads that support it)
+		// Native horizontal scroll, for mice and trackpads that report it.
 		return m.handleMouseWheelLeft()
 	case tea.MouseWheelRight:
-		// Native horizontal scroll right (for mice/trackpads that support it)
 		return m.handleMouseWheelRight()
 	default:
-		// Ignore left, middle and right clicks. Note that ignoring them here is
-		// not what lets the terminal select text - by the time an event reaches
-		// this function the terminal has already given the button up. Leaving
-		// mouse reporting off is what does that.
 		return m, nil
 	}
 }
@@ -322,4 +342,65 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 		return m.handleF5()
 	}
 	return m, nil
+}
+
+// clickStatusSetting opens the list of values for a setting on the status line.
+func (m *MainModel) clickStatusSetting(col int) (*MainModel, tea.Cmd) {
+	setting, anchorX, ok := m.statusBar.settingAt(col)
+	if !ok {
+		return m, nil
+	}
+
+	current := m.currentSettingValue(setting)
+
+	// Every setting but KS has a fixed set of values. Keyspaces come from the
+	// cluster, so they are fetched here rather than listed in settingChoices.
+	var choices []string
+	if setting == settingKeyspace {
+		choices = m.keyspaceChoices()
+	} else {
+		choices, _ = settingChoices(setting, current)
+	}
+	if len(choices) == 0 {
+		return m, nil
+	}
+
+	logger.DebugfToFile("Mouse", "Status setting %q clicked at column %d, current %q", setting, col, current)
+	m.openSettingChooser(setting, anchorX, choices, current)
+	return m, nil
+}
+
+// keyspaceChoices lists the keyspaces to offer for KS.
+//
+// Asked for on each click rather than cached, because keyspaces are created and
+// dropped while cqlai is running and a list that quietly goes stale is worse
+// than one small query against a system table. System keyspaces are included:
+// USE system_schema is a reasonable thing to want.
+func (m *MainModel) keyspaceChoices() []string {
+	if m.session == nil {
+		return nil
+	}
+
+	keyspaces, err := m.session.DescribeKeyspacesQuery()
+	if err != nil {
+		logger.DebugfToFile("Mouse", "Listing keyspaces for the KS chooser: %v", err)
+		return nil
+	}
+
+	names := make([]string, 0, len(keyspaces))
+	for _, ks := range keyspaces {
+		names = append(names, ks.Name)
+	}
+	return names
+}
+
+// currentSettingValue reads a setting as it is displayed, so the chooser can
+// mark it and open on it.
+func (m *MainModel) currentSettingValue(setting string) string {
+	for _, seg := range m.statusBar.segments() {
+		if seg.setting == setting {
+			return seg.value
+		}
+	}
+	return ""
 }

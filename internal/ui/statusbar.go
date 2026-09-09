@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-
 	"charm.land/lipgloss/v2"
 )
 
@@ -66,65 +64,39 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
 
-	// Format values
-	keyspaceDisplay := m.Keyspace
-	if keyspaceDisplay == "" {
-		keyspaceDisplay = "(none)"
+	// Render from the same segment list that hit testing uses, so a click can
+	// never land on a different field from the one drawn there.
+	styleFor := func(seg statusSegment) lipgloss.Style {
+		switch seg.setting {
+		case settingKeyspace:
+			return keyspaceStyle
+		case settingConsistency:
+			return consistencyStyle
+		case settingPaging:
+			return pageStyle
+		case settingTracing, settingAutoFetch:
+			if seg.value == "ON" {
+				return tracingOnStyle
+			}
+			return tracingOffStyle
+		}
+		if seg.label == "v" {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#B8B8B8"))
+		}
+		return hostStyle
 	}
 
-	usernameDisplay := m.Username
-	if usernameDisplay == "" {
-		usernameDisplay = "(anonymous)"
-	}
-
-	tracingState := "OFF"
-	tracingStyle := tracingOffStyle
-	if m.Tracing {
-		tracingState = "ON"
-		tracingStyle = tracingOnStyle
-	}
-
-	autoFetchState := "OFF"
-	autoFetchStyle := tracingOffStyle
-	if m.AutoFetch {
-		autoFetchState = "ON"
-		autoFetchStyle = tracingOnStyle
-	}
-
-	// Version style
-	versionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#B8B8B8"))
-
-	// Build the status text with colors in the requested order:
-	// Cassandra version, User, Host, KS, CL, Pg, Trace, Fetch.
-	// AutoFetch sits here with the other session settings rather than up with
-	// the query facts, since that is what it is.
 	statusText := ""
-
-	// Start with version if available
-	if m.Version != "" {
-		statusText = labelStyle.Render("v") + versionStyle.Render(m.Version) +
-			separatorStyle.Render(" │ ")
+	for i, seg := range m.segments() {
+		if i > 0 {
+			statusText += separatorStyle.Render(statusSeparator)
+		}
+		statusText += labelStyle.Render(seg.label) + styleFor(seg).Render(seg.value)
 	}
-
-	// Then add the rest in order
-	statusText += labelStyle.Render("User: ") + hostStyle.Render(usernameDisplay) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Host: ") + hostStyle.Render(m.Host) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("KS: ") + keyspaceStyle.Render(keyspaceDisplay) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("CL: ") + consistencyStyle.Render(m.Consistency) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Pg: ") + pageStyle.Render(fmt.Sprintf("%d", m.PagingSize)) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Trace: ") + tracingStyle.Render(tracingState) +
-		separatorStyle.Render(" │ ") +
-		labelStyle.Render("Fetch: ") + autoFetchStyle.Render(autoFetchState)
 
 	// Apply style to the entire bar without forced background
 	barStyle := lipgloss.NewStyle().
-		Padding(0, 1).
+		Padding(0, statusBarPadding).
 		Width(width)
 
 	return barStyle.Render(statusText)

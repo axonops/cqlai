@@ -115,6 +115,8 @@ type MainModel struct {
 	cachedTableLines         []string          // Cache rendered table lines for fast scrolling
 	navigationMode           bool              // Toggle between navigation keys and input mode
 	mouseEnabled             bool              // Whether to ask the terminal for mouse reporting
+	chooser                  settingChooser    // Open list of values for a status bar setting
+	selection                textSelection     // Text being dragged out with the mouse, if any
 	viewMode                 string            // "history", "table", "trace", or "ai_info"
 	showDataTypes            bool              // Whether to show column data types in table headers
 	columnTypes              []string          // Store column data types
@@ -439,10 +441,13 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		columnWidths:           nil,
 		hasTable:               false,
 		viewMode:               "history",
-		// On by default so the mode tabs are clickable without anyone having to
-		// find a setting first. The cost is that selecting text needs Shift and
-		// right-click paste stops working, which MOUSE OFF gives back.
-		mouseEnabled:              true,
+		// Off by default. Asking the terminal for clicks costs its own text
+		// selection and right-click paste, and no mouse mode avoids that:
+		// mode 1000 requests clicks without drag events and the terminal
+		// still gives up selection. Losing selection is a cost paid
+		// constantly; clicking a tab or a setting is an occasional
+		// convenience, and everything it reaches has a key or a command.
+		mouseEnabled:              defaultMouseEnabled,
 		hasTrace:                  false,
 		traceData:                 nil,
 		traceHeaders:              nil,
@@ -460,9 +465,9 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 
 // Init initializes the main model.
 func (m *MainModel) Init() tea.Cmd {
-	// Take the wheel without taking the mouse buttons, so the terminal keeps
-	// its own text selection and right-click paste. Wheel events arrive as
-	// Up/Down key presses instead of mouse events.
+	// Alternate scroll mode, so the wheel still scrolls with MOUSE OFF, when
+	// mouse reporting is not asked for and wheel events would not arrive.
+	// Bubble Tea does not manage this mode; the rest is a field on the View.
 	EnableAlternateScroll()
 	return textinput.Blink
 }
@@ -475,9 +480,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
 
-		headerHeight := 1 // mode tabs
-		footerHeight := 2 // query info, then the connection bar
-		inputHeight := 1  // text input
+		headerHeight := tabBarHeight // mode tabs
+		footerHeight := 2            // query info, then the connection bar
+		inputHeight := 1             // text input
 		// Guard against a terminal that reports no size, or one too small to
 		// hold the chrome: v2's components size buffers from these and panic on
 		// a negative value where v1 quietly carried on.

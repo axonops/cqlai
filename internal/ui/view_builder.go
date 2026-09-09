@@ -15,22 +15,28 @@ import (
 // commands, the alternate screen and mouse mode are fields recomputed on every
 // render, so they cannot drift out of step with what is on screen.
 //
-// MouseMode is a trade rather than a setting with a right answer. Asking for
-// mouse reporting is what makes the tabs clickable, and it is also what takes
-// the buttons away from the terminal, so text selection needs Shift and
-// right-click paste stops working - the behaviour #86 was about. MOUSE OFF
-// gives those back at the cost of clicking.
+// Taking the mouse means the terminal stops selecting text for us, so cqlai
+// draws the selection itself instead - see selection.go. That is what lets the
+// tabs and the bottom line be clickable and text still be selectable, which no
+// choice of DECSET mode gives you on its own. MOUSE OFF hands the mouse back
+// for anyone who would rather have the terminal do it.
 //
-// Either way the wheel still scrolls, through alternate scroll mode, which v2
-// does not manage and mouse_mode.go sets up.
+// Either way the wheel still scrolls: with reporting on it arrives as a wheel
+// event, and with it off, through alternate scroll mode, which v2 does not
+// manage and mouse_mode.go sets up.
 func (m *MainModel) newView(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
+
+	// CellMotion is DECSET 1002: presses, releases, the wheel, and motion while
+	// a button is held, which is what following a drag needs. AllMotion adds
+	// motion with no button down, and nothing here tracks the pointer at rest.
 	if m.mouseEnabled {
 		v.MouseMode = tea.MouseModeCellMotion
 	} else {
 		v.MouseMode = tea.MouseModeNone
 	}
+
 	return v
 }
 
@@ -187,9 +193,9 @@ func (m *MainModel) View() tea.View {
 		}
 	}
 
-	// Say which way the mouse is set. Without this, someone who has never heard
-	// of the MOUSE command just finds that selecting text needs Shift, with
-	// nothing on screen explaining why.
+	// Say which way the mouse is set. Without this, someone who has turned it
+	// off, or run into a terminal that will not report it, just finds that
+	// clicking the tabs does nothing, with nothing on screen explaining why.
 	if m.mouseEnabled {
 		mouseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
 		scrollInfo += " " + mouseStyle.Render("[MOUSE]")
@@ -282,29 +288,25 @@ func (m *MainModel) View() tea.View {
 		infoBar = " "
 	}
 
-	// Build the viewport section with sticky header for tables
-	var viewportSection string
-	if m.viewMode == "table" && m.hasTable && m.tableViewport.YOffset() > 0 {
-		// When table is scrolled, prepend the header
+	// Build the viewport section with sticky header for tables.
+	//
+	// stickyHeaderRows decides whether the header is drawn, and the selection
+	// reads the same function to know which rows are showing the top of the
+	// table rather than the lines the viewport is scrolled to.
+	viewportSection := viewportContent
+	if headerLineCount := m.stickyHeaderRows(); headerLineCount > 0 {
 		header := m.buildTableStickyHeader()
-		if header != "" {
-			// Get viewport lines and remove the top lines that would duplicate the header
-			lines := strings.Split(viewportContent, "\n")
-
-			// Skip the lines that would be covered by the sticky header (3 lines: border, header, separator)
-			headerLineCount := 3
-			if len(lines) > headerLineCount {
-				remainingLines := lines[headerLineCount:]
-				viewportSection = header + "\n" + strings.Join(remainingLines, "\n")
-			} else {
-				viewportSection = header + "\n" + viewportContent
-			}
+		lines := strings.Split(viewportContent, "\n")
+		if len(lines) > headerLineCount {
+			viewportSection = header + "\n" + strings.Join(lines[headerLineCount:], "\n")
 		} else {
-			viewportSection = viewportContent
+			viewportSection = header + "\n" + viewportContent
 		}
-	} else {
-		viewportSection = viewportContent
 	}
+
+	// Paint the mouse selection on last, so it covers whatever styling the
+	// content already had.
+	viewportSection = m.highlightSelection(viewportSection)
 
 	// Build the final view. The tabs get their own line above the status bar so
 	// the modes and their keys are always on screen, rather than something you
@@ -413,6 +415,11 @@ func (m *MainModel) View() tea.View {
 	}
 
 	// Apply all layers to the final view
+	// The settings chooser sits above everything: it is the thing just clicked.
+	if layer, ok := m.viewSettingChooser(screenWidth, screenHeight); ok {
+		layerManager.AddLayer(layer)
+	}
+
 	finalView = layerManager.Render(finalView)
 
 	// If modal is showing, render it as an overlay
