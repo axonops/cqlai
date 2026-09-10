@@ -33,7 +33,10 @@ var modeTabs = []modeTab{
 	// object to anyone using this.
 	{mode: "table", label: "RESULTS", short: "R", key: "F3"},
 	{mode: "trace", label: "TRACE", short: "T", key: "F4"},
-	{mode: "ai", label: "AI", short: "A", key: "F5"},
+	// "Chat" rather than "AI": it is a conversation, and what it is a
+	// conversation with is not the useful half of the name. Two letters
+	// because the console has the C.
+	{mode: "ai", label: "CHAT", short: "Ch", key: "F5"},
 }
 
 // hasResults reports whether there is anything for SAVE to write.
@@ -53,6 +56,11 @@ func (m *MainModel) tabAvailable(mode string) bool {
 		return m.hasTable
 	case "trace":
 		return m.hasTrace
+	case "ai":
+		// Dimmed rather than hidden. A tab that is not there says nothing about
+		// why; a dimmed one says the view exists and this session cannot reach
+		// it, which is the question someone looking for it is asking.
+		return m.aiAvailable()
 	default:
 		return true
 	}
@@ -65,17 +73,7 @@ func (m *MainModel) tabAvailable(mode string) bool {
 // set up cannot change while cqlai is running, so a permanently dimmed tab
 // would only be taking room from the others.
 func (m *MainModel) visibleTabs() []modeTab {
-	if m.aiAvailable() {
-		return modeTabs
-	}
-
-	tabs := make([]modeTab, 0, len(modeTabs))
-	for _, t := range modeTabs {
-		if t.mode != "ai" {
-			tabs = append(tabs, t)
-		}
-	}
-	return tabs
+	return modeTabs
 }
 
 // aiAvailable reports whether the AI view has a provider behind it.
@@ -157,16 +155,24 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 	tabs := m.visibleTabs()
 	labels, withButtons := fitTabs(tabs, width)
 
-	// Help first, at the left-hand end, so the tabs start after it. What it
-	// may take is whatever the tabs and the Save button do not need.
+	// File then Help, at the left-hand end, so the tabs start after them. What
+	// they may take is whatever the tabs do not need.
 	spans := make([]tabSpan, 0, len(tabs)+2)
 	col := 0
+	// The two buttons shorten together. Placing File first and letting it take
+	// the longest label that fits leaves Help a single "?" while File still
+	// says "FILE (Alt+F)", which reads as one of them mattering more.
+	fileLabel, helpLabel := "", ""
 	if withButtons {
-		budget := width - tabBarWidth(labels) - saveReserve
-		if help, ok := helpSpan(budget); ok {
-			spans = append(spans, help)
-			col = help.end
-		}
+		fileLabel, helpLabel = fitButtons(width, tabBarWidth(labels))
+	}
+
+	if fileLabel != "" {
+		spans = append(spans, tabSpan{
+			mode: fileMode, label: fileLabel,
+			start: 0, end: lipgloss.Width(fileLabel) + 2, available: true,
+		})
+		col = spans[0].end
 	}
 
 	for i, t := range tabs {
@@ -190,12 +196,29 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 		col = end
 	}
 
-	if withButtons {
-		if save, ok := saveSpan(width, col, m.hasResults()); ok {
-			spans = append(spans, save)
-		}
+	if helpLabel != "" {
+		start := col + len(tabSeparator)
+		spans = append(spans, tabSpan{
+			mode: helpMode, label: helpLabel,
+			start: start, end: start + lipgloss.Width(helpLabel) + 2, available: true,
+		})
 	}
 	return spans
+}
+
+// fitButtons picks the pair of labels, longest first, that leaves the tabs
+// their room. Empty strings mean there is no space for the buttons at all, and
+// the tabs get the line to themselves: they are the navigation.
+func fitButtons(width, tabsWidth int) (file, help string) {
+	sep := len(tabSeparator)
+	for i := range fileLabels {
+		f, h := fileLabels[i], helpLabels[i]
+		used := lipgloss.Width(f) + 2 + sep + tabsWidth + sep + lipgloss.Width(h) + 2
+		if used <= width {
+			return f, h
+		}
+	}
+	return "", ""
 }
 
 // The two buttons on the tab line, one at each end.
@@ -211,61 +234,32 @@ var (
 	// Konsole and others - they take it for their own help - so a button
 	// naming only F1 names a key that does nothing there.
 	helpLabels = []string{"HELP (F1/Alt+H)", "HELP", "?"}
-	saveLabels = []string{"SAVE RESULTS", "SAVE"}
+	fileLabels = []string{"FILE (Alt+F)", "FILE", "F"}
 )
 
 // buttonReserve is the room the tabs give up for the two buttons: their
 // *shortest* useful labels, not their longest. Reserving for the longest would
 // shorten the tab names on a terminal that was only ever going to fit "Help".
 var (
+	fileReserve = lipgloss.Width(" F ")
 	helpReserve = lipgloss.Width(" ? ")
-	saveReserve = lipgloss.Width(" SAVE ")
 
-	buttonReserve = helpReserve + saveReserve
+	buttonReserve = fileReserve + helpReserve
 )
 
 // The pseudo-modes the buttons report. Neither is a view: they open a window
 // over whichever view you are in and leave it there.
 const (
 	helpMode = "help"
-	saveMode = "save"
+	fileMode = "file"
 )
 
-// buttonSpan fits a label into the room available, longest first.
-func buttonSpan(mode string, labels []string, start, limit int) (tabSpan, bool) {
-	for _, label := range labels {
-		end := start + lipgloss.Width(label) + 2
-		if end <= limit {
-			return tabSpan{mode: mode, label: label, start: start, end: end, available: true}, true
-		}
-	}
-	return tabSpan{}, false
-}
-
-// helpSpan is where the Help button sits, at the left-hand end.
-//
-// budget is what it may take without pushing a tab off the line. Help sits in
-// front of the tabs, so its width moves all of them: taking its longest label
-// whatever the width would drop tabs off the right to make room for a key hint,
-// and the tabs are the navigation.
-func helpSpan(budget int) (tabSpan, bool) {
-	return buttonSpan(helpMode, helpLabels, 0, budget)
-}
-
-// saveSpan is where the Save button sits, against the right-hand edge.
-//
-// It disappears before it would sit on top of a tab: losing the button is
-// better than a line where a click lands on whatever is underneath it.
-//
-// available is whether there is anything to save. With no results it is dimmed
-// and ignores clicks, the same as a tab with nothing to show - offering to save
-// nothing and then reporting that there is nothing is worse than saying so on
-// the button.
-func saveSpan(width, tabsEnd int, available bool) (tabSpan, bool) {
-	for _, label := range saveLabels {
-		start := width - lipgloss.Width(label) - 2
-		if start > tabsEnd {
-			return tabSpan{mode: saveMode, label: label, start: start, end: width, available: available}, true
+// tabSpanFor finds a span by mode, so a control can be anchored to where it is
+// actually drawn rather than to a column worked out a second time.
+func (m *MainModel) tabSpanFor(width int, mode string) (tabSpan, bool) {
+	for _, span := range m.layoutTabs(width) {
+		if span.mode == mode {
+			return span, true
 		}
 	}
 	return tabSpan{}, false
@@ -306,14 +300,7 @@ func (m *MainModel) ViewTabBar(width int) string {
 	var b strings.Builder
 	col := 0
 	for i, span := range spans {
-		// The Help button is placed against the right edge rather than after
-		// the tab before it, so pad out to wherever it starts.
-		switch {
-		case span.mode == saveMode:
-			// Placed against the right edge rather than after the tab before
-			// it, so pad out to wherever it starts.
-			b.WriteString(strings.Repeat(" ", max(span.start-col, 0)))
-		case i > 0:
+		if i > 0 {
 			b.WriteString(separatorStyle.Render(tabSeparator))
 		}
 

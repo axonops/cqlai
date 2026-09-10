@@ -119,6 +119,7 @@ type MainModel struct {
 	navigationMode   bool           // Toggle between navigation keys and input mode
 	mouseEnabled     bool           // Whether to ask the terminal for mouse reporting
 	chooser          settingChooser // Open list of values for a status bar setting
+	fileMenu         fileMenu       // Open FILE menu on the tab line
 	help             helpWindow     // Open help window, if any
 	capture          capturePanel   // Open capture window, if any
 	// completingPath says the candidates on offer are filenames rather than

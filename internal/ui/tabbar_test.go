@@ -17,7 +17,7 @@ import (
 func modeSpans(spans []tabSpan) []tabSpan {
 	tabs := make([]tabSpan, 0, len(spans))
 	for _, span := range spans {
-		if span.mode != helpMode && span.mode != saveMode {
+		if span.mode != helpMode && span.mode != fileMode {
 			tabs = append(tabs, span)
 		}
 	}
@@ -48,7 +48,7 @@ func TestTabBarShowsKeysWhenThereIsRoom(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
 	wide := stripAnsiForTest(m.ViewTabBar(120))
-	for _, want := range []string{"CONSOLE (F2)", "RESULTS (F3)", "TRACE (F4)", "AI (F5)"} {
+	for _, want := range []string{"CONSOLE (F2)", "RESULTS (F3)", "TRACE (F4)", "CHAT (F5)"} {
 		assert.Contains(t, wide, want)
 	}
 
@@ -329,51 +329,50 @@ func TestRenderDoesNotTouchTheTerminal(t *testing.T) {
 	assert.Empty(t, out, "rendering should write nothing directly to the terminal")
 }
 
-// TestTheAITabIsHiddenWithoutAProvider.
+// TestTheChatTabIsDimmedWithoutAProvider.
 //
 // Without one, the AI client falls back to a mock that returns canned replies,
-// so the view looked like it worked. Leaving the tab out rather than dimming
-// it: Results and Trace fill in as you work, but whether AI is configured
-// cannot change while cqlai is running.
-func TestTheAITabIsHiddenWithoutAProvider(t *testing.T) {
+// so the view looked like it worked. It was left off the line entirely for a
+// while; dimmed says more. A tab that is not there says nothing about why, and
+// "where has the chat gone" is the question someone is asking when they look
+// for it.
+func TestTheChatTabIsDimmedWithoutAProvider(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
 
 	bar := stripAnsiForTest(m.ViewTabBar(120))
-	assert.NotContains(t, bar, "AI")
+	assert.Contains(t, bar, "CHAT", "still on the line")
 	for _, want := range []string{"CONSOLE", "RESULTS", "TRACE"} {
 		assert.Contains(t, bar, want, "the other tabs should be untouched")
 	}
 
-	for _, span := range m.layoutTabs(120) {
-		assert.NotEqual(t, "ai", span.mode)
-	}
+	span, ok := m.tabSpanFor(120, "ai")
+	require.True(t, ok)
+	assert.False(t, span.available, "but dimmed")
+
+	// And it ignores clicks, the same as Results with nothing to show.
+	_, clickable := m.modeAt(120, (span.start+span.end)/2)
+	assert.False(t, clickable)
 }
 
-// TestTheAITabIsThereWhenItIsConfigured.
-func TestTheAITabIsThereWhenItIsConfigured(t *testing.T) {
+// TestTheChatTabLightsUpWhenItIsConfigured.
+func TestTheChatTabLightsUpWhenItIsConfigured(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
-	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(120)), "AI")
+	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(120)), "CHAT")
+
+	span, ok := m.tabSpanFor(120, "ai")
+	require.True(t, ok)
+	assert.True(t, span.available)
 }
 
-// TestTheHiddenTabTakesNoColumns: the tabs after it must not be laid out around
-// a gap, and a click has to land on what is drawn.
-func TestTheHiddenTabTakesNoColumns(t *testing.T) {
-	const width = 120
-	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true}
+// TestItIsCalledChatRatherThanAI. It is a conversation, and what it is a
+// conversation with is not the useful half of the name.
+func TestItIsCalledChatRatherThanAI(t *testing.T) {
+	m := &MainModel{viewMode: "history", aiConfig: configuredAI()}
 
-	spans := modeSpans(m.layoutTabs(width))
-	require.Len(t, spans, 3)
-
-	for _, span := range spans {
-		mode, ok := m.modeAt(width, (span.start+span.end)/2)
-		assert.Equal(t, span.mode, mode)
-		assert.True(t, ok)
-	}
-
-	// Nothing answers past the last tab, where AI used to be.
-	_, ok := m.modeAt(width, spans[len(spans)-1].end+2)
-	assert.False(t, ok)
+	bar := stripAnsiForTest(m.ViewTabBar(120))
+	assert.Contains(t, bar, "CHAT")
+	assert.NotContains(t, bar, " AI ")
 }
 
 // TestTheBarStillFitsWithoutAI at every width.

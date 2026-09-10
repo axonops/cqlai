@@ -279,7 +279,6 @@ func TestTheWarningIsNotDroppedForALongerCommand(t *testing.T) {
 	assert.Contains(t, drawn, "History: SELECT", "with a readable stub of the command")
 }
 
-
 // TestCaptureNoLongerCostsTheLineItsWidth.
 //
 // The right-hand end was reserved before the settings were measured, so Capture

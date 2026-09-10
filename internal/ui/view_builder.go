@@ -280,6 +280,10 @@ func (m *MainModel) View() tea.View {
 		layerManager.AddLayer(layer)
 	}
 
+	if layer, ok := m.viewFileMenu(screenWidth, screenHeight); ok {
+		layerManager.AddLayer(layer)
+	}
+
 	// The help window is drawn over everything, including the modals: it was
 	// just asked for, so it is what you are looking at.
 	if layer, ok := m.viewHelp(screenWidth, screenHeight); ok {
@@ -377,7 +381,7 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString(m.styles.MutedText.Render("  • F4 - Switch to trace view"))
 	welcome.WriteString("\n")
 	if m.aiAvailable() {
-		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to AI assistant mode"))
+		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to the Chat view"))
 		welcome.WriteString("\n")
 	}
 	welcome.WriteString("\n")

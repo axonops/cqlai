@@ -311,18 +311,44 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Alt+D` | Delete word forward | `Option+D` |
 | `Ctrl+Y` | Paste previously cut text | Same |
 
-#### View Switching
+#### The tab line
 
-The four views are shown as tabs along the top, so you can see which one you are
-in and what the others are. Click a tab, or use the key on it. A view with
-nothing to show yet is dimmed.
+```
+ FILE (Alt+F)    CONSOLE (F2)    RESULTS (F3)    TRACE (F4)    CHAT (F5)    HELP (F1/Alt+H)
+```
+
+The four views are shown as tabs, so you can see which one you are in and what
+the others are. Click a tab, or use the key on it. A view with nothing to show
+yet is dimmed, as is `CHAT` with no AI provider configured.
 
 | Shortcut | Tab | Shows |
 |----------|-----|-------|
 | `F2` | Console | The running transcript of commands and messages |
 | `F3` | Results | The last query's output, in whatever `OUTPUT` format is set |
 | `F4` | Trace | Query trace, when tracing is enabled |
-| `F5` | AI | The AI conversation |
+| `F5` | Chat | The AI conversation |
+
+`FILE` and `HELP` are not views. They open a menu and a window over whatever you
+are looking at, and leave it there. On a narrow terminal the labels shorten and
+then the buttons go, rather than the tab names giving way - `Alt+F` and `F1`
+still work.
+
+#### The FILE menu
+
+```
+╭──────────────╮
+│ SAVE RESULTS │
+│ CAPTURE      │
+╰──────────────╯
+```
+
+`SAVE RESULTS` writes what is on screen to a file. `CAPTURE` writes everything
+that comes next. Both are the same window - pick a format, then say where - and
+both open in the middle of the screen. `SAVE RESULTS` is dimmed with nothing to
+save.
+
+Up and down move, Enter picks, Esc closes. `Capture: ` on the bottom line says
+whether a capture is running, and clicking it opens the same window.
 
 #### Column headers
 
