@@ -13,6 +13,7 @@ import (
 
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/parquet"
 )
 
 // SaveCommand represents a parsed SAVE command
@@ -24,7 +25,17 @@ type SaveCommand struct {
 }
 
 // saveFormats are the formats SAVE writes.
-var saveFormats = []string{"CSV", "JSON", "ASCII"}
+var saveFormats = []string{"CSV", "JSON", "PARQUET", "ASCII"}
+
+// parquetNeedsTypes is what SAVE ... AS PARQUET says when the column types are
+// not to hand.
+//
+// The Parquet writer builds its schema from the CQL types, and
+// AppendValueToBuilder swallows a conversion it cannot do, so a wrong schema
+// writes a file that opens cleanly and holds nothing. Refusing is the better
+// answer.
+const parquetNeedsTypes = "no column types for the last result, so PARQUET cannot be written. " +
+	"Run the query again and save its results, or choose another format"
 
 // SaveFormats names the formats SAVE accepts after AS.
 //
@@ -206,6 +217,8 @@ func detectFormatFromExtension(filename string) string {
 		return "CSV"
 	case strings.HasSuffix(lower, ".json"):
 		return "JSON"
+	case strings.HasSuffix(lower, ".parquet"):
+		return "PARQUET"
 	case strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".text"):
 		return "ASCII"
 	default:
@@ -213,8 +226,13 @@ func detectFormatFromExtension(filename string) string {
 	}
 }
 
-// HandleSaveCommand executes the save operation
-func HandleSaveCommand(cmd SaveCommand, tableData [][]string) error {
+// HandleSaveCommand executes the save operation.
+//
+// columnTypes are the CQL types of the columns in tableData, in the same order,
+// and may be empty. Only PARQUET needs them - it builds a schema from them -
+// and it refuses rather than writing a file it cannot type. See
+// ParquetTypesUsable.
+func HandleSaveCommand(cmd SaveCommand, tableData [][]string, columnTypes []string) error {
 	// Validate data availability
 	if len(tableData) == 0 {
 		return fmt.Errorf("no data to export")
@@ -244,6 +262,8 @@ func HandleSaveCommand(cmd SaveCommand, tableData [][]string) error {
 		return exportToJSON(cmd.Filename, tableData, cmd.Options)
 	case "ASCII":
 		return exportToASCII(cmd.Filename, tableData, cmd.Options)
+	case "PARQUET":
+		return exportToParquet(cmd.Filename, tableData, columnTypes, cmd.Options)
 	default:
 		return fmt.Errorf("unsupported format: %s", cmd.Format)
 	}
@@ -469,4 +489,68 @@ func GenerateDefaultFilename(format string) string {
 		ext = ".txt"
 	}
 	return fmt.Sprintf("query_results_%s%s", timestamp, ext)
+}
+
+// ParquetTypesUsable says whether a result can be written as Parquet.
+//
+// The writer builds an Arrow schema from the CQL types, so there has to be one
+// per column. Anything offering PARQUET as a choice asks this first, and
+// exportToParquet asks it again before writing, so the window and the typed
+// command cannot disagree about when it is available.
+func ParquetTypesUsable(tableData [][]string, columnTypes []string) bool {
+	if len(tableData) == 0 {
+		return false
+	}
+	return len(columnTypes) == len(tableData[0])
+}
+
+// exportToParquet writes the displayed results as Parquet.
+//
+// It goes through the writer CAPTURE uses rather than a second one, so a file
+// saved from the results is the same file capturing the query would have
+// produced.
+func exportToParquet(filename string, data [][]string, columnTypes []string, options map[string]interface{}) error {
+	if !ParquetTypesUsable(data, columnTypes) {
+		return fmt.Errorf("%s", parquetNeedsTypes)
+	}
+
+	// Parquet wants the column names Cassandra knows: no key markers, no
+	// styling. Same treatment the CSV export gives them.
+	headers := make([]string, len(data[0]))
+	for i, cell := range data[0] {
+		headers[i] = db.StripKeyMarker(stripAnsi(cell))
+	}
+
+	writerOptions := parquet.DefaultWriterOptions()
+	if val, ok := options["compression"]; ok {
+		if s, ok := val.(string); ok {
+			writerOptions.Compression = parquet.ParseCompression(s)
+		}
+	}
+
+	writer, err := parquet.NewParquetCaptureWriter(filepath.Clean(filename), headers, columnTypes, writerOptions)
+	if err != nil {
+		return fmt.Errorf("failed to create Parquet writer: %w", err)
+	}
+
+	rows := make([][]string, 0, len(data)-1)
+	for _, row := range data[1:] {
+		clean := make([]string, len(row))
+		for i, cell := range row {
+			clean[i] = stripAnsi(cell)
+		}
+		rows = append(rows, clean)
+	}
+
+	if err := writer.WriteStringRows(headers, rows); err != nil {
+		// Close it anyway: a half-written file left open is worse than a
+		// half-written one closed.
+		_ = writer.Close()
+		return fmt.Errorf("failed to write Parquet rows: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close Parquet file: %w", err)
+	}
+	return nil
 }

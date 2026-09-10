@@ -597,17 +597,20 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   SELECT * FROM users WHERE status = 'active';
 
   -- 次に表示された結果をさまざまな形式で保存:
-  SAVE                           -- 対話ダイアログ(形式とファイル名を選択)
-  SAVE 'users.csv'               -- CSVに保存(形式は自動検出)
-  SAVE 'users.json'              -- JSONに保存(形式は自動検出)
-  SAVE 'users.txt' ASCII         -- ASCIIテーブルとして保存
-  SAVE 'data.csv' CSV            -- 明示的に形式を指定
+  SAVE                                    -- 対話ダイアログ(形式とファイル名を選択)
+  SAVE TO 'users.csv'                     -- CSVに保存(形式は自動検出)
+  SAVE TO 'users.json'                    -- JSONに保存(形式は自動検出)
+  SAVE TO 'users.parquet'                 -- Parquetに保存(形式は自動検出)
+  SAVE TO 'users.txt' AS ASCII            -- ASCIIテーブルとして保存
+  SAVE TO 'data.out' AS CSV               -- 明示的に形式を指定
 
   -- CAPTUREとの主な違い:
   -- - SAVEは現在表示されている結果をエクスポート
   -- - クエリを再実行する必要なし
   -- - ターミナルに表示されているデータをそのまま保持
   -- - ページ分割された結果でも動作(ロードされたページのみ保存)
+  -- PARQUETは結果のカラム型を必要とするため、クエリ結果では選択でき、
+  -- 型を持たないDESCRIBEでは選択肢に現れません。
   ```
 
 #### 情報表示

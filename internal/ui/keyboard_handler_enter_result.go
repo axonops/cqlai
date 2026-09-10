@@ -45,7 +45,7 @@ func (m *MainModel) processCommandResult(command string, result interface{}, sta
 			}
 			v.Options["already_json"] = true
 		}
-		err := router.HandleSaveCommand(*v, m.lastTableData)
+		err := router.HandleSaveCommand(*v, m.lastTableData, m.columnTypes)
 		if err != nil {
 			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+err.Error())
 		} else {
@@ -524,6 +524,12 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 		// Store table data and headers
 		m.lastTableData = v
 		m.tableHeaders = v[0] // Store the header row
+		// These results arrive without types - DESCRIBE is the common one - and
+		// the last query's would otherwise be left standing beside a result
+		// they do not describe, with no guarantee even of the same number of
+		// columns. F6 lines them up by index, and PARQUET builds a schema from
+		// them, so both would be quietly wrong.
+		m.columnTypes = nil
 		m.resultFormat = config.OutputFormatTable
 		m.resetHorizontalScroll()
 		m.hasTable = true

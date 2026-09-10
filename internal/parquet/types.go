@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -325,6 +326,16 @@ func extractValue(col arrow.Array, idx int) any {
 
 // Type conversion helper functions
 
+// The converters below take a string as well as a Go value.
+//
+// A value can arrive already rendered: a result reaches SAVE as [][]string,
+// because that is all the UI holds once it is on screen, and it is CAPTURE's
+// fallback when it has no typed rows to hand. Without a string case the
+// conversion failed, AppendValueToBuilder appended null, and the file came out
+// with the right number of rows and nothing in any column that was not text.
+//
+// A value that will not parse stays an error, and so still becomes a null: one
+// unreadable cell should cost that cell and not the rest of the file.
 func (tm *TypeMapper) toInt8(value interface{}) (int8, error) {
 	switch v := value.(type) {
 	case int8:
@@ -349,6 +360,12 @@ func (tm *TypeMapper) toInt8(value interface{}) (int8, error) {
 			return 0, fmt.Errorf("value %d out of range for int8", v)
 		}
 		return int8(v), nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 8)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as int8: %w", v, err)
+		}
+		return int8(n), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int8", value)
 	}
@@ -375,6 +392,12 @@ func (tm *TypeMapper) toInt16(value interface{}) (int16, error) {
 			return 0, fmt.Errorf("value %d out of range for int16", v)
 		}
 		return int16(v), nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 16)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as int16: %w", v, err)
+		}
+		return int16(n), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int16", value)
 	}
@@ -400,6 +423,12 @@ func (tm *TypeMapper) toInt32(value interface{}) (int32, error) {
 			return 0, fmt.Errorf("value %d out of range for int32", v)
 		}
 		return int32(v), nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as int32: %w", v, err)
+		}
+		return int32(n), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int32", value)
 	}
@@ -419,6 +448,12 @@ func (tm *TypeMapper) toInt64(value interface{}) (int64, error) {
 		return int64(v), nil
 	case time.Duration:
 		return int64(v), nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as int64: %w", v, err)
+		}
+		return n, nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int64", value)
 	}
@@ -430,6 +465,12 @@ func (tm *TypeMapper) toFloat32(value interface{}) (float32, error) {
 		return v, nil
 	case float64:
 		return float32(v), nil
+	case string:
+		f, err := strconv.ParseFloat(v, 32)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as float32: %w", v, err)
+		}
+		return float32(f), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to float32", value)
 	}
@@ -441,6 +482,12 @@ func (tm *TypeMapper) toFloat64(value interface{}) (float64, error) {
 		return float64(v), nil
 	case float64:
 		return v, nil
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as float64: %w", v, err)
+		}
+		return f, nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to float64", value)
 	}
@@ -450,6 +497,12 @@ func (tm *TypeMapper) toBool(value interface{}) (bool, error) {
 	switch v := value.(type) {
 	case bool:
 		return v, nil
+	case string:
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return false, fmt.Errorf("cannot parse %q as bool: %w", v, err)
+		}
+		return b, nil
 	default:
 		return false, fmt.Errorf("cannot convert %T to bool", value)
 	}
@@ -529,10 +582,9 @@ func (tm *TypeMapper) toDate32(value interface{}) (arrow.Date32, error) {
 		}
 		return arrow.Date32(days), nil
 	case string:
-		// Try to parse date string
-		t, err := time.Parse("2006-01-02", v)
+		t, err := parseTimeString(v)
 		if err != nil {
-			return 0, fmt.Errorf("cannot parse date: %w", err)
+			return 0, err
 		}
 		days := t.Unix() / 86400
 		if days < math.MinInt32 || days > math.MaxInt32 {
@@ -551,6 +603,12 @@ func (tm *TypeMapper) toTime64(value interface{}) (arrow.Time64, error) {
 		return arrow.Time64(v.Nanoseconds()), nil
 	case int64:
 		return arrow.Time64(v), nil
+	case string:
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse %q as a time: %w", v, err)
+		}
+		return arrow.Time64(d.Nanoseconds()), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to Time64", value)
 	}
@@ -563,6 +621,12 @@ func (tm *TypeMapper) toTimestamp(value interface{}) (arrow.Timestamp, error) {
 		return arrow.Timestamp(v.UnixMilli()), nil
 	case int64:
 		return arrow.Timestamp(v), nil
+	case string:
+		t, err := parseTimeString(v)
+		if err != nil {
+			return 0, err
+		}
+		return arrow.Timestamp(t.UnixMilli()), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to Timestamp", value)
 	}
@@ -959,4 +1023,27 @@ func (tm *TypeMapper) ArrowToCassandraType(arrowType arrow.DataType) string {
 	default:
 		return "text" // Default fallback
 	}
+}
+
+// parseTimeString reads a time as it is displayed.
+//
+// A result reaches SAVE as [][]string, so a timestamp arrives as whatever
+// FormatValue rendered - RFC3339 - rather than as a time.Time. The plain date
+// and the space-separated layouts are here because the same strings turn up in
+// a CSV being copied in.
+func parseTimeString(v string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as a time", v)
 }
