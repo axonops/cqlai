@@ -484,7 +484,12 @@ func actionFields(action formAction, keyspace string) []formField {
 			// On the FROM form and not the TO form because this is where
 			// getting it wrong costs you: a CSV whose first row is column
 			// names, read with HEADER=false, inserts that row as data.
-			{label: "Header row", kind: fieldYesNo, yes: true, hint: "the file's first row is column names"},
+			// Given an input like every other field even though it is never
+			// typed into and never draws it. A zero textinput has no cursor,
+			// and focusing one dereferences it: clicking this field crashed
+			// cqlai.
+			{label: "Header row", kind: fieldYesNo, yes: true, input: newFormInput("", ""),
+				hint: "the file's first row is column names"},
 		}
 	}
 	return []formField{
