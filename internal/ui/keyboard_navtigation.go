@@ -236,22 +236,9 @@ func (m *MainModel) handleLeftArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 		m.modal.PrevChoice()
 		return m, nil
 	}
-	// If Alt is held, scroll table/trace left
+	// If Alt is held, scroll whichever view is in front of you left
 	if msg.Mod.Contains(tea.ModAlt) {
-		switch {
-		case m.viewMode == "trace" && m.hasTrace:
-			// Scroll trace table left
-			if m.traceHorizontalOffset > 0 {
-				m.traceHorizontalOffset -= 10
-				if m.traceHorizontalOffset < 0 {
-					m.traceHorizontalOffset = 0
-				}
-				// Refresh the trace view using existing table renderer
-				m.refreshTraceView()
-			}
-		default:
-			m.scrollHorizontally(-horizontalStep)
-		}
+		m.scrollHorizontally(-horizontalStep)
 		return m, nil
 	}
 	// If Alt is not held, pass the key to the input for cursor movement
@@ -268,25 +255,9 @@ func (m *MainModel) handleRightArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 		m.modal.NextChoice()
 		return m, nil
 	}
-	// If Alt is held, scroll table/trace right
+	// If Alt is held, scroll whichever view is in front of you right
 	if msg.Mod.Contains(tea.ModAlt) {
-		switch {
-		case m.viewMode == "trace" && m.hasTrace:
-			// Scroll trace table right
-			if m.traceTableWidth > m.traceViewport.Width() {
-				maxOffset := m.traceTableWidth - m.traceViewport.Width() + 10 // Add some buffer
-				if m.traceHorizontalOffset < maxOffset {
-					m.traceHorizontalOffset += 10
-					if m.traceHorizontalOffset > maxOffset {
-						m.traceHorizontalOffset = maxOffset
-					}
-					// Refresh the trace view using existing table renderer
-					m.refreshTraceView()
-				}
-			}
-		default:
-			m.scrollHorizontally(horizontalStep)
-		}
+		m.scrollHorizontally(horizontalStep)
 		return m, nil
 	}
 	// If Alt is not held, pass the key to the input for cursor movement

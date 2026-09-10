@@ -366,81 +366,25 @@ func (m *MainModel) handleGoToBottom() (*MainModel, tea.Cmd) {
 
 // handleHorizontalScrollLeft scrolls left (< or , key)
 func (m *MainModel) handleHorizontalScrollLeft() (*MainModel, tea.Cmd) {
-	switch {
-	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceHorizontalOffset > 0 {
-			m.traceHorizontalOffset -= 10
-			if m.traceHorizontalOffset < 0 {
-				m.traceHorizontalOffset = 0
-			}
-			m.refreshTraceView()
-		}
-	default:
-		m.scrollHorizontally(-horizontalStep)
-	}
+	m.scrollHorizontally(-horizontalStep)
 	return m, nil
 }
 
 // handlePageLeftScroll scrolls left by page width (Alt+PageUp)
 func (m *MainModel) handlePageLeftScroll() (*MainModel, tea.Cmd) {
-	switch {
-	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceHorizontalOffset > 0 {
-			scrollAmount := m.traceViewport.Width() / 2
-			if scrollAmount < 10 {
-				scrollAmount = 10
-			}
-			m.traceHorizontalOffset -= scrollAmount
-			if m.traceHorizontalOffset < 0 {
-				m.traceHorizontalOffset = 0
-			}
-			m.refreshTraceView()
-		}
-	default:
-		m.scrollHorizontally(-m.halfScreen())
-	}
+	m.scrollHorizontally(-m.halfScreen())
 	return m, nil
 }
 
 // handlePageRightScroll scrolls right by page width (Alt+PageDown)
 func (m *MainModel) handlePageRightScroll() (*MainModel, tea.Cmd) {
-	switch {
-	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceTableWidth > m.traceViewport.Width() {
-			scrollAmount := m.traceViewport.Width() / 2
-			if scrollAmount < 10 {
-				scrollAmount = 10
-			}
-			maxOffset := m.traceTableWidth - m.traceViewport.Width() + 10
-			m.traceHorizontalOffset += scrollAmount
-			if m.traceHorizontalOffset > maxOffset {
-				m.traceHorizontalOffset = maxOffset
-			}
-			m.refreshTraceView()
-		}
-	default:
-		m.scrollHorizontally(m.halfScreen())
-	}
+	m.scrollHorizontally(m.halfScreen())
 	return m, nil
 }
 
 // handleHorizontalScrollRight scrolls right (> or . key)
 func (m *MainModel) handleHorizontalScrollRight() (*MainModel, tea.Cmd) {
-	switch {
-	case m.viewMode == "trace" && m.hasTrace:
-		if m.traceTableWidth > m.traceViewport.Width() {
-			maxOffset := m.traceTableWidth - m.traceViewport.Width() + 10
-			if m.traceHorizontalOffset < maxOffset {
-				m.traceHorizontalOffset += 10
-				if m.traceHorizontalOffset > maxOffset {
-					m.traceHorizontalOffset = maxOffset
-				}
-				m.refreshTraceView()
-			}
-		}
-	default:
-		m.scrollHorizontally(horizontalStep)
-	}
+	m.scrollHorizontally(horizontalStep)
 	return m, nil
 }
 
@@ -450,28 +394,51 @@ const horizontalStep = 10
 // halfScreen is how far < and > scroll: half the width on screen, so a page
 // sideways leaves half of what you were reading in view.
 func (m *MainModel) halfScreen() int {
-	return max(m.tableViewport.Width()/2, horizontalStep)
+	width := m.tableViewport.Width()
+	if m.viewMode == "trace" && m.hasTrace {
+		width = m.traceViewport.Width()
+	}
+	return max(width/2, horizontalStep)
 }
 
-// scrollHorizontally moves the Results view sideways by n columns.
+// scrollHorizontally moves whichever view is in front of you sideways by n
+// columns.
 //
 // Every route sideways comes through here - h and l, the arrows, < and >, and
 // the wheel. They used to be six copies of the same clamp-then-rebuild, in
 // three files, and #115 fixed two of them: the other four went on rebuilding
 // ASCII output as a boxed table the moment you scrolled.
+//
+// The Trace view was the last of them. It kept its own offset and its own
+// clamp, reached only by h, l, < and > in navigation mode, and this returned
+// without doing anything for it - so Alt+Left, Alt+Right and the wheel, which
+// are what anyone would try, did nothing at all on a trace wider than the
+// screen.
 func (m *MainModel) scrollHorizontally(n int) {
-	if m.viewMode != "table" || !m.hasTable {
-		return
-	}
+	switch {
+	case m.viewMode == "trace" && m.hasTrace:
+		offset := clampOffset(m.traceHorizontalOffset+n, m.traceTableWidth, m.traceViewport.Width())
+		if offset == m.traceHorizontalOffset {
+			return
+		}
+		m.traceHorizontalOffset = offset
+		m.refreshTraceView()
 
-	maxOffset := max(m.tableWidth-m.tableViewport.Width()+horizontalStep, 0)
-	offset := min(max(m.horizontalOffset+n, 0), maxOffset)
-	if offset == m.horizontalOffset {
-		return
+	case m.viewMode == "table" && m.hasTable:
+		offset := clampOffset(m.horizontalOffset+n, m.tableWidth, m.tableViewport.Width())
+		if offset == m.horizontalOffset {
+			return
+		}
+		m.horizontalOffset = offset
+		m.applyHorizontalOffset()
 	}
+}
 
-	m.horizontalOffset = offset
-	m.applyHorizontalOffset()
+// clampOffset keeps a sideways offset inside what there is to scroll.
+//
+// A step past the end, so the last column is not left half off the edge.
+func clampOffset(offset, content, visible int) int {
+	return min(max(offset, 0), max(content-visible+horizontalStep, 0))
 }
 
 // resetHorizontalScroll puts a new result back at the left-hand edge.
