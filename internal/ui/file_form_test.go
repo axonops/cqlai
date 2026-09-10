@@ -327,3 +327,48 @@ func collect(errors map[int]string) []string {
 	slices.Sort(all)
 	return all
 }
+
+// TestEveryFieldCanBeFocused.
+//
+// The Header row field was declared without a textinput, and a zero textinput
+// has no cursor: focusing one dereferences it. Clicking that field crashed
+// cqlai, and the panic came from three layers down in bubbles, which is not
+// where anyone would look.
+//
+// Every field, on every form, by click and by key - because the one that was
+// wrong was the one field that never draws its input, and nothing else touched
+// it.
+func TestEveryFieldCanBeFocused(t *testing.T) {
+	for _, action := range []formAction{sourcing, copyingTo, copyingFrom} {
+		m := formModel(t, action)
+
+		for i := range m.form.fields {
+			label := m.form.fields[i].label
+			require.NotPanics(t, func() { m.form.focusField(i) },
+				"focusing %s should not panic", label)
+			require.NotPanics(t, func() { m.form.blurAll() },
+				"blurring past %s should not panic", label)
+		}
+
+		// And by walking with the arrows, which is how you reach it without a
+		// mouse.
+		require.NotPanics(t, func() {
+			m.form.focusField(0)
+			for range len(m.form.fields) + 2 {
+				m.handleFormKey(tea.KeyPressMsg{Code: tea.KeyDown})
+			}
+		}, "walking the whole form should not panic")
+	}
+}
+
+// TestEveryFieldHasAnInput, which is what makes the above true rather than
+// happening to be true.
+func TestEveryFieldHasAnInput(t *testing.T) {
+	for _, action := range []formAction{sourcing, copyingTo, copyingFrom} {
+		m := formModel(t, action)
+		for i, field := range m.form.fields {
+			assert.NotPanics(t, func() { m.form.fields[i].input.Focus() },
+				"%s has no usable input", field.label)
+		}
+	}
+}
