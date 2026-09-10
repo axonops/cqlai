@@ -99,6 +99,7 @@ func TestTheKeyspaceAndConsistencyAreTheLastToGo(t *testing.T) {
 	assert.Contains(t, kept(60), settingKeyspace)
 	assert.Contains(t, kept(60), settingConsistency)
 	assert.NotContains(t, kept(60), settingAutoFetch, "the least useful goes first")
+	assert.NotContains(t, kept(60), settingCapture, "and Capture is one of them while it is off")
 
 	full := kept(200)
 	for _, setting := range []string{
@@ -276,4 +277,23 @@ func TestTheWarningIsNotDroppedForALongerCommand(t *testing.T) {
 
 	assert.Contains(t, drawn, "dropped: first 1200")
 	assert.Contains(t, drawn, "History: SELECT", "with a readable stub of the command")
+}
+
+
+// TestCaptureNoLongerCostsTheLineItsWidth.
+//
+// The right-hand end was reserved before the settings were measured, so Capture
+// took its width plus a separator at every terminal width even with nothing to
+// say. In the flow it takes its turn, and Trace fits on an 80-column terminal
+// again.
+func TestCaptureNoLongerCostsTheLineItsWidth(t *testing.T) {
+	m := busyStatusBar()
+
+	var settings []string
+	for _, seg := range placeSegments(m.segments(), 80) {
+		settings = append(settings, seg.setting)
+	}
+
+	assert.Contains(t, settings, settingTracing, "which the reserved end used to cost")
+	assert.NotContains(t, settings, settingCapture, "because it is off")
 }

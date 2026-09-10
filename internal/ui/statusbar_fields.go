@@ -38,7 +38,7 @@ type statusSegment struct {
 	short      string // the label used when the full set will not fit
 	value      string
 	start, end int  // column range covering label and value, end exclusive
-	right      bool // placed against the right-hand edge rather than in the flow
+	keep       bool // never dropped, however narrow the line
 }
 
 // width is the columns this segment takes as it will be drawn.
@@ -96,15 +96,22 @@ func (m StatusBarModel) segments() []statusSegment {
 		{setting: settingAutoFetch, label: "Fetch: ", short: "F: ", value: onOff(m.AutoFetch)},
 	}
 
-	// Capture sits against the right-hand edge rather than in the flow, like
-	// the Help button on the tab line: it is a thing you do, not a fact about
-	// the session, and the line is already busy on the left.
+	// Capture was against the right-hand edge, apart from the settings, because
+	// it was put there as a control - a thing you press. It is both, and the
+	// fact is the more important half: it is the one setting that keeps doing
+	// something after you have stopped thinking about it, and quietly writing
+	// to a file you have forgotten is exactly what wants to be on screen. As a
+	// fact it belongs with the other facts.
+	//
+	// A capture that is running is never dropped, however narrow the line, for
+	// that same reason. One that is off takes its turn with the rest:
+	// "Capture: OFF" says nothing you had not already assumed.
 	segs = append(segs, statusSegment{
 		setting: settingCapture,
 		label:   "Capture: ",
 		short:   "Cap: ",
 		value:   onOff(m.Capturing),
-		right:   true,
+		keep:    m.Capturing,
 	})
 
 	return segs
@@ -161,66 +168,43 @@ func flowEnd(segs []statusSegment) int {
 // Rendering and hit testing both call this, so a click lands on the field drawn
 // there however wide the terminal is and whatever has been dropped to fit.
 func placeSegments(segs []statusSegment, width int) []statusSegment {
-	var flow, anchored []statusSegment
-	for _, seg := range segs {
-		if seg.right {
-			anchored = append(anchored, seg)
-		} else {
-			flow = append(flow, seg)
-		}
+	room := width - statusBarPadding
+
+	if fitted, ok := fitFlow(segs, room); ok {
+		return fitted
 	}
 
-	// The right-hand end is reserved before the flow is measured, so a busy
-	// left-hand side cannot push Capture off the line.
-	reserve := 0
-	for _, seg := range anchored {
-		reserve += lipgloss.Width(statusSeparator) + seg.width()
+	shortened := make([]statusSegment, len(segs))
+	for i, seg := range segs {
+		shortened[i] = seg.shorten()
 	}
-	room := width - statusBarPadding - reserve
 
-	if fitted, ok := fitFlow(flow, room); ok {
-		flow = fitted
-	} else {
-		shortened := make([]statusSegment, len(flow))
-		for i, seg := range flow {
-			shortened[i] = seg.shorten()
+	// Drop from the right until what is left fits, passing over anything
+	// marked keep - a capture that is running, which is the whole reason the
+	// field is on this line. The first field always stays: a bar with nothing
+	// on it says less than a crowded one.
+	for {
+		if fitted, ok := fitFlow(shortened, room); ok {
+			return fitted
 		}
-		for i := range anchored {
-			anchored[i] = anchored[i].shorten()
-		}
-		reserve = 0
-		for _, seg := range anchored {
-			reserve += lipgloss.Width(statusSeparator) + seg.width()
-		}
-		room = width - statusBarPadding - reserve
 
-		// Drop from the right until what is left fits. The first field always
-		// stays: a bar with nothing on it says less than a crowded one.
-		for len(shortened) > 1 {
-			if fitted, ok := fitFlow(shortened, room); ok {
-				shortened = fitted
+		last := -1
+		for i := len(shortened) - 1; i > 0; i-- {
+			if !shortened[i].keep {
+				last = i
 				break
 			}
-			shortened = shortened[:len(shortened)-1]
 		}
-		flow = layOutFlow(shortened)
-	}
-
-	placed := flow
-	end := flowEnd(flow)
-	for _, seg := range anchored {
-		w := seg.width()
-		seg.start = width - w - statusBarPadding
-		seg.end = seg.start + w
-		if seg.start <= end+lipgloss.Width(statusSeparator) {
-			continue // no room; leave it off rather than on top of a field
+		if last < 0 {
+			// Only the first field and whatever must stay are left, and they
+			// still overrun. Drawing them cut off says more than drawing none.
+			return layOutFlow(shortened)
 		}
-		placed = append(placed, seg)
+		shortened = append(shortened[:last:last], shortened[last+1:]...)
 	}
-	return placed
 }
 
-// fitFlow lays the flow out and reports whether it stays inside room.
+// fitFlow lays the segments out and reports whether they stay inside room.
 func fitFlow(segs []statusSegment, room int) ([]statusSegment, bool) {
 	laid := layOutFlow(slices.Clone(segs))
 	return laid, flowEnd(laid) <= room
