@@ -124,12 +124,12 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 			return m, nil
 		}
 
+		// Clicking the control that opened it closes it, rather than closing
+		// and reopening in the same press - which looks like nothing happened.
+		reopens := m.pressOpensCapture(mouse)
 		m.closeCapturePanel()
-		// Clicking Capture again should not reopen it in the same press.
-		if mouse.Y == m.windowHeight-1 {
-			if setting, _, ok := m.statusBar.settingAt(m.windowWidth, mouse.X); ok && setting == settingCapture {
-				return m, nil
-			}
+		if reopens {
+			return m, nil
 		}
 	}
 
@@ -168,6 +168,22 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	}
 
 	return m.beginSelection(mouse.X, mouse.Y)
+}
+
+// pressOpensCapture reports whether a press is on the control that opened the
+// window: the Capture field on the bottom line, or the SAVE RESULTS button on
+// the tab line.
+func (m *MainModel) pressOpensCapture(mouse tea.Mouse) bool {
+	switch {
+	case m.capture.kind == saving && mouse.Y == 0:
+		mode, _ := m.modeAt(m.windowWidth, mouse.X)
+		return mode == saveMode
+
+	case m.capture.kind == capturing && mouse.Y == m.windowHeight-1:
+		setting, _, ok := m.statusBar.settingAt(m.windowWidth, mouse.X)
+		return ok && setting == settingCapture
+	}
+	return false
 }
 
 // handleMouseWheel scrolls the view under the pointer.
@@ -385,6 +401,9 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 
 	if mode == helpMode {
 		return m.toggleHelp()
+	}
+	if mode == saveMode {
+		return m.openSavePanel()
 	}
 
 	switch mode {

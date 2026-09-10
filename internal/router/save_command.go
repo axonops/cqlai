@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,17 @@ type SaveCommand struct {
 	Filename    string                 // target filename
 	Format      string                 // CSV, JSON, or ASCII
 	Options     map[string]interface{} // additional options like header=false, pretty=true
+}
+
+// saveFormats are the formats SAVE writes.
+var saveFormats = []string{"CSV", "JSON", "ASCII"}
+
+// SaveFormats names the formats SAVE accepts after AS.
+//
+// Anything offering a choice reads this rather than writing the list out
+// again, the same as the capture formats and the consistency levels.
+func SaveFormats() []string {
+	return slices.Clone(saveFormats)
 }
 
 // SaveModalTrigger is a message to trigger the save modal in the UI
@@ -80,15 +92,13 @@ func ParseSaveCommand(input string) (*SaveCommand, error) {
 		cmd.Format = detectFormatFromExtension(cmd.Filename)
 	}
 
-	// Validate format
-	switch cmd.Format {
-	case "CSV", "JSON", "ASCII", "TXT", "TEXT":
-		// Valid formats
-		if cmd.Format == "TXT" || cmd.Format == "TEXT" {
-			cmd.Format = "ASCII"
-		}
-	default:
-		return nil, fmt.Errorf("unsupported format: %s. Supported formats: CSV, JSON, ASCII", cmd.Format)
+	// TXT and TEXT are spellings of ASCII.
+	if cmd.Format == "TXT" || cmd.Format == "TEXT" {
+		cmd.Format = "ASCII"
+	}
+	if !slices.Contains(saveFormats, cmd.Format) {
+		return nil, fmt.Errorf("unsupported format: %s. Supported formats: %s",
+			cmd.Format, strings.Join(saveFormats, ", "))
 	}
 
 	return cmd, nil

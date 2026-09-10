@@ -99,9 +99,14 @@ func TestChoosingAFormatAsksForAPath(t *testing.T) {
 
 // TestTheCommandMatchesWhatTypingItWouldBe.
 func TestTheCommandMatchesWhatTypingItWouldBe(t *testing.T) {
-	assert.Equal(t, "CAPTURE JSON 'out.json'", captureCommand("JSON", "out.json"))
-	assert.Equal(t, "CAPTURE PARQUET 'data.parquet'", captureCommand("PARQUET", "data.parquet"))
-	assert.Equal(t, "CAPTURE CSV 'a/b.csv'", captureCommand("CSV", "a//b.csv"))
+	capture := capturePanel{kind: capturing}
+	assert.Equal(t, "CAPTURE JSON 'out.json'", capture.command("JSON", "out.json"))
+	assert.Equal(t, "CAPTURE PARQUET 'data.parquet'", capture.command("PARQUET", "data.parquet"))
+
+	// SAVE has a different form entirely: SAVE TO 'file' AS FORMAT.
+	save := capturePanel{kind: saving}
+	assert.Equal(t, "SAVE TO 'out.csv' AS CSV", save.command("CSV", "out.csv"))
+	assert.Equal(t, "SAVE TO 'a.txt' AS ASCII", save.command("ASCII", "a.txt"))
 }
 
 // TestEscapeGoesBackAStep, so a mistyped path does not cost you the format.
@@ -524,4 +529,211 @@ func TestBothRoutesGiveTheSameWindow(t *testing.T) {
 
 	assert.Equal(t, clickedLayer.Content, typedLayer.Content, "the same window")
 	assert.Equal(t, clickedLayer.Width, typedLayer.Width)
+}
+
+// TestTheSaveButtonIsAtTheRightOfTheTabLine.
+func TestTheSaveButtonIsAtTheRightOfTheTabLine(t *testing.T) {
+	m := helpModel()
+
+	spans := m.layoutTabs(m.windowWidth)
+	last := spans[len(spans)-1]
+
+	assert.Equal(t, saveMode, last.mode, "the button should be last")
+	assert.Equal(t, m.windowWidth, last.end, "and against the right edge")
+	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(m.windowWidth)), "SAVE RESULTS")
+}
+
+// TestClickingSaveOpensTheWindow, the same one Capture uses.
+func TestClickingSaveOpensTheWindow(t *testing.T) {
+	m := helpModel()
+	m.windowHeight = 30
+	m.lastTableData = [][]string{{"id"}, {"1"}} // something to save
+
+	save := spans(m, saveMode)
+	pressAt(m, (save.start+save.end)/2, 0)
+
+	require.True(t, m.capture.active)
+	assert.Equal(t, saving, m.capture.kind)
+	assert.Equal(t, router.SaveFormats(), m.capture.formats)
+}
+
+// TestTheSaveWindowBuildsTheSaveCommand, which has a different shape from
+// CAPTURE's: SAVE TO 'file' AS FORMAT.
+func TestTheSaveWindowBuildsTheSaveCommand(t *testing.T) {
+	save := capturePanel{kind: saving}
+	assert.Equal(t, "SAVE TO '/tmp/out.json' AS JSON", save.command("JSON", "/tmp/out.json"))
+
+	capture := capturePanel{kind: capturing}
+	assert.Equal(t, "CAPTURE JSON '/tmp/out.json'", capture.command("JSON", "/tmp/out.json"))
+}
+
+// TestSaveOffersItsOwnFormats: ASCII rather than PARQUET.
+func TestSaveOffersItsOwnFormats(t *testing.T) {
+	m := helpModel()
+	m.openSavePanel()
+
+	assert.Equal(t, []string{"CSV", "JSON", "ASCII"}, m.capture.formats)
+	assert.NotContains(t, m.capture.formats, "PARQUET", "SAVE does not write Parquet")
+}
+
+// TestTheDefaultNameSuitsTheKind.
+func TestTheDefaultNameSuitsTheKind(t *testing.T) {
+	m := helpModel()
+
+	m.openSavePanel()
+	m.capture.format = 2 // ASCII
+	m.chooseCaptureFormat()
+	assert.Contains(t, m.capture.input.Value(), "results_")
+	assert.True(t, strings.HasSuffix(m.capture.input.Value(), ".txt"))
+
+	m.closeCapturePanel()
+	m.openCapturePanel(0)
+	m.chooseCaptureFormat()
+	assert.Contains(t, m.capture.input.Value(), "capture_")
+}
+
+// TestBothWindowsAreTheSameWindow, differing only in what they are for.
+func TestBothWindowsAreTheSameWindow(t *testing.T) {
+	const w, h = 120, 30
+
+	save := helpModel()
+	save.windowHeight = h
+	save.openSavePanel()
+	saveLayer, ok := save.viewCapturePanel(w, h)
+	require.True(t, ok)
+
+	capture := helpModel()
+	capture.windowHeight = h
+	capture.openCapturePanelCentred()
+	captureLayer, ok := capture.viewCapturePanel(w, h)
+	require.True(t, ok)
+
+	// Each is centred for its own width; the two differ because the titles and
+	// the format lists do.
+	assert.Equal(t, max((w-saveLayer.Width)/2, 0), saveLayer.X, "save centred")
+	assert.Equal(t, max((w-captureLayer.Width)/2, 0), captureLayer.X, "capture centred")
+	assert.Contains(t, stripAnsiForTest(saveLayer.Content), "Save the last results")
+	assert.Contains(t, stripAnsiForTest(captureLayer.Content), "Capture output")
+}
+
+// TestTabCompletesThePathInTheSaveWindowToo, which the old save modal could
+// not do.
+func TestTabCompletesThePathInTheSaveWindowToo(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "results.csv"), nil, 0o600))
+
+	m := helpModel()
+	m.openSavePanel()
+	m.chooseCaptureFormat()
+	m.capture.input.SetValue(filepath.Join(dir, "res"))
+
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	assert.Equal(t, filepath.Join(dir, "results.csv"), m.capture.input.Value())
+}
+
+// TestSaveIsDimmedWithNothingToSave.
+//
+// Offering to save nothing and then reporting that there is nothing is worse
+// than saying so on the button.
+func TestSaveIsDimmedWithNothingToSave(t *testing.T) {
+	m := helpModel()
+	m.windowHeight = 30
+	m.lastTableData = nil
+
+	save := spans(m, saveMode)
+	require.Equal(t, saveMode, save.mode, "the button is still drawn")
+	assert.False(t, save.available, "but dimmed")
+
+	// And it ignores clicks, the same as a tab with nothing to show.
+	_, ok := m.modeAt(m.windowWidth, (save.start+save.end)/2)
+	assert.False(t, ok)
+
+	pressAt(m, (save.start+save.end)/2, 0)
+	assert.False(t, m.capture.active, "clicking it should do nothing")
+}
+
+// TestSaveLightsUpOnceThereAreResults.
+func TestSaveLightsUpOnceThereAreResults(t *testing.T) {
+	m := helpModel()
+	m.windowHeight = 30
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+
+	save := spans(m, saveMode)
+	assert.True(t, save.available)
+
+	_, ok := m.modeAt(m.windowWidth, (save.start+save.end)/2)
+	assert.True(t, ok)
+}
+
+// TestTheButtonAndTheCommandAgree about whether there is anything to save.
+func TestTheButtonAndTheCommandAgree(t *testing.T) {
+	m := helpModel()
+
+	assert.False(t, m.hasResults(), "nothing run yet")
+
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+	assert.True(t, m.hasResults())
+}
+
+// TestSaveOpensInTheSamePlaceEitherWay.
+//
+// Capture's control is on the bottom line and its window sits just above it,
+// pointing at it. The Save button is at the top right, so a window anchored to
+// the bottom line would be pointing at nothing.
+func TestSaveOpensInTheSamePlaceEitherWay(t *testing.T) {
+	const w, h = 120, 30
+
+	clicked := helpModel()
+	clicked.windowHeight = h
+	clicked.lastTableData = [][]string{{"id"}, {"1"}}
+	save := spans(clicked, saveMode)
+	pressAt(clicked, (save.start+save.end)/2, 0)
+	clickedLayer, ok := clicked.viewCapturePanel(w, h)
+	require.True(t, ok)
+
+	typed := helpModel()
+	typed.windowHeight = h
+	typed.openSavePanel()
+	typedLayer, ok := typed.viewCapturePanel(w, h)
+	require.True(t, ok)
+
+	assert.Equal(t, typedLayer.X, clickedLayer.X)
+	assert.Equal(t, typedLayer.Y, clickedLayer.Y)
+	assert.Equal(t, max((w-clickedLayer.Width)/2, 0), clickedLayer.X, "centred across")
+	assert.Equal(t, max((h-clickedLayer.Height)/2, 0), clickedLayer.Y, "and down")
+}
+
+// TestClickingSaveAgainClosesTheWindow.
+//
+// The press closed it and the button reopened it in the same press, so it
+// looked like nothing happened - the same bug the settings lists had.
+func TestClickingSaveAgainClosesTheWindow(t *testing.T) {
+	m := helpModel()
+	m.windowHeight = 30
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+
+	save := spans(m, saveMode)
+	col := (save.start + save.end) / 2
+
+	pressAt(m, col, 0)
+	require.True(t, m.capture.active, "the first click should open it")
+
+	pressAt(m, col, 0)
+	assert.False(t, m.capture.active, "the second should close it")
+}
+
+// TestClickingATabWithTheSaveWindowOpenSwitchesView, rather than only closing
+// the window: the tabs are still live under it.
+func TestClickingATabWithTheSaveWindowOpenSwitchesView(t *testing.T) {
+	m := helpModel()
+	m.windowHeight = 30
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+	m.openSavePanel()
+
+	results := spans(m, "table")
+	pressAt(m, (results.start+results.end)/2, 0)
+
+	assert.False(t, m.capture.active, "the window should have gone")
+	assert.Equal(t, "table", m.viewMode, "and the tab should have acted")
 }

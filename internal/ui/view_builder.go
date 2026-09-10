@@ -388,13 +388,6 @@ func (m *MainModel) View() tea.View {
 		return m.newView(content)
 	}
 
-	// If save modal is showing, add it as a layer
-	if m.saveModalActive {
-		modalContent := m.renderSaveModal(screenWidth, screenHeight)
-		modalLayer := RenderModal(modalContent, screenWidth, screenHeight)
-		layerManager.AddLayer(modalLayer)
-	}
-
 	// Apply all layers to the final view
 	// The settings chooser sits above everything: it is the thing just clicked.
 	if layer, ok := m.viewSettingChooser(screenWidth, screenHeight); ok {

@@ -55,11 +55,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m.handleSettingChooserKey(msg)
 	}
 
-	// Check for save modal first (highest priority)
-	if m.saveModalActive {
-		return m.handleSaveModalKeyboard(msg)
-	}
-
 	// Check for AI CQL modal (high priority)
 	if m.aiCQLModal != nil && m.aiCQLModal.Active {
 		return m.handleAICQLModal(msg)

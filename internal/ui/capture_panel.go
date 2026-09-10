@@ -12,29 +12,41 @@ import (
 	"github.com/axonops/cqlai/internal/router"
 )
 
-// The window behind Capture on the bottom line: pick a format, then type where
-// to write it.
+// The window behind Capture and Save: pick a format, then type where to write
+// the file.
 //
 // Two steps, which is one more than the settings lists do, so it is its own
-// window rather than another commandList. It anchors above the field that
-// opened it, the way those lists do.
+// window rather than another commandList. It anchors above the control that
+// opened it, or sits in the middle for a typed command, which has nothing to
+// point at.
 //
-// SAVE has the same shape and its own copy of it. #129 tracks moving SAVE onto
-// this one; two of them will drift, which is how five separate bugs happened
-// this week.
+// Capture and Save had a window each, written separately. They differ in four
+// things - the title, the formats, the default filename and the command they
+// run - and in nothing else, so those four are what this holds and the rest is
+// shared. Two of them would drift, which is how most of the bugs found this
+// week happened.
 
-// captureStep is which half of the window is showing.
-type captureStep int
+// fileStep is which half of the window is showing.
+type fileStep int
 
 const (
-	captureChooseFormat captureStep = iota
+	captureChooseFormat fileStep = iota
 	captureEnterPath
+)
+
+// fileKind is which command the window is driving.
+type fileKind int
+
+const (
+	capturing fileKind = iota
+	saving
 )
 
 // capturePanel is the open window, if any.
 type capturePanel struct {
 	active  bool
-	step    captureStep
+	kind    fileKind
+	step    fileStep
 	formats []string
 	format  int // index into formats
 	anchorX int // column the field starts at, when opened from it
@@ -64,31 +76,96 @@ const captureMatchRows = 8
 // is running.
 const captureStopping = "OFF"
 
-// openCapturePanel opens the window above the Capture field, for a click on it.
+// title is the line at the top of the window.
+func (c capturePanel) title() string {
+	if c.kind == saving {
+		return "Save the last results to a file"
+	}
+	return "Capture output to a file"
+}
+
+// formatsFor is the list a kind offers, from the command that parses them.
+func formatsFor(kind fileKind) []string {
+	if kind == saving {
+		return router.SaveFormats()
+	}
+	return router.CaptureFormats()
+}
+
+// describe says what a format does, since the names alone do not.
+func (c capturePanel) describe(format string) string {
+	switch format {
+	case captureStopping:
+		return "OFF       stop capturing"
+	case "CSV":
+		return "CSV       comma separated"
+	case "JSON":
+		return "JSON      one object per row"
+	case "PARQUET":
+		return "PARQUET   columnar, for analysis"
+	case "ASCII":
+		return "ASCII     a table, as it appears on screen"
+	}
+	return format
+}
+
+// extension is the filename ending a format wants.
+func extensionFor(format string) string {
+	switch format {
+	case "CSV":
+		return ".csv"
+	case "JSON":
+		return ".json"
+	case "PARQUET":
+		return ".parquet"
+	}
+	return ".txt"
+}
+
+// command is what the window runs, which is what typing it would run.
+func (c capturePanel) command(format, path string) string {
+	if c.kind == saving {
+		return "SAVE TO '" + path + "' AS " + format
+	}
+	return "CAPTURE " + format + " '" + path + "'"
+}
+
+// openCapturePanel opens the capture window above the Capture field.
 func (m *MainModel) openCapturePanel(anchorX int) (*MainModel, tea.Cmd) {
-	return m.showCapturePanel(anchorX, false)
+	return m.showFilePanel(capturing, anchorX, false)
 }
 
 // openCapturePanelCentred opens it in the middle of the screen, for the typed
 // CAPTURE command, which has no field to point at.
 func (m *MainModel) openCapturePanelCentred() (*MainModel, tea.Cmd) {
-	return m.showCapturePanel(0, true)
+	return m.showFilePanel(capturing, 0, true)
 }
 
-func (m *MainModel) showCapturePanel(anchorX int, centred bool) (*MainModel, tea.Cmd) {
+// openSavePanel opens the save window, in the middle of the screen.
+//
+// Centred whichever way it was opened, unlike Capture. Capture's control is on
+// the bottom line and the window sits just above it, pointing at it; the Save
+// button is at the top right, and a window anchored to the bottom line would be
+// pointing at nothing. Typing SAVE has nothing to point at either, so both
+// routes land in the same place.
+func (m *MainModel) openSavePanel() (*MainModel, tea.Cmd) {
+	return m.showFilePanel(saving, 0, true)
+}
+
+func (m *MainModel) showFilePanel(kind fileKind, anchorX int, centred bool) (*MainModel, tea.Cmd) {
 	if m.capture.active {
 		m.capture = capturePanel{}
 		return m, nil
 	}
 
 	// The formats the command parses, so the list cannot offer one it will
-	// refuse. CAPTURE with no format at all writes text; that is still there
-	// if you type it, but it is not one of the choices, because the usage does
-	// not list it as one.
-	formats := router.CaptureFormats()
-	if handler := router.GetMetaHandler(); handler != nil && handler.IsCapturing() {
-		// Stopping is the thing you want while it is running, so it goes first.
-		formats = append([]string{captureStopping}, formats...)
+	// refuse.
+	formats := formatsFor(kind)
+	if kind == capturing {
+		if handler := router.GetMetaHandler(); handler != nil && handler.IsCapturing() {
+			// Stopping is what you want while it is running, so it goes first.
+			formats = append([]string{captureStopping}, formats...)
+		}
 	}
 
 	input := textinput.New()
@@ -98,6 +175,7 @@ func (m *MainModel) showCapturePanel(anchorX int, centred bool) (*MainModel, tea
 
 	m.capture = capturePanel{
 		active:  true,
+		kind:    kind,
 		formats: formats,
 		anchorX: anchorX,
 		centred: centred,
@@ -127,19 +205,19 @@ func (m *MainModel) captureRows() []string {
 
 	if c.step == captureChooseFormat {
 		rows := make([]string, 0, len(c.formats)+2)
-		rows = append(rows, "Capture output to a file", "")
+		rows = append(rows, c.title(), "")
 		for i, format := range c.formats {
 			marker := "  "
 			if i == c.format {
 				marker = "> "
 			}
-			rows = append(rows, marker+captureFormatLabel(format))
+			rows = append(rows, marker+c.describe(format))
 		}
 		return append(rows, "", "↑↓: Move   Enter: Choose   Esc: Close")
 	}
 
 	rows := []string{
-		fmt.Sprintf("Capture as %s", c.formats[c.format]),
+		fmt.Sprintf("%s as %s", c.verb(), c.formats[c.format]),
 		"",
 		c.input.View(),
 		"",
@@ -269,22 +347,6 @@ func (m *MainModel) formatAt(screenWidth, screenHeight, col, row int) (int, bool
 func (m *MainModel) inCapturePanel(screenWidth, screenHeight, col, row int) bool {
 	g, ok := m.captureGeometry(screenWidth, screenHeight)
 	return ok && col >= g.x && col < g.x+g.width && row >= g.y && row < g.y+g.height
-}
-
-// captureFormatLabel says what each entry does, since OFF and TEXT are not
-// self-explanatory next to CSV and JSON.
-func captureFormatLabel(format string) string {
-	switch format {
-	case captureStopping:
-		return "OFF       stop capturing"
-	case "CSV":
-		return "CSV       comma separated"
-	case "JSON":
-		return "JSON      one object per row"
-	case "PARQUET":
-		return "PARQUET   columnar, for analysis"
-	}
-	return format
 }
 
 func (m *MainModel) captureGeometry(screenWidth, screenHeight int) (captureGeometry, bool) {
@@ -456,17 +518,13 @@ func (m *MainModel) chooseCaptureFormat() (*MainModel, tea.Cmd) {
 // defaultCaptureName is a filename to start from, so there is something to edit
 // rather than an empty box.
 func (m *MainModel) defaultCaptureName() string {
-	ext := ".txt"
-	switch m.capture.formats[m.capture.format] {
-	case "CSV":
-		ext = ".csv"
-	case "JSON":
-		ext = ".json"
-	case "PARQUET":
-		ext = ".parquet"
+	prefix := "capture"
+	if m.capture.kind == saving {
+		prefix = "results"
 	}
 
-	return fmt.Sprintf("capture_%s%s", time.Now().Format("20060102_150405"), ext)
+	return fmt.Sprintf("%s_%s%s", prefix, time.Now().Format("20060102_150405"),
+		extensionFor(m.capture.formats[m.capture.format]))
 }
 
 // completeCapturePath fills in as much of the path as the candidates agree on.
@@ -491,15 +549,15 @@ func (m *MainModel) startCapture() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	command := captureCommand(m.capture.formats[m.capture.format], path)
+	command := m.capture.command(m.capture.formats[m.capture.format], filepath.Clean(path))
 	m.closeCapturePanel()
 	return m.runCommand(command)
 }
 
-// captureCommand is the CAPTURE the window describes.
-//
-// It goes through the same command typing it would, so both routes behave the
-// same.
-func captureCommand(format, path string) string {
-	return "CAPTURE " + format + " '" + filepath.Clean(path) + "'"
+// verb is the word for what the window is about to do.
+func (c capturePanel) verb() string {
+	if c.kind == saving {
+		return "Save"
+	}
+	return "Capture"
 }
