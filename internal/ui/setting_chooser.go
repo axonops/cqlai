@@ -355,6 +355,14 @@ func (m *MainModel) runCommand(command string) (*MainModel, tea.Cmd) {
 	result := router.ProcessCommand(command, m.session, m.sessionManager)
 
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+
+	// SAVE comes back as a parsed command rather than a string, and dropping it
+	// here is what made the Save window write no file and say nothing. Both
+	// routes carry it out through the same call now.
+	if save, ok := result.(*router.SaveCommand); ok {
+		return m.runSaveCommand(save)
+	}
+
 	if text, ok := result.(string); ok && text != "" {
 		m.fullHistoryContent += "\n" + text
 
