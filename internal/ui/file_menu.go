@@ -24,9 +24,15 @@ import (
 // drawing and hit testing come from one description of the layout.
 
 // fileMenuItem is one entry.
+//
+// An entry either opens the two-step window Save and Capture share, or a form.
+// Which one it is depends on how many questions the command asks: a format and
+// a path can be asked one at a time, a table and a path and an option cannot.
 type fileMenuItem struct {
 	label string
-	kind  fileKind
+	kind  fileKind   // for the two-step window
+	form  formAction // for a form
+	asks  bool       // true if this entry opens a form
 }
 
 // fileMenu is the open menu, if any.
@@ -45,6 +51,9 @@ func fileMenuItems() []fileMenuItem {
 	return []fileMenuItem{
 		{label: "SAVE RESULTS", kind: saving},
 		{label: "CAPTURE", kind: capturing},
+		{label: "SOURCE", form: sourcing, asks: true},
+		{label: "COPY TO", form: copyingTo, asks: true},
+		{label: "COPY FROM", form: copyingFrom, asks: true},
 	}
 }
 
@@ -54,7 +63,13 @@ func fileMenuItems() []fileMenuItem {
 // to show, and reads the check the SAVE command makes before refusing, so the
 // menu and the command cannot disagree about whether there is anything there.
 func (m *MainModel) fileItemAvailable(item fileMenuItem) bool {
-	if item.kind == saving {
+	switch {
+	case item.asks && item.form != sourcing:
+		// COPY names a keyspace and a table, and without a session there is
+		// nothing to name and nothing to complete against. SOURCE reads a file
+		// and does not need one.
+		return m.session != nil
+	case !item.asks && item.kind == saving:
 		return m.hasResults()
 	}
 	return true
@@ -117,7 +132,10 @@ func (m *MainModel) chooseFileMenuItem() (*MainModel, tea.Cmd) {
 	}
 
 	m.closeFileMenu()
-	if item.kind == saving {
+	switch {
+	case item.asks:
+		return m.openFileForm(item.form)
+	case item.kind == saving:
 		return m.openSavePanel()
 	}
 	return m.openCapturePanelCentred()

@@ -280,6 +280,9 @@ func (m *MainModel) View() tea.View {
 		layerManager.AddLayer(layer)
 	}
 
+	if layer, ok := m.viewFileForm(screenWidth, screenHeight); ok {
+		layerManager.AddLayer(layer)
+	}
 	if layer, ok := m.viewFileMenu(screenWidth, screenHeight); ok {
 		layerManager.AddLayer(layer)
 	}

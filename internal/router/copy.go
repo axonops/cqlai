@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -103,6 +104,39 @@ func (h *MetaCommandHandler) handleCopyTo(command string) interface{} {
 
 	// Execute the copy
 	return h.executeCopyTo(table, columns, filename, options)
+}
+
+// The options each direction actually reads, as against the union of both that
+// the prompt completes with. Taken from executeCopyTo and executeCopyFrom and
+// the Parquet writers and readers below them: an option offered for a direction
+// that never reads it is a setting you can watch not work.
+var (
+	copyToOptions = []string{
+		"FORMAT", "HEADER", "DELIMITER", "NULLVAL", "PAGESIZE",
+		"COMPRESSION", "PARTITION", "MAX_FILE_SIZE",
+	}
+
+	copyFromOptions = []string{
+		"FORMAT", "HEADER", "DELIMITER", "NULLVAL", "QUOTE", "ENCODING",
+		"CHUNKSIZE", "MAXROWS", "SKIPROWS",
+		"MAXPARSEERRORS", "MAXINSERTERRORS", "MAXBATCHSIZE", "MAXREQUESTS",
+		"PARTITION_FILTER",
+	}
+)
+
+// CopyToOptions names the options COPY TO reads.
+func CopyToOptions() []string { return slices.Clone(copyToOptions) }
+
+// CopyFromOptions names the options COPY FROM reads.
+func CopyFromOptions() []string { return slices.Clone(copyFromOptions) }
+
+// CopyOptionDefaults is what each option is when it is not set.
+//
+// The same map parseCopyOptions starts from, so anything showing these is
+// showing what the command will actually do rather than a second list of
+// numbers that has to be kept in step with this one.
+func CopyOptionDefaults() map[string]string {
+	return parseCopyOptions("")
 }
 
 // parseCopyOptions parses COPY command options
