@@ -643,17 +643,20 @@ Meta-commands provide additional functionality beyond standard CQL:
   SELECT * FROM users WHERE status = 'active';
 
   -- Then save the displayed results in various formats:
-  SAVE                           -- Interactive dialog (choose format & filename)
-  SAVE 'users.csv'               -- Save to CSV (format auto-detected)
-  SAVE 'users.json'              -- Save to JSON (format auto-detected)
-  SAVE 'users.txt' ASCII         -- Save as ASCII table
-  SAVE 'data.csv' CSV            -- Explicitly specify format
+  SAVE                                    -- Interactive dialog (choose format & filename)
+  SAVE TO 'users.csv'                     -- Save to CSV (format auto-detected)
+  SAVE TO 'users.json'                    -- Save to JSON (format auto-detected)
+  SAVE TO 'users.parquet'                 -- Save to Parquet (format auto-detected)
+  SAVE TO 'users.txt' AS ASCII            -- Save as ASCII table
+  SAVE TO 'data.out' AS CSV               -- Explicitly specify format
 
   -- Key differences from CAPTURE:
   -- - SAVE exports the currently displayed results
   -- - No need to re-run the query
   -- - Preserves exact data shown in terminal
   -- - Works with paginated results (saves only loaded pages)
+  -- PARQUET needs the column types of the result, so it is offered for query
+  -- results and not for a DESCRIBE, which arrives without them.
   ```
 
 #### Information Display

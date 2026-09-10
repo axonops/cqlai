@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -85,11 +86,22 @@ func (c capturePanel) title() string {
 }
 
 // formatsFor is the list a kind offers, from the command that parses them.
-func formatsFor(kind fileKind) []string {
-	if kind == saving {
-		return router.SaveFormats()
+//
+// Saving drops PARQUET when the last result came without column types - a
+// DESCRIBE, most often - because the writer builds its schema from them and
+// there is nothing to build one from. It asks the command rather than deciding
+// for itself, so the window cannot offer a format the command will refuse, the
+// same way SAVE RESULTS dims from the check SAVE makes.
+func (m *MainModel) formatsFor(kind fileKind) []string {
+	if kind != saving {
+		return router.CaptureFormats()
 	}
-	return router.CaptureFormats()
+
+	formats := router.SaveFormats()
+	if router.ParquetTypesUsable(m.lastTableData, m.columnTypes) {
+		return formats
+	}
+	return slices.DeleteFunc(formats, func(f string) bool { return f == "PARQUET" })
 }
 
 // describe says what a format does, since the names alone do not.
@@ -160,7 +172,7 @@ func (m *MainModel) showFilePanel(kind fileKind, anchorX int, centred bool) (*Ma
 
 	// The formats the command parses, so the list cannot offer one it will
 	// refuse.
-	formats := formatsFor(kind)
+	formats := m.formatsFor(kind)
 	if kind == capturing {
 		if handler := router.GetMetaHandler(); handler != nil && handler.IsCapturing() {
 			// Stopping is what you want while it is running, so it goes first.

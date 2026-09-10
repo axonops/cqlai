@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -548,6 +549,7 @@ func TestClickingSaveOpensTheWindow(t *testing.T) {
 	m := helpModel()
 	m.windowHeight = 30
 	m.lastTableData = [][]string{{"id"}, {"1"}} // something to save
+	m.columnTypes = []string{"int"}             // typed, so PARQUET is offered
 
 	save := spans(m, saveMode)
 	pressAt(m, (save.start+save.end)/2, 0)
@@ -567,13 +569,54 @@ func TestTheSaveWindowBuildsTheSaveCommand(t *testing.T) {
 	assert.Equal(t, "CAPTURE JSON '/tmp/out.json'", capture.command("JSON", "/tmp/out.json"))
 }
 
-// TestSaveOffersItsOwnFormats: ASCII rather than PARQUET.
+// TestSaveOffersItsOwnFormats. ASCII is SAVE's alone: it writes the table as it
+// appears on screen, which is a thing you want from a result you are looking at
+// and not from a capture running in the background.
 func TestSaveOffersItsOwnFormats(t *testing.T) {
 	m := helpModel()
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+	m.columnTypes = []string{"int"}
 	m.openSavePanel()
 
-	assert.Equal(t, []string{"CSV", "JSON", "ASCII"}, m.capture.formats)
-	assert.NotContains(t, m.capture.formats, "PARQUET", "SAVE does not write Parquet")
+	assert.Equal(t, []string{"CSV", "JSON", "PARQUET", "ASCII"}, m.capture.formats)
+	assert.NotContains(t, m.formatsFor(capturing), "ASCII", "CAPTURE does not write ASCII")
+}
+
+// TestParquetIsOfferedOnlyWithTheTypesToWriteIt.
+//
+// The writer builds an Arrow schema from the CQL types, and
+// AppendValueToBuilder swallows a conversion it cannot do, so a result with no
+// types would write a file that opens cleanly and holds nothing. DESCRIBE is
+// the common way to arrive without them.
+func TestParquetIsOfferedOnlyWithTheTypesToWriteIt(t *testing.T) {
+	m := helpModel()
+	m.lastTableData = [][]string{{"id", "name"}, {"1", "a"}}
+
+	m.columnTypes = nil
+	assert.NotContains(t, m.formatsFor(saving), "PARQUET", "no types, no Parquet")
+
+	m.columnTypes = []string{"int"} // one type for two columns
+	assert.NotContains(t, m.formatsFor(saving), "PARQUET", "a type per column, or none")
+
+	m.columnTypes = []string{"int", "text"}
+	assert.Contains(t, m.formatsFor(saving), "PARQUET")
+}
+
+// TestTheWindowAndTheCommandAgreeAboutParquet. The window asks the command
+// whether it can write Parquet, so it cannot offer a format the command will
+// then refuse.
+func TestTheWindowAndTheCommandAgreeAboutParquet(t *testing.T) {
+	m := helpModel()
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+
+	for _, types := range [][]string{nil, {"int"}, {"int", "text"}} {
+		m.columnTypes = types
+
+		offered := slices.Contains(m.formatsFor(saving), "PARQUET")
+		accepted := router.ParquetTypesUsable(m.lastTableData, m.columnTypes)
+
+		assert.Equal(t, accepted, offered, "types %v", types)
+	}
 }
 
 // TestTheDefaultNameSuitsTheKind.
@@ -581,7 +624,8 @@ func TestTheDefaultNameSuitsTheKind(t *testing.T) {
 	m := helpModel()
 
 	m.openSavePanel()
-	m.capture.format = 2 // ASCII
+	m.capture.format = slices.Index(m.capture.formats, "ASCII")
+	require.GreaterOrEqual(t, m.capture.format, 0, "SAVE offers ASCII")
 	m.chooseCaptureFormat()
 	assert.Contains(t, m.capture.input.Value(), "results_")
 	assert.True(t, strings.HasSuffix(m.capture.input.Value(), ".txt"))
