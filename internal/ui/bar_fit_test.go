@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
@@ -171,4 +172,108 @@ func TestTruncateToWidthNeverOverruns(t *testing.T) {
 				"%q in %d columns gave %q", value, room, got)
 		}
 	}
+}
+
+// TestTheInfoBarTerminatesAtAnyWidth.
+//
+// Dropping used to take the rightmost segment, so it always shrank the list and
+// the loop always ended. Dropping the least important instead can pick nothing
+// when only the first is left - the first is cut rather than dropped - and the
+// loop spins for ever. Zero and one column are the widths that reach it.
+func TestTheInfoBarTerminatesAtAnyWidth(t *testing.T) {
+	m := TopBarModel{
+		LastCommand:  "SELECT * FROM users",
+		HasQueryData: true,
+		RowCount:     10,
+		RowsDropped:  true,
+		FirstRow:     1201,
+	}
+
+	for width := 0; width <= 60; width++ {
+		done := make(chan int, 1)
+		go func() { done <- len(placeInfoSegments(m.segments(), width)) }()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatalf("placeInfoSegments did not finish at %d columns", width)
+		}
+	}
+}
+
+// TestTheDroppedRowsWarningSitsAfterTheRowCount.
+//
+// It is about that count: it says the number is of what is still held rather
+// than of what the query returned, and where in the result the rows you have
+// start. This is the only place the program admits it threw anything away - it
+// was computed every frame and appended past the right-hand edge of the status
+// line, where it was never once visible.
+func TestTheDroppedRowsWarningSitsAfterTheRowCount(t *testing.T) {
+	m := TopBarModel{HasQueryData: true, RowCount: 300, RowsDropped: true, FirstRow: 1201}
+
+	segs := m.placedSegments(infoTestWidth)
+	require.Len(t, segs, 4)
+
+	assert.Equal(t, infoRowsLabel, segs[2].label)
+	assert.Equal(t, infoDroppedLabel, segs[3].label)
+	assert.Equal(t, "first 1200", segs[3].value)
+
+	drawn := stripAnsiForTest(m.View(infoTestWidth, DefaultStyles(), "history"))
+	assert.Contains(t, drawn, "Rows: 300 │ dropped: first 1200")
+}
+
+// TestNothingIsSaidWhenNothingWasDropped.
+func TestNothingIsSaidWhenNothingWasDropped(t *testing.T) {
+	m := TopBarModel{HasQueryData: true, RowCount: 300}
+
+	assert.Len(t, m.placedSegments(infoTestWidth), 3)
+	assert.NotContains(t, stripAnsiForTest(m.View(infoTestWidth, DefaultStyles(), "history")), "dropped")
+}
+
+// TestTheWarningOutlivesTheQueryTime on a line too narrow for both.
+//
+// Every other field is a fact you can get again by looking. This one is the
+// only notice that something was thrown away, and without it, scrolling to the
+// top of a result and not finding its first row reads as a bug.
+func TestTheWarningOutlivesTheQueryTime(t *testing.T) {
+	m := TopBarModel{
+		LastCommand:  "SELECT * FROM users",
+		HasQueryData: true,
+		RowCount:     300,
+		RowsDropped:  true,
+		FirstRow:     1201,
+	}
+
+	labels := func(width int) []string {
+		var got []string
+		for _, seg := range m.placedSegments(width) {
+			got = append(got, seg.label)
+		}
+		return got
+	}
+
+	assert.Contains(t, labels(40), infoDroppedLabel)
+	assert.NotContains(t, labels(40), "Query: ", "the timing goes first")
+	assert.Contains(t, labels(infoTestWidth), "Query: ", "both fit on a wide line")
+}
+
+// TestTheWarningIsNotDroppedForALongerCommand.
+//
+// The command is cut to a readable stub rather than to "…", which means
+// dropping a field to make room - but only a field it outranks. Taking the
+// notice that rows were thrown away so that more of the command fits is the
+// wrong trade: the command is on screen twice over, in the Console above.
+func TestTheWarningIsNotDroppedForALongerCommand(t *testing.T) {
+	m := TopBarModel{
+		LastCommand:  "SELECT * FROM events WHERE day = '2026-09-10'",
+		HasQueryData: true,
+		RowCount:     300,
+		RowsDropped:  true,
+		FirstRow:     1201,
+	}
+
+	drawn := stripAnsiForTest(m.View(50, DefaultStyles(), "history"))
+
+	assert.Contains(t, drawn, "dropped: first 1200")
+	assert.Contains(t, drawn, "History: SELECT", "with a readable stub of the command")
 }

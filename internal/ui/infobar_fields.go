@@ -23,6 +23,12 @@ type infoSegment struct {
 	label      string
 	value      string
 	start, end int // column range covering label and value, end exclusive
+
+	// priority decides what survives a line too narrow to hold everything: the
+	// lowest goes first. The last command is not dropped at all - it is cut to
+	// what is left - so its priority only matters once there is no room for
+	// even one column of it.
+	priority int
 }
 
 // infoBarPadding is the left padding lipgloss adds when rendering the line.
@@ -31,8 +37,18 @@ const infoBarPadding = 1
 // maxLastCommand is how much of the last command is shown before it is cut.
 const maxLastCommand = 50
 
+// minCommandWidth is the least of the last command worth showing. Under this
+// the line drops a field instead of cutting the command any further.
+const minCommandWidth = 12
+
 // infoPlaceholder stands in for a value there is not one of yet.
 const infoPlaceholder = "-"
+
+// Labels the renderer colours by.
+const (
+	infoRowsLabel    = "Rows: "
+	infoDroppedLabel = "dropped: "
+)
 
 // segments describes the info bar in order.
 //
@@ -72,9 +88,25 @@ func (m TopBarModel) segments() []infoSegment {
 	// value is still the last command run, which is the one thing worth having
 	// on screen without opening anything.
 	segs := []infoSegment{
-		{field: infoHistory, label: "History: ", value: command},
-		{label: "Query: ", value: queryTime},
-		{label: "Rows: ", value: rows},
+		{field: infoHistory, label: "History: ", value: command, priority: 3},
+		{label: "Query: ", value: queryTime, priority: 1},
+		{label: infoRowsLabel, value: rows, priority: 2},
+	}
+
+	// Sits after the row count, because it is about that count: it says the
+	// number is of what is still held rather than of what the query returned,
+	// and where in the result the rows you have start.
+	//
+	// A high priority so it outlives the query time on a narrow line. Every
+	// other field is a fact you can get again by looking; this one is the only
+	// notice that something was thrown away, and without it scrolling to the
+	// top of a result and not finding its first row reads as a bug.
+	if m.RowsDropped {
+		segs = append(segs, infoSegment{
+			label:    infoDroppedLabel,
+			value:    fmt.Sprintf("first %d", m.FirstRow-1),
+			priority: 4,
+		})
 	}
 
 	return segs
@@ -98,25 +130,35 @@ func (m TopBarModel) segments() []infoSegment {
 // three columns wide and five bytes.
 func placeInfoSegments(segs []infoSegment, width int) []infoSegment {
 	room := width - infoBarPadding*2
+	if len(segs) == 0 {
+		return segs
+	}
 
-	for {
-		if len(segs) == 0 {
-			return segs
-		}
-
+	// What the first segment has left for its value, once the rest have taken
+	// their columns.
+	spare := func(segs []infoSegment) int {
 		fixed := 0
 		for _, seg := range segs[1:] {
 			fixed += lipgloss.Width(statusSeparator) + lipgloss.Width(seg.label) + lipgloss.Width(seg.value)
 		}
-
-		// What the first segment has left for its value.
-		spare := room - fixed - infoBarPadding - lipgloss.Width(segs[0].label)
-		if spare >= 1 {
-			segs[0].value = truncateToWidth(segs[0].value, spare)
-			break
-		}
-		segs = segs[:len(segs)-1]
+		return room - fixed - infoBarPadding - lipgloss.Width(segs[0].label)
 	}
+
+	// Make room for a readable stub of the command by dropping fields it
+	// outranks. Squeezing it to "…" keeps a field that says nothing, so below
+	// minCommandWidth it is worth losing the query time to get the start of the
+	// command back - but only fields the command outranks, or the notice that
+	// rows were thrown away would go to make room for a longer command.
+	for spare(segs) < minCommandWidth && droppableFor(segs) {
+		segs = dropLeastImportant(segs)
+	}
+
+	// If it still will not fit, anything may go. The first segment is never
+	// dropped - it is cut instead - so the loop always ends.
+	for len(segs) > 1 && spare(segs) < 1 {
+		segs = dropLeastImportant(segs)
+	}
+	segs[0].value = truncateToWidth(segs[0].value, max(spare(segs), 0))
 
 	col := infoBarPadding
 	for i := range segs {
@@ -128,6 +170,34 @@ func placeInfoSegments(segs []infoSegment, width int) []infoSegment {
 		segs[i].end = col
 	}
 	return segs
+}
+
+// droppableFor reports whether any segment ranks below the first, and so may be
+// dropped to give it room.
+func droppableFor(segs []infoSegment) bool {
+	for _, seg := range segs[1:] {
+		if seg.priority < segs[0].priority {
+			return true
+		}
+	}
+	return false
+}
+
+// dropLeastImportant removes the lowest-priority segment after the first,
+// rightmost among equals. The first is never dropped: it is cut instead, and a
+// bar with nothing on it says less than a crowded one.
+func dropLeastImportant(segs []infoSegment) []infoSegment {
+	if len(segs) < 2 {
+		return segs
+	}
+
+	worst := 1
+	for i := 2; i < len(segs); i++ {
+		if segs[i].priority <= segs[worst].priority {
+			worst = i
+		}
+	}
+	return append(segs[:worst:worst], segs[worst+1:]...)
 }
 
 // truncateToWidth cuts a value to fit, with an ellipsis where anything was

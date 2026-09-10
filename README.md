@@ -344,6 +344,24 @@ press - and costs one row for the whole table rather than widening every column.
 `DESCRIBE` and the listings have no second row: their columns are not columns of
 a table and have no CQL type.
 
+#### The query info bar
+
+Under the results: the last command, how long the query took, and how many rows
+came back. `Rows: 300+` means there is more to fetch.
+
+When a result outgrows its memory limit, rows are dropped from the start of it
+and the bar says so:
+
+```
+History: SELECT * FROM events… │ Query: 41ms │ Rows: 300+ │ dropped: first 1200
+```
+
+Without that, scrolling to the top of a result and not finding its first row
+looks like lost data rather than a decision.
+
+On a narrow terminal the bar drops what it cannot fit, least useful first, and
+cuts the command rather than dropping it.
+
 #### Scrolling & Table Navigation
 | Shortcut | Action | macOS Alternative |
 |----------|--------|-------------------|

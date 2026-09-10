@@ -17,6 +17,18 @@ type TopBarModel struct {
 	// shown as "100+" with more to fetch.
 	AutoFetch   bool
 	HasMoreData bool // Indicates if there's more data to fetch
+
+	// RowsDropped is set when the sliding window has thrown away rows from the
+	// start of the result to stay inside its memory limit, and FirstRow is the
+	// first row still held, counting from one.
+	//
+	// This is the only place the program admits it has dropped anything. It was
+	// computed every frame and appended to the status line past the right-hand
+	// edge, where it was never once visible (#135), so scrolling up to the start
+	// of a result and not finding it there looked like lost data rather than a
+	// decision.
+	RowsDropped bool
+	FirstRow    int64
 }
 
 // NewTopBarModel creates a new TopBarModel.
@@ -42,6 +54,9 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	rowCountStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FFD700"))
 
+	droppedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFA500"))
+
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#555555"))
 
@@ -51,8 +66,10 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 		switch {
 		case seg.field == infoHistory:
 			return commandStyle
-		case seg.label == "Rows: ":
+		case seg.label == infoRowsLabel:
 			return rowCountStyle
+		case seg.label == infoDroppedLabel:
+			return droppedStyle
 		default:
 			return queryTimeStyle
 		}

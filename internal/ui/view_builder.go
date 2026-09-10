@@ -60,6 +60,8 @@ func (m *MainModel) View() tea.View {
 	}
 	if m.slidingWindow != nil {
 		m.topBar.HasMoreData = m.slidingWindow.hasMoreData
+		m.topBar.RowsDropped = m.slidingWindow.DataDroppedAtStart
+		m.topBar.FirstRow = m.slidingWindow.FirstRowIndex + 1
 	}
 	if m.session != nil {
 		currentKeyspace := ""
