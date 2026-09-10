@@ -295,7 +295,9 @@ func (m *MainModel) View() tea.View {
 		}
 	default:
 		viewportContent = m.historyViewport.View()
-		viewportWidth = m.historyViewport.Width()
+		// The window's width, not the viewport's: the scrollbar column makes
+		// up the difference, and everything else on screen is this wide.
+		viewportWidth = m.historyViewport.Width() + scrollbarWidth
 	}
 
 	// Build the main view with proper sticky header overlay
@@ -329,6 +331,15 @@ func (m *MainModel) View() tea.View {
 	// Paint the mouse selection on last, so it covers whatever styling the
 	// content already had.
 	viewportSection = m.highlightSelection(viewportSection)
+
+	// The scrollbar goes on after the highlight, or a selection running to the
+	// end of a line would paint over the bar.
+	//
+	// selectionTarget names the view being drawn, which is the same question,
+	// so the two cannot disagree about which viewport is on screen.
+	if _, view := m.selectionTarget(); view == "history" {
+		viewportSection = m.consoleScrollbar(viewportSection)
+	}
 
 	// Build the final view. The tabs get their own line above the status bar so
 	// the modes and their keys are always on screen, rather than something you

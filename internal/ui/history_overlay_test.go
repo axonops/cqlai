@@ -561,20 +561,44 @@ func TestTheBoxKeepsItsHeightWhileScrolling(t *testing.T) {
 	require.Equal(t, 39, m.historySearchIndex, "this should have reached the end")
 }
 
-// TestTheArrowsStillSayWhichWayThereIsMore, even though both rows are always
-// drawn.
-func TestTheArrowsStillSayWhichWayThereIsMore(t *testing.T) {
+// TestTheScrollbarSaysWhereYouAreInTheList.
+//
+// It replaced an arrow above and below, which said only whether there was more
+// that way. The bar says how much is showing and where you are, which is what
+// you want when the history runs to hundreds of commands.
+func TestTheScrollbarSaysWhereYouAreInTheList(t *testing.T) {
 	m := historyModel(40)
 	openList(m, 0, 0)
 
-	atTop := stripAnsiForTest(mustOverlay(t, m).Content)
-	assert.NotContains(t, atTop, "▲", "nothing is above the first command")
-	assert.Contains(t, atTop, "▼")
+	// The rows the bar runs down, from the same place the click test reads.
+	bar := func() (first, last string) {
+		list, layer, ok := m.historyOverlay(m.windowWidth, m.windowHeight)
+		require.True(t, ok)
+
+		rows := strings.Split(stripAnsiForTest(layer.Content), "\n")
+		return rows[list.firstItemRow()], rows[list.firstItemRow()+list.visibleItems()-1]
+	}
+
+	top, bottom := bar()
+	assert.Contains(t, top, "█", "the thumb starts at the top: %q", top)
+	assert.Contains(t, bottom, "░", "with track below it: %q", bottom)
 
 	m.moveHistorySelection(100)
-	atBottom := stripAnsiForTest(mustOverlay(t, m).Content)
-	assert.Contains(t, atBottom, "▲")
-	assert.NotContains(t, atBottom, "▼", "nothing is below the last command")
+	top, bottom = bar()
+	assert.Contains(t, bottom, "█", "and reaches the bottom: %q", bottom)
+	assert.Contains(t, top, "░", "with track above it: %q", top)
+}
+
+// TestNoBarWhenTheWholeListFits: there is nowhere to go, so the column stays
+// blank rather than showing a bar that cannot move.
+func TestNoBarWhenTheWholeListFits(t *testing.T) {
+	m := historyModel(4)
+	openList(m, 0, 0)
+
+	drawn := stripAnsiForTest(mustOverlay(t, m).Content)
+
+	assert.NotContains(t, drawn, "█")
+	assert.NotContains(t, drawn, "░")
 }
 
 func mustOverlay(t *testing.T, m *MainModel) Layer {

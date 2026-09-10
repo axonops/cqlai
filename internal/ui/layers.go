@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Layer represents a renderable layer with position and size
@@ -64,55 +65,55 @@ func (lm *LayerManager) Render(base string) string {
 }
 
 // applyLayer applies a single layer to the view
+// applyLayer draws one layer over the lines beneath it.
+//
+// The background either side of the layer keeps its styling. It used to be
+// stripped of ANSI and pasted back as plain text, so anything coloured beside
+// a modal lost its colour for as long as the modal was up - most visibly the
+// Console scrollbar, which turned white for exactly the rows the modal
+// covered.
 func (lm *LayerManager) applyLayer(lines []string, layer Layer) []string {
 	contentLines := strings.Split(layer.Content, "\n")
 
 	for i, contentLine := range contentLines {
 		lineIdx := layer.Y + i
-		if lineIdx >= 0 && lineIdx < len(lines) {
-			bgLine := lines[lineIdx]
-
-			// Calculate the actual visual width of this specific content line
-			contentLineWidth := lipgloss.Width(contentLine)
-
-			// Create the new line with proper positioning
-			var result string
-
-			// Add padding before the modal content to position it at layer.X
-			if layer.X > 0 {
-				// Try to preserve background content before the modal
-				bgPlain := stripAnsi(bgLine)
-				bgRunes := []rune(bgPlain)
-				if layer.X < len(bgRunes) {
-					result = string(bgRunes[:layer.X])
-				} else {
-					result = strings.Repeat(" ", layer.X)
-				}
-			}
-
-			// Add the modal content
-			result += contentLine
-
-			// Get the visual width of the background line
-			bgWidth := lipgloss.Width(bgLine)
-
-			// If the background extends beyond the modal, preserve it
-			if layer.X+contentLineWidth < bgWidth {
-				// Extract the part of background that's after the modal
-				bgPlain := stripAnsi(bgLine)
-				bgRunes := []rune(bgPlain)
-				startPos := layer.X + contentLineWidth
-				if startPos < len(bgRunes) {
-					result += string(bgRunes[startPos:])
-				}
-			}
-
-			lines[lineIdx] = result
+		if lineIdx < 0 || lineIdx >= len(lines) {
+			continue
 		}
+
+		bgLine := lines[lineIdx]
+		bgWidth := lipgloss.Width(bgLine)
+		contentWidth := lipgloss.Width(contentLine)
+
+		// What is in front of the layer, styling and all. Past the end of the
+		// background there is nothing to keep, so pad.
+		var result string
+		if layer.X > 0 {
+			result = ansi.Cut(bgLine, 0, layer.X)
+			if pad := layer.X - lipgloss.Width(result); pad > 0 {
+				result += strings.Repeat(" ", pad)
+			}
+			// The layer draws its own colours; the background's must not run
+			// on into it.
+			result += ansiReset
+		}
+
+		result += contentLine
+
+		// And what is behind it, from where the layer ends.
+		if end := layer.X + contentWidth; end < bgWidth {
+			result += ansiReset + ansi.Cut(bgLine, end, bgWidth)
+		}
+
+		lines[lineIdx] = result
 	}
 
 	return lines
 }
+
+// ansiReset closes any styling still in effect, so one piece of a composited
+// line cannot colour the next.
+const ansiReset = "\x1b[0m"
 
 // RenderModal renders a modal as a centered overlay
 func RenderModal(content string, width, height int) Layer {
