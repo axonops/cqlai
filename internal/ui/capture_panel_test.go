@@ -31,15 +31,22 @@ func captureColumn(m *MainModel) int {
 	return -1
 }
 
-// TestCaptureSitsAtTheRightOfTheLine, out of the way of the settings.
-func TestCaptureSitsAtTheRightOfTheLine(t *testing.T) {
+// TestCaptureSitsWithTheOtherSettings, after Fetch.
+//
+// It was against the right-hand edge, apart from them, because it was put there
+// as a control. It is both a control and a fact about the session, and the fact
+// is the more important half.
+func TestCaptureSitsWithTheOtherSettings(t *testing.T) {
 	m := captureModel()
 
 	segs := placeSegments(m.statusBar.segments(), m.windowWidth)
 	last := segs[len(segs)-1]
 
-	assert.Equal(t, settingCapture, last.setting)
-	assert.Equal(t, m.windowWidth-statusBarPadding, last.end, "against the right edge")
+	assert.Equal(t, settingCapture, last.setting, "last in the flow")
+	require.GreaterOrEqual(t, len(segs), 2)
+	assert.Equal(t, settingAutoFetch, segs[len(segs)-2].setting, "after Fetch")
+	assert.Equal(t, last.start, segs[len(segs)-2].end+lipgloss.Width(statusSeparator),
+		"a separator away, like any other field, rather than a gap to the edge")
 
 	// And a click there resolves to it.
 	setting, _, ok := m.statusBar.settingAt(m.windowWidth, captureColumn(m))
@@ -47,27 +54,30 @@ func TestCaptureSitsAtTheRightOfTheLine(t *testing.T) {
 	assert.Equal(t, settingCapture, setting)
 }
 
-// TestCaptureKeepsItsPlaceOnANarrowLine.
+// TestARunningCaptureIsNeverDropped.
 //
-// Its room is reserved before the settings are measured, so a busy left-hand
-// side gives way instead. Capture is a thing you do rather than a fact about
-// the session, and a control that moves or vanishes as the terminal is resized
-// is worse than a fact you have to go and look up.
-func TestCaptureKeepsItsPlaceOnANarrowLine(t *testing.T) {
+// It is the one setting that keeps doing something after you have stopped
+// thinking about it, and quietly writing to a file you have forgotten is
+// exactly what wants to be on screen. A capture that is off takes its turn with
+// the rest: "Capture: OFF" says nothing you had not already assumed.
+func TestARunningCaptureIsNeverDropped(t *testing.T) {
 	m := captureModel()
 
-	for _, width := range []int{40, 60, 80, 120} {
-		segs := placeSegments(m.statusBar.segments(), width)
-
-		last := segs[len(segs)-1]
-		assert.Equal(t, settingCapture, last.setting, "at %d columns", width)
-		assert.Equal(t, width-statusBarPadding, last.end, "against the right edge")
-
-		// The fields that remain do not overlap.
-		for i := 1; i < len(segs); i++ {
-			assert.GreaterOrEqual(t, segs[i].start, segs[i-1].end, "at %d columns", width)
+	shown := func(capturing bool, width int) []string {
+		m.statusBar.Capturing = capturing
+		var settings []string
+		for _, seg := range placeSegments(m.statusBar.segments(), width) {
+			settings = append(settings, seg.setting)
 		}
+		return settings
 	}
+
+	for _, width := range []int{30, 40, 60, 80} {
+		assert.Contains(t, shown(true, width), settingCapture,
+			"a running capture stays at %d columns", width)
+	}
+	assert.NotContains(t, shown(false, 40), settingCapture,
+		"one that is off gives way like any other field")
 }
 
 // TestClickingCaptureOpensAndClosesIt.

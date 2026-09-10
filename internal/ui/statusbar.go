@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"strings"
-
 	"charm.land/lipgloss/v2"
 )
 
@@ -94,16 +92,11 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 	segs := placeSegments(m.segments(), width)
 
 	statusText := ""
-	col := statusBarPadding
 	for i, seg := range segs {
-		switch {
-		case seg.right:
-			statusText += strings.Repeat(" ", max(seg.start-col, 0))
-		case i > 0:
+		if i > 0 {
 			statusText += separatorStyle.Render(statusSeparator)
 		}
 		statusText += labelStyle.Render(seg.label) + styleFor(seg).Render(seg.value)
-		col = seg.end
 	}
 
 	// One row, always. Width on its own wraps rather than truncates, so a line
