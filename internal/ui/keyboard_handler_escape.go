@@ -48,10 +48,7 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 
 	// If in history search mode, exit it
 	if m.historySearchMode {
-		m.historySearchMode = false
-		m.historySearchQuery = ""
-		m.historySearchResults = []string{}
-		m.historySearchIndex = 0
+		m.closeHistorySearch()
 		return m, nil
 	}
 

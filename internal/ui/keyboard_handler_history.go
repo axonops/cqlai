@@ -81,11 +81,7 @@ func (m *MainModel) handleHistorySearchSelect() (*MainModel, tea.Cmd) {
 	if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
 		// Set the input value to the selected history entry
 		m.input.SetValue(m.historySearchResults[m.historySearchIndex])
-		// Exit history search mode
-		m.historySearchMode = false
-		m.historySearchQuery = ""
-		m.historySearchResults = []string{}
-		m.historySearchIndex = 0
+		m.closeHistorySearch()
 	}
 	return m, nil
 }

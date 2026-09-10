@@ -624,3 +624,58 @@ func TestAShortListHasNoArrowRowsAtAll(t *testing.T) {
 	// Border, title, query, four commands, rule, hint, border.
 	assert.Equal(t, 4+6, layer.Height)
 }
+
+// TestPressingOutsideTheListClosesIt, the same as every other window.
+//
+// It was the exception: a press anywhere but on a command fell through to the
+// ordinary row handling and started a text selection behind the list, which
+// stayed open until you pressed Escape or picked something.
+func TestPressingOutsideTheListClosesIt(t *testing.T) {
+	m := historyModel(20)
+	m.handleCtrlR()
+	require.True(t, m.historySearchMode)
+
+	_, layer, ok := m.historyOverlay(m.windowWidth, m.windowHeight)
+	require.True(t, ok)
+
+	// Well clear of the box, in the middle of the view behind it.
+	pressAt(m, max(layer.X-2, 0), layer.Y+layer.Height+1)
+
+	assert.False(t, m.historySearchMode, "a press outside should close it")
+}
+
+// TestPressingInsideTheListButNotOnACommandLeavesItOpen.
+//
+// The title, the search line and the scrollbar are part of the window. An aimed
+// press that misses by a row is not the same as walking away from it.
+func TestPressingInsideTheListButNotOnACommandLeavesItOpen(t *testing.T) {
+	m := historyModel(20)
+	m.handleCtrlR()
+	require.True(t, m.historySearchMode)
+
+	_, layer, ok := m.historyOverlay(m.windowWidth, m.windowHeight)
+	require.True(t, ok)
+
+	pressAt(m, layer.X+2, layer.Y) // the title row
+
+	assert.True(t, m.historySearchMode, "it should still be open")
+}
+
+// TestClosingTheListForgetsWhereItWasScrolled.
+//
+// Closing it was five assignments written out six times, and two of the six
+// left out the scroll offset - so a scrolled list closed with Escape opened
+// again showing the middle of the history.
+func TestClosingTheListForgetsWhereItWasScrolled(t *testing.T) {
+	m := historyModel(50)
+	m.handleCtrlR()
+	m.moveHistorySelection(20)
+	require.NotZero(t, m.historySearchScrollOffset, "the fixture has to be scrolled")
+
+	m.closeHistorySearch()
+
+	assert.Zero(t, m.historySearchScrollOffset)
+	assert.Zero(t, m.historySearchIndex)
+	assert.Empty(t, m.historySearchQuery)
+	assert.False(t, m.historySearchMode)
+}

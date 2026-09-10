@@ -8,11 +8,7 @@ import (
 func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 	// If in history search mode, exit it
 	if m.historySearchMode {
-		m.historySearchMode = false
-		m.historySearchQuery = ""
-		m.historySearchResults = []string{}
-		m.historySearchIndex = 0
-		m.historySearchScrollOffset = 0
+		m.closeHistorySearch()
 		return m, nil
 	}
 	// If modal is showing, close it
@@ -116,11 +112,7 @@ func (m *MainModel) handleCtrlR() (*MainModel, tea.Cmd) {
 			m.historySearchScrollOffset = 0
 		}
 	} else {
-		// Exit history search mode
-		m.historySearchMode = false
-		m.historySearchQuery = ""
-		m.historySearchResults = []string{}
-		m.historySearchIndex = 0
+		m.closeHistorySearch()
 	}
 	return m, nil
 }
