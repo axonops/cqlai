@@ -22,7 +22,7 @@ var pathContexts = []*regexp.Regexp{
 	// there, and getCaptureCompletions offers them.
 	// The space after the format is optional: once the format is complete the
 	// next thing is a file, whether or not you have pressed space yet.
-	regexp.MustCompile(`(?i)^\s*CAPTURE\s+(?:CSV|JSON|PARQUET)\b\s*`),
+	regexp.MustCompile(`(?i)^\s*(?:AUTOSAVE|CAPTURE)\s+(?:CSV|JSON|PARQUET)\b\s*`),
 	regexp.MustCompile(`(?i)^\s*SOURCE\s+`),
 	regexp.MustCompile(`(?i)^\s*SAVE\s+`),
 	// COPY takes a table first, then TO or FROM, then the file.
@@ -35,7 +35,7 @@ var withClause = regexp.MustCompile(`(?i)\sWITH\b`)
 
 // captureWord matches CAPTURE and the space after it, with nothing said about
 // what follows.
-var captureWord = regexp.MustCompile(`(?i)^\s*CAPTURE\s+`)
+var captureWord = regexp.MustCompile(`(?i)^\s*(?:AUTOSAVE|CAPTURE)\s+`)
 
 // pathStart are the characters that mean what is being typed is a path rather
 // than a keyword.

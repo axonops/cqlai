@@ -15,6 +15,13 @@ type QueryResult struct {
 	ColumnTypes     []string         // Data types of each column
 	ColumnTypeInfos []gocql.TypeInfo // TypeInfo objects for each column (for UDT support)
 	Headers         []string         // Column names without PK/C indicators
+
+	// AlreadySaved is set when this result has been written to AutoSave
+	// already, which the router does for a streaming result: it drains the
+	// iterator itself and then hands the rows on as an ordinary QueryResult.
+	// Without it the UI writes the same rows a second time, and one query lands
+	// in two files.
+	AlreadySaved bool
 }
 
 // StreamingQueryResult wraps query results for progressive loading

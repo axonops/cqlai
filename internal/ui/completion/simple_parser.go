@@ -74,7 +74,7 @@ func (sce *SimpleCompletionEngine) GetTokenCompletions(input string) []string {
 		return sce.getListCompletions(words, endsWithSpace)
 	case "SHOW":
 		return sce.getShowCompletions(words, endsWithSpace)
-	case "CAPTURE":
+	case "AUTOSAVE", "CAPTURE":
 		return sce.getCaptureCompletions(words, endsWithSpace)
 	case "CONSISTENCY":
 		return sce.getConsistencyCompletions(words, endsWithSpace)
@@ -623,7 +623,7 @@ func (sce *SimpleCompletionEngine) getDeleteCompletions(words []string, endsWith
 // getTopLevelKeywords returns all top-level CQL keywords
 func (sce *SimpleCompletionEngine) getTopLevelKeywords() []string {
 	return []string{
-		"ALTER", "APPLY", "ASCII", "ASSUME", "BEGIN", "CAPTURE", "CONSISTENCY",
+		"ALTER", "APPLY", "ASCII", "ASSUME", "AUTOSAVE", "BEGIN", "CONSISTENCY",
 		"COPY", "CREATE", "DELETE", "DESC", "DESCRIBE", "DROP", "EXECUTE", "EXIT",
 		"EXPAND", "EXPLAIN", "GRANT", "HELP", "INSERT", "LIST", "OUTPUT", "PAGING",
 		"QUIT", "REVOKE", "SELECT", "SHOW", "SOURCE", "TRACING", "TRUNCATE",

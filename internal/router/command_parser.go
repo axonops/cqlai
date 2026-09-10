@@ -58,7 +58,7 @@ func (p *CommandParser) ParseCommand(command string) interface{} {
 		}
 		// Pass through to Cassandra
 		return p.session.ExecuteCQLQuery(command)
-	case "CONSISTENCY", "TRACING", "PAGING", "AUTOFETCH", "EXPAND", "SOURCE", "CAPTURE", "COPY", "HELP":
+	case "CONSISTENCY", "TRACING", "PAGING", "AUTOFETCH", "EXPAND", "SOURCE", "AUTOSAVE", "CAPTURE", "COPY", "HELP":
 		// These are handled by the meta handler
 		return p.metaHandler.HandleMetaCommand(command)
 	case "CREATE", "ALTER", "DROP", "TRUNCATE", "USE":

@@ -22,7 +22,11 @@ type MetaCommandHandler struct {
 	session                 *db.Session
 	sessionManager          *session.Manager
 	expandMode              bool
-	captureFile             string
+	autoSaveDir             string
+	lastAutoSaved           string // the file the last query went to, for the message
+	autoSaveCount           int    // which query this is, so two in a second do not collide
+	openForCommand          string // the query the open file belongs to
+	autoSaveDepth           int    // nested write calls sharing one file
 	captureOutput           io.WriteCloser
 	captureFormat           string // "text", "json", "csv", or "parquet"
 	csvWriter               *csv.Writer
@@ -68,7 +72,10 @@ func (h *MetaCommandHandler) HandleMetaCommand(command string) interface{} {
 		return h.handleExpand(command)
 	case "SOURCE":
 		return h.handleSource(command)
-	case "CAPTURE":
+	// Both words reach the same place. AUTOSAVE is what it is called; CAPTURE
+	// is cqlsh's word for it and keeps working, so nobody's SOURCE scripts or
+	// muscle memory break.
+	case "AUTOSAVE", "CAPTURE":
 		return h.handleCapture(command)
 	case "COPY":
 		return h.handleCopy(command)
@@ -626,7 +633,7 @@ func (h *MetaCommandHandler) Close() {
 		}
 		_ = h.captureOutput.Close()
 		h.captureOutput = nil
-		h.captureFile = ""
+		h.autoSaveDir = ""
 		h.captureFormat = "text"
 	}
 }
