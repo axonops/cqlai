@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -1184,7 +1185,7 @@ func (m *MainModel) completeField() (*MainModel, tea.Cmd) {
 		got := completePath(field.input.Value())
 		field.set(got.Completed)
 		m.form.clearMatches()
-		if len(got.Matches) > 1 {
+		if got.worthListing() {
 			m.form.matches = got.Matches
 		}
 
@@ -1326,13 +1327,24 @@ func (m *MainModel) useMatchInForm() (*MainModel, tea.Cmd) {
 	chosen := m.form.matches[m.form.match]
 	if field.kind == fieldPath {
 		// The candidates are names inside a directory, so the directory the
-		// user typed has to stay in front of the one they picked.
+		// user typed has to stay in front of the one they picked - except the
+		// way up, which replaces it.
 		dir, _ := splitPath(field.input.Value())
-		chosen = dir + chosen
+		if chosen == parentEntry {
+			chosen = parentDir(dir)
+		} else {
+			chosen = dir + chosen
+		}
 	}
 
 	field.set(chosen)
 	m.form.clearMatches()
+
+	// Stepping into a directory - or back out of one - shows what is in it,
+	// rather than leaving you to press Tab again to find out.
+	if field.kind == fieldPath && strings.HasSuffix(chosen, string(filepath.Separator)) {
+		return m.listField()
+	}
 	return m, nil
 }
 

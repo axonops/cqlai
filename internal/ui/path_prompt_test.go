@@ -286,7 +286,8 @@ func TestInsideTheQuoteItListsTheDirectory(t *testing.T) {
 
 	m.handleTabKey()
 
-	assert.Equal(t, []string{"a.csv", "b.csv"}, m.completions)
+	assert.Equal(t, []string{parentEntry, "a.csv", "b.csv"}, m.completions,
+		"the files, and the way up above them")
 	assert.NotContains(t, m.completions, pathHint)
 }
 
@@ -322,4 +323,21 @@ func TestTheWholeFlowFromTheFormatToTheFile(t *testing.T) {
 	m.handleTabKey()
 
 	assert.Equal(t, "CAPTURE CSV '"+filepath.Join(dir, "results.csv")+"'", m.input.Value())
+}
+
+// TestTheWayUpWorksAtThePromptToo, not only in the windows.
+func TestTheWayUpWorksAtThePromptToo(t *testing.T) {
+	dir := t.TempDir()
+	inner := filepath.Join(dir, "exports")
+	require.NoError(t, os.Mkdir(inner, 0o750))
+
+	m := promptModel(t)
+	m.input.SetValue("CAPTURE CSV '" + inner + string(filepath.Separator))
+	m.handleTabKey()
+
+	require.Equal(t, parentEntry, m.completions[0])
+	m.applyPathCompletion(parentEntry)
+
+	assert.Contains(t, m.input.Value(), dir+string(filepath.Separator))
+	assert.NotContains(t, m.input.Value(), parentEntry, "it goes up rather than appending")
 }
