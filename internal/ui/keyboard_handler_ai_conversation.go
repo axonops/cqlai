@@ -13,24 +13,14 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyPressMsg) (*MainModel, 
 	if m.historySearchMode {
 		switch msg.String() {
 		case "ctrl+r", "ctrl+c", "esc":
-			// Exit history search mode
-			m.historySearchMode = false
-			m.historySearchQuery = ""
-			m.historySearchResults = []string{}
-			m.historySearchIndex = 0
-			m.historySearchScrollOffset = 0
+			m.closeHistorySearch()
 			return m, nil
 		case "enter":
 			// Select the current history entry
 			if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
 				// Set the AI input value to the selected history entry
 				m.aiConversationInput.SetValue(m.historySearchResults[m.historySearchIndex])
-				// Exit history search mode
-				m.historySearchMode = false
-				m.historySearchQuery = ""
-				m.historySearchResults = []string{}
-				m.historySearchIndex = 0
-				m.historySearchScrollOffset = 0
+				m.closeHistorySearch()
 			}
 			return m, nil
 		case "up":
@@ -89,12 +79,7 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyPressMsg) (*MainModel, 
 	// Check for Ctrl+R to toggle history search mode
 	if msg.String() == "ctrl+r" {
 		if m.historySearchMode {
-			// Exit history search mode
-			m.historySearchMode = false
-			m.historySearchQuery = ""
-			m.historySearchResults = []string{}
-			m.historySearchIndex = 0
-			m.historySearchScrollOffset = 0
+			m.closeHistorySearch()
 		} else {
 			// Enter history search mode
 			m.historySearchMode = true

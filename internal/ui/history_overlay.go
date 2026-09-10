@@ -170,3 +170,27 @@ func (m *MainModel) openHistoryList() (*MainModel, tea.Cmd) {
 	}
 	return m.handleCtrlR()
 }
+
+// closeHistorySearch puts the command list away.
+//
+// It was five assignments written out six times across five files, and two of
+// those six left out the scroll offset - so closing a scrolled list with Escape
+// and opening it again showed the middle of the history with the selection
+// somewhere above it.
+func (m *MainModel) closeHistorySearch() {
+	m.historySearchMode = false
+	m.historySearchQuery = ""
+	m.historySearchResults = []string{}
+	m.historySearchIndex = 0
+	m.historySearchScrollOffset = 0
+}
+
+// inHistoryOverlay reports whether a press landed inside the command list.
+func (m *MainModel) inHistoryOverlay(col, row int) bool {
+	_, layer, ok := m.historyOverlay(m.windowWidth, m.windowHeight)
+	if !ok {
+		return false
+	}
+	return col >= layer.X && col < layer.X+layer.Width &&
+		row >= layer.Y && row < layer.Y+layer.Height
+}

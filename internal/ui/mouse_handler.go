@@ -215,8 +215,31 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 
 	// A press on a command in either history list puts it in the prompt. This
 	// comes before the rows below, because the lists are drawn over them.
-	if updated, cmd, hit := m.clickHistoryCommand(mouse.X, mouse.Y); hit {
-		return updated, cmd
+	if m.historySearchMode {
+		if updated, cmd, hit := m.clickHistoryCommand(mouse.X, mouse.Y); hit {
+			return updated, cmd
+		}
+
+		// Inside the box but not on a command - the title, the search line, the
+		// scrollbar - does nothing rather than closing it, so an aimed press
+		// that misses by a row is not the same as walking away.
+		if m.inHistoryOverlay(mouse.X, mouse.Y) {
+			return m, nil
+		}
+
+		// Anywhere else closes it, the same as every other window, and the
+		// press carries on to whatever it landed on: the tabs and the settings
+		// are still live underneath.
+		//
+		// Except the control that opened it. Left to carry on, the press closed
+		// the list and the History field reopened it in the same press, so it
+		// looked like nothing happened - the bug the settings lists, Capture and
+		// SAVE RESULTS each had in turn.
+		reopens := m.pressOpensHistory(mouse)
+		m.closeHistorySearch()
+		if reopens {
+			return m, nil
+		}
 	}
 
 	// Row 0 is the tabs, the last row is the connection bar and the one above
@@ -233,6 +256,16 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	}
 
 	return m.beginSelection(mouse.X, mouse.Y)
+}
+
+// pressOpensHistory reports whether a press is on the History field, which is
+// what opens the command list.
+func (m *MainModel) pressOpensHistory(mouse tea.Mouse) bool {
+	if mouse.Y != m.windowHeight-2 {
+		return false
+	}
+	field, ok := m.topBar.fieldAt(m.windowWidth, mouse.X)
+	return ok && field == infoHistory
 }
 
 // pressOpensCapture reports whether a press is on a control that opens the
