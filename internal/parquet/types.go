@@ -1047,3 +1047,34 @@ func parseTimeString(v string) (time.Time, error) {
 	}
 	return time.Time{}, fmt.Errorf("cannot parse %q as a time", v)
 }
+
+// RebuildableFromText reports whether a value of this type can be turned back
+// into itself from the way it is printed.
+//
+// Asked by anything holding a rendered value rather than the value: SAVE writes
+// what was on screen, so a column whose text cannot be read back has to be
+// written as text rather than as a shape that cannot be filled.
+//
+// The scalars can: a number, a boolean, a timestamp all parse from what they
+// print as.
+//
+// The collections cannot. A map prints as "map[a:1 b:2]", which is ambiguous
+// the moment a value contains a space or a colon - there is no telling where
+// one pair ends and the next begins. A parser for it would be right most of the
+// time, which for an export is worse than being obviously wrong.
+//
+// It asks the type mapper rather than reading the CQL type itself, so a type
+// that is already written as text - which is what an unrecognised one becomes -
+// answers yes without needing to be named here.
+func RebuildableFromText(cassandraType string) bool {
+	dt, err := NewTypeMapper().CassandraToArrowType(cassandraType)
+	if err != nil || dt == nil {
+		return true // unknown types are written as text already
+	}
+
+	switch dt.ID() {
+	case arrow.LIST, arrow.LARGE_LIST, arrow.FIXED_SIZE_LIST, arrow.MAP, arrow.STRUCT:
+		return false
+	}
+	return true
+}

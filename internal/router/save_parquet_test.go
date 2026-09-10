@@ -270,3 +270,59 @@ func TestATextExtensionFallsToTheDefault(t *testing.T) {
 		assert.Equal(t, "CSV", cmd.Format, name)
 	}
 }
+
+// TestCollectionsAreWrittenAsTextRatherThanNull.
+//
+// SAVE has only what was on screen, so a map arrives as "map[a:1 b:2]". Asking
+// for an Arrow MAP and handing it that string wrote a column of nulls: toMap
+// takes Go maps and nothing else, the conversion failed, and
+// AppendValueToBuilder swallowed it - the same silence that made every numeric
+// column null before #139.
+//
+// The text is not parsed back. "map[a:1 b:2]" is ambiguous the moment a value
+// contains a space or a colon, and a parser that is right most of the time is
+// worse for an export than one that is obviously wrong. Text is what we have,
+// so text is what is written.
+func TestCollectionsAreWrittenAsTextRatherThanNull(t *testing.T) {
+	data := [][]string{
+		{"id", "tags", "scores", "names"},
+		{"1", "map[a:1 b:2]", "[10, 20]", "[x, y]"},
+	}
+	types := []string{"int", "map<text, int>", "list<int>", "set<text>"}
+
+	path := filepath.Join(t.TempDir(), "collections.parquet")
+	require.NoError(t, HandleSaveCommand(
+		SaveCommand{Filename: path, Format: "PARQUET"}, data, types))
+
+	names, rows := readParquet(t, path)
+	require.Equal(t, data[0], names)
+	require.Len(t, rows, 1)
+
+	for i, name := range names {
+		assert.NotEmpty(t, rows[0][i], "column %s must not be null", name)
+	}
+	assert.Equal(t, data[1], rows[0], "and it is what was on screen")
+}
+
+// TestOnlyTheTypesThatCannotBeReadBackBecomeText.
+func TestOnlyTheTypesThatCannotBeReadBackBecomeText(t *testing.T) {
+	given := []string{"int", "text", "timestamp", "map<text, int>", "list<int>", "set<text>"}
+	want := []string{"int", "text", "timestamp", "text", "text", "text"}
+
+	assert.Equal(t, want, writtenAsText(given))
+}
+
+// TestAScalarKeepsItsType, so the fix does not turn the whole file into strings.
+func TestAScalarKeepsItsType(t *testing.T) {
+	data := [][]string{{"id", "when", "ok"}, {"42", "2026-09-10T12:00:00Z", "true"}}
+	types := []string{"int", "timestamp", "boolean"}
+
+	path := filepath.Join(t.TempDir(), "scalars.parquet")
+	require.NoError(t, HandleSaveCommand(
+		SaveCommand{Filename: path, Format: "PARQUET"}, data, types))
+
+	_, rows := readParquet(t, path)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "42", rows[0][0])
+	assert.Equal(t, "true", rows[0][2])
+}

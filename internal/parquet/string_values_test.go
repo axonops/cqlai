@@ -73,3 +73,27 @@ func TestAnUnparseableValueIsAnError(t *testing.T) {
 		assert.Error(t, err, given)
 	}
 }
+
+// TestWhatCanBeReadBackFromItsPrintedForm.
+//
+// The question SAVE has to ask: it holds what was on screen, so a type whose
+// text cannot be turned back into the value has to be written as text.
+func TestWhatCanBeReadBackFromItsPrintedForm(t *testing.T) {
+	for _, cqlType := range []string{
+		"int", "bigint", "text", "boolean", "timestamp", "uuid", "double",
+	} {
+		assert.True(t, RebuildableFromText(cqlType), "%s prints as something it can be read from", cqlType)
+	}
+
+	for _, cqlType := range []string{
+		"map<text, int>", "list<int>", "set<text>", "tuple<int, text>",
+	} {
+		assert.False(t, RebuildableFromText(cqlType), "%s does not", cqlType)
+	}
+}
+
+// TestAnUnknownTypeIsAlreadyText, so it needs no special mention.
+func TestAnUnknownTypeIsAlreadyText(t *testing.T) {
+	assert.True(t, RebuildableFromText("some_udt_name"))
+	assert.True(t, RebuildableFromText(""))
+}
