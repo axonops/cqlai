@@ -15,48 +15,58 @@ import (
 	"github.com/axonops/cqlai/internal/router"
 )
 
-// processCommandResult processes the result from a command execution
-func (m *MainModel) processCommandResult(command string, result interface{}, startTime time.Time) (*MainModel, tea.Cmd) {
-	switch v := result.(type) {
-	case *router.SaveCommand:
-		// Handle SAVE command - check if we have table data
-		if len(m.lastTableData) == 0 {
-			errorMsg := "No query results available to save. Execute a query first."
-			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+errorMsg)
-			m.updateHistoryWrapping()
-			m.historyViewport.GotoBottom()
-			m.input.Reset()
-			return m, nil
-		}
-
-		// SAVE with no arguments asks which format and where, in the window
-		// Capture uses. Centred, because it was typed rather than clicked.
-		if v.Interactive {
-			m.input.Reset()
-			return m.openSavePanel()
-		}
-
-		// Direct save - execute the save command
-		// Check if data is already in JSON format (from OUTPUT JSON mode)
-		if v.Format == "JSON" && len(m.lastTableData) > 0 &&
-			len(m.lastTableData[0]) == 1 && m.lastTableData[0][0] == "[json]" {
-			if v.Options == nil {
-				v.Options = make(map[string]interface{})
-			}
-			v.Options["already_json"] = true
-		}
-		err := router.HandleSaveCommand(*v, m.lastTableData, m.columnTypes)
-		if err != nil {
-			m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+err.Error())
-		} else {
-			rowCount := len(m.lastTableData) - 1 // Exclude header
-			successMsg := fmt.Sprintf("Successfully saved %d rows to %s", rowCount, v.Filename)
-			m.fullHistoryContent += "\n" + m.styles.SuccessText.Render(successMsg)
-		}
+// runSaveCommand carries out a parsed SAVE.
+//
+// Both routes to a save come through here: typing the command, and the Save
+// window, which builds the command typing it would. The window went to
+// runCommand, which prints a string result and drops anything else - and SAVE
+// returns a parsed command rather than a string, so picking a format and a path
+// wrote no file, showed no error and said nothing at all. It had been that way
+// for every format since the window was shared in #129.
+func (m *MainModel) runSaveCommand(v *router.SaveCommand) (*MainModel, tea.Cmd) {
+	if len(m.lastTableData) == 0 {
+		errorMsg := "No query results available to save. Execute a query first."
+		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+errorMsg)
 		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		m.input.Reset()
 		return m, nil
+	}
+
+	// SAVE with no arguments asks which format and where, in the window
+	// Capture uses. Centred, because it was typed rather than clicked.
+	if v.Interactive {
+		m.input.Reset()
+		return m.openSavePanel()
+	}
+
+	// Check if data is already in JSON format (from OUTPUT JSON mode)
+	if v.Format == "JSON" && len(m.lastTableData[0]) == 1 && m.lastTableData[0][0] == "[json]" {
+		if v.Options == nil {
+			v.Options = make(map[string]interface{})
+		}
+		v.Options["already_json"] = true
+	}
+
+	err := router.HandleSaveCommand(*v, m.lastTableData, m.columnTypes)
+	if err != nil {
+		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+err.Error())
+	} else {
+		rowCount := len(m.lastTableData) - 1 // Exclude header
+		successMsg := fmt.Sprintf("Successfully saved %d rows to %s", rowCount, v.Filename)
+		m.fullHistoryContent += "\n" + m.styles.SuccessText.Render(successMsg)
+	}
+	m.updateHistoryWrapping()
+	m.historyViewport.GotoBottom()
+	m.input.Reset()
+	return m, nil
+}
+
+// processCommandResult processes the result from a command execution
+func (m *MainModel) processCommandResult(command string, result interface{}, startTime time.Time) (*MainModel, tea.Cmd) {
+	switch v := result.(type) {
+	case *router.SaveCommand:
+		return m.runSaveCommand(v)
 	case db.StreamingQueryResult:
 		return m.processStreamingQueryResult(command, v, startTime)
 	case db.QueryResult:
