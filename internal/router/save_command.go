@@ -429,6 +429,18 @@ func exportToParquet(filename string, data [][]string, columnTypes []string, opt
 		headers[i] = db.StripKeyMarker(stripAnsi(cell))
 	}
 
+	// A collection column is written as text, because text is all SAVE has.
+	//
+	// The values here are what was on screen - a map printed as "map[a:1 b:2]"
+	// - and there is no way back from that to a map: it is ambiguous the moment
+	// a value contains a space or a colon. Asking for an Arrow MAP and handing
+	// it that string wrote a column of nulls, which is worse than writing the
+	// text, because the text is at least the data.
+	//
+	// CAPTURE is untouched by this. It has the gocql values and writes maps as
+	// maps.
+	columnTypes = writtenAsText(columnTypes)
+
 	writerOptions := parquet.DefaultWriterOptions()
 	if val, ok := options["compression"]; ok {
 		if s, ok := val.(string); ok {
@@ -461,4 +473,17 @@ func exportToParquet(filename string, data [][]string, columnTypes []string, opt
 		return fmt.Errorf("failed to close Parquet file: %w", err)
 	}
 	return nil
+}
+
+// writtenAsText turns the types that cannot be read back into text, leaving the
+// rest alone.
+func writtenAsText(columnTypes []string) []string {
+	written := make([]string, len(columnTypes))
+	for i, cqlType := range columnTypes {
+		written[i] = cqlType
+		if !parquet.RebuildableFromText(cqlType) {
+			written[i] = "text"
+		}
+	}
+	return written
 }
