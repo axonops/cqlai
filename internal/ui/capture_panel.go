@@ -115,8 +115,6 @@ func (c capturePanel) describe(format string) string {
 		return "JSON      one object per row"
 	case "PARQUET":
 		return "PARQUET   columnar, for analysis"
-	case "ASCII":
-		return "ASCII     a table, as it appears on screen"
 	}
 	return format
 }
@@ -131,7 +129,9 @@ func extensionFor(format string) string {
 	case "PARQUET":
 		return ".parquet"
 	}
-	return ".txt"
+	// Both lists are covered above; this is only reached if a format is added
+	// to one of them and not to here.
+	return ".out"
 }
 
 // command is what the window runs, which is what typing it would run.

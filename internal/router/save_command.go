@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
@@ -20,12 +19,18 @@ import (
 type SaveCommand struct {
 	Interactive bool                   // true for "SAVE" without arguments
 	Filename    string                 // target filename
-	Format      string                 // CSV, JSON, or ASCII
+	Format      string                 // CSV, JSON, or PARQUET
 	Options     map[string]interface{} // additional options like header=false, pretty=true
 }
 
 // saveFormats are the formats SAVE writes.
-var saveFormats = []string{"CSV", "JSON", "PARQUET", "ASCII"}
+//
+// ASCII was here and is not any more. It wrote the table with its box drawing,
+// padded to the widths the terminal happened to be using: a picture of a
+// result rather than the result, which nothing could read back and which
+// depended on the window it was saved from. The three left all produce a file
+// something else can open.
+var saveFormats = []string{"CSV", "JSON", "PARQUET"}
 
 // parquetNeedsTypes is what SAVE ... AS PARQUET says when the column types are
 // not to hand.
@@ -103,10 +108,6 @@ func ParseSaveCommand(input string) (*SaveCommand, error) {
 		cmd.Format = detectFormatFromExtension(cmd.Filename)
 	}
 
-	// TXT and TEXT are spellings of ASCII.
-	if cmd.Format == "TXT" || cmd.Format == "TEXT" {
-		cmd.Format = "ASCII"
-	}
 	if !slices.Contains(saveFormats, cmd.Format) {
 		return nil, fmt.Errorf("unsupported format: %s. Supported formats: %s",
 			cmd.Format, strings.Join(saveFormats, ", "))
@@ -219,8 +220,6 @@ func detectFormatFromExtension(filename string) string {
 		return "JSON"
 	case strings.HasSuffix(lower, ".parquet"):
 		return "PARQUET"
-	case strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".text"):
-		return "ASCII"
 	default:
 		return "CSV" // Default to CSV
 	}
@@ -260,8 +259,6 @@ func HandleSaveCommand(cmd SaveCommand, tableData [][]string, columnTypes []stri
 		return exportToCSV(cmd.Filename, tableData, cmd.Options)
 	case "JSON":
 		return exportToJSON(cmd.Filename, tableData, cmd.Options)
-	case "ASCII":
-		return exportToASCII(cmd.Filename, tableData, cmd.Options)
 	case "PARQUET":
 		return exportToParquet(cmd.Filename, tableData, columnTypes, cmd.Options)
 	default:
@@ -396,99 +393,10 @@ func exportToJSON(filename string, data [][]string, options map[string]interface
 	return os.WriteFile(filename, jsonBytes, 0600)
 }
 
-// exportToASCII exports data to ASCII table format
-func exportToASCII(filename string, data [][]string, options map[string]interface{}) error {
-	if len(data) == 0 {
-		return fmt.Errorf("no data to export")
-	}
-
-	// Calculate column widths
-	colWidths := make([]int, len(data[0]))
-	for rowIdx, row := range data {
-		for i, cell := range row {
-			cleanCell := stripAnsi(cell)
-			if rowIdx == 0 {
-				cleanCell = db.StripKeyMarker(cleanCell)
-			}
-			cellWidth := len(cleanCell)
-			if cellWidth > colWidths[i] {
-				colWidths[i] = cellWidth
-			}
-		}
-	}
-
-	var output strings.Builder
-
-	// Top border
-	output.WriteString("+")
-	for _, width := range colWidths {
-		output.WriteString(strings.Repeat("-", width+2) + "+")
-	}
-	output.WriteString("\n")
-
-	// Header row
-	if len(data) > 0 {
-		output.WriteString("|")
-		for i, header := range data[0] {
-			cleanHeader := db.StripKeyMarker(stripAnsi(header))
-			padding := colWidths[i] - len(cleanHeader)
-			output.WriteString(" " + cleanHeader + strings.Repeat(" ", padding) + " |")
-		}
-		output.WriteString("\n")
-
-		// Header separator
-		output.WriteString("+")
-		for _, width := range colWidths {
-			output.WriteString(strings.Repeat("-", width+2) + "+")
-		}
-		output.WriteString("\n")
-	}
-
-	// Data rows
-	for i := 1; i < len(data); i++ {
-		output.WriteString("|")
-		for j, cell := range data[i] {
-			cleanCell := stripAnsi(cell)
-			padding := colWidths[j] - len(cleanCell)
-			if padding < 0 {
-				padding = 0
-			}
-			output.WriteString(" " + cleanCell + strings.Repeat(" ", padding) + " |")
-		}
-		output.WriteString("\n")
-	}
-
-	// Bottom border
-	output.WriteString("+")
-	for _, width := range colWidths {
-		output.WriteString(strings.Repeat("-", width+2) + "+")
-	}
-	output.WriteString("\n")
-
-	// Add row count footer
-	rowCount := len(data) - 1 // Exclude header
-	fmt.Fprintf(&output, "\n(%d rows)\n", rowCount)
-
-	return os.WriteFile(filename, []byte(output.String()), 0600)
-}
-
 // stripAnsi removes ANSI escape codes from a string
 func stripAnsi(s string) string {
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	return ansiRegex.ReplaceAllString(s, "")
-}
-
-// GenerateDefaultFilename generates a default filename with timestamp
-func GenerateDefaultFilename(format string) string {
-	timestamp := time.Now().Format("20060102_150405")
-	ext := ".csv"
-	switch format {
-	case "JSON":
-		ext = ".json"
-	case "ASCII":
-		ext = ".txt"
-	}
-	return fmt.Sprintf("query_results_%s%s", timestamp, ext)
 }
 
 // ParquetTypesUsable says whether a result can be written as Parquet.

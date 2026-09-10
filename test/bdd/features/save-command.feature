@@ -36,8 +36,10 @@ Feature: SAVE command parsing
       | filename     | format |
       | data.csv     | CSV    |
       | data.json    | JSON   |
-      | data.txt     | ASCII  |
-      | data.text    | ASCII  |
+      | data.parquet | PARQUET |
+      | data.txt     | CSV    |
+      | data.text    | CSV    |
+      | data.dat     | CSV    |
       | nameless     | CSV    |
 
   Scenario: SAVE TO with explicit AS overrides the extension
@@ -46,10 +48,19 @@ Feature: SAVE command parsing
     And the SAVE command has filename "out.dat"
     And the SAVE command has format "JSON"
 
-  Scenario: TXT and TEXT are normalised to ASCII
-    When I parse the SAVE command "SAVE TO 'out.dat' AS TEXT"
-    Then the SAVE command is parsed successfully
-    And the SAVE command has format "ASCII"
+  # ASCII wrote the table with its box drawing, padded to whatever width the
+  # terminal happened to be. Nothing could read it back, so it went, and the
+  # TXT and TEXT spellings that mapped onto it went with it. A .txt name now
+  # takes the same route as any other unrecognised extension.
+  Scenario Outline: the ASCII format and its spellings are refused
+    When I parse the SAVE command "SAVE TO 'out.dat' AS <format>"
+    Then the SAVE command is rejected with an error containing "unsupported format"
+
+    Examples:
+      | format |
+      | ASCII  |
+      | TEXT   |
+      | TXT    |
 
   Scenario: double-quoted filenames are accepted
     When I parse the SAVE command:

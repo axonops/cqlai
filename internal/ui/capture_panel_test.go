@@ -107,7 +107,7 @@ func TestTheCommandMatchesWhatTypingItWouldBe(t *testing.T) {
 	// SAVE has a different form entirely: SAVE TO 'file' AS FORMAT.
 	save := capturePanel{kind: saving}
 	assert.Equal(t, "SAVE TO 'out.csv' AS CSV", save.command("CSV", "out.csv"))
-	assert.Equal(t, "SAVE TO 'a.txt' AS ASCII", save.command("ASCII", "a.txt"))
+	assert.Equal(t, "SAVE TO 'a.csv' AS CSV", save.command("CSV", "a.csv"))
 }
 
 // TestEscapeGoesBackAStep, so a mistyped path does not cost you the format.
@@ -569,17 +569,19 @@ func TestTheSaveWindowBuildsTheSaveCommand(t *testing.T) {
 	assert.Equal(t, "CAPTURE JSON '/tmp/out.json'", capture.command("JSON", "/tmp/out.json"))
 }
 
-// TestSaveOffersItsOwnFormats. ASCII is SAVE's alone: it writes the table as it
-// appears on screen, which is a thing you want from a result you are looking at
-// and not from a capture running in the background.
-func TestSaveOffersItsOwnFormats(t *testing.T) {
+// TestSaveOffersFormatsSomethingElseCanOpen.
+//
+// ASCII was here and is not any more: it wrote the table with its box drawing,
+// padded to whatever width the terminal happened to be, which nothing could
+// read back.
+func TestSaveOffersFormatsSomethingElseCanOpen(t *testing.T) {
 	m := helpModel()
 	m.lastTableData = [][]string{{"id"}, {"1"}}
 	m.columnTypes = []string{"int"}
 	m.openSavePanel()
 
-	assert.Equal(t, []string{"CSV", "JSON", "PARQUET", "ASCII"}, m.capture.formats)
-	assert.NotContains(t, m.formatsFor(capturing), "ASCII", "CAPTURE does not write ASCII")
+	assert.Equal(t, []string{"CSV", "JSON", "PARQUET"}, m.capture.formats)
+	assert.NotContains(t, m.capture.formats, "ASCII")
 }
 
 // TestParquetIsOfferedOnlyWithTheTypesToWriteIt.
@@ -624,11 +626,11 @@ func TestTheDefaultNameSuitsTheKind(t *testing.T) {
 	m := helpModel()
 
 	m.openSavePanel()
-	m.capture.format = slices.Index(m.capture.formats, "ASCII")
-	require.GreaterOrEqual(t, m.capture.format, 0, "SAVE offers ASCII")
+	m.capture.format = slices.Index(m.capture.formats, "JSON")
+	require.GreaterOrEqual(t, m.capture.format, 0, "SAVE offers JSON")
 	m.chooseCaptureFormat()
 	assert.Contains(t, m.capture.input.Value(), "results_")
-	assert.True(t, strings.HasSuffix(m.capture.input.Value(), ".txt"))
+	assert.True(t, strings.HasSuffix(m.capture.input.Value(), ".json"))
 
 	m.closeCapturePanel()
 	m.openCapturePanel(0)

@@ -242,3 +242,31 @@ func TestAValueThatCannotBeParsedBecomesNull(t *testing.T) {
 	assert.Empty(t, rows[1][0], "an unparseable id is null")
 	assert.Equal(t, "bob", rows[1][1], "and the rest of the row survives")
 }
+
+// TestSaveNoLongerWritesASCII.
+//
+// It wrote the table with its box drawing, padded to the widths the terminal
+// happened to be using: a picture of a result rather than the result, which
+// nothing could read back. The spellings that mapped onto it go with it.
+func TestSaveNoLongerWritesASCII(t *testing.T) {
+	assert.NotContains(t, SaveFormats(), "ASCII")
+
+	for _, format := range []string{"ASCII", "TXT", "TEXT"} {
+		_, err := ParseSaveCommand("SAVE TO '/tmp/out' AS " + format)
+		assert.Error(t, err, "AS %s is refused", format)
+	}
+}
+
+// TestATextExtensionFallsToTheDefault.
+//
+// .txt used to pick ASCII. With ASCII gone it takes the same route as .dat,
+// .out or no extension at all, which is CSV - the existing rule for anything
+// unrecognised rather than a new one, and AS CSV says so outright when it
+// matters.
+func TestATextExtensionFallsToTheDefault(t *testing.T) {
+	for _, name := range []string{"report.txt", "report.text", "report.dat", "report"} {
+		cmd, err := ParseSaveCommand("SAVE TO '" + name + "'")
+		require.NoError(t, err, name)
+		assert.Equal(t, "CSV", cmd.Format, name)
+	}
+}

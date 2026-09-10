@@ -601,7 +601,6 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   SAVE TO 'users.csv'                     -- CSVに保存(形式は自動検出)
   SAVE TO 'users.json'                    -- JSONに保存(形式は自動検出)
   SAVE TO 'users.parquet'                 -- Parquetに保存(形式は自動検出)
-  SAVE TO 'users.txt' AS ASCII            -- ASCIIテーブルとして保存
   SAVE TO 'data.out' AS CSV               -- 明示的に形式を指定
 
   -- CAPTUREとの主な違い:
