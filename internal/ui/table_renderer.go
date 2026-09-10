@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"charm.land/lipgloss/v2"
 	"fmt"
 	"regexp"
 	"strings"
@@ -140,7 +141,12 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 
 		// Calculate total table width
 		if len(fullLines) > 0 {
-			m.tableWidth = len(stripAnsi(fullLines[0]))
+			// Columns, not bytes. A boxed table is mostly box-drawing
+			// characters, and each of those is three bytes: measured with len
+			// the table came out about two and a half times as wide as it is,
+			// so scrolling sideways ran hundreds of columns past the end of it
+			// into blank screen.
+			m.tableWidth = lipgloss.Width(fullLines[0])
 		}
 	}
 

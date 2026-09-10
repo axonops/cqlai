@@ -276,12 +276,12 @@ func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 
 	switch mouse.Button {
 	case tea.MouseWheelUp:
-		if modified && m.viewMode == "table" && m.hasTable {
+		if modified && m.scrollsSideways() {
 			return m.handleMouseWheelLeft()
 		}
 		return m.handleMouseWheelUp()
 	case tea.MouseWheelDown:
-		if modified && m.viewMode == "table" && m.hasTable {
+		if modified && m.scrollsSideways() {
 			return m.handleMouseWheelRight()
 		}
 		return m.handleMouseWheelDown()
@@ -377,6 +377,16 @@ func (m *MainModel) handleMouseWheelDown() (*MainModel, tea.Cmd) {
 		m.historyViewport.SetYOffset(min(maxOffset, m.historyViewport.YOffset()+scrollAmount))
 	}
 	return m, nil
+}
+
+// scrollsSideways reports whether the view in front of you has anything to
+// scroll sideways.
+//
+// The Trace view was left out of this, so a modifier and the wheel scrolled it
+// up and down instead - on a trace far wider than the screen, which is the one
+// view where reaching sideways matters most.
+func (m *MainModel) scrollsSideways() bool {
+	return (m.viewMode == "table" && m.hasTable) || (m.viewMode == "trace" && m.hasTrace)
 }
 
 // handleMouseWheelLeft handles horizontal scrolling left
