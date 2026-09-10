@@ -364,7 +364,10 @@ func listingModel(t *testing.T, files int) *MainModel {
 	m.chooseCaptureFormat()
 	m.capture.input.SetValue(manyFiles(t, files) + string(filepath.Separator))
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyTab})
-	require.Len(t, m.capture.matches, files)
+
+	// The files, and the way up at the top of them.
+	require.Len(t, m.capture.matches, files+1)
+	require.Equal(t, parentEntry, m.capture.matches[0])
 	return m
 }
 
@@ -411,8 +414,9 @@ func TestTheArrowsWalkTheWholeList(t *testing.T) {
 		m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 
-	assert.Equal(t, 39, m.capture.match, "it should stop at the last candidate")
-	assert.Len(t, seen, 40, "every candidate should be reachable")
+	// Forty files and the way up above them.
+	assert.Equal(t, 40, m.capture.match, "it should stop at the last candidate")
+	assert.Len(t, seen, 41, "every candidate should be reachable")
 
 	for range 60 {
 		m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyUp})
@@ -424,8 +428,11 @@ func TestTheArrowsWalkTheWholeList(t *testing.T) {
 // TestEnterUsesTheHighlightedCandidate rather than starting the capture.
 func TestEnterUsesTheHighlightedCandidate(t *testing.T) {
 	m := listingModel(t, 4)
-	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
 
+	// Past the way up at the top, then onto the second file.
+	for range 2 {
+		m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	assert.True(t, strings.HasSuffix(m.capture.input.Value(), "file01.csv"),
@@ -440,9 +447,10 @@ func TestClickingACandidateUsesIt(t *testing.T) {
 
 	layer, ok := m.viewCapturePanel(m.windowWidth, m.windowHeight)
 	require.True(t, ok)
+	// Row 0 is the way up, so the third row is the second file.
 	pressAt(m, layer.X+3, layer.Y+1+captureMatchesStart+2)
 
-	assert.True(t, strings.HasSuffix(m.capture.input.Value(), "file02.csv"),
+	assert.True(t, strings.HasSuffix(m.capture.input.Value(), "file01.csv"),
 		"got %q", m.capture.input.Value())
 }
 
@@ -463,13 +471,37 @@ func TestChoosingADirectoryOpensIt(t *testing.T) {
 	m.capture.input.SetValue(dir + string(filepath.Separator))
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyTab})
 
-	// The directory sorts first.
-	require.Equal(t, "exports"+string(filepath.Separator), m.capture.matches[0])
+	// The way up is first; the directory sorts above the file beside it.
+	require.Equal(t, parentEntry, m.capture.matches[0])
+	require.Equal(t, "exports"+string(filepath.Separator), m.capture.matches[1])
+
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	assert.Equal(t, inner+string(filepath.Separator), m.capture.input.Value())
-	assert.Equal(t, []string{"one.csv", "two.csv"}, m.capture.matches,
-		"it should be listing what is inside")
+	assert.Equal(t, []string{parentEntry, "one.csv", "two.csv"}, m.capture.matches,
+		"it should be listing what is inside, with the way back out")
+}
+
+// TestTheWayUpWalksBackOut, which is what makes browsing two-way.
+func TestTheWayUpWalksBackOut(t *testing.T) {
+	dir := t.TempDir()
+	inner := filepath.Join(dir, "exports")
+	require.NoError(t, os.Mkdir(inner, 0o750))
+
+	m := captureModel()
+	m.windowHeight = 30
+	m.openCapturePanel(4)
+	m.chooseCaptureFormat()
+	m.capture.input.SetValue(inner + string(filepath.Separator))
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	require.Equal(t, parentEntry, m.capture.matches[0])
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	assert.Equal(t, dir+string(filepath.Separator), m.capture.input.Value())
+	assert.Contains(t, m.capture.matches, "exports"+string(filepath.Separator),
+		"and it lists where it has arrived")
 }
 
 // TestEscapePutsTheListAwayWithoutLosingThePath.

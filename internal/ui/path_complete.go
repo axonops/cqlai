@@ -58,15 +58,33 @@ func completePath(input string) pathCompletion {
 		matches = append(matches, name)
 	}
 
-	if len(matches) == 0 {
+	// The way up counts as something to offer, so an empty directory is not a
+	// dead end: with nothing in it and nothing listed, the only way back out
+	// was to edit the path by hand.
+	canGoUp := prefix == "" && parentDir(dir) != ""
+	if len(matches) == 0 && !canGoUp {
 		return none
 	}
 	sort.Strings(matches)
 
 	// Fill in as far as they agree. With one match that is the whole name, and
 	// a directory ends in a separator so the next Tab carries on inside it.
+	completed := dir + commonPrefix(matches)
+
+	// The way back up, at the top of the list, so browsing is not one-way: with
+	// only the contents of a directory to pick from, a wrong turn meant editing
+	// the path by hand.
+	//
+	// Added after the common prefix is worked out rather than before. In the
+	// list it is one more thing to pick; in the prefix it agrees with nothing,
+	// and would stop "/b" filling itself in to "/boot/" the moment the parent
+	// directory existed.
+	if canGoUp {
+		matches = append([]string{parentEntry}, matches...)
+	}
+
 	return pathCompletion{
-		Completed: dir + commonPrefix(matches),
+		Completed: completed,
 		Matches:   matches,
 	}
 }
@@ -80,6 +98,39 @@ func splitPath(input string) (dir, prefix string) {
 		return "", input
 	}
 	return input[:i+1], input[i+1:]
+}
+
+// worthListing reports whether the candidates are worth showing.
+//
+// More than one, as a shell does - or exactly one that is the way up, which is
+// what an empty directory offers. That one is not a completion to fill in: it
+// is the only thing you can do from there, and applying it silently would walk
+// you out of the directory you had just walked into.
+func (p pathCompletion) worthListing() bool {
+	return len(p.Matches) > 1 || (len(p.Matches) == 1 && p.Matches[0] == parentEntry)
+}
+
+// parentEntry is the way up, as it appears in the list.
+const parentEntry = ".."
+
+// parentDir is the directory above one, or "" when there is nowhere above.
+//
+// Takes the path as typed, so it works before ~ is expanded: what goes back in
+// the field should read the way the rest of it does.
+func parentDir(dir string) string {
+	sep := string(filepath.Separator)
+
+	trimmed := strings.TrimSuffix(dir, sep)
+	if trimmed == "" || trimmed == "~" {
+		return "" // the root, or home with nothing above it worth offering
+	}
+
+	i := strings.LastIndex(trimmed, sep)
+	if i < 0 {
+		// A bare name with no separator: above it is where we started.
+		return ""
+	}
+	return trimmed[:i+1]
 }
 
 // expandHome turns a leading ~ into the home directory.

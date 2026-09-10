@@ -57,7 +57,7 @@ func (m *MainModel) completePathAtPrompt(input string) (*MainModel, tea.Cmd, boo
 	m.completionScrollOffset = 0
 
 	m.completingPath = false
-	if len(got.Matches) > 1 {
+	if got.worthListing() {
 		m.completions = got.Matches
 		m.completionIndex = 0
 		m.showCompletions = true
@@ -94,8 +94,16 @@ func (m *MainModel) applyPathCompletion(name string) {
 		return
 	}
 
+	// The candidates are names inside a directory, so the directory typed so
+	// far stays in front of the one picked - except the way up, which replaces
+	// it.
 	dir, _ := splitPath(prefix)
-	m.input.SetValue(completion.ReplacePath(input, prefix, quote, dir+name))
+	chosen := dir + name
+	if name == parentEntry {
+		chosen = parentDir(dir)
+	}
+
+	m.input.SetValue(completion.ReplacePath(input, prefix, quote, chosen))
 	m.input.CursorEnd()
 	m.clearCompletions()
 }

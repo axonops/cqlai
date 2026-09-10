@@ -58,8 +58,10 @@ func TestEverythingInADirectoryIsOffered(t *testing.T) {
 
 	got := completePath(dir + string(filepath.Separator))
 
-	assert.Len(t, got.Matches, 4, "three files and a directory, not the hidden one: %v", got.Matches)
+	assert.Len(t, got.Matches, 5,
+		"three files, a directory and the way up, not the hidden one: %v", got.Matches)
 	assert.Contains(t, got.Matches, "exports"+string(filepath.Separator))
+	assert.Equal(t, parentEntry, got.Matches[0])
 }
 
 // TestHiddenFilesOnlyWhenAskedFor, as a shell does.
@@ -128,4 +130,69 @@ func TestCommonPrefix(t *testing.T) {
 	assert.Equal(t, "only", commonPrefix([]string{"only"}))
 	assert.Equal(t, "", commonPrefix([]string{"alpha", "beta"}))
 	assert.Equal(t, "", commonPrefix(nil))
+}
+
+// TestTheWayUpIsInTheList.
+//
+// With only the contents of a directory to pick from, browsing was one-way: a
+// wrong turn meant editing the path by hand.
+func TestTheWayUpIsInTheList(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "inner"), 0o755))
+
+	got := completePath(filepath.Join(dir, "inner") + string(filepath.Separator))
+
+	require.NotEmpty(t, got.Matches)
+	assert.Equal(t, parentEntry, got.Matches[0], "at the top, where it is easy to reach")
+}
+
+// TestThereIsNoWayUpFromTheRoot, because there is nowhere above it.
+func TestThereIsNoWayUpFromTheRoot(t *testing.T) {
+	got := completePath(string(filepath.Separator))
+
+	assert.NotContains(t, got.Matches, parentEntry)
+}
+
+// TestTheWayUpDoesNotSpoilTheFillIn.
+//
+// It is added after the common prefix is worked out. In the prefix it agrees
+// with nothing, and would stop a directory filling itself in the moment its
+// parent existed.
+func TestTheWayUpDoesNotSpoilTheFillIn(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"report_a", "report_b"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o600))
+	}
+
+	got := completePath(dir + string(filepath.Separator))
+
+	assert.Equal(t, filepath.Join(dir, "report_")+"", got.Completed,
+		"filled in as far as the names agree")
+	assert.Equal(t, parentEntry, got.Matches[0])
+}
+
+// TestTheWayUpOnlyShowsWhenNothingIsTyped: once you are naming something, ".."
+// is not one of the things you might mean.
+func TestTheWayUpOnlyShowsWhenNothingIsTyped(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "report"), nil, 0o600))
+
+	got := completePath(filepath.Join(dir, "rep"))
+
+	assert.NotContains(t, got.Matches, parentEntry)
+}
+
+// TestParentDir reads the path as typed, so what goes back in the field reads
+// the way the rest of it does.
+func TestParentDir(t *testing.T) {
+	for input, want := range map[string]string{
+		"/usr/share/": "/usr/",
+		"/usr/":       "/",
+		"/":           "",
+		"":            "",
+		"~/":          "",
+		"~/code/":     "~/",
+	} {
+		assert.Equal(t, want, parentDir(input), "above %q", input)
+	}
 }

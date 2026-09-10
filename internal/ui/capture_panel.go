@@ -309,14 +309,42 @@ func (m *MainModel) useMatch() (*MainModel, tea.Cmd) {
 	}
 
 	dir, _ := splitPath(m.capture.input.Value())
-	chosen := dir + m.capture.matches[m.capture.match]
+
+	// The way up replaces the directory rather than being appended to it.
+	chosen := m.capture.matches[m.capture.match]
+	if chosen == parentEntry {
+		chosen = parentDir(dir)
+	} else {
+		chosen = dir + chosen
+	}
+
+	wentUp := m.capture.matches[m.capture.match] == parentEntry
 
 	m.capture.input.SetValue(chosen)
 	m.capture.input.CursorEnd()
 	m.clearMatches()
 
-	if strings.HasSuffix(chosen, string(filepath.Separator)) {
-		return m.completeCapturePath()
+	if !strings.HasSuffix(chosen, string(filepath.Separator)) {
+		return m, nil
+	}
+
+	// Show what is in it. Going up lists rather than completes: with one entry
+	// in the parent, filling in as far as the candidates agree walked straight
+	// back into the directory just left.
+	if wentUp {
+		return m.listCapturePath()
+	}
+	return m.completeCapturePath()
+}
+
+// listCapturePath shows what is in the directory the path names, without
+// filling anything in.
+func (m *MainModel) listCapturePath() (*MainModel, tea.Cmd) {
+	dir, _ := splitPath(m.capture.input.Value())
+
+	m.clearMatches()
+	if got := completePath(dir); got.worthListing() {
+		m.capture.matches = got.Matches
 	}
 	return m, nil
 }
@@ -548,7 +576,7 @@ func (m *MainModel) completeCapturePath() (*MainModel, tea.Cmd) {
 
 	// List them only when filling in was not enough to pick one.
 	m.clearMatches()
-	if len(got.Matches) > 1 {
+	if got.worthListing() {
 		m.capture.matches = got.Matches
 	}
 	return m, nil
