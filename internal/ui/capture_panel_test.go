@@ -47,18 +47,26 @@ func TestCaptureSitsAtTheRightOfTheLine(t *testing.T) {
 	assert.Equal(t, settingCapture, setting)
 }
 
-// TestCaptureIsDroppedWhenTheLineIsFull rather than sitting on top of a field.
-func TestCaptureIsDroppedWhenTheLineIsFull(t *testing.T) {
+// TestCaptureKeepsItsPlaceOnANarrowLine.
+//
+// Its room is reserved before the settings are measured, so a busy left-hand
+// side gives way instead. Capture is a thing you do rather than a fact about
+// the session, and a control that moves or vanishes as the terminal is resized
+// is worse than a fact you have to go and look up.
+func TestCaptureKeepsItsPlaceOnANarrowLine(t *testing.T) {
 	m := captureModel()
 
-	segs := placeSegments(m.statusBar.segments(), 60)
-	for _, seg := range segs {
-		assert.NotEqual(t, settingCapture, seg.setting, "there is no room for it here")
-	}
+	for _, width := range []int{40, 60, 80, 120} {
+		segs := placeSegments(m.statusBar.segments(), width)
 
-	// The fields that remain do not overlap.
-	for i := 1; i < len(segs); i++ {
-		assert.GreaterOrEqual(t, segs[i].start, segs[i-1].end)
+		last := segs[len(segs)-1]
+		assert.Equal(t, settingCapture, last.setting, "at %d columns", width)
+		assert.Equal(t, width-statusBarPadding, last.end, "against the right edge")
+
+		// The fields that remain do not overlap.
+		for i := 1; i < len(segs); i++ {
+			assert.GreaterOrEqual(t, segs[i].start, segs[i-1].end, "at %d columns", width)
+		}
 	}
 }
 

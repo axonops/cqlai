@@ -59,7 +59,7 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	}
 
 	content := ""
-	for i, seg := range m.segments() {
+	for i, seg := range placeInfoSegments(m.segments(), width) {
 		if i > 0 {
 			content += separatorStyle.Render(statusSeparator)
 		}
@@ -67,7 +67,10 @@ func (m TopBarModel) View(width int, styles *Styles, viewMode string) string {
 	}
 
 	// Apply style to the entire bar without forced background
+	// One row, always - see placeInfoSegments. MaxHeight makes sure a mistake
+	// in the fitting costs a field rather than the layout.
 	barStyle := lipgloss.NewStyle().
+		MaxHeight(1).
 		Padding(0, infoBarPadding).
 		Width(width)
 

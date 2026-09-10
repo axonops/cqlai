@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// infoTestWidth is a terminal wide enough for the whole info bar.
+const infoTestWidth = 140
+
 func testInfoBar() TopBarModel {
 	return TopBarModel{
 		LastCommand:  "SELECT * FROM system.local",
@@ -36,7 +39,7 @@ func TestTheLineDoesNotStartWithASeparator(t *testing.T) {
 // TestTheFieldIsCalledHistory, because that is what clicking it opens. The
 // value is still the last command run.
 func TestTheFieldIsCalledHistory(t *testing.T) {
-	segs := testInfoBar().segments()
+	segs := testInfoBar().placedSegments(infoTestWidth)
 	require.NotEmpty(t, segs)
 
 	assert.Equal(t, infoHistory, segs[0].field)
@@ -52,7 +55,7 @@ func TestInfoSegmentsMatchTheRenderedLine(t *testing.T) {
 
 	rendered := []rune(stripAnsiForTest(m.View(140, DefaultStyles(), "history")))
 
-	for _, seg := range m.segments() {
+	for _, seg := range m.placedSegments(infoTestWidth) {
 		require.LessOrEqual(t, seg.end, len(rendered),
 			"segment %q runs past the end of the line", seg.label)
 
@@ -68,7 +71,7 @@ func TestInfoSegmentsMatchTheRenderedLine(t *testing.T) {
 func TestTheFieldsAreThereBeforeAnythingRuns(t *testing.T) {
 	m := TopBarModel{}
 
-	segs := m.segments()
+	segs := m.placedSegments(infoTestWidth)
 	require.Len(t, segs, 3)
 	for _, seg := range segs {
 		assert.Equal(t, infoPlaceholder, seg.value, "%q should stand in until there is a value", seg.label)
@@ -80,7 +83,7 @@ func TestTheFieldsAreThereBeforeAnythingRuns(t *testing.T) {
 	}
 
 	// The field is still the clickable one; there is just nothing to show yet.
-	field, ok := m.fieldAt((segs[0].start + segs[0].end) / 2)
+	field, ok := m.fieldAt(infoTestWidth, (segs[0].start+segs[0].end)/2)
 	assert.True(t, ok)
 	assert.Equal(t, infoHistory, field)
 }
@@ -88,8 +91,8 @@ func TestTheFieldsAreThereBeforeAnythingRuns(t *testing.T) {
 // TestTheFieldsDoNotMoveWhenAQueryRuns: the labels sit in the same columns
 // before and after, so the line does not jump about as you work.
 func TestTheFieldsDoNotMoveWhenAQueryRuns(t *testing.T) {
-	empty := TopBarModel{}.segments()
-	filled := testInfoBar().segments()
+	empty := TopBarModel{}.placedSegments(infoTestWidth)
+	filled := testInfoBar().placedSegments(infoTestWidth)
 
 	require.Len(t, empty, len(filled))
 	for i := range empty {
@@ -106,7 +109,7 @@ func TestStaleTimingIsNotCarriedOver(t *testing.T) {
 	m.LastCommand = "USE system"
 	m.HasQueryData = false
 
-	segs := m.segments()
+	segs := m.placedSegments(infoTestWidth)
 	assert.Equal(t, "USE system", segs[0].value)
 	assert.Equal(t, infoPlaceholder, segs[1].value, "the timing belonged to an earlier query")
 	assert.Equal(t, infoPlaceholder, segs[2].value)
@@ -118,7 +121,7 @@ func TestClickingHistoryWithNoHistoryOpensNothing(t *testing.T) {
 	m := historyModel(0)
 	m.topBar = TopBarModel{}
 
-	seg := m.topBar.segments()[0]
+	seg := m.topBar.placedSegments(infoTestWidth)[0]
 	pressAt(m, (seg.start+seg.end)/2, m.windowHeight-2)
 
 	assert.False(t, m.historySearchMode)
@@ -161,7 +164,7 @@ func historyModel(n int) *MainModel {
 func TestClickingHistoryOpensTheList(t *testing.T) {
 	m := historyModel(20)
 
-	seg := m.topBar.segments()[0]
+	seg := m.topBar.placedSegments(infoTestWidth)[0]
 	pressAt(m, (seg.start+seg.end)/2, m.windowHeight-2)
 
 	require.True(t, m.historySearchMode, "clicking History should open the list")
@@ -172,7 +175,7 @@ func TestClickingHistoryOpensTheList(t *testing.T) {
 // TestClickingHistoryAgainClosesIt, the same as the lists on the status line.
 func TestClickingHistoryAgainClosesIt(t *testing.T) {
 	m := historyModel(20)
-	seg := m.topBar.segments()[0]
+	seg := m.topBar.placedSegments(infoTestWidth)[0]
 
 	pressAt(m, (seg.start+seg.end)/2, m.windowHeight-2)
 	require.True(t, m.historySearchMode)
@@ -186,7 +189,7 @@ func TestClickingHistoryAgainClosesIt(t *testing.T) {
 func TestClickingQueryFactsOpensNothing(t *testing.T) {
 	m := historyModel(20)
 
-	for _, seg := range m.topBar.segments()[1:] {
+	for _, seg := range m.topBar.placedSegments(infoTestWidth)[1:] {
 		pressAt(m, (seg.start+seg.end)/2, m.windowHeight-2)
 		assert.False(t, m.historySearchMode, "%q is not a control", seg.label)
 	}
@@ -358,7 +361,7 @@ func TestNoHistoryAtAllLeavesThePlaceholder(t *testing.T) {
 	require.Empty(t, m.latestCommand())
 
 	m.topBar.LastCommand = m.latestCommand()
-	assert.Equal(t, infoPlaceholder, m.topBar.segments()[0].value)
+	assert.Equal(t, infoPlaceholder, m.topBar.placedSegments(infoTestWidth)[0].value)
 }
 
 // TestClickingHistoryAndCtrlRGiveTheSameBox. They did the same job through two
@@ -366,7 +369,7 @@ func TestNoHistoryAtAllLeavesThePlaceholder(t *testing.T) {
 // typed into to narrow the list - which was the whole point of the other.
 func TestClickingHistoryAndCtrlRGiveTheSameBox(t *testing.T) {
 	clicked := historyModel(20)
-	seg := clicked.topBar.segments()[0]
+	seg := clicked.topBar.placedSegments(infoTestWidth)[0]
 	pressAt(clicked, (seg.start+seg.end)/2, clicked.windowHeight-2)
 	_, clickedLayer, ok := clicked.historyOverlay(clicked.windowWidth, clicked.windowHeight)
 	require.True(t, ok)
@@ -382,7 +385,7 @@ func TestClickingHistoryAndCtrlRGiveTheSameBox(t *testing.T) {
 // TestTypingNarrowsTheList is what the clicked list could not do.
 func TestTypingNarrowsTheList(t *testing.T) {
 	m := historyModel(20)
-	seg := m.topBar.segments()[0]
+	seg := m.topBar.placedSegments(infoTestWidth)[0]
 	pressAt(m, (seg.start+seg.end)/2, m.windowHeight-2)
 	require.Len(t, m.historySearchResults, 20)
 

@@ -106,10 +106,15 @@ func (m StatusBarModel) View(width int, styles *Styles, currentView string) stri
 		col = seg.end
 	}
 
-	// Apply style to the entire bar without forced background
+	// One row, always. Width on its own wraps rather than truncates, so a line
+	// that overran turned the bar into two rows and made the whole view a row
+	// taller than the terminal. placeSegments fits the fields to the width;
+	// MaxHeight makes sure that a mistake there costs a field rather than the
+	// layout.
 	barStyle := lipgloss.NewStyle().
 		Padding(0, statusBarPadding).
-		Width(width)
+		Width(width).
+		MaxHeight(1)
 
 	return barStyle.Render(statusText)
 }
