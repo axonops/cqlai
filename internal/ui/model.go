@@ -530,11 +530,17 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Reduced margin for better scrolling. Clamped because v2's textinput
-		// sizes its placeholder buffer from the width and panics on a negative
-		// one; v1 tolerated it. A terminal that reports no size, or one only a
-		// couple of columns wide, is enough to hit that.
-		inputWidth := max(newWidth-2, 0)
+		// The prompt and the trailing cursor cell are drawn outside the width
+		// the textinput is given, so it renders three columns wider than it is
+		// told. At newWidth-2 the input row was a column wider than the
+		// terminal and wrapped onto the next one. Measured from the prompt
+		// rather than written as a number, so the two cannot drift.
+		//
+		// Clamped because v2's textinput sizes its placeholder buffer from the
+		// width and panics on a negative one; v1 tolerated it. A terminal that
+		// reports no size, or one only a couple of columns wide, is enough to
+		// hit that.
+		inputWidth := max(newWidth-lipgloss.Width(m.input.Prompt)-1, 0)
 		m.input.SetWidth(inputWidth)
 		// Also update AI conversation input width if initialized
 		if m.aiConversationInput.Value() != "" || m.aiConversationActive {

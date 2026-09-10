@@ -41,16 +41,6 @@ func (m *MainModel) newView(content string) tea.View {
 	return v
 }
 
-// aiKeyHint is the "F5: AI" part of the key hints, or nothing when there is no
-// provider configured. Advertising a key that then tells you it cannot do
-// anything is the same defect as showing the tab.
-func aiKeyHint(m *MainModel) string {
-	if !m.aiAvailable() {
-		return ""
-	}
-	return " | F5: AI"
-}
-
 // View renders the main model.
 func (m *MainModel) View() tea.View {
 	if !m.ready {
@@ -104,126 +94,6 @@ func (m *MainModel) View() tea.View {
 
 	if handler := router.GetMetaHandler(); handler != nil {
 		m.statusBar.Capturing = handler.IsCapturing()
-	}
-
-	// Get the active viewport for scroll info
-	activeViewport := m.historyViewport
-	switch m.viewMode {
-	case "table":
-		if m.hasTable {
-			activeViewport = m.tableViewport
-		}
-	case "trace":
-		if m.hasTrace {
-			activeViewport = m.traceViewport
-		}
-	}
-
-	// Add mode indicator and available view keys
-	var scrollInfo string
-	switch m.viewMode {
-	case "ai":
-		// No need to show navigation keys in AI view since they're less relevant
-		scrollInfo = ""
-	case "trace":
-		modeIndicator := m.styles.AccentText.Render("[TRACE VIEW]")
-		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F2: History"+aiKeyHint(m)+"]")
-		if m.hasTable {
-			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
-		}
-	case "table":
-		modeIndicator := m.styles.AccentText.Render("[TABLE VIEW]")
-		scrollInfo = " " + modeIndicator
-		scrollInfo += " " + m.styles.MutedText.Render("[F2: History"+aiKeyHint(m)+" | F6: Toggle Types]")
-		if m.hasTrace {
-			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
-		}
-	default: // history view
-		modeIndicator := m.styles.MutedText.Render("[CQL VIEW]")
-		scrollInfo = " " + modeIndicator
-		if hint := aiKeyHint(m); hint != "" {
-			scrollInfo += " " + m.styles.MutedText.Render("["+strings.TrimPrefix(hint, " | ")+"]")
-		}
-		if m.hasTable {
-			scrollInfo += " " + m.styles.MutedText.Render("[F3: Table]")
-		}
-		if m.hasTrace {
-			scrollInfo += " " + m.styles.MutedText.Render("[F4: Trace]")
-		}
-	}
-
-	// Add scroll indicator if content is scrollable
-	if activeViewport.TotalLineCount() > activeViewport.Height() {
-		scrollPercent := activeViewport.ScrollPercent()
-		if scrollPercent == 0 { //nolint:gocritic // more readable as if
-			scrollInfo += " [TOP]"
-		} else if scrollPercent >= 0.99 {
-			scrollInfo += " [BOTTOM]"
-		} else {
-			scrollInfo += fmt.Sprintf(" [%d%%]", int(scrollPercent*100))
-		}
-	}
-
-	// Add horizontal scroll indicator if table/trace is wider than viewport
-	switch {
-	case m.viewMode == "trace" && m.hasTrace && m.traceTableWidth > m.traceViewport.Width():
-		if m.traceHorizontalOffset == 0 { //nolint:gocritic // more readable as if
-			scrollInfo += " | H:LEFT"
-		} else if m.traceHorizontalOffset >= m.traceTableWidth-m.traceViewport.Width() {
-			scrollInfo += " | H:RIGHT"
-		} else {
-			// Calculate horizontal scroll percentage
-			maxOffset := m.traceTableWidth - m.traceViewport.Width()
-			hScrollPercent := float64(m.traceHorizontalOffset) / float64(maxOffset)
-			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
-		}
-	case m.hasTable && m.viewMode == "table" && m.tableWidth > m.tableViewport.Width():
-		if m.horizontalOffset == 0 { //nolint:gocritic // more readable as if
-			scrollInfo += " | H:LEFT"
-		} else if m.horizontalOffset >= m.tableWidth-m.tableViewport.Width() {
-			scrollInfo += " | H:RIGHT"
-		} else {
-			// Calculate horizontal scroll percentage
-			maxOffset := m.tableWidth - m.tableViewport.Width()
-			hScrollPercent := float64(m.horizontalOffset) / float64(maxOffset)
-			scrollInfo += fmt.Sprintf(" | H:%d%%", int(hScrollPercent*100))
-		}
-	}
-
-	// Add sliding window indicator if data has been dropped
-	if m.slidingWindow != nil && m.slidingWindow.DataDroppedAtStart {
-		warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500"))
-		scrollInfo += " " + warningStyle.Render(fmt.Sprintf("[Rows %d-%d, earlier rows dropped]",
-			m.slidingWindow.FirstRowIndex+1,
-			m.slidingWindow.FirstRowIndex+int64(len(m.slidingWindow.Rows))))
-	}
-
-	// Add output format indicator
-	if m.sessionManager != nil {
-		outputFormat := m.sessionManager.GetOutputFormat()
-		switch outputFormat {
-		case config.OutputFormatExpand:
-			expandStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF")).Bold(true)
-			scrollInfo += " " + expandStyle.Render("[EXPAND ON]")
-		case config.OutputFormatASCII:
-			asciiStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
-			scrollInfo += " " + asciiStyle.Render("[ASCII]")
-		case config.OutputFormatJSON:
-			jsonStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
-			scrollInfo += " " + jsonStyle.Render("[JSON]")
-		}
-	}
-
-	// Say which way the mouse is set. Without this, someone who has turned it
-	// off, or run into a terminal that will not report it, just finds that
-	// clicking the tabs does nothing, with nothing on screen explaining why.
-	if m.mouseEnabled {
-		mouseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87D7FF"))
-		scrollInfo += " " + mouseStyle.Render("[MOUSE]")
-	} else {
-		mouseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5F5F5F"))
-		scrollInfo += " " + mouseStyle.Render("[MOUSE OFF]")
 	}
 
 	// Build the input section
@@ -349,7 +219,7 @@ func (m *MainModel) View() tea.View {
 		viewportSection,
 		inputSection,
 		infoBar,
-		m.statusBar.View(viewportWidth, m.styles, m.viewMode)+scrollInfo,
+		m.statusBar.View(viewportWidth, m.styles, m.viewMode),
 	)
 
 	// Calculate the actual screen dimensions

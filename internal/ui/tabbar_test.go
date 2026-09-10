@@ -433,9 +433,6 @@ func TestF5IsNotAdvertisedWhenAIIsNotConfigured(t *testing.T) {
 	without := &MainModel{styles: DefaultStyles()}
 	with := &MainModel{styles: DefaultStyles(), aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
-	assert.Empty(t, aiKeyHint(without))
-	assert.Contains(t, aiKeyHint(with), "F5")
-
 	assert.NotContains(t, stripAnsiForTest(without.getWelcomeMessage()), "F5")
 	assert.Contains(t, stripAnsiForTest(with.getWelcomeMessage()), "F5")
 }
