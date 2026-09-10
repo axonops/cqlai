@@ -107,6 +107,20 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// A press inside the FILE menu picks an entry; anywhere else closes it,
+	// rather than acting on something underneath it. A press on FILE itself
+	// falls through to the tab line, which toggles the menu shut.
+	if m.fileMenu.active {
+		if i, hit := m.fileMenuItemAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			m.fileMenu.selected = i
+			return m.chooseFileMenuItem()
+		}
+		m.closeFileMenu()
+		if mode, _ := m.modeAt(m.windowWidth, mouse.X); mouse.Y == 0 && mode == fileMode {
+			return m, nil
+		}
+	}
+
 	// A press inside the capture window picks a format; anywhere else closes
 	// it, rather than acting on something underneath it.
 	if m.capture.active {
@@ -170,14 +184,18 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	return m.beginSelection(mouse.X, mouse.Y)
 }
 
-// pressOpensCapture reports whether a press is on the control that opened the
-// window: the Capture field on the bottom line, or the SAVE RESULTS button on
-// the tab line.
+// pressOpensCapture reports whether a press is on a control that opens the
+// window: the FILE menu on the tab line, or the Capture field on the bottom
+// line, which still opens it directly.
+//
+// A press on one of those closes what it opened rather than closing and
+// reopening in the same press, which is what made clicking look like nothing
+// had happened.
 func (m *MainModel) pressOpensCapture(mouse tea.Mouse) bool {
 	switch {
-	case m.capture.kind == saving && mouse.Y == 0:
+	case mouse.Y == 0:
 		mode, _ := m.modeAt(m.windowWidth, mouse.X)
-		return mode == saveMode
+		return mode == fileMode
 
 	case m.capture.kind == capturing && mouse.Y == m.windowHeight-1:
 		setting, _, ok := m.statusBar.settingAt(m.windowWidth, mouse.X)
@@ -402,8 +420,12 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 	if mode == helpMode {
 		return m.toggleHelp()
 	}
-	if mode == saveMode {
-		return m.openSavePanel()
+	if mode == fileMode {
+		span, ok := m.tabSpanFor(m.windowWidth, fileMode)
+		if !ok {
+			return m, nil
+		}
+		return m.openFileMenu(span.start)
 	}
 
 	switch mode {

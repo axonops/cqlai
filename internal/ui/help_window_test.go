@@ -27,18 +27,29 @@ func helpModel() *MainModel {
 	}
 }
 
-// TestTheHelpButtonIsAtTheLeftOfTheTabLine.
+// TestTheButtonsSitEitherSideOfTheTabs: File first, Help straight after the
+// last tab.
 //
-// It is the thing you reach for when you do not know where anything is, and
-// the left is where reading starts.
-func TestTheHelpButtonIsAtTheLeftOfTheTabLine(t *testing.T) {
+// File first, as a menu bar reads. Help at the end of the row rather than
+// parked in the corner: a button beside what it follows is easier to hit than
+// one you have to cross the line to reach.
+func TestTheButtonsSitEitherSideOfTheTabs(t *testing.T) {
 	m := helpModel()
 
 	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(100)), "HELP")
 
 	spans := m.layoutTabs(100)
-	assert.Equal(t, helpMode, spans[0].mode, "the button should come first")
+	require.GreaterOrEqual(t, len(spans), 3)
+
+	assert.Equal(t, fileMode, spans[0].mode, "File comes first")
 	assert.Equal(t, 0, spans[0].start, "and against the left edge")
+
+	last := spans[len(spans)-1]
+	assert.Equal(t, helpMode, last.mode, "Help comes last")
+	assert.Equal(t, "ai", spans[len(spans)-2].mode, "straight after Chat")
+	assert.Equal(t, spans[len(spans)-2].end+len(tabSeparator), last.start,
+		"a separator away, not a gap to the edge")
+	assert.LessOrEqual(t, last.end, 100)
 }
 
 // spans finds a button on the tab line.
@@ -280,11 +291,17 @@ func TestTheButtonNamesBothKeys(t *testing.T) {
 }
 
 // TestTheLabelShortensBeforeTheButtonGoes: a terminal with room for "Help" but
-// not for both keys keeps the button, and one with room only for "?" keeps that.
+// not for both keys keeps the button, and one with room only for "?" keeps
+// that.
+//
+// 44 is not in the list. The tab names beat the buttons before either of them
+// shortens to a letter - single letters are harder to read than a line with no
+// button, and F1 and Alt+F still work - so there is a band where the names fit
+// and the buttons do not.
 func TestTheLabelShortensBeforeTheButtonGoes(t *testing.T) {
 	m := helpModel()
 
-	for _, width := range []int{70, 50, 44} {
+	for _, width := range []int{70, 55, 50} {
 		found := false
 		for _, span := range m.layoutTabs(width) {
 			if span.mode == helpMode {
@@ -304,9 +321,9 @@ func TestTheLabelShortensBeforeTheButtonGoes(t *testing.T) {
 func TestTheTabsDoNotGiveUpTheirNamesForALabelThatWillNotBeDrawn(t *testing.T) {
 	m := helpModel()
 
-	bar := stripAnsiForTest(m.ViewTabBar(44))
+	bar := stripAnsiForTest(m.ViewTabBar(50))
 	assert.Contains(t, bar, "CONSOLE", "the names should survive here")
-	assert.Contains(t, bar, "?", "and the button shortens rather than going")
+	assert.Contains(t, bar, "?", "and the buttons shorten rather than going")
 }
 
 // TestTheTabLineNeverWrapsWithTheButtonOnIt, at any width.

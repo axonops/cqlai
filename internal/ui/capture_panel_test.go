@@ -550,33 +550,6 @@ func TestBothRoutesGiveTheSameWindow(t *testing.T) {
 	assert.Equal(t, clickedLayer.Width, typedLayer.Width)
 }
 
-// TestTheSaveButtonIsAtTheRightOfTheTabLine.
-func TestTheSaveButtonIsAtTheRightOfTheTabLine(t *testing.T) {
-	m := helpModel()
-
-	spans := m.layoutTabs(m.windowWidth)
-	last := spans[len(spans)-1]
-
-	assert.Equal(t, saveMode, last.mode, "the button should be last")
-	assert.Equal(t, m.windowWidth, last.end, "and against the right edge")
-	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(m.windowWidth)), "SAVE RESULTS")
-}
-
-// TestClickingSaveOpensTheWindow, the same one Capture uses.
-func TestClickingSaveOpensTheWindow(t *testing.T) {
-	m := helpModel()
-	m.windowHeight = 30
-	m.lastTableData = [][]string{{"id"}, {"1"}} // something to save
-	m.columnTypes = []string{"int"}             // typed, so PARQUET is offered
-
-	save := spans(m, saveMode)
-	pressAt(m, (save.start+save.end)/2, 0)
-
-	require.True(t, m.capture.active)
-	assert.Equal(t, saving, m.capture.kind)
-	assert.Equal(t, router.SaveFormats(), m.capture.formats)
-}
-
 // TestTheSaveWindowBuildsTheSaveCommand, which has a different shape from
 // CAPTURE's: SAVE TO 'file' AS FORMAT.
 func TestTheSaveWindowBuildsTheSaveCommand(t *testing.T) {
@@ -696,40 +669,6 @@ func TestTabCompletesThePathInTheSaveWindowToo(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "results.csv"), m.capture.input.Value())
 }
 
-// TestSaveIsDimmedWithNothingToSave.
-//
-// Offering to save nothing and then reporting that there is nothing is worse
-// than saying so on the button.
-func TestSaveIsDimmedWithNothingToSave(t *testing.T) {
-	m := helpModel()
-	m.windowHeight = 30
-	m.lastTableData = nil
-
-	save := spans(m, saveMode)
-	require.Equal(t, saveMode, save.mode, "the button is still drawn")
-	assert.False(t, save.available, "but dimmed")
-
-	// And it ignores clicks, the same as a tab with nothing to show.
-	_, ok := m.modeAt(m.windowWidth, (save.start+save.end)/2)
-	assert.False(t, ok)
-
-	pressAt(m, (save.start+save.end)/2, 0)
-	assert.False(t, m.capture.active, "clicking it should do nothing")
-}
-
-// TestSaveLightsUpOnceThereAreResults.
-func TestSaveLightsUpOnceThereAreResults(t *testing.T) {
-	m := helpModel()
-	m.windowHeight = 30
-	m.lastTableData = [][]string{{"id"}, {"1"}}
-
-	save := spans(m, saveMode)
-	assert.True(t, save.available)
-
-	_, ok := m.modeAt(m.windowWidth, (save.start+save.end)/2)
-	assert.True(t, ok)
-}
-
 // TestTheButtonAndTheCommandAgree about whether there is anything to save.
 func TestTheButtonAndTheCommandAgree(t *testing.T) {
 	m := helpModel()
@@ -738,53 +677,6 @@ func TestTheButtonAndTheCommandAgree(t *testing.T) {
 
 	m.lastTableData = [][]string{{"id"}, {"1"}}
 	assert.True(t, m.hasResults())
-}
-
-// TestSaveOpensInTheSamePlaceEitherWay.
-//
-// Capture's control is on the bottom line and its window sits just above it,
-// pointing at it. The Save button is at the top right, so a window anchored to
-// the bottom line would be pointing at nothing.
-func TestSaveOpensInTheSamePlaceEitherWay(t *testing.T) {
-	const w, h = 120, 30
-
-	clicked := helpModel()
-	clicked.windowHeight = h
-	clicked.lastTableData = [][]string{{"id"}, {"1"}}
-	save := spans(clicked, saveMode)
-	pressAt(clicked, (save.start+save.end)/2, 0)
-	clickedLayer, ok := clicked.viewCapturePanel(w, h)
-	require.True(t, ok)
-
-	typed := helpModel()
-	typed.windowHeight = h
-	typed.openSavePanel()
-	typedLayer, ok := typed.viewCapturePanel(w, h)
-	require.True(t, ok)
-
-	assert.Equal(t, typedLayer.X, clickedLayer.X)
-	assert.Equal(t, typedLayer.Y, clickedLayer.Y)
-	assert.Equal(t, max((w-clickedLayer.Width)/2, 0), clickedLayer.X, "centred across")
-	assert.Equal(t, max((h-clickedLayer.Height)/2, 0), clickedLayer.Y, "and down")
-}
-
-// TestClickingSaveAgainClosesTheWindow.
-//
-// The press closed it and the button reopened it in the same press, so it
-// looked like nothing happened - the same bug the settings lists had.
-func TestClickingSaveAgainClosesTheWindow(t *testing.T) {
-	m := helpModel()
-	m.windowHeight = 30
-	m.lastTableData = [][]string{{"id"}, {"1"}}
-
-	save := spans(m, saveMode)
-	col := (save.start + save.end) / 2
-
-	pressAt(m, col, 0)
-	require.True(t, m.capture.active, "the first click should open it")
-
-	pressAt(m, col, 0)
-	assert.False(t, m.capture.active, "the second should close it")
 }
 
 // TestClickingATabWithTheSaveWindowOpenSwitchesView, rather than only closing

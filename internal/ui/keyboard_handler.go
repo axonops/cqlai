@@ -32,6 +32,23 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m, nil
 	}
 
+	// The FILE menu takes the keys while it is open, for the same reason: it is
+	// over the view and it is what you were just aiming at.
+	if m.fileMenu.active {
+		switch msg.String() {
+		case "esc", "alt+f", "q":
+			m.closeFileMenu()
+			return m, nil
+		case "up":
+			return m.moveFileMenu(-1)
+		case "down":
+			return m.moveFileMenu(1)
+		case "enter":
+			return m.chooseFileMenuItem()
+		}
+		return m, nil
+	}
+
 	// Any keypress drops the mouse selection: whatever happens next is likely
 	// to move or replace the text under it, and a highlight left behind on
 	// different text is worse than no highlight. Escape does nothing else, so
@@ -139,9 +156,17 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	case "f1", "alt+h":
 		return m.toggleHelp()
 
+	// Alt+F opens the FILE menu, matching Alt+H. There is no F-key for it:
+	// F2 to F5 are the views, and a menu is not one.
+	case "alt+f":
+		span, ok := m.tabSpanFor(m.windowWidth, fileMode)
+		if !ok {
+			return m, nil
+		}
+		return m.openFileMenu(span.start)
+
 	case "f5":
 		return m.handleF5()
-
 
 	case "space":
 		// A space is part of what you are searching for. Without this it went
