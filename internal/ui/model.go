@@ -495,18 +495,21 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			// Initialize viewports
-			m.historyViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
+			// One column narrower than the window: the scrollbar lives there,
+			// and the content is wrapped to the narrower width so no line
+			// loses a character to it.
+			m.historyViewport = viewport.New(viewport.WithWidth(consoleWidth(newWidth)), viewport.WithHeight(newHeight))
 			m.tableViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
 			m.traceViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
 			welcomeMsg := m.getWelcomeMessage()
 			m.fullHistoryContent = welcomeMsg
 			// Wrap content for initial display
-			wrapped := m.wrapHistoryContent(newWidth)
+			wrapped := m.wrapHistoryContent(consoleWidth(newWidth))
 			m.historyViewport.SetContent(wrapped)
 			m.ready = true
 		} else {
 			// Resize viewports
-			m.historyViewport.SetWidth(newWidth)
+			m.historyViewport.SetWidth(consoleWidth(newWidth))
 			m.historyViewport.SetHeight(newHeight)
 			m.tableViewport.SetWidth(newWidth)
 			m.tableViewport.SetHeight(newHeight)

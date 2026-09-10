@@ -30,13 +30,8 @@ type commandList struct {
 // searching reports whether this is the Ctrl+R box rather than the plain list.
 func (c commandList) searching() bool { return c.search != "" }
 
-// scrolls reports whether there are more commands than the box can show.
-//
-// When there are, both the "older" and "newer" rows are drawn, blank at the
-// ends rather than left out. Leaving them out is what made the box grow and
-// shrink by a row as you wheeled through it: at the top there was nothing
-// above, in the middle there was something both ways, and the height changed
-// under the pointer.
+// scrolls reports whether there are more commands than the box can show, and
+// so whether the scrollbar has anything to say.
 func (c commandList) scrolls() bool { return len(c.items) > c.rows }
 
 // last is the index one past the final command shown.
@@ -59,9 +54,6 @@ func (c commandList) firstItemRow() int {
 	row := 2 // the top border, then the title
 	if c.searching() {
 		row++ // the query line
-	}
-	if c.scrolls() {
-		row++ // the "older" row, which is drawn blank at the top
 	}
 	return row
 }
@@ -95,27 +87,39 @@ func (c commandList) render(styles *Styles) string {
 		lines = append(lines, searchStyle.Render(pad(" Search: "+query, inner)))
 	}
 
-	if c.scrolls() {
-		lines = append(lines, quietStyle.Render(centre(arrowRow("▲ (older)", c.scroll > 0), inner)))
-	}
+	// A scrollbar down the right-hand edge rather than an arrow above and
+	// below. The arrows said only whether there was more that way; the bar
+	// says how much of the list is showing and where in it you are, which is
+	// what you want when the history runs to hundreds of commands.
+	thumb := scrollbarColumn(c.last()-c.scroll, c.scroll, len(c.items))
+	thumbStyle := lipgloss.NewStyle().Foreground(styles.Accent)
+	trackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3a3a"))
 
 	switch {
 	case len(c.items) == 0:
 		lines = append(lines, quietStyle.Render(centre("No matching commands", inner)))
 	default:
-		// Two columns for the marker, so selected and unselected rows line up.
+		// Two columns for the marker, so selected and unselected rows line up,
+		// and one at the end for the bar.
 		for i := c.scroll; i < c.last(); i++ {
-			text := ansi.Truncate(c.items[i], max(inner-3, 0), "…")
-			if i == c.selected {
-				lines = append(lines, selectedStyle.Render(pad(" → "+text, inner)))
-			} else {
-				lines = append(lines, itemStyle.Render(pad("   "+text, inner)))
-			}
-		}
-	}
+			text := ansi.Truncate(c.items[i], max(inner-4, 0), "…")
 
-	if c.scrolls() {
-		lines = append(lines, quietStyle.Render(centre(arrowRow("▼ (newer)", c.last() < len(c.items)), inner)))
+			row := pad("   "+text, inner-1)
+			style := itemStyle
+			if i == c.selected {
+				row = pad(" → "+text, inner-1)
+				style = selectedStyle
+			}
+
+			bar := trackStyle.Render("░")
+			switch {
+			case !c.scrolls():
+				bar = " "
+			case thumb[i-c.scroll]:
+				bar = thumbStyle.Render("█")
+			}
+			lines = append(lines, style.Render(row)+bar)
+		}
 	}
 
 	lines = append(lines, quietStyle.Render(strings.Repeat("─", max(inner, 0))))
@@ -125,15 +129,6 @@ func (c commandList) render(styles *Styles) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
 		Render(strings.Join(lines, "\n"))
-}
-
-// arrowRow returns the arrow, or nothing when there is no more list that way.
-// The row is drawn either way, so the box keeps its height as you scroll.
-func arrowRow(arrow string, more bool) string {
-	if more {
-		return arrow
-	}
-	return ""
 }
 
 // centre pads a string to width with the text in the middle.
