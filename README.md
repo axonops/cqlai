@@ -647,7 +647,6 @@ Meta-commands provide additional functionality beyond standard CQL:
   SAVE TO 'users.csv'                     -- Save to CSV (format auto-detected)
   SAVE TO 'users.json'                    -- Save to JSON (format auto-detected)
   SAVE TO 'users.parquet'                 -- Save to Parquet (format auto-detected)
-  SAVE TO 'users.txt' AS ASCII            -- Save as ASCII table
   SAVE TO 'data.out' AS CSV               -- Explicitly specify format
 
   -- Key differences from CAPTURE:
