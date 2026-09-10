@@ -77,8 +77,47 @@ func (m TopBarModel) segments() []infoSegment {
 		{label: "Rows: ", value: rows},
 	}
 
-	// Columns, not bytes, for the same reason as the status line: the
-	// separator is three columns wide and five bytes.
+	return segs
+}
+
+// placeInfoSegments fits the line to the terminal and gives each segment its
+// columns.
+//
+// The same defect as the status line had, one row up: laid out at whatever
+// width it wanted and rendered through lipgloss Width, which wraps rather than
+// truncates, so on a narrow terminal the bar became two rows and the whole view
+// a row taller than the screen.
+//
+// What gives here is the last command, because it is the only field that can be
+// any length - it is cut to what is left rather than dropped, since a shortened
+// command still tells you which one it was. The timing and the row count are a
+// handful of columns and stay. If even that will not fit, fields drop from the
+// right, and Query goes before Rows.
+//
+// Columns, not bytes, for the same reason as the status line: the separator is
+// three columns wide and five bytes.
+func placeInfoSegments(segs []infoSegment, width int) []infoSegment {
+	room := width - infoBarPadding*2
+
+	for {
+		if len(segs) == 0 {
+			return segs
+		}
+
+		fixed := 0
+		for _, seg := range segs[1:] {
+			fixed += lipgloss.Width(statusSeparator) + lipgloss.Width(seg.label) + lipgloss.Width(seg.value)
+		}
+
+		// What the first segment has left for its value.
+		spare := room - fixed - infoBarPadding - lipgloss.Width(segs[0].label)
+		if spare >= 1 {
+			segs[0].value = truncateToWidth(segs[0].value, spare)
+			break
+		}
+		segs = segs[:len(segs)-1]
+	}
+
 	col := infoBarPadding
 	for i := range segs {
 		if i > 0 {
@@ -91,9 +130,34 @@ func (m TopBarModel) segments() []infoSegment {
 	return segs
 }
 
+// truncateToWidth cuts a value to fit, with an ellipsis where anything was
+// taken off, so a shortened command still reads as one that was cut.
+func truncateToWidth(value string, room int) string {
+	if lipgloss.Width(value) <= room {
+		return value
+	}
+	if room <= 1 {
+		return "…"
+	}
+	runes := []rune(value)
+	for len(runes) > 0 && lipgloss.Width(string(runes))+1 > room {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + "…"
+}
+
+// placedSegments is the info bar as it is drawn at a width.
+func (m TopBarModel) placedSegments(width int) []infoSegment {
+	return placeInfoSegments(m.segments(), width)
+}
+
 // fieldAt returns the clickable field covering a column.
-func (m TopBarModel) fieldAt(col int) (string, bool) {
-	for _, seg := range m.segments() {
+//
+// It takes the width for the same reason placeSegments does: what is on the
+// line depends on how much of it there is, and a click has to land on the field
+// actually drawn there.
+func (m TopBarModel) fieldAt(width, col int) (string, bool) {
+	for _, seg := range placeInfoSegments(m.segments(), width) {
 		if col >= seg.start && col < seg.end {
 			return seg.field, seg.field != ""
 		}

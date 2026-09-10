@@ -472,7 +472,7 @@ func (m *MainModel) clickStatusSetting(col int) (*MainModel, tea.Cmd) {
 
 // clickInfoField acts on a press on the query info bar.
 func (m *MainModel) clickInfoField(col int) (*MainModel, tea.Cmd) {
-	field, ok := m.topBar.fieldAt(col)
+	field, ok := m.topBar.fieldAt(m.windowWidth, col)
 	if !ok || field != infoHistory {
 		return m, nil
 	}

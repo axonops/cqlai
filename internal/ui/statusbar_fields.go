@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 
 	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/config"
@@ -34,9 +35,23 @@ const (
 type statusSegment struct {
 	setting    string // one of the setting constants, or "" if not clickable
 	label      string
+	short      string // the label used when the full set will not fit
 	value      string
 	start, end int  // column range covering label and value, end exclusive
 	right      bool // placed against the right-hand edge rather than in the flow
+}
+
+// width is the columns this segment takes as it will be drawn.
+func (s statusSegment) width() int {
+	return lipgloss.Width(s.label) + lipgloss.Width(s.value)
+}
+
+// shorten swaps in the abbreviated label, where there is one.
+func (s statusSegment) shorten() statusSegment {
+	if s.short != "" {
+		s.label = s.short
+	}
+	return s
 }
 
 // clickable reports whether this segment changes something.
@@ -67,14 +82,18 @@ func (m StatusBarModel) segments() []statusSegment {
 	// The version, the user and the host were three fields taking a third of
 	// the line to say things that rarely change. They are one field now, and
 	// clicking it opens the lot, encryption included.
+	// In order of what you would rather keep when the line will not hold all of
+	// it: the keyspace and the consistency level decide what a query does and
+	// where it goes, and the rest are settings you can look up. placeSegments
+	// drops from the right of this list.
 	segs := []statusSegment{
-		{setting: settingConnection, label: "Connection", value: ""},
+		{setting: settingConnection, label: "Connection", short: "Conn", value: ""},
 		{setting: settingKeyspace, label: "KS: ", value: keyspace},
 		{setting: settingConsistency, label: "CL: ", value: m.Consistency},
-		{setting: settingOutput, label: "Output: ", value: m.OutputFormat},
+		{setting: settingOutput, label: "Output: ", short: "Out: ", value: m.OutputFormat},
 		{setting: settingPaging, label: "Pg: ", value: fmt.Sprintf("%d", m.PagingSize)},
-		{setting: settingTracing, label: "Trace: ", value: onOff(m.Tracing)},
-		{setting: settingAutoFetch, label: "Fetch: ", value: onOff(m.AutoFetch)},
+		{setting: settingTracing, label: "Trace: ", short: "Tr: ", value: onOff(m.Tracing)},
+		{setting: settingAutoFetch, label: "Fetch: ", short: "F: ", value: onOff(m.AutoFetch)},
 	}
 
 	// Capture sits against the right-hand edge rather than in the flow, like
@@ -83,50 +102,114 @@ func (m StatusBarModel) segments() []statusSegment {
 	segs = append(segs, statusSegment{
 		setting: settingCapture,
 		label:   "Capture: ",
+		short:   "Cap: ",
 		value:   onOff(m.Capturing),
 		right:   true,
 	})
 
-	// Columns, not bytes. The separator is three columns wide but five bytes,
-	// because of the box-drawing character, and lipgloss.Width also gets
-	// double-width characters right, which a keyspace name can contain.
+	return segs
+}
+
+// layOutFlow gives the left-hand segments their columns, in order.
+//
+// Columns, not bytes. The separator is three columns wide but five bytes,
+// because of the box-drawing character, and lipgloss.Width also gets
+// double-width characters right, which a keyspace name can contain.
+func layOutFlow(segs []statusSegment) []statusSegment {
 	col := statusBarPadding
 	for i := range segs {
-		if segs[i].right {
-			continue
-		}
 		if i > 0 {
 			col += lipgloss.Width(statusSeparator)
 		}
 		segs[i].start = col
-		col += lipgloss.Width(segs[i].label) + lipgloss.Width(segs[i].value)
+		col += segs[i].width()
 		segs[i].end = col
 	}
 	return segs
 }
 
-// place gives the right-anchored segments their columns, once the width of the
-// line is known.
-//
-// Rendering and hit testing both call this, so a click on Capture lands on
-// Capture however wide the terminal is. It is dropped rather than overlapped
-// when the line is too full, for the same reason the Help button is.
-func placeSegments(segs []statusSegment, width int) []statusSegment {
+// flowEnd is the column the laid-out flow reaches.
+func flowEnd(segs []statusSegment) int {
 	end := statusBarPadding
 	for _, seg := range segs {
-		if !seg.right {
-			end = max(end, seg.end)
+		end = max(end, seg.end)
+	}
+	return end
+}
+
+// placeSegments fits the line to the terminal and gives every segment its
+// columns.
+//
+// The bar used to lay itself out at whatever width it wanted and be rendered
+// through lipgloss Width, which wraps rather than truncates: below about a
+// hundred columns the fields ran past the end and the bar became two rows, so
+// the whole view was a row taller than the terminal. It is one row at every
+// width now, and what does not fit is dropped rather than wrapped.
+//
+// What gives, in order:
+//
+//  1. the labels shorten - Connection to Conn, Output to Out, Trace to Tr
+//  2. fields drop from the right of the flow, so the keyspace and consistency
+//     level are the last to go: they decide what a query does and where it
+//     goes, and the rest are settings you can look up
+//
+// Capture keeps its place through both. It is a thing you do rather than a fact
+// about the session, and a control that moves or vanishes as the terminal is
+// resized is worse than a fact you have to go and look up. Its own label
+// shortens with the rest.
+//
+// Rendering and hit testing both call this, so a click lands on the field drawn
+// there however wide the terminal is and whatever has been dropped to fit.
+func placeSegments(segs []statusSegment, width int) []statusSegment {
+	var flow, anchored []statusSegment
+	for _, seg := range segs {
+		if seg.right {
+			anchored = append(anchored, seg)
+		} else {
+			flow = append(flow, seg)
 		}
 	}
 
-	placed := make([]statusSegment, 0, len(segs))
-	for _, seg := range segs {
-		if !seg.right {
-			placed = append(placed, seg)
-			continue
-		}
+	// The right-hand end is reserved before the flow is measured, so a busy
+	// left-hand side cannot push Capture off the line.
+	reserve := 0
+	for _, seg := range anchored {
+		reserve += lipgloss.Width(statusSeparator) + seg.width()
+	}
+	room := width - statusBarPadding - reserve
 
-		w := lipgloss.Width(seg.label) + lipgloss.Width(seg.value)
+	if fitted, ok := fitFlow(flow, room); ok {
+		flow = fitted
+	} else {
+		shortened := make([]statusSegment, len(flow))
+		for i, seg := range flow {
+			shortened[i] = seg.shorten()
+		}
+		for i := range anchored {
+			anchored[i] = anchored[i].shorten()
+		}
+		reserve = 0
+		for _, seg := range anchored {
+			reserve += lipgloss.Width(statusSeparator) + seg.width()
+		}
+		room = width - statusBarPadding - reserve
+
+		// Drop from the right until what is left fits. The first field always
+		// stays: a bar with nothing on it says less than a crowded one.
+		for len(shortened) > 1 {
+			if fitted, ok := fitFlow(shortened, room); ok {
+				shortened = fitted
+				break
+			}
+			shortened = shortened[:len(shortened)-1]
+		}
+		flow = layOutFlow(shortened)
+	}
+
+	placed := flow
+	end := flowEnd(flow)
+	for _, seg := range anchored {
+		w := seg.width()
 		seg.start = width - w - statusBarPadding
 		seg.end = seg.start + w
 		if seg.start <= end+lipgloss.Width(statusSeparator) {
@@ -135,6 +218,12 @@ func placeSegments(segs []statusSegment, width int) []statusSegment {
 		placed = append(placed, seg)
 	}
 	return placed
+}
+
+// fitFlow lays the flow out and reports whether it stays inside room.
+func fitFlow(segs []statusSegment, room int) ([]statusSegment, bool) {
+	laid := layOutFlow(slices.Clone(segs))
+	return laid, flowEnd(laid) <= room
 }
 
 // settingAt returns the setting whose segment covers a column, and where that
