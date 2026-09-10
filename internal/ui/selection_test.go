@@ -322,14 +322,14 @@ func TestStickyHeaderRowsAreNotSelectable(t *testing.T) {
 		windowHeight:  10,
 	}
 
-	require.Equal(t, stickyHeaderHeight, m.stickyHeaderRows())
+	require.Equal(t, m.headerRowCount(m.tableHeaders), m.stickyHeaderRows())
 
-	for row := tabBarHeight; row < tabBarHeight+stickyHeaderHeight; row++ {
+	for row := tabBarHeight; row < tabBarHeight+m.headerRowCount(m.tableHeaders); row++ {
 		_, _, ok := m.docPosition(0, row)
 		assert.False(t, ok, "row %d is the frozen header", row)
 	}
 
-	line, _, ok := m.docPosition(0, tabBarHeight+stickyHeaderHeight)
+	line, _, ok := m.docPosition(0, tabBarHeight+m.headerRowCount(m.tableHeaders))
 	require.True(t, ok)
 	assert.Equal(t, 5, line, "the first selectable row is the content at the scroll offset")
 }

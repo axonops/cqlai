@@ -267,7 +267,7 @@ func (m *MainModel) showQueryResult(data [][]string, columnTypes []string, outpu
 	var content string
 	switch outputFormat {
 	case config.OutputFormatASCII:
-		content = FormatASCIITable(data)
+		content = FormatASCIITableWithTypes(data, columnTypes)
 	case config.OutputFormatJSON:
 		content = formatRowsAsJSON(data)
 	case config.OutputFormatExpand:
@@ -389,7 +389,7 @@ func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (
 	allData := append([][]string{headers}, m.slidingWindow.Rows...)
 	m.lastTableData = allData
 
-	asciiStr := FormatASCIITable(allData)
+	asciiStr := FormatASCIITableWithTypes(allData, columnTypes)
 
 	// Add notice about more data if applicable. AutoFetch will have taken the
 	// lot already, so this only shows when it is off.
@@ -534,11 +534,12 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 		// Store table data and headers
 		m.lastTableData = v
 		m.tableHeaders = v[0] // Store the header row
-		// These results arrive without types - DESCRIBE is the common one - and
-		// the last query's would otherwise be left standing beside a result
-		// they do not describe, with no guarantee even of the same number of
-		// columns. F6 lines them up by index, and PARQUET builds a schema from
-		// them, so both would be quietly wrong.
+		// These are a grid the shell made up rather than a result over a table -
+		// DESCRIBE and the listings - so there are no types to go with them.
+		// The last query's would otherwise be left standing beside a result they
+		// do not describe, with no guarantee even of the same number of columns:
+		// the header's detail row reads them by index and PARQUET builds a
+		// schema from them, so both would be quietly wrong.
 		m.columnTypes = nil
 		m.resultFormat = config.OutputFormatTable
 		m.resetHorizontalScroll()

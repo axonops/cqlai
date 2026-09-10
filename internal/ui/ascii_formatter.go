@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"fmt"
+	"github.com/axonops/cqlai/internal/db"
 	"strings"
 )
 
@@ -48,14 +49,44 @@ func FormatASCIITableHeader(headers [][]string) string {
 	return buf.String()
 }
 
-// FormatASCIITable formats query results as an ASCII table for display in the terminal
+// FormatASCIITable formats query results as an ASCII table for display in the
+// terminal, without a detail row under the column names.
+//
+// Batch mode uses this: its output is piped somewhere and read by something
+// else as often as by a person, and a second header row is one more line to
+// have to skip.
 func FormatASCIITable(data [][]string) string {
+	return FormatASCIITableWithTypes(data, nil)
+}
+
+// FormatASCIITableWithTypes draws the table with the key marker and the type on
+// the row under the column names, the way the boxed table does.
+//
+// columnTypes may be nil or the wrong length, which is what a grid the shell
+// made up rather than a result over a table looks like - DESCRIBE and the
+// listings. Then there is no detail row, the same as there are no key markers.
+func FormatASCIITableWithTypes(data [][]string, columnTypes []string) string {
 	if len(data) == 0 {
 		return "No results"
 	}
 
+	details := asciiHeaderDetails(data[0], columnTypes)
+
 	// Calculate column widths based on actual content (including multi-line)
 	columnWidths := CalculateColumnWidths(data)
+	// With a detail row the name row is shorter than the header string it came
+	// from - the marker has moved down - so the widths are worked out again
+	// from what will actually be drawn.
+	for i, detail := range details {
+		columnWidths[i] = max(len([]rune(db.StripKeyMarker(data[0][i]))), len([]rune(detail)))
+		for _, row := range data[1:] {
+			if i < len(row) {
+				for _, line := range strings.Split(row[i], "\n") {
+					columnWidths[i] = max(columnWidths[i], len([]rune(line)))
+				}
+			}
+		}
+	}
 
 	var buf bytes.Buffer
 
@@ -78,18 +109,25 @@ func FormatASCIITable(data [][]string) string {
 	drawSeparator("+", "+", "+")
 
 	// Draw header
-	buf.WriteString("|")
-	for i, header := range data[0] {
-		buf.WriteString(" ")
-		headerRunes := []rune(header)
-		buf.WriteString(header)
-		// Add padding
-		for j := len(headerRunes); j < columnWidths[i]; j++ {
+	drawHeaderRow := func(cells []string) {
+		buf.WriteString("|")
+		for i, cell := range cells {
 			buf.WriteString(" ")
+			buf.WriteString(cell)
+			for j := len([]rune(cell)); j < columnWidths[i]; j++ {
+				buf.WriteString(" ")
+			}
+			buf.WriteString(" |")
 		}
-		buf.WriteString(" |")
+		buf.WriteString("\n")
 	}
-	buf.WriteString("\n")
+
+	if details == nil {
+		drawHeaderRow(data[0])
+	} else {
+		drawHeaderRow(db.StripKeyMarkers(data[0]))
+		drawHeaderRow(details)
+	}
 
 	// Draw separator after header
 	drawSeparator("+", "+", "+")
@@ -308,4 +346,18 @@ func FormatASCIITableBottomWithWidths(data [][]string, columnWidths []int) strin
 	buf.WriteString("+\n")
 
 	return buf.String()
+}
+
+// asciiHeaderDetails is the detail row for an ASCII table, or nil when there is
+// not one to draw.
+func asciiHeaderDetails(headers, columnTypes []string) []string {
+	if len(columnTypes) != len(headers) {
+		return nil
+	}
+
+	details := make([]string, len(headers))
+	for i, header := range headers {
+		details[i] = headerDetail(header, columnTypes[i])
+	}
+	return details
 }

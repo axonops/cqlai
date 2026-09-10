@@ -378,8 +378,7 @@ func (m *MainModel) getWelcomeMessage() string {
 		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to AI assistant mode"))
 		welcome.WriteString("\n")
 	}
-	welcome.WriteString(m.styles.MutedText.Render("  • F6 - Toggle column data types (in table view)"))
-	welcome.WriteString("\n\n")
+	welcome.WriteString("\n")
 
 	return welcome.String()
 }

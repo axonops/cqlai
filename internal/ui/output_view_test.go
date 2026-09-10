@@ -256,7 +256,7 @@ func TestOnlyATableGetsAFrozenHeader(t *testing.T) {
 
 	m := resultsModel(t, config.OutputFormatTable, wideData())
 	m.tableViewport.SetYOffset(3)
-	assert.Equal(t, stickyHeaderHeight, m.stickyHeaderRows())
+	assert.Equal(t, m.headerRowCount(m.tableHeaders), m.stickyHeaderRows())
 }
 
 // TestScrollingTextSidewaysDoesNotRebuildItAsATable. Scrolling right used to
