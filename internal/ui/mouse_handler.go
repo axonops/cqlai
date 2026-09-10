@@ -107,6 +107,57 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// A press inside a form moves to the field pressed; anywhere else closes it,
+	// rather than acting on something underneath it.
+	if m.form.active {
+		if button, hit := m.formButtonAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			if button == "cancel" {
+				m.closeFileForm()
+				return m, nil
+			}
+			return m.submitFileForm()
+		}
+		if i, hit := m.formMatchAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			m.form.match = i
+
+			// A column list is ticked rather than picked from, and stays open:
+			// choosing columns is a several-at-a-time job.
+			if m.form.awaiting != "" {
+				return m.useOptionValue()
+			}
+			if field := m.form.current(); field != nil && field.kind == fieldColumns {
+				return m.toggleColumn()
+			}
+
+			updated, cmd := m.useMatchInForm()
+			updated.clearDependentFields()
+			return updated, cmd
+		}
+		if i, hit := m.formFieldAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			// Clicking a field that completes shows its list straight away, and
+			// shows all of it: clicking "Keyspace" is asking which keyspaces
+			// there are, not asking to have the one already in it completed.
+			m.form.focusField(i)
+			if field := m.form.current(); field != nil {
+				switch field.kind {
+				case fieldKeyspace, fieldTable, fieldPath, fieldColumns:
+					return m.listField()
+				case fieldOption:
+					m.showOptionValues()
+					return m, nil
+				case fieldYesNo:
+					return m.toggleField()
+				}
+			}
+			return m, nil
+		}
+		if m.inFileForm(m.windowWidth, m.windowHeight, mouse.X, mouse.Y) {
+			return m, nil
+		}
+		m.closeFileForm()
+		return m, nil
+	}
+
 	// A press inside the FILE menu picks an entry; anywhere else closes it,
 	// rather than acting on something underneath it. A press on FILE itself
 	// falls through to the tab line, which toggles the menu shut.
@@ -206,6 +257,18 @@ func (m *MainModel) pressOpensCapture(mouse tea.Mouse) bool {
 
 // handleMouseWheel scrolls the view under the pointer.
 func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
+	// A candidate list takes the wheel while it is showing: it is over the view
+	// and it is the thing just asked for.
+	if m.form.active && len(m.form.matches) > 0 {
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			return m.scrollMatches(-wheelLines)
+		case tea.MouseWheelDown:
+			return m.scrollMatches(wheelLines)
+		}
+		return m, nil
+	}
+
 	// Any modifier plus a vertical wheel means horizontal scrolling.
 	modified := mouse.Mod.Contains(tea.ModShift) ||
 		mouse.Mod.Contains(tea.ModAlt) ||

@@ -32,6 +32,12 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m, nil
 	}
 
+	// A form takes the keys while it is open: it is over the view, and every
+	// key in it is either typing into a field or working the form.
+	if m.form.active {
+		return m.handleFormKey(msg)
+	}
+
 	// The FILE menu takes the keys while it is open, for the same reason: it is
 	// over the view and it is what you were just aiming at.
 	if m.fileMenu.active {
