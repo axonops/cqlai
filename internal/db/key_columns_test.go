@@ -159,3 +159,36 @@ func TestQueriesWithNoTableAreIgnored(t *testing.T) {
 		assert.Nil(t, fromClause.FindStringSubmatch(query), "%q has no FROM", query)
 	}
 }
+
+// TestKeyLabelReadsBackWhatMarkerWrites. The header row shows the name and the
+// row under it the label, so the label has to come back out of the header the
+// marker went into. One file knows the bracket format; a second copy of it is
+// how #118 happened.
+func TestKeyLabelReadsBackWhatMarkerWrites(t *testing.T) {
+	single := KeyColumns{
+		"id":      {Kind: "partition_key", Position: 0},
+		"created": {Kind: "clustering", Position: 0},
+		"name":    {Kind: "regular", Position: 0},
+	}
+	assert.Equal(t, "PK", KeyLabel("id"+single.Marker("id")))
+	assert.Equal(t, "C", KeyLabel("created"+single.Marker("created")))
+	assert.Empty(t, KeyLabel("name"+single.Marker("name")))
+
+	composite := KeyColumns{
+		"a": {Kind: "partition_key", Position: 0},
+		"b": {Kind: "partition_key", Position: 1},
+		"c": {Kind: "clustering", Position: 0},
+		"d": {Kind: "clustering", Position: 1},
+	}
+	assert.Equal(t, "PK1", KeyLabel("a"+composite.Marker("a")))
+	assert.Equal(t, "PK2", KeyLabel("b"+composite.Marker("b")))
+	assert.Equal(t, "C1", KeyLabel("c"+composite.Marker("c")))
+	assert.Equal(t, "C2", KeyLabel("d"+composite.Marker("d")))
+}
+
+// TestKeyLabelIgnoresWhatIsNotAMarker. A column name can end in brackets.
+func TestKeyLabelIgnoresWhatIsNotAMarker(t *testing.T) {
+	for _, header := range []string{"name", "note (draft)", "count(*)", "", "(PK)"} {
+		assert.Empty(t, KeyLabel(header), header)
+	}
+}

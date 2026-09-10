@@ -90,24 +90,15 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 		}
 	}
 
-	// Top border
-	topBorder := "┌"
-	for i, width := range adjustedWidths {
-		topBorder += strings.Repeat("─", width+2)
-		if i < len(adjustedWidths)-1 {
-			topBorder += "┬"
-		}
-	}
-	topBorder += "┐"
-	lines = append(lines, topBorder)
+	// The border, the names, what each column is, and the separator - the same
+	// block the single-line table and the frozen header draw, so a wide cell
+	// somewhere in the result cannot change what the header looks like.
+	lines = append(lines, m.headerBlock(data[0], adjustedWidths)...)
 
-	// Process each row
-	for rowIdx, row := range data {
-		// Skip header row for boundary tracking (we only care about data rows)
-		if rowIdx > 0 {
-			// Record the starting line of this data row
-			m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines))
-		}
+	// Process each data row
+	for _, row := range data[1:] {
+		// Record the starting line of this data row
+		m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines))
 
 		// Split each cell into lines
 		cellLines := make([][]string, len(row))
@@ -138,11 +129,6 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 					cellContent = cellLines[colIdx][lineIdx]
 				}
 
-				// Apply styling for headers
-				if rowIdx == 0 {
-					cellContent = m.styles.AccentText.Bold(true).Render(cellContent) + "\x1b[0m"
-				}
-
 				// Calculate padding
 				plainContent := stripAnsi(cellContent)
 				padding := adjustedWidths[colIdx] - len([]rune(plainContent))
@@ -155,30 +141,9 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 			lines = append(lines, line)
 		}
 
-		// Add separator after header row
-		if rowIdx == 0 && len(data) > 1 {
-			separator := "├"
-			for i, width := range adjustedWidths {
-				separator += strings.Repeat("─", width+2)
-				if i < len(adjustedWidths)-1 {
-					separator += "┼"
-				}
-			}
-			separator += "┤"
-			lines = append(lines, separator)
-		}
 	}
 
-	// Bottom border
-	bottomBorder := "└"
-	for i, width := range adjustedWidths {
-		bottomBorder += strings.Repeat("─", width+2)
-		if i < len(adjustedWidths)-1 {
-			bottomBorder += "┴"
-		}
-	}
-	bottomBorder += "┘"
-	lines = append(lines, bottomBorder)
+	lines = append(lines, borderRow("└", "┴", "┘", adjustedWidths))
 
 	// Add the bottom border line as a boundary so it's included when scrolling to bottom
 	m.tableRowBoundaries = append(m.tableRowBoundaries, len(lines)-1)

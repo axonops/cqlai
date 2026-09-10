@@ -311,7 +311,6 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `F3` | Cambiar a vista de táboa |
 | `F4` | Cambiar a vista de trazas (cando o trazado está habilitado) |
 | `F5` | Cambiar a vista de conversa IA |
-| `F6` | Activar/desactivar tipos de datos de columna en cabeceiras de táboa |
 
 #### Desprazamento e Navegación de Táboa
 | Atallo | Acción | Alternativa macOS |
@@ -360,7 +359,7 @@ o terminal só informa dos xiros verticais como pulsacións de tecla.
 **Nota para Usuarios de macOS:**
 - A maioría de atallos `Ctrl` funcionan tal cal en macOS, pero tamén podes usar a tecla `⌘` (Comando) como alternativa
 - A tecla `Alt` está etiquetada como `Option` nos teclados Mac
-- As teclas de función (F1-F6) poden requirir manter premida a tecla `Fn` dependendo da túa configuración de Mac
+- As teclas de función (F1-F5) poden requirir manter premida a tecla `Fn` dependendo da túa configuración de Mac
 
 ### Autocompletado con Tabulador
 

@@ -142,8 +142,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	case "f5":
 		return m.handleF5()
 
-	case "f6":
-		return m.handleF6()
 
 	case "space":
 		// A space is part of what you are searching for. Without this it went

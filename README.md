@@ -323,7 +323,26 @@ nothing to show yet is dimmed.
 | `F3` | Results | The last query's output, in whatever `OUTPUT` format is set |
 | `F4` | Trace | Query trace, when tracing is enabled |
 | `F5` | AI | The AI conversation |
-| `F6` | | Toggle column data types in table headers |
+
+#### Column headers
+
+Query results carry a second header row saying what each column is: its key
+marker, where it has one, and its CQL type.
+
+```
+┌──────────┬──────────┬──────────────────────┬─────────┐
+│ id       │ region   │ created              │ name    │
+│ PK1 uuid │ PK2 text │ C timestamp          │ varchar │
+├──────────┼──────────┼──────────────────────┼─────────┤
+│ 1        │ eu-west  │ 2026-09-10T11:22:33Z │ alice   │
+```
+
+`PK` is a partition key column and `C` a clustering column, numbered by
+component where there is more than one. It is always shown - there is no key to
+press - and costs one row for the whole table rather than widening every column.
+
+`DESCRIBE` and the listings have no second row: their columns are not columns of
+a table and have no CQL type.
 
 #### Scrolling & Table Navigation
 | Shortcut | Action | macOS Alternative |
@@ -401,7 +420,7 @@ only reports vertical wheel spins as key presses.
 **Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative
 - `Alt` key is labeled as `Option` on Mac keyboards
-- Function keys (F1-F6) may require holding `Fn` key depending on your Mac settings
+- Function keys (F1-F5) may require holding `Fn` key depending on your Mac settings
 
 ### Tab Completion
 

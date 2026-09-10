@@ -314,7 +314,6 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `F3` | Cambiar a vista de tabla |
 | `F4` | Cambiar a vista de trazas (cuando el trazado está habilitado) |
 | `F5` | Cambiar a vista de conversación IA |
-| `F6` | Activar/desactivar tipos de datos de columna en encabezados de tabla |
 
 #### Desplazamiento y Navegación de Tabla
 | Atajo | Acción | Alternativa macOS |
@@ -363,7 +362,7 @@ porque el terminal solo informa de los giros verticales como pulsaciones de tecl
 **Nota para Usuarios de macOS:**
 - La mayoría de atajos `Ctrl` funcionan tal cual en macOS, pero también puedes usar la tecla `⌘` (Comando) como alternativa
 - La tecla `Alt` está etiquetada como `Option` en los teclados Mac
-- Las teclas de función (F1-F6) pueden requerir mantener presionada la tecla `Fn` dependiendo de tu configuración de Mac
+- Las teclas de función (F1-F5) pueden requerir mantener presionada la tecla `Fn` dependiendo de tu configuración de Mac
 
 ### Autocompletado con Tabulador
 

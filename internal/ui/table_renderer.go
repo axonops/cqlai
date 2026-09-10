@@ -33,7 +33,7 @@ func (m *MainModel) refreshTableContent(allData [][]string) {
 
 	switch format {
 	case config.OutputFormatASCII:
-		content = FormatASCIITable(allData)
+		content = FormatASCIITableWithTypes(allData, m.columnTypes)
 	case config.OutputFormatExpand:
 		content, boundaries = FormatExpandTableWithBoundaries(allData, m.styles)
 	case config.OutputFormatJSON:
@@ -57,14 +57,17 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 	needsRebuild := m.cachedTableLines == nil || !m.isSameTableData(data)
 
 	if needsRebuild {
-		// Calculate column widths (using rune count for proper Unicode handling)
-		colWidths := make([]int, len(data[0]))
-		for _, row := range data {
+		// Start from what the header block needs - the name on one row and the
+		// key marker and type on the next - so a column is wide enough for what
+		// is drawn in it rather than for the header string alone.
+		colWidths := m.headerWidths(data[0])
+		for _, row := range data[1:] {
 			for i, cell := range row {
-				plainCell := stripAnsi(cell)
-				cellWidth := len([]rune(plainCell)) // Count runes, not bytes
-				if cellWidth > colWidths[i] {
-					colWidths[i] = cellWidth
+				if i >= len(colWidths) {
+					break
+				}
+				if w := runeWidth(cell); w > colWidths[i] {
+					colWidths[i] = w
 				}
 			}
 		}
@@ -90,7 +93,7 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 				}
 			}
 		} else {
-			// First time or after F6 reset - store the widths
+			// First time for this result - store the widths
 			m.initialColumnWidths = make([]int, len(colWidths))
 			copy(m.initialColumnWidths, colWidths)
 		}
@@ -177,42 +180,10 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 	var lines []string
 	m.tableRowBoundaries = []int{} // Reset row boundaries
 
-	// Top border
-	topBorder := "┌"
-	for i, width := range colWidths {
-		topBorder += strings.Repeat("─", width+2)
-		if i < len(colWidths)-1 {
-			topBorder += "┬"
-		}
-	}
-	topBorder += "┐"
-	lines = append(lines, topBorder)
-
-	// Header row (if exists)
+	// The border, the names, what each column is, and the separator. The frozen
+	// header draws the same block, so the two cannot disagree about the layout.
 	if len(data) > 0 {
-		headerRow := "│"
-		for i, cell := range data[0] {
-			// Style header cells and ensure reset at end
-			styledCell := m.styles.AccentText.Bold(true).Render(cell) + "\x1b[0m"
-			plainCell := stripAnsi(cell)
-			padding := colWidths[i] - len([]rune(plainCell))
-			if padding < 0 {
-				padding = 0
-			}
-			headerRow += " " + styledCell + strings.Repeat(" ", padding) + " │"
-		}
-		lines = append(lines, headerRow)
-
-		// Header separator
-		separator := "├"
-		for i, width := range colWidths {
-			separator += strings.Repeat("─", width+2)
-			if i < len(colWidths)-1 {
-				separator += "┼"
-			}
-		}
-		separator += "┤"
-		lines = append(lines, separator)
+		lines = append(lines, m.headerBlock(data[0], colWidths)...)
 	}
 
 	// Data rows
@@ -287,42 +258,7 @@ func (m *MainModel) buildTableStickyHeader() string {
 	var lines []string
 	colWidths := m.columnWidths
 
-	// Build top border
-	topBorder := "┌"
-	for i, width := range colWidths {
-		topBorder += strings.Repeat("─", width+2)
-		if i < len(colWidths)-1 {
-			topBorder += "┬"
-		}
-	}
-	topBorder += "┐"
-	lines = append(lines, topBorder)
-
-	// Build header row with styling
-	headerRow := "│"
-	for i, header := range m.tableHeaders {
-		if i < len(colWidths) {
-			padding := colWidths[i] - len([]rune(header))
-			if padding < 0 {
-				padding = 0
-			}
-			// Style the header
-			styledHeader := m.styles.AccentText.Bold(true).Render(header) + "\x1b[0m"
-			headerRow += " " + styledHeader + strings.Repeat(" ", padding) + " │"
-		}
-	}
-	lines = append(lines, headerRow)
-
-	// Build separator
-	separator := "├"
-	for i, width := range colWidths {
-		separator += strings.Repeat("─", width+2)
-		if i < len(colWidths)-1 {
-			separator += "┼"
-		}
-	}
-	separator += "┤"
-	lines = append(lines, separator)
+	lines = append(lines, m.headerBlock(m.tableHeaders, colWidths)...)
 
 	// Apply horizontal scrolling if needed
 	if m.horizontalOffset > 0 || m.tableWidth > m.tableViewport.Width() {

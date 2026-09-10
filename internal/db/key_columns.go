@@ -60,8 +60,24 @@ func (k KeyColumns) count(kind string) int {
 }
 
 // keyMarker matches a marker at the end of a header: (PK), (C), or either with
-// a component number.
-var keyMarker = regexp.MustCompile(`\s+\((?:PK|C)\d*\)$`)
+// a component number. The label is captured so KeyLabel can read it back.
+var keyMarker = regexp.MustCompile(`\s+\(((?:PK|C)\d*)\)$`)
+
+// KeyLabel returns the key marker of a header without its brackets - PK, PK2,
+// C, C1 - or "" for a column that is neither.
+//
+// The header row shows the name alone and the row under it shows the label
+// beside the type, so the two are drawn apart. Reading the label back out of
+// the header keeps the bracket format in this file, next to Marker, which is
+// what writes it: two places knowing that shape is how the ten hand-rolled
+// strippers in #118 happened.
+func KeyLabel(header string) string {
+	m := keyMarker.FindStringSubmatch(header)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
 
 // StripKeyMarker removes the key marker from a header, leaving the column name
 // as Cassandra knows it.

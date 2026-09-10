@@ -31,10 +31,6 @@ const (
 	// the viewport occupies. WindowSizeMsg reserves the same figure.
 	tabBarHeight = 1
 
-	// stickyHeaderHeight is how many rows the frozen table header covers when a
-	// table is scrolled: top border, column names, separator.
-	stickyHeaderHeight = 3
-
 	// multiClickInterval is how close together presses have to be to count as a
 	// double or triple click.
 	multiClickInterval = 400 * time.Millisecond
@@ -117,7 +113,10 @@ func (m *MainModel) stickyHeaderRows() int {
 	}
 	if m.viewMode == "table" && m.hasTable && m.tableViewport.YOffset() > 0 &&
 		len(m.tableHeaders) > 0 && m.lastTableData != nil && m.columnWidths != nil {
-		return stickyHeaderHeight
+		// headerBlock decides how many rows it draws - four with a detail row
+		// under the names, three without - and this has to be the same number
+		// or the frozen header covers the wrong rows.
+		return m.headerRowCount(m.tableHeaders)
 	}
 	return 0
 }

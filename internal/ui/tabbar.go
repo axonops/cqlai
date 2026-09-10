@@ -22,8 +22,7 @@ type modeTab struct {
 }
 
 // modeTabs lists the tabs in display order. The labels are capitals so the
-// line reads as a row of controls rather than a sentence. F6 is deliberately absent: it sits
-// next to these keys but toggles data types rather than switching mode.
+// line reads as a row of controls rather than a sentence.
 var modeTabs = []modeTab{
 	// "Console" rather than "History": Ctrl+R searches command history, which
 	// is a different thing, and this view is the running transcript of what you

@@ -127,7 +127,6 @@ type MainModel struct {
 	completingPath     bool
 	selection          textSelection // Text being dragged out with the mouse, if any
 	viewMode           string        // "history", "table", "trace", or "ai_info"
-	showDataTypes      bool          // Whether to show column data types in table headers
 	columnTypes        []string      // Store column data types
 	tableRowBoundaries []int         // Line numbers where table rows start
 

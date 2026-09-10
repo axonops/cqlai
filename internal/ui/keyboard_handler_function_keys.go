@@ -1,12 +1,9 @@
 package ui
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/axonops/cqlai/internal/db"
 )
 
 // handleF2 handles F2 key - switch to query/history view
@@ -116,53 +113,6 @@ func (m *MainModel) handleF5() (*MainModel, tea.Cmd) {
 		// Always rebuild conversation to ensure proper wrapping with current viewport width
 		// (header is added automatically by rebuildAIConversation if messages are empty)
 		m.rebuildAIConversation()
-	}
-	return m, nil
-}
-
-// handleF6 handles F6 key - toggle showing data types in table headers
-func (m *MainModel) handleF6() (*MainModel, tea.Cmd) {
-	if m.hasTable && m.viewMode == "table" {
-		m.showDataTypes = !m.showDataTypes
-		// Refresh the table view with new headers
-		if len(m.lastTableData) > 0 {
-			// Update ALL headers in the stored data (not just visible ones)
-			if len(m.columnTypes) > 0 {
-				// Process all columns in the header row
-				for i := 0; i < len(m.lastTableData[0]) && i < len(m.columnTypes); i++ {
-					// Parse the original header to extract base name and key indicators
-					original := m.tableHeaders[i]
-
-					// Remove any existing type info [...]
-					if idx := strings.Index(original, " ["); idx != -1 {
-						if endIdx := strings.Index(original[idx:], "]"); endIdx != -1 {
-							original = original[:idx] + original[idx+endIdx+1:]
-						}
-					}
-
-					// Extract base name and key indicator
-					baseName := db.StripKeyMarker(original)
-					keyIndicator := strings.TrimPrefix(original, baseName)
-
-					// Build the new header
-					newHeader := baseName
-					if m.showDataTypes && m.columnTypes[i] != "" {
-						newHeader += " [" + m.columnTypes[i] + "]"
-					}
-					newHeader += keyIndicator
-
-					// Update the actual stored data
-					m.lastTableData[0][i] = newHeader
-				}
-			}
-
-			// Clear cache and initial widths to force full rebuild with new headers
-			m.cachedTableLines = nil
-			m.initialColumnWidths = nil // Allow column widths to be recalculated
-			// Refresh the table display with the updated data
-			tableStr := m.formatTableForViewport(m.lastTableData)
-			m.tableViewport.SetContent(tableStr)
-		}
 	}
 	return m, nil
 }
