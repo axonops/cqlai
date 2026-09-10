@@ -27,24 +27,35 @@ func helpModel() *MainModel {
 	}
 }
 
-// TestTheHelpButtonIsOnTheTabLine, at the right-hand end.
-func TestTheHelpButtonIsOnTheTabLine(t *testing.T) {
+// TestTheHelpButtonIsAtTheLeftOfTheTabLine.
+//
+// It is the thing you reach for when you do not know where anything is, and
+// the left is where reading starts.
+func TestTheHelpButtonIsAtTheLeftOfTheTabLine(t *testing.T) {
 	m := helpModel()
 
-	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(100)), "Help")
+	assert.Contains(t, stripAnsiForTest(m.ViewTabBar(100)), "HELP")
 
 	spans := m.layoutTabs(100)
-	help := spans[len(spans)-1]
-	assert.Equal(t, helpMode, help.mode, "the button should be last")
-	assert.Equal(t, 100, help.end, "and against the right edge")
+	assert.Equal(t, helpMode, spans[0].mode, "the button should come first")
+	assert.Equal(t, 0, spans[0].start, "and against the left edge")
+}
+
+// spans finds a button on the tab line.
+func spans(m *MainModel, mode string) tabSpan {
+	for _, span := range m.layoutTabs(m.windowWidth) {
+		if span.mode == mode {
+			return span
+		}
+	}
+	return tabSpan{}
 }
 
 // TestClickingHelpOpensAndClosesIt.
 func TestClickingHelpOpensAndClosesIt(t *testing.T) {
 	m := helpModel()
 
-	spans := m.layoutTabs(m.windowWidth)
-	help := spans[len(spans)-1]
+	help := spans(m, helpMode)
 	col := (help.start + help.end) / 2
 
 	pressAt(m, col, 0)
@@ -244,19 +255,19 @@ func TestTheButtonGivesWayToTheTabNames(t *testing.T) {
 	m := helpModel()
 
 	wide := stripAnsiForTest(m.ViewTabBar(100))
-	assert.Contains(t, wide, "Console (F2)")
-	assert.Contains(t, wide, "Help")
+	assert.Contains(t, wide, "CONSOLE (F2)")
+	assert.Contains(t, wide, "HELP")
 
 	// Room for the names and the button, but not the key hints.
 	medium := stripAnsiForTest(m.ViewTabBar(60))
-	assert.Contains(t, medium, "Console")
+	assert.Contains(t, medium, "CONSOLE")
 	assert.NotContains(t, medium, "(F2)")
-	assert.Contains(t, medium, "Help")
+	assert.Contains(t, medium, "HELP")
 
 	// Room for the names only. The button goes rather than the names.
 	tight := stripAnsiForTest(m.ViewTabBar(40))
-	assert.Contains(t, tight, "Console")
-	assert.NotContains(t, tight, "Help")
+	assert.Contains(t, tight, "CONSOLE")
+	assert.NotContains(t, tight, "HELP")
 }
 
 // TestTheButtonNamesBothKeys. F1 does not reach the application on Terminator
@@ -265,31 +276,37 @@ func TestTheButtonNamesBothKeys(t *testing.T) {
 	m := helpModel()
 
 	wide := stripAnsiForTest(m.ViewTabBar(100))
-	assert.Contains(t, wide, "Help (F1/Alt+H)")
+	assert.Contains(t, wide, "HELP (F1/Alt+H)")
 }
 
 // TestTheLabelShortensBeforeTheButtonGoes: a terminal with room for "Help" but
-// not for both keys keeps the button.
+// not for both keys keeps the button, and one with room only for "?" keeps that.
 func TestTheLabelShortensBeforeTheButtonGoes(t *testing.T) {
 	m := helpModel()
 
 	for _, width := range []int{70, 50, 44} {
-		bar := stripAnsiForTest(m.ViewTabBar(width))
-		assert.Contains(t, bar, "Help", "width %d should still offer the button: %q", width, bar)
+		found := false
+		for _, span := range m.layoutTabs(width) {
+			if span.mode == helpMode {
+				found = true
+			}
+		}
+		assert.True(t, found, "width %d should still offer the button: %q",
+			width, stripAnsiForTest(m.ViewTabBar(width)))
 	}
 }
 
 // TestTheTabsDoNotGiveUpTheirNamesForALabelThatWillNotBeDrawn.
 //
 // The room reserved for the button is its shortest useful label, not its
-// longest: reserving for "Help (F1/Alt+H)" on a terminal that was only ever
+// longest: reserving for "HELP (F1/Alt+H)" on a terminal that was only ever
 // going to fit "Help" would shorten the tab names for nothing.
 func TestTheTabsDoNotGiveUpTheirNamesForALabelThatWillNotBeDrawn(t *testing.T) {
 	m := helpModel()
 
 	bar := stripAnsiForTest(m.ViewTabBar(44))
-	assert.Contains(t, bar, "Console", "the names should survive here")
-	assert.Contains(t, bar, "Help")
+	assert.Contains(t, bar, "CONSOLE", "the names should survive here")
+	assert.Contains(t, bar, "?", "and the button shortens rather than going")
 }
 
 // TestTheTabLineNeverWrapsWithTheButtonOnIt, at any width.

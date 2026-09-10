@@ -141,12 +141,7 @@ type MainModel struct {
 	aiCommandHistory       []string        // Separate history for AI commands
 
 	// Save modal
-	saveModalActive   bool            // Whether save modal is active
-	saveModalStep     int             // 0: format selection, 1: filename input
-	saveModalFormat   int             // Selected format index (0: CSV, 1: JSON, 2: ASCII)
-	saveModalFilename string          // Filename being entered
-	saveModalInput    textinput.Model // Text input for filename
-	aiHistoryIndex    int             // Current position in AI history
+	aiHistoryIndex int // Current position in AI history
 
 	// Tracing support
 	traceViewport         viewport.Model // Viewport for trace results

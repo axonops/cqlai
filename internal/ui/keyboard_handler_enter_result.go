@@ -29,15 +29,11 @@ func (m *MainModel) processCommandResult(command string, result interface{}, sta
 			return m, nil
 		}
 
-		// Check if interactive mode
+		// SAVE with no arguments asks which format and where, in the window
+		// Capture uses. Centred, because it was typed rather than clicked.
 		if v.Interactive {
-			// Open save modal
-			m.saveModalActive = true
-			m.saveModalStep = 0
-			m.saveModalFormat = 0
-			m.saveModalFilename = ""
 			m.input.Reset()
-			return m, nil
+			return m.openSavePanel()
 		}
 
 		// Direct save - execute the save command

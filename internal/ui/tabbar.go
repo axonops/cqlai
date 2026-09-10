@@ -21,19 +21,28 @@ type modeTab struct {
 	key   string
 }
 
-// modeTabs lists the tabs in display order. F6 is deliberately absent: it sits
+// modeTabs lists the tabs in display order. The labels are capitals so the
+// line reads as a row of controls rather than a sentence. F6 is deliberately absent: it sits
 // next to these keys but toggles data types rather than switching mode.
 var modeTabs = []modeTab{
 	// "Console" rather than "History": Ctrl+R searches command history, which
 	// is a different thing, and this view is the running transcript of what you
 	// typed and what came back.
-	{mode: "history", label: "Console", short: "C", key: "F2"},
+	{mode: "history", label: "CONSOLE", short: "C", key: "F2"},
 	// "Results" rather than "Table": the same view shows EXPAND, ASCII and JSON
 	// output, none of which is a table, and "table" already means a schema
 	// object to anyone using this.
-	{mode: "table", label: "Results", short: "R", key: "F3"},
-	{mode: "trace", label: "Trace", short: "T", key: "F4"},
+	{mode: "table", label: "RESULTS", short: "R", key: "F3"},
+	{mode: "trace", label: "TRACE", short: "T", key: "F4"},
 	{mode: "ai", label: "AI", short: "A", key: "F5"},
+}
+
+// hasResults reports whether there is anything for SAVE to write.
+//
+// The same thing the SAVE command checks before it refuses, so the button and
+// the command agree about whether there is anything there.
+func (m *MainModel) hasResults() bool {
+	return len(m.lastTableData) > 0
 }
 
 // tabAvailable reports whether a tab has anything to show. An unavailable tab
@@ -93,8 +102,7 @@ func tabLabelTiers(tabs []modeTab) [][]string {
 	return [][]string{full, plain, short}
 }
 
-// fitTabs picks the labels to draw and whether the Help button fits beside
-// them.
+// fitTabs picks the labels to draw and whether the buttons fit beside them.
 //
 // The order says what is worth giving up first. Key hints go before the button,
 // because the keys are also in the help the button opens. The names do not: a
@@ -104,7 +112,7 @@ func fitTabs(tabs []modeTab, width int) ([]string, bool) {
 	tiers := tabLabelTiers(tabs)
 
 	for i, labels := range tiers {
-		if tabBarWidth(labels) <= width-helpReserve {
+		if tabBarWidth(labels) <= width-buttonReserve {
 			return labels, true
 		}
 		// Names survive at the button's expense; the first tier, which is
@@ -113,7 +121,7 @@ func fitTabs(tabs []modeTab, width int) ([]string, bool) {
 			return labels, false
 		}
 	}
-	return tiers[len(tiers)-1], tabBarWidth(tiers[len(tiers)-1]) <= width-helpReserve
+	return tiers[len(tiers)-1], tabBarWidth(tiers[len(tiers)-1]) <= width-buttonReserve
 }
 
 // tabSeparator sits between tabs; the padding is part of each tab's click area.
@@ -148,13 +156,23 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 	}
 
 	tabs := m.visibleTabs()
-	labels, withHelp := fitTabs(tabs, width)
+	labels, withButtons := fitTabs(tabs, width)
 
-	spans := make([]tabSpan, 0, len(tabs))
+	// Help first, at the left-hand end, so the tabs start after it. What it
+	// may take is whatever the tabs and the Save button do not need.
+	spans := make([]tabSpan, 0, len(tabs)+2)
 	col := 0
+	if withButtons {
+		budget := width - tabBarWidth(labels) - saveReserve
+		if help, ok := helpSpan(budget); ok {
+			spans = append(spans, help)
+			col = help.end
+		}
+	}
+
 	for i, t := range tabs {
 		next := col
-		if i > 0 {
+		if i > 0 || col > 0 {
 			next += len(tabSeparator)
 		}
 		end := next + len(labels[i]) + 2
@@ -173,46 +191,82 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 		col = end
 	}
 
-	if withHelp {
-		if help, ok := helpSpan(width, col); ok {
-			spans = append(spans, help)
+	if withButtons {
+		if save, ok := saveSpan(width, col, m.hasResults()); ok {
+			spans = append(spans, save)
 		}
 	}
 	return spans
 }
 
-// helpLabels are the Help button's labels, longest first.
+// The two buttons on the tab line, one at each end.
 //
-// Both keys, because F1 does not reach the application on Terminator, Konsole
-// and others - they take it for their own help - so a button naming only F1
-// names a key that does nothing on those terminals.
-var helpLabels = []string{"Help (F1/Alt+H)", "Help", "?"}
-
-// helpReserve is the room the tabs give up for the button: its *shortest*
-// useful label, not its longest. Reserving for the longest would shorten the
-// tab names on a terminal that was only ever going to fit "Help".
-var helpReserve = lipgloss.Width(" Help ")
-
-// helpMode is the pseudo-mode the Help button reports. It is not a view: it
-// opens a window over whichever view you are in and leaves it there.
-const helpMode = "help"
-
-// helpSpan is where the Help button sits, at the right-hand end of the line.
+// Help is on the left because it is the thing you reach for when you do not
+// know where anything is, and the left is where reading starts. Save is on the
+// right, out of the way of the tabs, because it acts on what is already on
+// screen rather than moving you between views.
 //
-// It shortens before it disappears, and it disappears before it would sit on
-// top of a tab: losing the button is better than a line where a click lands on
-// whatever happens to be underneath it.
-func helpSpan(width, tabsEnd int) (tabSpan, bool) {
-	for _, label := range helpLabels {
+// Both keep their labels, longest first, and shorten before they disappear.
+var (
+	// Both keys, because F1 does not reach the application on Terminator,
+	// Konsole and others - they take it for their own help - so a button
+	// naming only F1 names a key that does nothing there.
+	helpLabels = []string{"HELP (F1/Alt+H)", "HELP", "?"}
+	saveLabels = []string{"SAVE RESULTS", "SAVE"}
+)
+
+// buttonReserve is the room the tabs give up for the two buttons: their
+// *shortest* useful labels, not their longest. Reserving for the longest would
+// shorten the tab names on a terminal that was only ever going to fit "Help".
+var (
+	helpReserve = lipgloss.Width(" ? ")
+	saveReserve = lipgloss.Width(" SAVE ")
+
+	buttonReserve = helpReserve + saveReserve
+)
+
+// The pseudo-modes the buttons report. Neither is a view: they open a window
+// over whichever view you are in and leave it there.
+const (
+	helpMode = "help"
+	saveMode = "save"
+)
+
+// buttonSpan fits a label into the room available, longest first.
+func buttonSpan(mode string, labels []string, start, limit int) (tabSpan, bool) {
+	for _, label := range labels {
+		end := start + lipgloss.Width(label) + 2
+		if end <= limit {
+			return tabSpan{mode: mode, label: label, start: start, end: end, available: true}, true
+		}
+	}
+	return tabSpan{}, false
+}
+
+// helpSpan is where the Help button sits, at the left-hand end.
+//
+// budget is what it may take without pushing a tab off the line. Help sits in
+// front of the tabs, so its width moves all of them: taking its longest label
+// whatever the width would drop tabs off the right to make room for a key hint,
+// and the tabs are the navigation.
+func helpSpan(budget int) (tabSpan, bool) {
+	return buttonSpan(helpMode, helpLabels, 0, budget)
+}
+
+// saveSpan is where the Save button sits, against the right-hand edge.
+//
+// It disappears before it would sit on top of a tab: losing the button is
+// better than a line where a click lands on whatever is underneath it.
+//
+// available is whether there is anything to save. With no results it is dimmed
+// and ignores clicks, the same as a tab with nothing to show - offering to save
+// nothing and then reporting that there is nothing is worse than saying so on
+// the button.
+func saveSpan(width, tabsEnd int, available bool) (tabSpan, bool) {
+	for _, label := range saveLabels {
 		start := width - lipgloss.Width(label) - 2
 		if start > tabsEnd {
-			return tabSpan{
-				mode:      helpMode,
-				label:     label,
-				start:     start,
-				end:       width,
-				available: true,
-			}, true
+			return tabSpan{mode: saveMode, label: label, start: start, end: width, available: available}, true
 		}
 	}
 	return tabSpan{}, false
@@ -256,7 +310,9 @@ func (m *MainModel) ViewTabBar(width int) string {
 		// The Help button is placed against the right edge rather than after
 		// the tab before it, so pad out to wherever it starts.
 		switch {
-		case span.mode == helpMode:
+		case span.mode == saveMode:
+			// Placed against the right edge rather than after the tab before
+			// it, so pad out to wherever it starts.
 			b.WriteString(strings.Repeat(" ", max(span.start-col, 0)))
 		case i > 0:
 			b.WriteString(separatorStyle.Render(tabSeparator))
