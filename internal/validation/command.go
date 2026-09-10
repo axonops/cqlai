@@ -30,7 +30,7 @@ func ValidateCommandSyntax(command string) error {
 	validMetaCommands := []string{
 		"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT",
 		"PAGING", "AUTOFETCH", "TRACING", "SOURCE",
-		"COPY", "SHOW", "EXPAND", "CAPTURE",
+		"COPY", "SHOW", "EXPAND", "AUTOSAVE", "CAPTURE",
 		"HELP", "SAVE", "MOUSE",
 	}
 

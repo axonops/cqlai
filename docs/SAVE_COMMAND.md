@@ -118,9 +118,9 @@ Example output:
 +----+------------+------------------+------------+
 ```
 
-## Differences from CAPTURE
+## Differences from AUTOSAVE
 
-| Feature | SAVE | CAPTURE |
+| Feature | SAVE | AUTOSAVE |
 |---------|------|---------|
 | **Purpose** | Export displayed results | Record future query outputs |
 | **Timing** | After query execution | Before query execution |
@@ -135,12 +135,12 @@ Example output:
 - For exporting paginated results (saves only loaded pages)
 - Quick export of query results for sharing
 
-### When to Use CAPTURE
+### When to Use AUTOSAVE
 
 - Recording an entire session
 - Automated scripting with predictable output
 - Continuous logging of multiple queries
-- When you need to capture errors and warnings
+- When you need every query saved, not just this one
 
 ## Working with Paginated Results
 
@@ -239,6 +239,6 @@ While not directly related to SAVE, these shortcuts help navigate results before
 
 ## See Also
 
-- [CAPTURE Command](./CAPTURE_COMMAND.md) - For continuous output recording
+- [AUTOSAVE Command](./AUTOSAVE_COMMAND.md) - For continuous output recording
 - [COPY TO Command](./COPY_COMMAND.md) - For direct table export with full control
 - [OUTPUT Command](./OUTPUT_COMMAND.md) - For changing display format

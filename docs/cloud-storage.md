@@ -48,8 +48,8 @@ COPY users TO '/mnt/s3/data/users.parquet';
 -- Import from mounted cloud storage
 COPY users FROM '/mnt/s3/data/users.csv';
 
--- Capture to cloud storage
-CAPTURE '/mnt/azure/query-results.json' FORMAT='JSON';
+-- Save every query to mounted cloud storage
+AUTOSAVE JSON '/mnt/azure/query-results/';
 ```
 
 ## Migration from Previous Versions

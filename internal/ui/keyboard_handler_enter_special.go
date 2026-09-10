@@ -28,7 +28,7 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 	// The bottom line already says whether capture is running, so the status
 	// was telling you something you could see; the window is what you wanted.
 	// CAPTURE with a file, or OFF, still goes to the command.
-	if upperCommand == "CAPTURE" {
+	if upperCommand == autoSaveWord || upperCommand == "CAPTURE" {
 		m.input.Reset()
 		// Centred, not above the field: you typed it at the prompt, so there
 		// is nothing on the bottom line for it to be pointing at.

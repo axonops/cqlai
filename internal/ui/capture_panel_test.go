@@ -112,15 +112,15 @@ func TestChoosingAFormatAsksForAPath(t *testing.T) {
 	m.chooseCaptureFormat()
 
 	assert.Equal(t, captureEnterPath, m.capture.step)
-	assert.True(t, strings.HasSuffix(m.capture.input.Value(), ".json"),
-		"the default name should match the format: %q", m.capture.input.Value())
+	assert.True(t, strings.HasSuffix(m.capture.input.Value(), string(filepath.Separator)),
+		"AutoSave takes a directory, so the default is one: %q", m.capture.input.Value())
 }
 
 // TestTheCommandMatchesWhatTypingItWouldBe.
 func TestTheCommandMatchesWhatTypingItWouldBe(t *testing.T) {
 	capture := capturePanel{kind: capturing}
-	assert.Equal(t, "CAPTURE JSON 'out.json'", capture.command("JSON", "out.json"))
-	assert.Equal(t, "CAPTURE PARQUET 'data.parquet'", capture.command("PARQUET", "data.parquet"))
+	assert.Equal(t, "AUTOSAVE JSON 'out.json'", capture.command("JSON", "out.json"))
+	assert.Equal(t, "AUTOSAVE PARQUET 'data.parquet'", capture.command("PARQUET", "data.parquet"))
 
 	// SAVE has a different form entirely: SAVE TO 'file' AS FORMAT.
 	save := capturePanel{kind: saving}
@@ -277,7 +277,7 @@ func TestClickingAFormatMovesOnToThePath(t *testing.T) {
 	pressAt(m, layer.X+3, layer.Y+1+captureHeaderRows+json)
 
 	assert.Equal(t, captureEnterPath, m.capture.step)
-	assert.True(t, strings.HasSuffix(m.capture.input.Value(), ".json"))
+	assert.True(t, strings.HasSuffix(m.capture.input.Value(), string(filepath.Separator)))
 }
 
 // TestClickingTheTitleOrHintsPicksNothing: the box has rows that are not
@@ -589,7 +589,7 @@ func TestTheSaveWindowBuildsTheSaveCommand(t *testing.T) {
 	assert.Equal(t, "SAVE TO '/tmp/out.json' AS JSON", save.command("JSON", "/tmp/out.json"))
 
 	capture := capturePanel{kind: capturing}
-	assert.Equal(t, "CAPTURE JSON '/tmp/out.json'", capture.command("JSON", "/tmp/out.json"))
+	assert.Equal(t, "AUTOSAVE JSON '/tmp/out.json'", capture.command("JSON", "/tmp/out.json"))
 }
 
 // TestSaveOffersFormatsSomethingElseCanOpen.
@@ -658,7 +658,9 @@ func TestTheDefaultNameSuitsTheKind(t *testing.T) {
 	m.closeCapturePanel()
 	m.openCapturePanel(0)
 	m.chooseCaptureFormat()
-	assert.Contains(t, m.capture.input.Value(), "capture_")
+	assert.Contains(t, m.capture.input.Value(), "autosave_")
+	assert.True(t, strings.HasSuffix(m.capture.input.Value(), string(filepath.Separator)),
+		"AutoSave is given a directory, not a filename")
 }
 
 // TestBothWindowsAreTheSameWindow, differing only in what they are for.
@@ -682,7 +684,7 @@ func TestBothWindowsAreTheSameWindow(t *testing.T) {
 	assert.Equal(t, max((w-saveLayer.Width)/2, 0), saveLayer.X, "save centred")
 	assert.Equal(t, max((w-captureLayer.Width)/2, 0), captureLayer.X, "capture centred")
 	assert.Contains(t, stripAnsiForTest(saveLayer.Content), "Save the last results")
-	assert.Contains(t, stripAnsiForTest(captureLayer.Content), "Capture output")
+	assert.Contains(t, stripAnsiForTest(captureLayer.Content), "Save each query")
 }
 
 // TestTabCompletesThePathInTheSaveWindowToo, which the old save modal could

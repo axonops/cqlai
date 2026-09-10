@@ -25,7 +25,7 @@ const (
 	settingPaging      = "Pg"
 	settingTracing     = "Trace"
 	settingAutoFetch   = "Fetch"
-	settingCapture     = "Capture"
+	settingCapture     = "AutoSave"
 )
 
 // statusSegment is one "Label: value" pair on the status line.
@@ -108,8 +108,8 @@ func (m StatusBarModel) segments() []statusSegment {
 	// "Capture: OFF" says nothing you had not already assumed.
 	segs = append(segs, statusSegment{
 		setting: settingCapture,
-		label:   "Capture: ",
-		short:   "Cap: ",
+		label:   "AutoSave: ",
+		short:   "Auto: ",
 		value:   onOff(m.Capturing),
 		keep:    m.Capturing,
 	})

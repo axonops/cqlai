@@ -336,19 +336,22 @@ still work.
 #### The FILE menu
 
 ```
-╭──────────────╮
-│ SAVE RESULTS │
-│ CAPTURE      │
-╰──────────────╯
+╭────────────╮
+│ AUTOSAVE   │
+│ SOURCE     │
+│ COPY TO    │
+│ COPY FROM  │
+╰────────────╯
 ```
 
-`SAVE RESULTS` writes what is on screen to a file. `CAPTURE` writes everything
-that comes next. Both are the same window - pick a format, then say where - and
-both open in the middle of the screen. `SAVE RESULTS` is dimmed with nothing to
-save.
+`AUTOSAVE` saves every query from now on. `SOURCE` runs the CQL in a file, and
+`COPY TO`/`COPY FROM` move a whole table in or out.
 
-Up and down move, Enter picks, Esc closes. `Capture: ` on the bottom line says
-whether a capture is running, and clicking it opens the same window.
+Up and down move, Enter picks, Esc closes. `AutoSave: ` on the bottom line says
+whether it is on, and clicking it opens the same window.
+
+Saving the result of one query is the `SAVE` command rather than a menu entry -
+it acts on what is on screen rather than on a file.
 
 #### Column headers
 
@@ -691,14 +694,28 @@ Meta-commands provide additional functionality beyond standard CQL:
   -- QUOTE = '"'             -- Quote character for strings
   ```
 
-- **CAPTURE** - Capture query output to file (continuous recording)
+- **AUTOSAVE** - Save every query's output into a directory, as it runs
   ```sql
-  CAPTURE 'output.txt'          -- Start capturing to text file
-  CAPTURE JSON 'output.json'    -- Capture as JSON
-  CAPTURE CSV 'output.csv'      -- Capture as CSV
-  SELECT * FROM users;
-  CAPTURE OFF                   -- Stop capturing
+  AUTOSAVE '/exports/'               -- Save each query as a text file
+  AUTOSAVE JSON '/exports/'          -- One JSON file per query
+  AUTOSAVE CSV '/exports/'           -- One CSV file per query
+  AUTOSAVE PARQUET '/exports/'       -- One Parquet file per query
+  SELECT * FROM users;               -- written to /exports/query_20260910_181240_001.csv
+  SELECT * FROM events;              -- written to /exports/query_20260910_181241_002.csv
+  AUTOSAVE OFF                       -- Stop
   ```
+
+  **A directory, not a file.** Each query gets its own timestamped file, because
+  one file cannot hold the output of every query: two queries against different
+  tables have different columns, and a Parquet file has one schema. CSV has the
+  same problem more quietly - a header row, then rows from another table
+  underneath it.
+
+  Each file is finished as its query is, so it can be read straight away. With
+  `AUTOFETCH` off, rows that page in later are written as numbered parts of the
+  same query - a Parquet file is sealed by its footer and cannot be added to.
+
+  `CAPTURE` still works as a name for this command, for `cqlsh` compatibility.
 
 - **SAVE** - Save displayed query results to file (without re-executing)
   ```sql
@@ -712,8 +729,9 @@ Meta-commands provide additional functionality beyond standard CQL:
   SAVE TO 'users.parquet'                 -- Save to Parquet (format auto-detected)
   SAVE TO 'data.out' AS CSV               -- Explicitly specify format
 
-  -- Key differences from CAPTURE:
-  -- - SAVE exports the currently displayed results
+  -- Key differences from AUTOSAVE:
+  -- - SAVE writes one file, of the result you are looking at
+  -- - AUTOSAVE writes a file per query, for every query from now on
   -- - No need to re-run the query
   -- - Preserves exact data shown in terminal
   -- - Works with paginated results (saves only loaded pages)
@@ -1224,10 +1242,10 @@ COPY events TO 'events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='ZSTD';
 -- Import from Parquet
 COPY users FROM 'users.parquet';
 
--- Capture query results in Parquet format
-CAPTURE 'results.parquet' FORMAT='PARQUET';
+-- Save every query as its own Parquet file
+AUTOSAVE PARQUET '/exports/';
 SELECT * FROM large_table WHERE condition = true;
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 ### Supported Features
@@ -1243,7 +1261,7 @@ For detailed documentation, see [Parquet Support Guide](docs/PARQUET.md).
 
 ## ⚠️ Known Limitations
 
-### JSON Output (CAPTURE JSON and --format json)
+### JSON Output (AUTOSAVE JSON and --format json)
 
 When outputting data as JSON, there are some limitations due to how the underlying gocql driver handles dynamic typing:
 

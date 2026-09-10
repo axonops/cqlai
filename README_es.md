@@ -589,13 +589,13 @@ Los meta-comandos proporcionan funcionalidad adicional más allá del CQL están
   -- QUOTE = '"'             -- Carácter de comillas para cadenas
   ```
 
-- **CAPTURE** - Capturar salida de consulta a archivo (grabación continua)
+- **AUTOSAVE** - Guardar la salida de cada consulta en un directorio, según se ejecuta
   ```sql
-  CAPTURE 'output.txt'          -- Comenzar a capturar a archivo de texto
-  CAPTURE JSON 'output.json'    -- Capturar como JSON
-  CAPTURE CSV 'output.csv'      -- Capturar como CSV
+  AUTOSAVE '/exports/'           -- Cada consulta como archivo de texto
+  AUTOSAVE JSON '/exports/'      -- Un archivo JSON por consulta
+  AUTOSAVE CSV '/exports/'       -- Un archivo CSV por consulta
   SELECT * FROM users;
-  CAPTURE OFF                   -- Detener captura
+  AUTOSAVE OFF                   -- Detener
   ```
 
 - **SAVE** - Guardar resultados de consulta mostrados a archivo (sin re-ejecutar)
@@ -610,7 +610,7 @@ Los meta-comandos proporcionan funcionalidad adicional más allá del CQL están
   SAVE 'users.txt' ASCII         -- Guardar como tabla ASCII
   SAVE 'data.csv' CSV            -- Especificar formato explícitamente
 
-  -- Diferencias clave con CAPTURE:
+  -- Diferencias clave con AUTOSAVE:
   -- - SAVE exporta los resultados mostrados actualmente
   -- - No necesita re-ejecutar la consulta
   -- - Preserva los datos exactos mostrados en el terminal
@@ -1090,9 +1090,9 @@ COPY events TO 'events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='ZSTD';
 COPY users FROM 'users.parquet';
 
 -- Capturar resultados de consulta en formato Parquet
-CAPTURE 'results.parquet' FORMAT='PARQUET';
+AUTOSAVE PARQUET 'results/';
 SELECT * FROM large_table WHERE condition = true;
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 ### Características Soportadas
@@ -1108,7 +1108,7 @@ Para documentación detallada, consulta [Guía de Soporte de Parquet](docs/PARQU
 
 ## ⚠️ Limitaciones Conocidas
 
-### Salida JSON (CAPTURE JSON y --format json)
+### Salida JSON (AUTOSAVE JSON y --format json)
 
 Al generar datos como JSON, existen algunas limitaciones debido a cómo el driver gocql subyacente maneja el tipado dinámico:
 

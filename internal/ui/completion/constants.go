@@ -114,7 +114,7 @@ var TopLevelCommands = []string{
 	"SHOW",
 	"HELP",
 	"SOURCE",
-	"CAPTURE",
+	"AUTOSAVE",
 	"EXPAND",
 	"COPY",
 }
@@ -338,7 +338,7 @@ var TopLevelKeywords = []string{
 	"ALTER",
 	"APPLY",
 	"BEGIN",
-	"CAPTURE",
+	"AUTOSAVE",
 	"CONSISTENCY",
 	"COPY",
 	"CREATE",

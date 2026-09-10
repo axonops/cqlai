@@ -300,17 +300,17 @@ AND COMPRESSION='ZSTD'
 AND CHUNKSIZE='100K';
 ```
 
-### キャプチャモードの統合
+### AutoSaveの統合
 
-CQLAIのCAPTUREコマンドは、Parquetファイルへのクエリ結果を保存する対話的な方法を提供します。これは、COPYコマンドとは根本的に異なります:
+CQLAIのAUTOSAVEコマンドは、Parquetファイルへのクエリ結果を保存する対話的な方法を提供します。これは、COPYコマンドとは根本的に異なります:
 
-#### パーティション分割キャプチャ
+#### パーティション分割AutoSave
 
-キャプチャされたクエリ結果をパーティション分割データセットに保存してより良い組織化を実現:
+各クエリをパーティション分割データセットとして保存:
 
 ```sql
--- 単一のパーティションカラムでパーティション分割キャプチャを開始
-CAPTURE PARQUET '/data/analysis/' WITH PARTITION='date';
+-- 単一のパーティションカラムでパーティション分割AutoSaveを開始
+AUTOSAVE PARQUET '/data/analysis/' WITH PARTITION='date';
 
 -- 後続のクエリは日付の値でパーティション分割されます
 SELECT * FROM events WHERE date >= '2024-01-01';
@@ -319,18 +319,18 @@ SELECT * FROM events WHERE date >= '2024-01-01';
 --      など
 
 -- 複数カラムのパーティショニング
-CAPTURE PARQUET '/data/metrics/' WITH PARTITION='year,month,day';
+AUTOSAVE PARQUET '/data/metrics/' WITH PARTITION='year,month,day';
 
 SELECT * FROM metrics WHERE year = 2024;
 -- 作成: /data/metrics/year=2024/month=01/day=01/part-00000.parquet
 --      /data/metrics/year=2024/month=01/day=02/part-00000.parquet
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 ##### TimeUUIDからの仮想カラム抽出
 
-パーティション分割キャプチャの強力な機能は、パーティショニングのためにTimeUUIDカラムから時間コンポーネントを抽出できることです:
+パーティション分割AutoSaveの強力な機能は、パーティショニングのためにTimeUUIDカラムから時間コンポーネントを抽出できることです:
 
 ```sql
 -- 適切な時系列テーブル構造
@@ -343,7 +343,7 @@ CREATE TABLE events (
 ) WITH CLUSTERING ORDER BY (event_time DESC);
 
 -- TimeUUIDから抽出された時間コンポーネントでパーティション分割
-CAPTURE PARQUET '/data/events/' WITH PARTITION='event_time.year,event_time.month,event_time.day';
+AUTOSAVE PARQUET '/data/events/' WITH PARTITION='event_time.year,event_time.month,event_time.day';
 
 SELECT * FROM events WHERE event_name = 'temperature';
 -- 作成: /data/events/event_time.year=2024/event_time.month=01/event_time.day=15/part-00000.parquet
@@ -356,7 +356,7 @@ SELECT * FROM events WHERE event_name = 'temperature';
 -- .hour   - TimeUUIDから時間を抽出
 -- .date   - YYYY-MM-DD文字列として日付を抽出
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 仮想カラムはディレクトリパーティショニングにのみ使用され、Parquetファイル自体には保存されません。DuckDBやApache Sparkなどのツールでクエリする場合、これらのパーティション値はHiveスタイルのディレクトリ構造に基づいてカラムとして自動的に利用可能になります。
@@ -367,25 +367,25 @@ CAPTURE OFF;
 
 ```sql
 -- より良い圧縮率のためにZSTD圧縮を使用
-CAPTURE PARQUET '/data/compressed/' WITH COMPRESSION='ZSTD' AND PARTITION='date';
+AUTOSAVE PARQUET '/data/compressed/' WITH COMPRESSION='ZSTD' AND PARTITION='date';
 
 -- 最速の圧縮のためにLZ4を使用
-CAPTURE PARQUET '/data/fast/' WITH COMPRESSION='LZ4';
+AUTOSAVE PARQUET '/data/fast/' WITH COMPRESSION='LZ4';
 
 -- 最大ファイルサイズを制御(パーティション分割データセットに便利)
-CAPTURE PARQUET '/data/sized/' WITH MAX_FILE_SIZE='500MB' AND PARTITION='date';
+AUTOSAVE PARQUET '/data/sized/' WITH MAX_FILE_SIZE='500MB' AND PARTITION='date';
 -- パーティションファイルが500MBを超えると、新しいファイル(part-00001.parquet)が作成されます
 
 -- すべてのオプションを組み合わせ
-CAPTURE PARQUET '/data/optimized/' WITH
+AUTOSAVE PARQUET '/data/optimized/' WITH
     PARTITION='event_id.year,event_id.month'
     AND COMPRESSION='ZSTD'
     AND MAX_FILE_SIZE='1GB';
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
-パーティション分割キャプチャの利点:
+パーティション分割AutoSaveの利点:
 - 時間やカテゴリで大規模データセットを整理
 - 効率的なデータライフサイクル管理を可能に
 - 増分処理パイプラインをサポート
@@ -395,7 +395,7 @@ CAPTURE OFF;
 
 #### COPYとの主な違い
 
-| 側面 | COPY | CAPTURE |
+| 側面 | COPY | AUTOSAVE |
 |--------|------|---------|
 | **目的** | テーブル全体の一括エクスポート/インポート | アドホッククエリの結果を保存 |
 | **範囲** | 単一テーブル操作 | 任意のテーブルにまたがる複数のクエリ |
@@ -403,11 +403,11 @@ CAPTURE OFF;
 | **実行** | 即時、単一操作 | セッションベース、継続的 |
 | **データソース** | オプションのフィルター付きテーブルデータ | 任意のSELECTクエリ結果 |
 
-#### キャプチャの仕組み
+#### AutoSaveの仕組み
 
 ```sql
--- キャプチャを開始 - 後続のクエリ結果が保存されます
-CAPTURE PARQUET '/tmp/analysis_results.parquet';
+-- AutoSaveを開始 - 後続のクエリ結果が保存されます
+AUTOSAVE PARQUET '/tmp/analysis_results/';
 
 -- クエリを実行 - 結果がParquetファイルに書き込まれます
 SELECT * FROM users WHERE country='US';
@@ -420,19 +420,19 @@ SELECT * FROM users WHERE age > 18;      -- ✓ 動作 - 同じカラム
 -- これは失敗するか問題を引き起こします - 異なるカラム!
 -- SELECT id, order_total FROM orders;   -- ✗ 異なるスキーマ
 
--- キャプチャを停止
-CAPTURE OFF;
+-- AutoSaveを停止
+AUTOSAVE OFF;
 ```
 
-**スキーマの制限**: Parquetにキャプチャする場合、キャプチャセッション内のすべてのクエリは同じ順序で同じカラムを返す必要があります。これは、Parquetファイルがファイルの途中で変更できない固定スキーマを持つためです。
+**スキーマの制限**: ParquetにAutoSaveする場合、AutoSaveセッション内のすべてのクエリは同じ順序で同じカラムを返す必要があります。これは、Parquetファイルがファイルの途中で変更できない固定スキーマを持つためです。
 
 #### ページング動作
 
-大きな結果セットをキャプチャする場合、CQLAIは自動的にページングを処理します:
+大きな結果セットをAutoSaveする場合、CQLAIは自動的にページングを処理します:
 
 ```sql
--- Parquet形式でキャプチャを開始
-CAPTURE PARQUET '/tmp/large_results.parquet';
+-- Parquet形式でAutoSaveを開始
+AUTOSAVE PARQUET '/tmp/large_results/';
 
 -- このクエリは数百万行を返す可能性があります
 SELECT * FROM events WHERE date >= '2024-01-01';
@@ -440,87 +440,87 @@ SELECT * FROM events WHERE date >= '2024-01-01';
 -- - データをチャンク単位で取得(デフォルトページあたり5000行)
 -- - 各ページをParquetファイルに書き込み
 -- - 進捗を表示: "Page 1 of 1000..."
--- - すべてのデータがキャプチャされるまで継続
+-- - すべてのデータがAutoSaveされるまで継続
 -- - メモリ効率的 - メモリには一度に1ページのみ
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
-#### キャプチャ構文の例
+#### AutoSave構文の例
 
 ```sql
--- Parquetへの基本的なキャプチャ
-CAPTURE PARQUET '/tmp/results.parquet';
+-- Parquetへの基本的なAutoSave
+AUTOSAVE PARQUET '/tmp/results/';
 
--- 圧縮付きでキャプチャ
-CAPTURE PARQUET '/tmp/compressed.parquet' WITH COMPRESSION='ZSTD';
+-- 圧縮付きでAutoSave
+AUTOSAVE PARQUET '/tmp/compressed/' WITH COMPRESSION='ZSTD';
 
--- パーティショニング付きでキャプチャ
-CAPTURE PARQUET '/tmp/partitioned/' WITH PARTITION='date';
+-- パーティショニング付きでAutoSave
+AUTOSAVE PARQUET '/tmp/partitioned/' WITH PARTITION='date';
 
--- すべてのオプション付きでキャプチャ
-CAPTURE PARQUET '/data/output/' WITH
+-- すべてのオプション付きでAutoSave
+AUTOSAVE PARQUET '/data/output/' WITH
     PARTITION='year,month'
     AND COMPRESSION='LZ4'
     AND MAX_FILE_SIZE='100MB';
 
--- 現在のキャプチャステータスを確認
-CAPTURE;
+-- 現在のAutoSaveステータスを確認
+AUTOSAVE;
 
--- キャプチャを停止
-CAPTURE OFF;
+-- AutoSaveを停止
+AUTOSAVE OFF;
 ```
 
-#### Parquetでのキャプチャのユースケース
+#### ParquetでのAutoSaveのユースケース
 
 1. **同じスキーマ結果のフィルタリングと結合**
    ```sql
-   -- 同じテーブルからのフィルタリングされた結果をキャプチャ
-   CAPTURE '/tmp/filtered_users.parquet' FORMAT='PARQUET';
+   -- 同じテーブルからのフィルタリングされた結果をAutoSave
+   AUTOSAVE PARQUET '/tmp/filtered_users/';
    SELECT * FROM users WHERE country='US' AND status='active';
    SELECT * FROM users WHERE country='UK' AND status='active';
    SELECT * FROM users WHERE country='CA' AND status='active';
-   CAPTURE OFF;
+   AUTOSAVE OFF;
    -- すべてのクエリが同じスキーマを持つため、正しく追加されます
    ```
 
 2. **時系列データ収集**
    ```sql
-   -- 同じスキーマで時間ごとのスナップショットをキャプチャ
-   CAPTURE '/tmp/metrics_snapshot.parquet' FORMAT='PARQUET';
+   -- 同じスキーマで時間ごとのスナップショットをAutoSave
+   AUTOSAVE PARQUET '/tmp/metrics_snapshot/';
    SELECT hour, metric_name, value FROM metrics WHERE hour='2024-01-01 00:00:00';
    SELECT hour, metric_name, value FROM metrics WHERE hour='2024-01-01 01:00:00';
    SELECT hour, metric_name, value FROM metrics WHERE hour='2024-01-01 02:00:00';
-   CAPTURE OFF;
+   AUTOSAVE OFF;
    ```
 
 3. **大きなテーブルのページ分割エクスポート**
    ```sql
    -- 大きなテーブルを管理可能なチャンクでエクスポート
-   CAPTURE '/tmp/large_export.parquet' FORMAT='PARQUET';
+   AUTOSAVE PARQUET '/tmp/large_export/';
    SELECT * FROM events WHERE date='2024-01-01' LIMIT 100000;
    SELECT * FROM events WHERE date='2024-01-02' LIMIT 100000;
    SELECT * FROM events WHERE date='2024-01-03' LIMIT 100000;
-   CAPTURE OFF;
+   AUTOSAVE OFF;
    ```
 
-**注意**: 異なるスキーマを持つ異なるクエリから結果をキャプチャする場合は、代わりにJSONまたはCSV形式の使用を検討してください:
+**注意**: 異なるスキーマを持つ異なるクエリから結果をAutoSaveする場合は、代わりにJSONまたはCSV形式の使用を検討してください:
 ```sql
 -- JSON形式は異なるスキーマを処理できます
-CAPTURE '/tmp/mixed_results.json' FORMAT='JSON';
+AUTOSAVE JSON '/tmp/mixed_results/';
 SELECT COUNT(*) as user_count FROM users;
 SELECT id, name, email FROM users LIMIT 10;
 SELECT order_id, total FROM orders LIMIT 10;
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 #### 重要な注意事項
 
-- **スキーマの一貫性**: Parquetキャプチャセッション内のすべてのクエリは同一のスキーマを持つ必要があります
+- **スキーマの一貫性**: ParquetAutoSaveセッション内のすべてのクエリは同一のスキーマを持つ必要があります
 - **追加動作**: 各クエリ結果は同じParquetファイルに行を追加します(同じスキーマが必要)
 - **メモリ効率**: 大きな結果は自動的にページングされ、メモリ使用量は一定に保たれます
 - **進捗表示**: 大きな結果セットの現在のページ番号を表示
-- **形式の代替**: 異なるスキーマを持つクエリをキャプチャするにはJSONまたはCSV形式を使用
+- **形式の代替**: 異なるスキーマを持つクエリをAutoSaveするにはJSONまたはCSV形式を使用
 
 ### ファイル検出
 
@@ -690,7 +690,7 @@ WITH FORMAT='PARQUET';
 SELECT COUNT(*) FROM user_events_archive;
 ```
 
-### 完全なパーティション分割キャプチャワークフロー
+### 完全なパーティション分割AutoSaveワークフロー
 
 ```sql
 -- 1. TimeUUIDを持つテーブルを作成
@@ -709,8 +709,8 @@ VALUES (now(), 'purchase', 123, 'bought item ABC');
 INSERT INTO events (event_id, event_type, user_id, data)
 VALUES (now(), 'logout', 123, 'user logged out');
 
--- 3. TimeUUIDから年と月でパーティション分割キャプチャを開始
-CAPTURE PARQUET '/data/events/' WITH
+-- 3. TimeUUIDから年と月でパーティション分割AutoSaveを開始
+AUTOSAVE PARQUET '/data/events/' WITH
     PARTITION='event_id.year,event_id.month'
     AND COMPRESSION='ZSTD';
 
@@ -719,8 +719,8 @@ SELECT * FROM events WHERE event_type = 'login';
 SELECT * FROM events WHERE event_type = 'purchase';
 SELECT * FROM events WHERE user_id = 123;
 
--- 5. キャプチャを停止
-CAPTURE OFF;
+-- 5. AutoSaveを停止
+AUTOSAVE OFF;
 
 -- 6. DuckDBでパーティション分割データをクエリ
 -- ファイルは次のように整理されます:
@@ -838,10 +838,10 @@ CAPTURE OFF;
    AND VERSION='2024-01-01';
    ```
 
-3. **ストリーミングCDC(変更データキャプチャ)**
+3. **ストリーミングCDC(変更データAutoSave)**
    ```sql
    -- 変更の継続的なエクスポート
-   CAPTURE STREAM changes TO 'kafka://topic'
+   AUTOSAVE STREAM changes TO 'kafka://topic'
    FROM users
    WITH FORMAT='PARQUET'
    AND MODE='CDC';

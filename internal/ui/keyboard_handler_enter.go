@@ -111,6 +111,7 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			!strings.HasPrefix(upperCommand, "AUTOFETCH") &&
 			!strings.HasPrefix(upperCommand, "TRACING") &&
 			!strings.HasPrefix(upperCommand, "SOURCE") &&
+			!strings.HasPrefix(upperCommand, "AUTOSAVE") &&
 			!strings.HasPrefix(upperCommand, "CAPTURE") &&
 			!strings.HasPrefix(upperCommand, "EXPAND") &&
 			!strings.HasPrefix(upperCommand, "SHOW") &&

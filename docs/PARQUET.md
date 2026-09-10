@@ -300,17 +300,17 @@ AND COMPRESSION='ZSTD'
 AND CHUNKSIZE='100K';
 ```
 
-### Capture Mode Integration
+### AutoSave Integration
 
-CQLAI's CAPTURE command provides an interactive way to save query results to Parquet files, which is fundamentally different from the COPY command:
+CQLAI's AUTOSAVE command provides an interactive way to save query results to Parquet files, which is fundamentally different from the COPY command:
 
-#### Partitioned Capture
+#### Partitioned AutoSave
 
-Save captured query results to partitioned datasets for better organization:
+Save each query into a partitioned dataset for better organization:
 
 ```sql
--- Start partitioned capture with single partition column
-CAPTURE PARQUET '/data/analysis/' WITH PARTITION='date';
+-- Start partitioned AutoSave with single partition column
+AUTOSAVE PARQUET '/data/analysis/' WITH PARTITION='date';
 
 -- Subsequent queries will be partitioned by date value
 SELECT * FROM events WHERE date >= '2024-01-01';
@@ -319,18 +319,18 @@ SELECT * FROM events WHERE date >= '2024-01-01';
 --          etc.
 
 -- Multi-column partitioning
-CAPTURE PARQUET '/data/metrics/' WITH PARTITION='year,month,day';
+AUTOSAVE PARQUET '/data/metrics/' WITH PARTITION='year,month,day';
 
 SELECT * FROM metrics WHERE year = 2024;
 -- Creates: /data/metrics/year=2024/month=01/day=01/part-00000.parquet
 --          /data/metrics/year=2024/month=01/day=02/part-00000.parquet
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 ##### Virtual Column Extraction from TimeUUIDs
 
-A powerful feature of partitioned capture is the ability to extract time components from TimeUUID columns for partitioning:
+A powerful feature of partitioned AutoSave is the ability to extract time components from TimeUUID columns for partitioning:
 
 ```sql
 -- Proper time series table structure
@@ -343,7 +343,7 @@ CREATE TABLE events (
 ) WITH CLUSTERING ORDER BY (event_time DESC);
 
 -- Partition by time components extracted from TimeUUID
-CAPTURE PARQUET '/data/events/' WITH PARTITION='event_time.year,event_time.month,event_time.day';
+AUTOSAVE PARQUET '/data/events/' WITH PARTITION='event_time.year,event_time.month,event_time.day';
 
 SELECT * FROM events WHERE event_name = 'temperature';
 -- Creates: /data/events/event_time.year=2024/event_time.month=01/event_time.day=15/part-00000.parquet
@@ -356,7 +356,7 @@ SELECT * FROM events WHERE event_name = 'temperature';
 -- .hour   - Extract hour from TimeUUID
 -- .date   - Extract date as YYYY-MM-DD string
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 Virtual columns are only used for directory partitioning and are not stored in the Parquet files themselves. When querying with tools like DuckDB or Apache Spark, these partition values are automatically available as columns based on the Hive-style directory structure.
@@ -367,25 +367,25 @@ Control compression and file sizes for optimal performance:
 
 ```sql
 -- Use ZSTD compression for better compression ratio
-CAPTURE PARQUET '/data/compressed/' WITH COMPRESSION='ZSTD' AND PARTITION='date';
+AUTOSAVE PARQUET '/data/compressed/' WITH COMPRESSION='ZSTD' AND PARTITION='date';
 
 -- Use LZ4 for fastest compression
-CAPTURE PARQUET '/data/fast/' WITH COMPRESSION='LZ4';
+AUTOSAVE PARQUET '/data/fast/' WITH COMPRESSION='LZ4';
 
 -- Control maximum file size (useful for partitioned datasets)
-CAPTURE PARQUET '/data/sized/' WITH MAX_FILE_SIZE='500MB' AND PARTITION='date';
+AUTOSAVE PARQUET '/data/sized/' WITH MAX_FILE_SIZE='500MB' AND PARTITION='date';
 -- When a partition file exceeds 500MB, a new file (part-00001.parquet) is created
 
 -- Combine all options
-CAPTURE PARQUET '/data/optimized/' WITH
+AUTOSAVE PARQUET '/data/optimized/' WITH
     PARTITION='event_id.year,event_id.month'
     AND COMPRESSION='ZSTD'
     AND MAX_FILE_SIZE='1GB';
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
-Benefits of partitioned capture:
+Benefits of partitioned AutoSave:
 - Organize large datasets by time or category
 - Enable efficient data lifecycle management
 - Support incremental processing pipelines
@@ -395,7 +395,7 @@ Benefits of partitioned capture:
 
 #### Key Differences from COPY
 
-| Aspect | COPY | CAPTURE |
+| Aspect | COPY | AUTOSAVE |
 |--------|------|---------|
 | **Purpose** | Bulk export/import of entire tables | Save results of ad-hoc queries |
 | **Scope** | Single table operation | Multiple queries across any tables |
@@ -403,120 +403,118 @@ Benefits of partitioned capture:
 | **Execution** | Immediate, single operation | Session-based, continuous |
 | **Data Source** | Table data with optional filters | Any SELECT query results |
 
-#### How Capture Works
+#### How AutoSave Works
 
 ```sql
--- Start capturing - subsequent query results will be saved
-CAPTURE PARQUET '/tmp/analysis_results.parquet';
+-- Start saving - every query from now on gets its own file
+AUTOSAVE PARQUET '/tmp/analysis/';
 
--- Run a query - results are written to the Parquet file
 SELECT * FROM users WHERE country='US';
--- This creates a Parquet file with columns: id, name, email, country, etc.
+-- /tmp/analysis/query_20260910_181240_001.parquet
 
--- IMPORTANT: Subsequent queries must have the SAME schema
-SELECT * FROM users WHERE country='UK';  -- ✓ Works - same columns
-SELECT * FROM users WHERE age > 18;      -- ✓ Works - same columns
+SELECT id, order_total FROM orders;
+-- /tmp/analysis/query_20260910_181244_002.parquet - different columns, its own schema
 
--- This would FAIL or create issues - different columns!
--- SELECT id, order_total FROM orders;   -- ✗ Different schema
-
--- Stop capturing
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
-**Schema Limitation**: When capturing to Parquet, all queries in a capture session must return the same columns in the same order. This is because Parquet files have a fixed schema that cannot change mid-file.
+**A directory, not a file.** A Parquet file has one schema, so it cannot hold
+the output of two queries returning different columns. AutoSave gives each query
+a file of its own, which is why it is pointed at a directory: the queries you
+run in a session do not have to be about the same table, and nothing has to be
+kept in step.
 
 #### Paging Behavior
 
-When capturing large result sets, CQLAI automatically handles paging:
+When saving large result sets, CQLAI automatically handles paging:
 
 ```sql
--- Start capture with Parquet format
-CAPTURE PARQUET '/tmp/large_results.parquet';
+-- Start saving with Parquet format
+AUTOSAVE PARQUET '/tmp/large_results/';
 
 -- This query might return millions of rows
 SELECT * FROM events WHERE date >= '2024-01-01';
 -- CQLAI will automatically page through results:
 -- - Fetches data in chunks (default 5000 rows per page)
--- - Writes each page to the Parquet file
+-- - Writes each page into this query's Parquet file
 -- - Shows progress: "Page 1 of 1000..."
--- - Continues until all data is captured
+-- - Continues until all data is saved
 -- - Memory efficient - only one page in memory at a time
 
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
-#### Capture Syntax Examples
+#### AutoSave Syntax Examples
 
 ```sql
--- Basic capture to Parquet
-CAPTURE PARQUET '/tmp/results.parquet';
+-- Basic
+AUTOSAVE PARQUET '/tmp/results/';
 
--- Capture with compression
-CAPTURE PARQUET '/tmp/compressed.parquet' WITH COMPRESSION='ZSTD';
+-- With compression
+AUTOSAVE PARQUET '/tmp/compressed/' WITH COMPRESSION='ZSTD';
 
--- Capture with partitioning
-CAPTURE PARQUET '/tmp/partitioned/' WITH PARTITION='date';
+-- With partitioning
+AUTOSAVE PARQUET '/tmp/partitioned/' WITH PARTITION='date';
 
--- Capture with all options
-CAPTURE PARQUET '/data/output/' WITH
+-- With all options
+AUTOSAVE PARQUET '/data/output/' WITH
     PARTITION='year,month'
     AND COMPRESSION='LZ4'
     AND MAX_FILE_SIZE='100MB';
 
--- Check current capture status
-CAPTURE;
+-- Ask where it is saving
+AUTOSAVE;
 
--- Stop capturing
-CAPTURE OFF;
+-- Stop
+AUTOSAVE OFF;
 ```
 
-#### Use Cases for Capture with Parquet
+#### Use Cases for AutoSave with Parquet
 
 1. **Filtering and Combining Same-Schema Results**
    ```sql
-   -- Capture filtered results from the same table
-   CAPTURE '/tmp/filtered_users.parquet' FORMAT='PARQUET';
+   -- Save filtered results, each query its own file
+   AUTOSAVE PARQUET '/tmp/filtered_users/';
    SELECT * FROM users WHERE country='US' AND status='active';
    SELECT * FROM users WHERE country='UK' AND status='active';
    SELECT * FROM users WHERE country='CA' AND status='active';
-   CAPTURE OFF;
+   AUTOSAVE OFF;
    -- All queries have the same schema, so they append correctly
    ```
 
 2. **Time-Series Data Collection**
    ```sql
-   -- Capture hourly snapshots with same schema
-   CAPTURE '/tmp/metrics_snapshot.parquet' FORMAT='PARQUET';
+   -- Save hourly snapshots
+   AUTOSAVE PARQUET '/tmp/metrics_snapshot/';
    SELECT hour, metric_name, value FROM metrics WHERE hour='2024-01-01 00:00:00';
    SELECT hour, metric_name, value FROM metrics WHERE hour='2024-01-01 01:00:00';
    SELECT hour, metric_name, value FROM metrics WHERE hour='2024-01-01 02:00:00';
-   CAPTURE OFF;
+   AUTOSAVE OFF;
    ```
 
 3. **Paged Export of Large Tables**
    ```sql
    -- Export a large table in manageable chunks
-   CAPTURE '/tmp/large_export.parquet' FORMAT='PARQUET';
+   AUTOSAVE PARQUET '/tmp/large_export/';
    SELECT * FROM events WHERE date='2024-01-01' LIMIT 100000;
    SELECT * FROM events WHERE date='2024-01-02' LIMIT 100000;
    SELECT * FROM events WHERE date='2024-01-03' LIMIT 100000;
-   CAPTURE OFF;
+   AUTOSAVE OFF;
    ```
 
 **Note**: For capturing results from different queries with different schemas, consider using JSON or CSV format instead:
 ```sql
 -- JSON format can handle different schemas
-CAPTURE '/tmp/mixed_results.json' FORMAT='JSON';
+AUTOSAVE JSON '/tmp/mixed_results/';
 SELECT COUNT(*) as user_count FROM users;
 SELECT id, name, email FROM users LIMIT 10;
 SELECT order_id, total FROM orders LIMIT 10;
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 #### Important Notes
 
-- **Schema Consistency**: All queries in a Parquet capture session must have identical schemas
+- **Schema**: each query gets its own file, so queries in a session need not return the same columns
 - **Append Behavior**: Each query result appends rows to the same Parquet file (same schema required)
 - **Memory Efficiency**: Large results are paged automatically, keeping memory usage constant
 - **Progress Indication**: Shows current page number for large result sets
@@ -690,7 +688,7 @@ WITH FORMAT='PARQUET';
 SELECT COUNT(*) FROM user_events_archive;
 ```
 
-### Complete Partitioned Capture Workflow
+### Complete Partitioned AutoSave Workflow
 
 ```sql
 -- 1. Create a table with TimeUUID
@@ -709,8 +707,8 @@ VALUES (now(), 'purchase', 123, 'bought item ABC');
 INSERT INTO events (event_id, event_type, user_id, data)
 VALUES (now(), 'logout', 123, 'user logged out');
 
--- 3. Start partitioned capture by year and month from TimeUUID
-CAPTURE PARQUET '/data/events/' WITH
+-- 3. Start partitioned AutoSave by year and month from TimeUUID
+AUTOSAVE PARQUET '/data/events/' WITH
     PARTITION='event_id.year,event_id.month'
     AND COMPRESSION='ZSTD';
 
@@ -720,7 +718,7 @@ SELECT * FROM events WHERE event_type = 'purchase';
 SELECT * FROM events WHERE user_id = 123;
 
 -- 5. Stop capturing
-CAPTURE OFF;
+AUTOSAVE OFF;
 
 -- 6. Query the partitioned data with DuckDB
 -- Files are organized as:
@@ -841,7 +839,7 @@ The following features are planned for future releases:
 3. **Streaming CDC (Change Data Capture)**
    ```sql
    -- Continuous export of changes
-   CAPTURE STREAM changes TO 'kafka://topic'
+   AUTOSAVE STREAM changes TO 'kafka://topic'
    FROM users
    WITH FORMAT='PARQUET'
    AND MODE='CDC';

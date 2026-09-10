@@ -82,7 +82,7 @@ func (c capturePanel) title() string {
 	if c.kind == saving {
 		return "Save the last results to a file"
 	}
-	return "Capture output to a file"
+	return "Save each query to a directory"
 }
 
 // formatsFor is the list a kind offers, from the command that parses them.
@@ -134,12 +134,17 @@ func extensionFor(format string) string {
 	return ".out"
 }
 
+// autoSaveWord is the command the window builds, and the one everything else
+// calls it. CAPTURE still works when typed - see the router - but nothing
+// generates it.
+const autoSaveWord = "AUTOSAVE"
+
 // command is what the window runs, which is what typing it would run.
 func (c capturePanel) command(format, path string) string {
 	if c.kind == saving {
 		return "SAVE TO '" + path + "' AS " + format
 	}
-	return "CAPTURE " + format + " '" + path + "'"
+	return autoSaveWord + " " + format + " '" + path + "'"
 }
 
 // openCapturePanel opens the capture window above the Capture field.
@@ -545,7 +550,7 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 func (m *MainModel) chooseCaptureFormat() (*MainModel, tea.Cmd) {
 	if m.capture.formats[m.capture.format] == captureStopping {
 		m.closeCapturePanel()
-		return m.runCommand("CAPTURE OFF")
+		return m.runCommand(autoSaveWord + " OFF")
 	}
 
 	m.capture.step = captureEnterPath
@@ -558,12 +563,14 @@ func (m *MainModel) chooseCaptureFormat() (*MainModel, tea.Cmd) {
 // defaultCaptureName is a filename to start from, so there is something to edit
 // rather than an empty box.
 func (m *MainModel) defaultCaptureName() string {
-	prefix := "capture"
-	if m.capture.kind == saving {
-		prefix = "results"
+	// AutoSave is given a directory and names the files inside it itself, so
+	// what it wants here is somewhere to put them - not a filename, which is
+	// what it used to offer and what it no longer takes.
+	if m.capture.kind == capturing {
+		return "autosave_" + time.Now().Format("20060102") + string(filepath.Separator)
 	}
 
-	return fmt.Sprintf("%s_%s%s", prefix, time.Now().Format("20060102_150405"),
+	return fmt.Sprintf("results_%s%s", time.Now().Format("20060102_150405"),
 		extensionFor(m.capture.formats[m.capture.format]))
 }
 
@@ -599,5 +606,5 @@ func (c capturePanel) verb() string {
 	if c.kind == saving {
 		return "Save"
 	}
-	return "Capture"
+	return "AutoSave"
 }

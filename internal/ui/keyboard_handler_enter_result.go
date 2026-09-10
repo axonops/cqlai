@@ -502,9 +502,11 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 
 		m.showQueryResult(v.Data, v.ColumnTypes, outputFormat)
 
-		// Write to capture file if capturing
+		// Write to the AutoSave file, unless the router already did: a streaming
+		// result is drained there and handed on as an ordinary QueryResult, and
+		// writing it again put one query into two files.
 		metaHandler := router.GetMetaHandler()
-		if metaHandler != nil && metaHandler.IsCapturing() && len(v.Data) > 1 {
+		if metaHandler != nil && !v.AlreadySaved && metaHandler.IsCapturing() && len(v.Data) > 1 {
 			// Extract headers and rows from data
 			headers := v.Data[0]
 			rows := v.Data[1:]

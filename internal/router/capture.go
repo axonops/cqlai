@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
@@ -37,7 +38,16 @@ func CaptureFormats() []string {
 	return slices.Clone(captureFormats)
 }
 
-// handleCapture handles CAPTURE command to save output to file
+// autoSaveCommand is what the command is called.
+//
+// CAPTURE is cqlsh's word and describes the mechanism; what is happening is
+// that every result is saved as it arrives, without being asked. Both words
+// reach here - see ParseCommand - so nobody's scripts break, and everything
+// that says the name says this one.
+const autoSaveCommand = "AUTOSAVE"
+
+// handleCapture handles the AUTOSAVE command, which saves each query's output
+// into a directory
 func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	// Parse the command to extract format, filename, and options
 	upperCommand := strings.ToUpper(command)
@@ -51,14 +61,14 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	// Show current capture status if no arguments
 	parts := strings.Fields(command)
 	if len(parts) == 1 {
-		if h.captureFile != "" {
-			status := fmt.Sprintf("Currently capturing to: %s (format: %s)", h.captureFile, h.captureFormat)
-			if h.partitionedWriter != nil {
-				status += " [partitioned]"
+		if h.autoSaveDir != "" {
+			status := fmt.Sprintf("Saving each query to %s (%s)", h.autoSaveDir, h.captureFormat)
+			if h.lastAutoSaved != "" {
+				status += fmt.Sprintf("\nLast written: %s", h.lastAutoSaved)
 			}
 			return status
 		}
-		return "Not currently capturing output"
+		return "Not saving query output"
 	}
 
 	// Parse CAPTURE command with options
@@ -89,7 +99,10 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 
 	// Extract filename
 	if filenameStart >= filenameEnd {
-		return "Usage: CAPTURE [JSON|CSV|PARQUET] 'filename' [WITH option=value AND ...] | CAPTURE OFF"
+		return fmt.Sprintf(
+			"Usage: %s [JSON|CSV|PARQUET] 'directory' [WITH option=value AND ...] | %s OFF\n"+
+				"A directory, not a file: each query's output is saved as its own timestamped file.",
+			autoSaveCommand, autoSaveCommand)
 	}
 
 	filename := strings.Join(parts[filenameStart:filenameEnd], " ")
@@ -123,69 +136,162 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 		}
 	}
 
-	// Add appropriate extension if not provided (for non-partitioned files)
-	if partitionColumns == "" {
-		switch format {
-		case "json":
-			if !strings.HasSuffix(filename, ".json") {
-				filename += ".json"
-			}
-		case "csv":
-			if !strings.HasSuffix(filename, ".csv") {
-				filename += ".csv"
-			}
-		case "parquet":
-			if !strings.HasSuffix(filename, ".parquet") {
-				filename += ".parquet"
-			}
-		}
+	// A directory, not a file.
+	//
+	// AutoSave writes one file per query, so what it is given is where to put
+	// them. A single file cannot hold the output of every query run while it is
+	// on: two queries against different tables have different columns, and
+	// Parquet has one schema per file. CSV has the same problem more quietly -
+	// a header row, then rows from another table underneath it.
+	dir := filename
+	if !strings.HasSuffix(dir, string(filepath.Separator)) {
+		dir += string(filepath.Separator)
+	}
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Sprintf("Error creating %s: %v", dir, err)
 	}
 
-	// Close existing capture if any
+	// Whatever was on stops before this starts.
 	h.stopCapture()
 
-	// Initialize new capture
-	h.captureFile = filename
+	h.autoSaveDir = dir
 	h.captureFormat = format
 	h.captureOptions = options
 
-	// For partitioned Parquet, we'll create the writer when we receive the first result
 	if format == "parquet" && partitionColumns != "" {
 		h.capturePartitionColumns = strings.Split(partitionColumns, ",")
 		for i := range h.capturePartitionColumns {
 			h.capturePartitionColumns[i] = strings.TrimSpace(h.capturePartitionColumns[i])
 		}
-		logger.DebugfToFile("Capture", "Initialized partitioned capture: file=%s, format=%s, partitions=%v",
-			filename, format, h.capturePartitionColumns)
-		return fmt.Sprintf("Now capturing query output to %s (format: %s, partitioned by: %s). Use 'CAPTURE OFF' to stop.",
-			filename, format, partitionColumns)
+		return fmt.Sprintf("Saving each query to %s (%s, partitioned by %s). %s OFF stops.",
+			dir, format, partitionColumns, autoSaveCommand)
 	}
 
-	// For non-partitioned formats, create the file immediately
-	if partitionColumns == "" {
-		// Use parquet.CreateWriter which handles both local files and cloud URL error messages
-		writer, err := parquet.CreateWriter(context.Background(), filename)
-		if err != nil {
-			return fmt.Sprintf("Error opening capture file: %v", err)
+	return fmt.Sprintf("Saving each query to %s (%s). %s OFF stops.", dir, format, autoSaveCommand)
+}
+
+// autoSaveName is where the next query's output goes.
+//
+// A prefix and the time, the same shape the Save window offers as its default
+// filename - so the files sort into the order the queries ran, and two queries
+// a second apart do not land on the same name.
+func (h *MetaCommandHandler) autoSaveName(format string) string {
+	ext := "." + format
+	if format == "text" {
+		ext = ".txt"
+	}
+
+	// The time, and then which query it was.
+	//
+	// The time alone is not enough. Nobody types two queries in the same
+	// second, but a SOURCE script or a batch run fires them as fast as the
+	// cluster answers - which is where saving every query is most worth doing -
+	// and two landing in the same second would write over each other.
+	h.autoSaveCount++
+	name := fmt.Sprintf("query_%s_%03d%s", time.Now().Format("20060102_150405"), h.autoSaveCount, ext)
+	return filepath.Join(h.autoSaveDir, name)
+}
+
+// startAutoSaveFile makes sure the right file is open for what is about to be
+// written.
+//
+// A query's rows do not all arrive at once: the first page comes with the
+// result and the rest as they are paged in, and those later writes carry no
+// command. So the file is opened when a command arrives and stays open until
+// the next one does - closing it after every write gave one query a file per
+// page, each holding a copy of what the last one already had.
+func (h *MetaCommandHandler) startAutoSaveFile(command string) error {
+	if h.autoSaveDir == "" || len(h.capturePartitionColumns) > 0 {
+		return nil
+	}
+
+	// A result reaches this twice - once from WriteCaptureResultWithTypes and
+	// again from the function it delegates to - so the file is opened once and
+	// closed once, when the outermost of them is done.
+	h.autoSaveDepth++
+
+	if h.captureOutput != nil {
+		return nil
+	}
+	if err := h.openAutoSaveFile(); err != nil {
+		h.autoSaveDepth--
+		return err
+	}
+	h.openForCommand = command
+	return nil
+}
+
+// finishAutoSaveFile closes the file once the write that opened it is done.
+//
+// Closed at the end of the write rather than held open until the next query. A
+// Parquet file is nothing until its footer is written, so one left open is a
+// zero-byte file - and looking at what AutoSave has written should not require
+// running another query first.
+func (h *MetaCommandHandler) finishAutoSaveFile() {
+	if h.autoSaveDepth == 0 {
+		return
+	}
+
+	h.autoSaveDepth--
+	if h.autoSaveDepth == 0 {
+		h.closeAutoSaveFile()
+	}
+}
+
+// openAutoSaveFile starts a file for one query's output.
+//
+// Opened here rather than when AUTOSAVE was switched on, because there is a
+// file per query: which one is being written is only known once a query has
+// run, and the schema of a Parquet file is only known once its columns are.
+func (h *MetaCommandHandler) openAutoSaveFile() error {
+	name := h.autoSaveName(h.captureFormat)
+
+	writer, err := parquet.CreateWriter(context.Background(), name)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", name, err)
+	}
+	h.captureOutput = writer
+	h.lastAutoSaved = name
+
+	switch h.captureFormat {
+	case "json":
+		_, _ = writer.Write([]byte("[\n"))
+	case "csv":
+		h.csvWriter = csv.NewWriter(writer)
+	case "parquet":
+		// The writer is made once the columns are known.
+		h.parquetWriter = nil
+		h.captureHeaders = nil
+	}
+	return nil
+}
+
+// closeAutoSaveFile finishes the file for one query.
+func (h *MetaCommandHandler) closeAutoSaveFile() {
+	if h.captureOutput == nil {
+		return
+	}
+
+	switch h.captureFormat {
+	case "json":
+		_, _ = h.captureOutput.Write([]byte("\n]\n"))
+	case "csv":
+		if h.csvWriter != nil {
+			h.csvWriter.Flush()
+			h.csvWriter = nil
 		}
-
-		h.captureOutput = writer
-
-		switch format {
-		case "json":
-			// Write opening bracket for JSON array
-			_, _ = writer.Write([]byte("[\n"))
-		case "csv":
-			// Create CSV writer
-			h.csvWriter = csv.NewWriter(writer)
-		case "parquet":
-			// Parquet writer will be created when we know the schema
+	case "parquet":
+		if h.parquetWriter != nil {
+			_ = h.parquetWriter.Close()
 			h.parquetWriter = nil
 			h.captureHeaders = nil
 		}
 	}
 
-	return fmt.Sprintf("Now capturing query output to %s (format: %s). Use 'CAPTURE OFF' to stop.", filename, format)
+	_ = h.captureOutput.Close()
+	h.captureOutput = nil
+	h.openForCommand = ""
+	h.autoSaveDepth = 0
 }
 
 // parseWithOptions parses the WITH clause options
@@ -217,49 +323,27 @@ func (h *MetaCommandHandler) parseWithOptions(withClause string) map[string]stri
 
 // stopCapture stops the current capture and closes resources
 func (h *MetaCommandHandler) stopCapture() interface{} {
-	if h.captureOutput != nil {
-		// If JSON format, properly close the array
-		switch h.captureFormat {
-		case "json":
-			// Close the JSON array
-			_, _ = h.captureOutput.Write([]byte("\n]\n"))
-		case "csv":
-			if h.csvWriter != nil {
-				h.csvWriter.Flush()
-				h.csvWriter = nil
-			}
-		case "parquet":
-			if h.parquetWriter != nil {
-				_ = h.parquetWriter.Close()
-				h.parquetWriter = nil
-				h.captureHeaders = nil
-			}
-		}
-
-		_ = h.captureOutput.Close()
-		h.captureOutput = nil
-		result := fmt.Sprintf("Stopped capturing to %s", h.captureFile)
-		h.captureFile = ""
-		h.captureFormat = "text"
-		h.captureOptions = nil
-		h.capturePartitionColumns = nil
-		return result
+	if h.autoSaveDir == "" {
+		return "Not saving query output"
 	}
 
-	// Close partitioned writer if exists
+	// A query's file is closed when that query is written, so there is nothing
+	// left to close but a partitioned writer, which spans the whole session.
+	h.closeAutoSaveFile()
 	if h.partitionedWriter != nil {
 		_ = h.partitionedWriter.Close()
-		result := fmt.Sprintf("Stopped capturing to %s", h.captureFile)
 		h.partitionedWriter = nil
-		h.captureFile = ""
-		h.captureFormat = "text"
-		h.captureOptions = nil
-		h.capturePartitionColumns = nil
-		h.captureColumnTypes = nil
-		return result
 	}
 
-	return "Not currently capturing"
+	result := fmt.Sprintf("Stopped saving query output to %s", h.autoSaveDir)
+	h.autoSaveDir = ""
+	h.lastAutoSaved = ""
+	h.autoSaveCount = 0
+	h.captureFormat = "text"
+	h.captureOptions = nil
+	h.capturePartitionColumns = nil
+	h.captureColumnTypes = nil
+	return result
 }
 
 // GetCaptureFile returns the current capture file if any
@@ -274,7 +358,10 @@ func (h *MetaCommandHandler) GetCaptureFormat() string {
 
 // IsCapturing returns true if currently capturing output
 func (h *MetaCommandHandler) IsCapturing() bool {
-	return h.captureOutput != nil || h.partitionedWriter != nil || (h.captureFormat == "parquet" && len(h.capturePartitionColumns) > 0)
+	// Whether a directory is set, not whether a file happens to be open. The
+	// files come and go with each query now, and between two queries there is
+	// none - which is not the same as AutoSave being off.
+	return h.autoSaveDir != ""
 }
 
 // WriteToCapture writes data to the capture file if active
@@ -363,6 +450,15 @@ func FormatResultAsJSON(headers []string, rows [][]string) (string, error) {
 
 // AppendCaptureRows appends additional rows to the capture file (for paging)
 func (h *MetaCommandHandler) AppendCaptureRows(rows [][]string) error {
+	// Pages that arrive after the result get a file of their own, numbered
+	// after it. Parquet cannot be appended to - a file is sealed by its footer
+	// - so the choice is a second part or nothing, and a second part is the
+	// one that keeps the rows.
+	if err := h.startAutoSaveFile(""); err != nil {
+		return err
+	}
+	defer h.finishAutoSaveFile()
+
 	// Handle partitioned writer
 	if h.partitionedWriter != nil {
 		// Convert string rows to map format
@@ -428,13 +524,18 @@ func (h *MetaCommandHandler) WriteCaptureResult(command string, headers []string
 
 // WriteCaptureResultWithTypes writes query results with column type information (for Parquet support)
 func (h *MetaCommandHandler) WriteCaptureResultWithTypes(command string, headers []string, columnTypes []string, rows [][]string, rawData []map[string]interface{}) error {
+	if err := h.startAutoSaveFile(command); err != nil {
+		return err
+	}
+	defer h.finishAutoSaveFile()
+
 	// Handle partitioned Parquet capture
 	logger.DebugfToFile("WriteCaptureResultWithTypes", "Format: %s, PartitionColumns: %v, Rows: %d",
 		h.captureFormat, h.capturePartitionColumns, len(rows))
 	if h.captureFormat == "parquet" && h.capturePartitionColumns != nil && len(h.capturePartitionColumns) > 0 {
 		// Create partitioned writer if not exists
 		if h.partitionedWriter == nil {
-			logger.DebugfToFile("WriteCaptureResultWithTypes", "Creating partitioned writer for path: %s", h.captureFile)
+			logger.DebugfToFile("WriteCaptureResultWithTypes", "Creating partitioned writer for path: %s", h.autoSaveDir)
 			// Parquet wants the column names Cassandra knows.
 			cleanHeaders := db.StripKeyMarkers(headers)
 
@@ -463,7 +564,7 @@ func (h *MetaCommandHandler) WriteCaptureResultWithTypes(command string, headers
 
 			// Create partitioned writer
 			logger.DebugfToFile("WriteCaptureResultWithTypes", "Creating writer with headers: %v, types: %v", cleanHeaders, columnTypes)
-			writer, err := parquet.NewPartitionedParquetWriter(h.captureFile, cleanHeaders, columnTypes, writerOptions)
+			writer, err := parquet.NewPartitionedParquetWriter(h.autoSaveDir, cleanHeaders, columnTypes, writerOptions)
 			if err != nil {
 				return fmt.Errorf("failed to create partitioned Parquet writer: %w", err)
 			}
@@ -526,7 +627,7 @@ func (h *MetaCommandHandler) WriteCaptureResultWithTypes(command string, headers
 
 		// Create the Parquet writer with clean column names
 		options := parquet.DefaultWriterOptions()
-		writer, err := parquet.NewParquetCaptureWriter(h.captureFile, cleanHeaders, columnTypes, options)
+		writer, err := parquet.NewParquetCaptureWriter(h.lastAutoSaved, cleanHeaders, columnTypes, options)
 		if err != nil {
 			return fmt.Errorf("failed to create Parquet writer: %w", err)
 		}
@@ -545,6 +646,11 @@ func (h *MetaCommandHandler) WriteCaptureResultWithTypes(command string, headers
 
 // WriteCaptureResultWithRawData writes query results to the capture file with optional raw data for JSON
 func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, headers []string, rows [][]string, rawData []map[string]interface{}) error {
+	if err := h.startAutoSaveFile(command); err != nil {
+		return err
+	}
+	defer h.finishAutoSaveFile()
+
 	// Skip if using partitioned writer (handled in WriteCaptureResultWithTypes)
 	if h.partitionedWriter != nil {
 		return nil
@@ -554,26 +660,25 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 		return nil
 	}
 
+	// A write with no command is more of the query already being written, so
+	// the file gets its header row once, at the top, rather than again in the
+	// middle every time another page arrives.
+	continuing := command == ""
+
 	switch h.captureFormat {
 	case "csv":
-		// Write headers as first row (with query command as comment)
-		// Write comment with the query
-		_ = h.csvWriter.Write([]string{"# Query: " + command})
-
-		// Write headers
-		if err := h.csvWriter.Write(headers); err != nil {
-			return err
+		if !continuing {
+			_ = h.csvWriter.Write([]string{"# Query: " + command})
+			if err := h.csvWriter.Write(headers); err != nil {
+				return err
+			}
 		}
 
-		// Write data rows
 		for _, row := range rows {
 			if err := h.csvWriter.Write(row); err != nil {
 				return err
 			}
 		}
-
-		// Add empty row to separate queries
-		_ = h.csvWriter.Write([]string{})
 
 		// Flush to ensure data is written
 		h.csvWriter.Flush()
@@ -641,7 +746,7 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 			}
 
 			options := parquet.DefaultWriterOptions()
-			writer, err := parquet.NewParquetCaptureWriter(h.captureFile, headers, columnTypes, options)
+			writer, err := parquet.NewParquetCaptureWriter(h.lastAutoSaved, headers, columnTypes, options)
 			if err != nil {
 				return fmt.Errorf("failed to create Parquet writer: %w", err)
 			}

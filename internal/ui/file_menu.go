@@ -44,13 +44,11 @@ type fileMenu struct {
 
 // fileMenuItems is what the menu offers, in the order it offers them.
 //
-// Save first: it acts on what is already on screen, which is what you are
-// looking at when you reach for this. Capture is a decision about everything
-// that comes next.
+// AutoSave first: it is a decision about everything that comes next, and the
+// one you are most likely to be here to make.
 func fileMenuItems() []fileMenuItem {
 	return []fileMenuItem{
-		{label: "SAVE RESULTS", kind: saving},
-		{label: "CAPTURE", kind: capturing},
+		{label: "AUTOSAVE", kind: capturing},
 		{label: "SOURCE", form: sourcing, asks: true},
 		{label: "COPY TO", form: copyingTo, asks: true},
 		{label: "COPY FROM", form: copyingFrom, asks: true},
@@ -59,18 +57,16 @@ func fileMenuItems() []fileMenuItem {
 
 // available reports whether an item can be picked.
 //
-// SAVE RESULTS is dimmed with nothing to save, the same as a tab with nothing
-// to show, and reads the check the SAVE command makes before refusing, so the
-// menu and the command cannot disagree about whether there is anything there.
+// SAVE RESULTS was here and is not any more. Everything left is a file
+// operation that stands on its own; saving what is on screen depends on there
+// being something on screen, which made it the one entry that was sometimes
+// dimmed. The SAVE command is unchanged and still opens the same window.
 func (m *MainModel) fileItemAvailable(item fileMenuItem) bool {
-	switch {
-	case item.asks && item.form != sourcing:
-		// COPY names a keyspace and a table, and without a session there is
-		// nothing to name and nothing to complete against. SOURCE reads a file
-		// and does not need one.
+	// COPY names a keyspace and a table, and without a session there is nothing
+	// to name and nothing to complete against. SOURCE reads a file and
+	// AUTOSAVE writes them, so neither needs one.
+	if item.asks && item.form != sourcing {
 		return m.session != nil
-	case !item.asks && item.kind == saving:
-		return m.hasResults()
 	}
 	return true
 }

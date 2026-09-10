@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
@@ -125,7 +126,7 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 	trimmedCommand := strings.TrimSuffix(strings.TrimSpace(command), ";")
 	upperCommand := strings.ToUpper(trimmedCommand)
 	isMetaCommand := false
-	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "CAPTURE", "HELP", "SAVE"}
+	metaCommands := []string{"DESCRIBE", "DESC", "CONSISTENCY", "OUTPUT", "PAGING", "AUTOFETCH", "TRACING", "SOURCE", "COPY", "SHOW", "EXPAND", "AUTOSAVE", "CAPTURE", "HELP", "SAVE"}
 
 	logger.DebugfToFile("ProcessCommand", "Called with: '%s', trimmed: '%s', upper: '%s'", command, trimmedCommand, upperCommand)
 
@@ -225,7 +226,10 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 					rawRows = append(rawRows, row)
 				}
 
-				// Write to capture file
+				// Write to the AutoSave file. This happens here rather than in
+				// the UI because batch mode never reaches the UI, and it is
+				// marked as done so the UI does not write the same rows again.
+				saved := false
 				if len(rows) > 0 {
 					switch {
 					case len(v.ColumnTypes) > 0:
@@ -233,6 +237,7 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 					default:
 						_ = metaHandler.WriteCaptureResultWithRawData(command, v.Headers, rows, rawRows)
 					}
+					saved = true
 				}
 
 				// Convert streaming result to regular QueryResult so it can be displayed
@@ -240,10 +245,20 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 				data := [][]string{v.Headers}
 				data = append(data, rows...)
 				logger.DebugfToFile("ProcessCommand", "Converting StreamingQueryResult to QueryResult: headers=%d, data rows=%d, total data=%d", len(v.Headers), len(rows), len(data))
+				// Everything the info bar reads comes across too. It never did:
+				// the conversion carried the rows and the types and left the
+				// timing, the row count and the headers at zero, so a query run
+				// with AutoSave on - the only time this conversion happens -
+				// reported "Query: 0s" and "Rows: 0".
 				result = db.QueryResult{
-					Data:        data,
-					ColumnTypes: v.ColumnTypes,
-					RawData:     rawRows,
+					Data:            data,
+					Headers:         v.Headers,
+					ColumnTypes:     v.ColumnTypes,
+					ColumnTypeInfos: v.ColumnTypeInfos,
+					RawData:         rawRows,
+					Duration:        time.Since(v.StartTime),
+					RowCount:        len(rows),
+					AlreadySaved:    saved,
 				}
 				logger.DebugfToFile("ProcessCommand", "Converted result type: %T, Data length: %d", result, len(result.(db.QueryResult).Data))
 			}
@@ -287,6 +302,7 @@ func parseMetaCommand(command string, session *db.Session, sessionMgr *session.M
 		strings.HasPrefix(upperCommand, "AUTOFETCH") ||
 		strings.HasPrefix(upperCommand, "EXPAND") ||
 		strings.HasPrefix(upperCommand, "SOURCE") ||
+		strings.HasPrefix(upperCommand, "AUTOSAVE") ||
 		strings.HasPrefix(upperCommand, "CAPTURE") ||
 		strings.HasPrefix(upperCommand, "COPY") ||
 		strings.HasPrefix(upperCommand, "HELP") ||

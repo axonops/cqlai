@@ -581,13 +581,13 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   -- QUOTE = '"'             -- 文字列の引用文字
   ```
 
-- **CAPTURE** - クエリ出力をファイルにキャプチャ(連続記録)
+- **AUTOSAVE** - 実行のたびに各クエリの出力をディレクトリへ保存
   ```sql
-  CAPTURE 'output.txt'          -- テキストファイルへのキャプチャを開始
-  CAPTURE JSON 'output.json'    -- JSONとしてキャプチャ
-  CAPTURE CSV 'output.csv'      -- CSVとしてキャプチャ
+  AUTOSAVE '/exports/'           -- 各クエリをテキストファイルとして保存
+  AUTOSAVE JSON '/exports/'      -- クエリごとに1つのJSONファイル
+  AUTOSAVE CSV '/exports/'       -- クエリごとに1つのCSVファイル
   SELECT * FROM users;
-  CAPTURE OFF                   -- キャプチャを停止
+  AUTOSAVE OFF                   -- 停止
   ```
 
 - **SAVE** - 表示されたクエリ結果をファイルに保存(再実行なし)
@@ -602,7 +602,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   SAVE TO 'users.parquet'                 -- Parquetに保存(形式は自動検出)
   SAVE TO 'data.out' AS CSV               -- 明示的に形式を指定
 
-  -- CAPTUREとの主な違い:
+  -- AUTOSAVEとの主な違い:
   -- - SAVEは現在表示されている結果をエクスポート
   -- - クエリを再実行する必要なし
   -- - ターミナルに表示されているデータをそのまま保持
@@ -964,10 +964,10 @@ COPY events TO 'events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='ZSTD';
 -- Parquetからインポート
 COPY users FROM 'users.parquet';
 
--- Parquet形式でクエリ結果をキャプチャ
-CAPTURE 'results.parquet' FORMAT='PARQUET';
+-- 各クエリを独立したParquetファイルとして保存
+AUTOSAVE PARQUET 'results/';
 SELECT * FROM large_table WHERE condition = true;
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 ### サポートされる機能
@@ -983,7 +983,7 @@ CAPTURE OFF;
 
 ## ⚠️ 既知の制限事項
 
-### JSON出力(CAPTURE JSONと--format json)
+### JSON出力(AUTOSAVE JSONと--format json)
 
 データをJSONとして出力する場合、基礎となるgocqlドライバーが動的型を処理する方法により、いくつかの制限があります:
 

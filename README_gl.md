@@ -586,13 +586,13 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   -- QUOTE = '"'             -- Carácter de comiñas para cadeas
   ```
 
-- **CAPTURE** - Capturar saída de consulta a arquivo (gravación continua)
+- **AUTOSAVE** - Gardar a saída de cada consulta nun directorio, segundo se executa
   ```sql
-  CAPTURE 'output.txt'          -- Comezar a capturar a arquivo de texto
-  CAPTURE JSON 'output.json'    -- Capturar como JSON
-  CAPTURE CSV 'output.csv'      -- Capturar como CSV
+  AUTOSAVE '/exports/'           -- Cada consulta como arquivo de texto
+  AUTOSAVE JSON '/exports/'      -- Un arquivo JSON por consulta
+  AUTOSAVE CSV '/exports/'       -- Un arquivo CSV por consulta
   SELECT * FROM users;
-  CAPTURE OFF                   -- Deter captura
+  AUTOSAVE OFF                   -- Deter
   ```
 
 - **SAVE** - Gardar resultados de consulta mostrados a arquivo (sen re-executar)
@@ -607,7 +607,7 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   SAVE 'users.txt' ASCII         -- Gardar como táboa ASCII
   SAVE 'data.csv' CSV            -- Especificar formato explicitamente
 
-  -- Diferenzas clave con CAPTURE:
+  -- Diferenzas clave con AUTOSAVE:
   -- - SAVE exporta os resultados mostrados actualmente
   -- - Non necesita re-executar a consulta
   -- - Preserva os datos exactos mostrados no terminal
@@ -1087,9 +1087,9 @@ COPY events TO 'events.parquet' WITH FORMAT='PARQUET' AND COMPRESSION='ZSTD';
 COPY users FROM 'users.parquet';
 
 -- Capturar resultados de consulta en formato Parquet
-CAPTURE 'results.parquet' FORMAT='PARQUET';
+AUTOSAVE PARQUET 'results/';
 SELECT * FROM large_table WHERE condition = true;
-CAPTURE OFF;
+AUTOSAVE OFF;
 ```
 
 ### Características Soportadas
@@ -1105,7 +1105,7 @@ Para documentación detallada, consulta [Guía de Soporte de Parquet](docs/PARQU
 
 ## ⚠️ Limitacións Coñecidas
 
-### Saída JSON (CAPTURE JSON e --format json)
+### Saída JSON (AUTOSAVE JSON e --format json)
 
 Ao xerar datos como JSON, existen algunhas limitacións debido a como o driver gocql subxacente manexa o tipado dinámico:
 
