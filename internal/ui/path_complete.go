@@ -37,6 +37,18 @@ func completePath(input string) pathCompletion {
 
 	dir, prefix := splitPath(input)
 
+	// Nothing typed at all: start at the root rather than in whatever directory
+	// cqlai was started from, which is rarely where the file is and is not
+	// somewhere you can see - the field looks empty and Tab produces a listing
+	// you had no reason to expect. It is also the one case with no directory to
+	// offer a way up out of.
+	//
+	// A name with no directory in front of it - report.csv - is a different
+	// thing, and still completes here, which is what typing a bare name means.
+	if dir == "" && prefix == "" {
+		dir = pathRoot
+	}
+
 	entries, err := os.ReadDir(expandHome(dir))
 	if err != nil {
 		return none
