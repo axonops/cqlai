@@ -486,13 +486,9 @@ func (m *MainModel) loadMoreTableDataHelper() {
 			}
 		}
 
-		// Update the table data and refresh the view
-		allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
 		// Clear cache to force rebuild
 		m.cachedTableLines = nil
-		// NOTE: Don't update m.lastTableData - formatTableForViewport will handle it
-
-		m.refreshTableContent(allData)
+		m.renderResults(m.resultRows())
 
 		// Update row count
 		m.rowCount = int(m.slidingWindow.TotalRowsSeen)

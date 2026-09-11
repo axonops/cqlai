@@ -54,10 +54,11 @@ func HelpRows() [][]string {
 
 		// Output Control
 		{"─────────", "─────────", "─────────────"},
-		{"Output", "OUTPUT [format]", "Set output format:"},
+		{"Output", "OUTPUT [format]", "Set output format, and redraw what is on screen:"},
 		{"", "  TABLE", "Formatted table (default)"},
 		{"", "  JSON", "JSON format"},
-		{"", "  EXPAND", "Vertical format"},
+		{"", "  EXPAND", "Vertical format (EXPAND ON does the same)"},
+		{"", "  ASCII", "ASCII table"},
 		{"", "AUTOSAVE 'dir'", "Save each query's output into a directory"},
 		{"", "AUTOSAVE JSON 'dir'", "One JSON file per query"},
 		{"", "AUTOSAVE PARQUET 'dir'", "One Parquet file per query"},

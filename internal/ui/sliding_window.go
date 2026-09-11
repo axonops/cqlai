@@ -20,6 +20,12 @@ type SlidingWindowTable struct {
 	Rows        [][]string // Current window of rows
 	ColumnTypes []string   // Column types (always kept)
 
+	// RawRows is the same window of rows as the values they were before they
+	// were formatted for a table cell, kept in step with Rows. JSON is built
+	// from these: a timestamp drawn for a cell, or a collection written the way
+	// cqlsh writes one, cannot be turned back into what it came from.
+	RawRows []map[string]interface{}
+
 	// Window tracking
 	FirstRowIndex int64 // Global index of first row in window
 	TotalRowsSeen int64 // Total rows processed (may be more than in memory)
@@ -43,6 +49,7 @@ func NewSlidingWindowTable(maxRows int, maxMemoryMB int) *SlidingWindowTable {
 		MaxRows:        maxRows,
 		MaxMemoryBytes: int64(maxMemoryMB * 1024 * 1024),
 		Rows:           make([][]string, 0),
+		RawRows:        make([]map[string]interface{}, 0),
 		FirstRowIndex:  0,
 		TotalRowsSeen:  0,
 		CurrentMemory:  0,
@@ -50,8 +57,11 @@ func NewSlidingWindowTable(maxRows int, maxMemoryMB int) *SlidingWindowTable {
 	}
 }
 
-// AddRow adds a row to the sliding window, potentially evicting old rows
-func (swt *SlidingWindowTable) AddRow(row []string) {
+// AddRow adds a row to the sliding window, potentially evicting old rows.
+//
+// raw is the same row as the values behind it, and may be nil for rows that
+// never had any - a grid the shell made up rather than a result over a table.
+func (swt *SlidingWindowTable) AddRow(row []string, raw map[string]interface{}) {
 	// Calculate approximate memory for this row
 	rowMemory := swt.calculateRowMemory(row)
 
@@ -62,6 +72,7 @@ func (swt *SlidingWindowTable) AddRow(row []string) {
 
 	// Add the new row
 	swt.Rows = append(swt.Rows, row)
+	swt.RawRows = append(swt.RawRows, raw)
 	swt.CurrentMemory += rowMemory
 	swt.TotalRowsSeen++
 
@@ -115,19 +126,31 @@ func (swt *SlidingWindowTable) evictOldestRows(neededMemory int64) {
 			rowsToEvict, freedMemory)
 
 		swt.Rows = swt.Rows[rowsToEvict:]
+		// In step with the rows they belong to, or JSON would be drawn from the
+		// values of rows that have scrolled off the top.
+		if rowsToEvict < len(swt.RawRows) {
+			swt.RawRows = swt.RawRows[rowsToEvict:]
+		} else {
+			swt.RawRows = nil
+		}
 		swt.FirstRowIndex += int64(rowsToEvict)
 		swt.CurrentMemory -= freedMemory
 		swt.DataDroppedAtStart = true
 	}
 }
 
-// calculateRowMemory estimates memory usage for a row
+// calculateRowMemory estimates memory usage for a row.
+//
+// Doubled, because a row is kept twice: the strings drawn in the cells, and the
+// values they were made from. The second copy is roughly the size of the first
+// for the types a cell can hold, and a budget that ignored it would let twice
+// as much into memory as it was set to.
 func (swt *SlidingWindowTable) calculateRowMemory(row []string) int64 {
 	memory := int64(24) // Slice overhead
 	for _, cell := range row {
 		memory += int64(len(cell)) + 24 // String content + string header
 	}
-	return memory
+	return memory * 2
 }
 
 // GetVisibleRows returns rows for display within the specified range
@@ -179,7 +202,7 @@ func (swt *SlidingWindowTable) LoadMoreRows(maxRows int) int {
 	}
 
 	ctx := context.Background()
-	rows, hasMore, err := swt.streamingResult.LoadMore(ctx, maxRows)
+	page, err := swt.streamingResult.LoadMore(ctx, maxRows)
 	if err != nil {
 		logger.DebugfToFile("SlidingWindowTable", "Error loading more rows: %v", err)
 		swt.hasMoreData = false
@@ -188,17 +211,17 @@ func (swt *SlidingWindowTable) LoadMoreRows(maxRows int) int {
 	}
 
 	// Add the loaded rows
-	for _, row := range rows {
-		swt.AddRow(row)
+	for i, row := range page.Rows {
+		swt.AddRow(row, rawAt(page.Raw, i))
 	}
 
-	swt.hasMoreData = hasMore
-	if !hasMore {
+	swt.hasMoreData = page.HasMore
+	if !page.HasMore {
 		swt.streamingResult = nil
 	}
 
-	logger.DebugfToFile("SlidingWindowTable", "Loaded %d more rows", len(rows))
-	return len(rows)
+	logger.DebugfToFile("SlidingWindowTable", "Loaded %d more rows", len(page.Rows))
+	return len(page.Rows)
 }
 
 // GetUncapturedRows returns rows that haven't been written to capture file yet
@@ -243,4 +266,12 @@ func (swt *SlidingWindowTable) Reset() {
 	swt.streamingResult = nil
 	swt.hasMoreData = false
 	swt.LastCapturedRow = 0
+}
+
+// rawAt is the raw values for a row, or nil when the batch carried none.
+func rawAt(raw []map[string]interface{}, i int) map[string]interface{} {
+	if i < len(raw) {
+		return raw[i]
+	}
+	return nil
 }

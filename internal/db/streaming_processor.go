@@ -50,38 +50,43 @@ func NewStreamingProcessor(result StreamingQueryResult, session *Session) *Strea
 
 // LoadResults loads a batch of results from the iterator
 // Returns the formatted rows, whether more results exist, and any error
-func (sp *StreamingProcessor) LoadResults(ctx context.Context, maxRows int) ([][]string, bool, error) {
+func (sp *StreamingProcessor) LoadResults(ctx context.Context, maxRows int) (Page, error) {
 	if sp.iterator == nil {
-		return nil, false, fmt.Errorf("iterator is nil")
+		return Page{}, fmt.Errorf("iterator is nil")
 	}
 
-	rows := make([][]string, 0, maxRows)
-	rowCount := 0
+	page := Page{
+		Rows: make([][]string, 0, maxRows),
+		Raw:  make([]map[string]interface{}, 0, maxRows),
+	}
 
-	for rowCount < maxRows {
+	for len(page.Rows) < maxRows {
 		select {
 		case <-ctx.Done():
-			return rows, false, ctx.Err()
+			return page, ctx.Err()
 		default:
 			// Use MapScan to handle NULLs properly
 			rowMap := make(map[string]interface{})
 			if !sp.iterator.MapScan(rowMap) {
 				// No more rows or error occurred
 				if err := sp.iterator.Close(); err != nil {
-					return rows, false, fmt.Errorf("iterator error: %w", err)
+					return page, fmt.Errorf("iterator error: %w", err)
 				}
-				return rows, false, nil
+				return page, nil
 			}
 
-			// Convert row to string array
-			row := sp.formatRow(rowMap)
-			rows = append(rows, row)
-			rowCount++
+			// Both the values as they are drawn and the values themselves. The
+			// second set is what JSON is built from: a timestamp formatted for
+			// a table cell, or a collection written the way cqlsh writes one,
+			// cannot be turned back into what it came from.
+			page.Rows = append(page.Rows, sp.formatRow(rowMap))
+			page.Raw = append(page.Raw, rowMap)
 		}
 	}
 
 	// We loaded maxRows, there might be more
-	return rows, true, nil
+	page.HasMore = true
+	return page, nil
 }
 
 // formatRow formats a single row from MapScan results
@@ -175,12 +180,26 @@ func (sp *StreamingProcessor) GetColumnNames() []string {
 	return sp.columnNames
 }
 
+// Page is a batch of rows as they came back: the values as they are drawn, and
+// the values themselves.
+//
+// Both, because they answer different questions and neither can be got from the
+// other. The strings are what a table cell holds. The raw values are what JSON
+// is built from, and what the OUTPUT format could not be changed without: a
+// result fetched as JSON is one column of documents, and no amount of redrawing
+// turns that back into columns.
+type Page struct {
+	Rows    [][]string
+	Raw     []map[string]interface{}
+	HasMore bool
+}
+
 // StreamingResult represents a complete result that can be loaded progressively
 type StreamingResult struct {
 	Headers     []string
 	Rows        [][]string
 	HasMore     bool
-	LoadMore    func(ctx context.Context, count int) ([][]string, bool, error)
+	LoadMore    func(ctx context.Context, count int) (Page, error)
 	Close       func() error
 	ElapsedTime time.Duration
 }
@@ -193,12 +212,8 @@ func (s *Session) ProcessStreamingQuery(result StreamingQueryResult) *StreamingR
 		Headers: processor.GetHeaders(),
 		Rows:    [][]string{},
 		HasMore: true,
-		LoadMore: func(ctx context.Context, count int) ([][]string, bool, error) {
-			rows, hasMore, err := processor.LoadResults(ctx, count)
-			if err != nil {
-				return nil, false, err
-			}
-			return rows, hasMore, nil
+		LoadMore: func(ctx context.Context, count int) (Page, error) {
+			return processor.LoadResults(ctx, count)
 		},
 		Close: func() error {
 			return processor.Close()

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -21,7 +22,6 @@ import (
 type MetaCommandHandler struct {
 	session                 *db.Session
 	sessionManager          *session.Manager
-	expandMode              bool
 	autoSaveDir             string
 	lastAutoSaved           string // the file the last query went to, for the message
 	autoSaveCount           int    // which query this is, so two in a second do not collide
@@ -43,7 +43,6 @@ func NewMetaCommandHandler(session *db.Session, sessionMgr *session.Manager) *Me
 	return &MetaCommandHandler{
 		session:        session,
 		sessionManager: sessionMgr,
-		expandMode:     false,
 		captureFormat:  "text",
 	}
 }
@@ -156,7 +155,7 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 		result += fmt.Sprintf("Page size: %d\n", h.session.PageSize())
 		result += fmt.Sprintf("Tracing: %v\n", h.session.Tracing())
 		result += fmt.Sprintf("Auto-fetch: %v\n", h.session.AutoFetch())
-		result += fmt.Sprintf("Expand mode: %v", h.expandMode)
+		result += fmt.Sprintf("Expand mode: %v", h.expandMode())
 		return result
 	}
 
@@ -256,24 +255,48 @@ func (h *MetaCommandHandler) handleExpand(command string) interface{} {
 
 	switch len(parts) {
 	case 1:
-		if h.expandMode {
+		if h.expandMode() {
 			return "Expand mode is currently ON (vertical output)"
 		}
 		return "Expand mode is currently OFF (table output)"
 	case 2:
 		switch parts[1] {
 		case "ON":
-			h.expandMode = true
-			return "Expand mode turned ON - results will be shown vertically"
+			return h.setExpand(config.OutputFormatExpand,
+				"Expand mode turned ON - results will be shown vertically")
 		case "OFF":
-			h.expandMode = false
-			return "Expand mode turned OFF - results will be shown as tables"
+			return h.setExpand(config.OutputFormatTable,
+				"Expand mode turned OFF - results will be shown as tables")
 		default:
 			return "Usage: EXPAND ON | OFF"
 		}
 	default:
 		return "Usage: EXPAND ON | OFF"
 	}
+}
+
+// expandMode reports whether results are being drawn vertically.
+//
+// It was a flag of its own, set by EXPAND ON and read by nothing: the command
+// said results would be shown vertically and then nothing anywhere drew them
+// that way. EXPAND is the OUTPUT format called by another name, so it is that
+// setting, and one place to look when asking what the format is.
+func (h *MetaCommandHandler) expandMode() bool {
+	if h.sessionManager == nil {
+		return false
+	}
+	return h.sessionManager.GetOutputFormat() == config.OutputFormatExpand
+}
+
+// setExpand puts the output format where EXPAND says it should be.
+func (h *MetaCommandHandler) setExpand(format config.OutputFormat, said string) interface{} {
+	if h.sessionManager == nil {
+		return "Session manager not initialized"
+	}
+	if err := h.sessionManager.SetOutputFormat(format); err != nil {
+		return fmt.Sprintf("Failed to set output format: %v", err)
+	}
+	return said
 }
 
 // handleSource handles SOURCE command to execute CQL from file
@@ -566,7 +589,7 @@ func (h *MetaCommandHandler) parseValueForBinding(value string, _ string, _ stri
 
 // IsExpandMode returns whether expand mode is on
 func (h *MetaCommandHandler) IsExpandMode() bool {
-	return h.expandMode
+	return h.expandMode()
 }
 
 // FormatResultAsJSONWithRawData formats query results as JSON with optional raw data

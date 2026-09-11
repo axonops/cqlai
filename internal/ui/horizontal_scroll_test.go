@@ -22,11 +22,12 @@ func wideResults(t *testing.T, format config.OutputFormat) *MainModel {
 	m := queryResultModel(t)
 	m.tableViewport.SetWidth(40)
 	m.columnWidths = []int{8, 8}
+	require.NoError(t, m.sessionManager.SetOutputFormat(format))
 	m.showQueryResult([][]string{
 		{"id", "payload"},
 		{"1", strings.Repeat("a", 300)},
 		{"2", strings.Repeat("b", 300)},
-	}, nil, format)
+	}, nil)
 	return m
 }
 
@@ -127,7 +128,8 @@ func TestANewResultStartsAtTheLeftEdge(t *testing.T) {
 	}
 	require.Positive(t, m.tableViewport.XOffset())
 
-	m.showQueryResult([][]string{{"id"}, {"1"}}, nil, config.OutputFormatASCII)
+	require.NoError(t, m.sessionManager.SetOutputFormat(config.OutputFormatASCII))
+	m.showQueryResult([][]string{{"id"}, {"1"}}, nil)
 
 	assert.Zero(t, m.horizontalOffset)
 	assert.Zero(t, m.tableViewport.XOffset())
@@ -137,7 +139,8 @@ func TestANewResultStartsAtTheLeftEdge(t *testing.T) {
 func TestNarrowContentDoesNotScroll(t *testing.T) {
 	m := queryResultModel(t)
 	m.tableViewport.SetWidth(80)
-	m.showQueryResult([][]string{{"id"}, {"1"}}, nil, config.OutputFormatASCII)
+	require.NoError(t, m.sessionManager.SetOutputFormat(config.OutputFormatASCII))
+	m.showQueryResult([][]string{{"id"}, {"1"}}, nil)
 
 	for name, scroll := range scrollRight {
 		scroll(m)

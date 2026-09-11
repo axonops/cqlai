@@ -124,6 +124,11 @@ type MainModel struct {
 	help             helpWindow     // Open help window, if any
 	capture          capturePanel   // Open capture window, if any
 	preferences      preferences    // Open PREFERENCES window, if any
+
+	// lastRawData is the values behind lastTableData for a result that arrived
+	// whole, so JSON is written from what came back rather than from what was
+	// drawn in the cells.
+	lastRawData []map[string]interface{}
 	// completingPath says the candidates on offer are filenames rather than
 	// CQL words. Applying one has to keep the directory in front of it; the
 	// word-based path would replace /tmp/rep with report.csv and lose the /tmp.
