@@ -111,10 +111,10 @@ id,name,email,created_at
 出力例:
 ```
 +----+------------+------------------+------------+
-| id | name       | email            | created_at |
+| id | name | email | created_at |
 +----+------------+------------------+------------+
-| 1  | John Doe   | john@example.com | 2024-01-15 |
-| 2  | Jane Smith | jane@example.com | 2024-01-16 |
+| 1 | John Doe | john@example.com | 2024-01-15 |
+| 2 | Jane Smith | jane@example.com | 2024-01-16 |
 +----+------------+------------------+------------+
 ```
 
@@ -239,6 +239,5 @@ SAVEに直接関連していませんが、これらのショートカットは�
 
 ## 参照
 
-- [AUTOSAVEコマンド](./AUTOSAVE_COMMAND.md) - 継続的な出力記録用
-- [COPY TOコマンド](./COPY_COMMAND.md) - 完全な制御でのテーブルの直接エクスポート用
-- [OUTPUTコマンド](./OUTPUT_COMMAND.md) - 表示形式の変更用
+- [AUTOSAVE、COPY、OUTPUT](../README.md#meta-commands) - ファイルに書き出す、または表示形式を変えるその他のコマンド
+- [Parquetサポート](./PARQUET.md) - PARQUET形式が書き出す内容

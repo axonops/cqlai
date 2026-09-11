@@ -26,7 +26,7 @@ type CQLTypeHandler struct {
 
 ## Supported CQL Data Types
 
-### Native Types (Fully Supported ✅)
+### Native Types (Fully Supported )
 
 | CQL Type | Go Type | Display Format | Example |
 |----------|---------|----------------|---------|
@@ -52,7 +52,7 @@ type CQLTypeHandler struct {
 | **varchar** | string | Plain text | `"text value"` |
 | **varint** | *big.Int | Decimal string | `123456789012345678901234567890` |
 
-### Collection Types (Fully Supported ✅)
+### Collection Types (Fully Supported )
 
 | CQL Type | Go Type | Display Format | Example |
 |----------|---------|----------------|---------|
@@ -60,7 +60,7 @@ type CQLTypeHandler struct {
 | **set<T>** | []T | Square brackets | `[a, b, c]` |
 | **map<K,V>** | map[K]V | Curly braces | `{key1: val1, key2: val2}` |
 
-### Complex Types (Fully Supported ✅)
+### Complex Types (Fully Supported )
 
 | CQL Type | Go Type | Display Format | Example |
 |----------|---------|----------------|---------|
@@ -68,7 +68,7 @@ type CQLTypeHandler struct {
 | **UDT** | map[string]interface{} | Like maps | `{field1: val1, field2: val2}` |
 | **frozen<T>** | Same as T | Same as T | Transparent |
 
-### Special Types (Supported ✅)
+### Special Types (Supported )
 
 | CQL Type | Go Type | Display Format | Notes |
 |----------|---------|----------------|-------|

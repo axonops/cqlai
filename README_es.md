@@ -22,7 +22,7 @@
 
 <div align="center">
 
-### 🎁 100% Gratis y de Código Abierto
+### 100% Gratis y de Código Abierto
 **Sin costos ocultos • Sin niveles premium • Sin claves de licencia**
 
 Desarrollo impulsado por la comunidad con total transparencia
@@ -42,23 +42,23 @@ Está construido con [Bubble Tea](https://github.com/charmbracelet/bubbletea), [
 
 ---
 
-## 📑 Tabla de Contenidos
+## Tabla de Contenidos
 
-- [📊 Estado del Proyecto](#-estado-del-proyecto)
-- [✨ Características](#-características)
-- [🔧 Instalación](#-instalación)
-- [📚 Uso](#-uso)
+- [Estado del Proyecto](#estado-del-proyecto)
+- [Características](#características)
+- [Instalación](#instalación)
+- [Uso](#uso)
   - [Modo Interactivo](#modo-interactivo)
   - [Opciones de Línea de Comandos](#opciones-de-línea-de-comandos)
   - [Ejemplos de Modo Batch](#ejemplos-de-modo-batch)
   - [Comandos Básicos](#comandos-básicos)
   - [Atajos de Teclado](#atajos-de-teclado)
   - [Autocompletado con Tabulador](#autocompletado-con-tabulador)
-- [⚙️ Comandos Disponibles](#️-comandos-disponibles)
+- [Comandos Disponibles](#comandos-disponibles)
   - [Comandos CQL](#comandos-cql)
   - [Meta-Comandos](#meta-comandos)
   - [Comandos de IA](#comandos-de-ia)
-- [🛠️ Configuración](#️-configuración)
+- [Configuración](#configuración)
   - [Precedencia de Configuración](#precedencia-de-configuración)
   - [Compatibilidad con CQLSHRC](#compatibilidad-con-cqlshrc)
   - [Configuración JSON de CQLAI](#configuración-json-de-cqlai)
@@ -70,19 +70,19 @@ Está construido con [Bubble Tea](https://github.com/charmbracelet/bubbletea), [
     - [Ollama](#ollama-modelos-locales)
     - [OpenRouter](#openrouter-múltiples-modelos)
     - [Proveedor Mock](#proveedor-mock-para-pruebas)
-- [🤖 Generación de Consultas Potenciada por IA](#-generación-de-consultas-potenciada-por-ia)
-- [📦 Soporte de Apache Parquet](#-soporte-de-apache-parquet)
-- [⚠️ Limitaciones Conocidas](#️-limitaciones-conocidas)
-- [🔨 Desarrollo](#-desarrollo)
-- [🏗️ Stack Tecnológico](#️-stack-tecnológico)
-- [🙏 Agradecimientos](#-agradecimientos)
-- [💬 Comunidad y Soporte](#-comunidad-y-soporte)
-- [📝 Licencia](#-licencia)
-- [⚖️ Avisos Legales](#️-avisos-legales)
+- [Generación de Consultas Potenciada por IA](#generación-de-consultas-potenciada-por-ia)
+- [Soporte de Apache Parquet](#soporte-de-apache-parquet)
+- [Limitaciones Conocidas](#limitaciones-conocidas)
+- [Desarrollo](#desarrollo)
+- [Stack Tecnológico](#stack-tecnológico)
+- [Agradecimientos](#agradecimientos)
+- [Comunidad y Soporte](#comunidad-y-soporte)
+- [Licencia](#licencia)
+- [Avisos Legales](#avisos-legales)
 
 ---
 
-## 📊 Estado del Proyecto
+## Estado del Proyecto
 
 **CQLAI está listo para producción** y se utiliza activamente en entornos de desarrollo, pruebas y producción con clústeres de Cassandra. La herramienta proporciona una alternativa completa y estable a `cqlsh` con características y rendimiento mejorados.
 
@@ -107,7 +107,7 @@ Te animamos a **probar CQLAI hoy** y ayudar a dar forma a su desarrollo. Tu retr
 
 ---
 
-## ✨ Características
+## Características
 
 - **Shell CQL Interactivo:** Ejecuta cualquier consulta CQL que tu clúster de Cassandra soporte.
 - **Interfaz de Terminal Enriquecida:**
@@ -135,7 +135,7 @@ Te animamos a **probar CQLAI hoy** y ayudar a dar forma a su desarrollo. Tu retr
     - Soporte para conexiones SSL/TLS con autenticación por certificado.
 - **Binario Único:** Distribuido como un único binario estático sin dependencias externas. Inicio rápido y huella pequeña.
 
-## 🔧 Instalación
+## Instalación
 
 Puedes instalar `cqlai` de varias maneras. Para instrucciones detalladas incluyendo gestores de paquetes (APT, YUM) y Docker, consulta la [Guía de Instalación](docs/INSTALLATION.md).
 
@@ -168,7 +168,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host tu-host-cassandra
 ```
 
-## 📚 Uso
+## Uso
 
 ### Modo Interactivo
 
@@ -308,12 +308,54 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Ctrl+Y` | Pegar texto cortado previamente | Igual |
 
 #### Cambio de Vista
+
+Las pestañas se leen de izquierda a derecha, y las teclas siguen el mismo orden.
+
 | Atajo | Acción |
 |----------|--------|
-| `F2` | Cambiar a vista de consulta/historial |
-| `F3` | Cambiar a vista de tabla |
-| `F4` | Cambiar a vista de trazas (cuando el trazado está habilitado) |
-| `F5` | Cambiar a vista de conversación IA |
+| `F2` | Consola: lo que escribiste y lo que respondió |
+| `F3` | Esquema: los keyspaces y las tablas, con sus definiciones |
+| `F4` | Resultados: la última consulta, en el formato de `OUTPUT` |
+| `F5` | Trazas (cuando el trazado está habilitado) |
+| `F6` | Chat: la conversación con la IA |
+
+#### El menú FILE
+
+`FILE` (Alt+F), en la línea de pestañas, reúne lo que trabaja con ficheros:
+
+```
+╭──────────────╮
+│ SAVE RESULTS │
+│ AUTOSAVE     │
+│ SOURCE       │
+│ COPY TO      │
+│ COPY FROM    │
+│──────────────│
+│ PREFERENCES  │
+│──────────────│
+│ QUIT         │
+╰──────────────╯
+```
+
+`SAVE RESULTS` escribe lo que hay en pantalla. `AUTOSAVE` guarda cada consulta a
+partir de ese momento. `SOURCE` ejecuta el CQL de un fichero, y `COPY TO`/`COPY
+FROM` mueven una tabla entera. Bajo la primera línea, `PREFERENCES` edita los
+ajustes con los que arranca CQLAI; bajo la segunda, `QUIT` sale, preguntando
+antes.
+
+Las ventanas que piden una ruta abren un explorador de ficheros en tu directorio
+personal. Tab completa, `..` sube un nivel, y la rueda desplaza la lista.
+
+#### El explorador de esquema
+
+`SCHEMA` (F3) muestra los keyspaces y las tablas del clúster como un árbol a la
+izquierda, y la definición de lo seleccionado a la derecha. Al pulsar sobre un
+keyspace se muestra su definición y se despliega; al pulsar de nuevo se pliega.
+Al pulsar sobre una tabla se muestra su `CREATE TABLE`.
+
+Las flechas recorren el árbol (derecha despliega, izquierda pliega) y la rueda
+desplaza el panel que esté bajo el puntero. Lo demás sigue yendo al prompt, así
+que puedes escribir una consulta mientras miras la tabla de la que trata.
 
 #### Desplazamiento y Navegación de Tabla
 | Atajo | Acción | Alternativa macOS |
@@ -362,7 +404,7 @@ porque el terminal solo informa de los giros verticales como pulsaciones de tecl
 **Nota para Usuarios de macOS:**
 - La mayoría de atajos `Ctrl` funcionan tal cual en macOS, pero también puedes usar la tecla `⌘` (Comando) como alternativa
 - La tecla `Alt` está etiquetada como `Option` en los teclados Mac
-- Las teclas de función (F1-F5) pueden requerir mantener presionada la tecla `Fn` dependiendo de tu configuración de Mac
+- Las teclas de función (F1-F6) pueden requerir mantener presionada la tecla `Fn` dependiendo de tu configuración de Mac
 
 ### Autocompletado con Tabulador
 
@@ -455,7 +497,7 @@ SELECT * FROM <Tab>
 4. **Rutas de archivo:** Recuerda incluir comillas para autocompletado de rutas de archivo
 5. **Navega autocompletados:** Usa las teclas de flecha para seleccionar entre múltiples opciones
 
-## ⚙️ Comandos Disponibles
+## Comandos Disponibles
 
 CQLAI soporta todos los comandos CQL estándar además de meta-comandos adicionales para funcionalidad mejorada.
 
@@ -655,7 +697,7 @@ Los meta-comandos proporcionan funcionalidad adicional más allá del CQL están
   .ai encontrar pedidos realizados en los últimos 30 días
   ```
 
-## 🛠️ Configuración
+## Configuración
 
 CQLAI soporta múltiples métodos de configuración para máxima flexibilidad y compatibilidad con configuraciones existentes de Cassandra.
 
@@ -992,7 +1034,7 @@ Variables de entorno comunes:
 
 Si estás migrando desde `cqlsh`, CQLAI leerá automáticamente tu archivo existente `~/.cassandra/cqlshrc`. No se necesitan cambios para comenzar a usar CQLAI con tu configuración existente de Cassandra.
 
-## 🤖 Generación de Consultas Potenciada por IA
+## Generación de Consultas Potenciada por IA
 
 CQLAI incluye capacidades de IA integradas para convertir lenguaje natural en consultas CQL. Simplemente prefija tu solicitud con `.ai`:
 
@@ -1065,7 +1107,7 @@ Para automatización y scripts, puedes desactivar las confirmaciones para comand
 
 **Nota**: Usar con precaución en entornos de producción. Estas configuraciones desactivan las confirmaciones de seguridad que ayudan a prevenir pérdida accidental de datos.
 
-## 📦 Soporte de Apache Parquet
+## Soporte de Apache Parquet
 
 CQLAI proporciona soporte integral para el formato Apache Parquet, haciéndolo ideal para flujos de trabajo de análisis de datos e integración con ecosistemas de datos modernos.
 
@@ -1106,7 +1148,7 @@ AUTOSAVE OFF;
 
 Para documentación detallada, consulta [Guía de Soporte de Parquet](docs/PARQUET.md).
 
-## ⚠️ Limitaciones Conocidas
+## Limitaciones Conocidas
 
 ### Salida JSON (AUTOSAVE JSON y --format json)
 
@@ -1135,7 +1177,7 @@ SELECT JSON * FROM users;
 
 **Nota**: Los tipos complejos (lists, sets, maps, vectors) se preservan apropiadamente en la salida JSON.
 
-## 🔨 Desarrollo
+## Desarrollo
 
 Para trabajar en `cqlai`, necesitarás Go (≥ 1.24).
 
@@ -1177,7 +1219,7 @@ make check
 ```
 
 
-## 🏗️ Stack Tecnológico
+## Stack Tecnológico
 
 - **Lenguaje:** Go
 - **Framework TUI:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -1185,7 +1227,7 @@ make check
 - **Estilos:** [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 - **Driver de Cassandra:** [gocql](https://github.com/gocql/gocql)
 
-## 🙏 Agradecimientos
+## Agradecimientos
 
 CQLAI se basa en la fundación establecida por varios proyectos de código abierto, particularmente Apache Cassandra. Extendemos nuestro sincero agradecimiento a la comunidad de Apache Cassandra por su excelente trabajo y contribuciones al campo de las bases de datos distribuidas.
 
@@ -1201,25 +1243,25 @@ CQLAI incorpora y extiende funcionalidades de varias herramientas y utilidades d
 
 Animamos a los usuarios a explorar y contribuir al proyecto principal de Apache Cassandra, así como a proporcionar comentarios y sugerencias para CQLAI a través de nuestras páginas de [discusiones de GitHub](https://github.com/axonops/cqlai/discussions) y [problemas](https://github.com/axonops/cqlai/issues).
 
-## 💬 Comunidad y Soporte
+## Comunidad y Soporte
 
 ### Participa
-- 💡 **Comparte Ideas**: Visita nuestras [Discusiones de GitHub](https://github.com/axonops/cqlai/discussions) para proponer nuevas funciones
-- 🐛 **Reporta Problemas**: ¿Encontraste un error? [Abre un problema](https://github.com/axonops/cqlai/issues/new/choose)
-- 🤝 **Contribuye**: ¡Damos la bienvenida a pull requests! Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para las pautas
-- ⭐ **Danos una Estrella**: Si encuentras útil CQLAI, ¡por favor dale una estrella a nuestro repositorio!
+- **Comparte Ideas**: Visita nuestras [Discusiones de GitHub](https://github.com/axonops/cqlai/discussions) para proponer nuevas funciones
+- **Reporta Problemas**: ¿Encontraste un error? [Abre un problema](https://github.com/axonops/cqlai/issues/new/choose)
+- **Contribuye**: ¡Damos la bienvenida a pull requests! Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para las pautas
+- **Danos una Estrella**: Si encuentras útil CQLAI, ¡por favor dale una estrella a nuestro repositorio!
 
 ### Mantente Conectado
-- 🌐 **Sitio Web**: [axonops.com](https://axonops.com)
-- 📧 **Contacto**: Visita nuestro sitio web para opciones de soporte
+- **Sitio Web**: [axonops.com](https://axonops.com)
+- **Contacto**: Visita nuestro sitio web para opciones de soporte
 
-## 📝 Licencia
+## Licencia
 
 Este proyecto está licenciado bajo la licencia Apache 2.0. Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
 Las licencias de dependencias de terceros están disponibles en el directorio [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/). Para regenerar las atribuciones de licencia, ejecuta `make licenses`.
 
-## ⚖️ Avisos Legales
+## Avisos Legales
 
 *Este proyecto puede contener marcas registradas o logotipos de proyectos, productos o servicios. El uso de marcas registradas o logotipos de terceros está sujeto a las políticas de dichos terceros.*
 
@@ -1230,5 +1272,5 @@ Las licencias de dependencias de terceros están disponibles en el directorio [T
 ---
 
 <div align="center">
-  <p>Hecho con ❤️ por el equipo de <a href="https://axonops.com">AxonOps</a></p>
+  <p>Hecho con  por el equipo de <a href="https://axonops.com">AxonOps</a></p>
 </div>

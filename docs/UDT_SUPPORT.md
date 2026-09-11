@@ -48,15 +48,15 @@ Parses CQL type strings like `frozen<address>` or `list<frozen<map<text, frozen<
 
 ## Supported Features
 
-✅ **Simple UDTs**: Display of basic user-defined types
-✅ **Frozen UDTs**: Proper handling of frozen UDT columns
-✅ **Nested UDTs**: UDTs containing other UDTs
-✅ **Collections of UDTs**: Lists, sets, and maps containing UDT values
-✅ **UDTs with Collections**: UDTs containing collection fields
-✅ **Null Handling**: Proper display of null UDT fields
-✅ **Multiple Keyspaces**: Supports cross-keyspace UDT references
-✅ **COPY Commands**: Export/import UDT data as JSON in CSV files
-✅ **Tab Completion**: Field-level completion for UDT columns
+ **Simple UDTs**: Display of basic user-defined types
+ **Frozen UDTs**: Proper handling of frozen UDT columns
+ **Nested UDTs**: UDTs containing other UDTs
+ **Collections of UDTs**: Lists, sets, and maps containing UDT values
+ **UDTs with Collections**: UDTs containing collection fields
+ **Null Handling**: Proper display of null UDT fields
+ **Multiple Keyspaces**: Supports cross-keyspace UDT references
+ **COPY Commands**: Export/import UDT data as JSON in CSV files
+ **Tab Completion**: Field-level completion for UDT columns
 
 ## Usage Examples
 
@@ -135,7 +135,7 @@ UDT data in Cassandra's binary protocol is encoded as:
 
 ## Future Enhancements
 
-- [ ] Improve batch mode JSON export for UDTs
-- [ ] Add UDT field ordering preservation
-- [ ] Support for UDT alterations and schema evolution
-- [ ] Performance optimizations for large UDT collections
+- [] Improve batch mode JSON export for UDTs
+- [] Add UDT field ordering preservation
+- [] Support for UDT alterations and schema evolution
+- [] Performance optimizations for large UDT collections

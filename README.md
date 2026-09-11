@@ -22,7 +22,7 @@
 
 <div align="center">
 
-### 🎁 100% Free & Open Source
+### 100% Free & Open Source
 **No hidden costs • No premium tiers • No license keys**
 
 Community-driven development with full transparency
@@ -42,23 +42,23 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [📊 Project Status](#-project-status)
-- [✨ Features](#-features)
-- [🔧 Installation](#-installation)
-- [📚 Usage](#-usage)
+- [Project Status](#project-status)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
   - [Interactive Mode](#interactive-mode)
   - [Command-Line Options](#command-line-options)
   - [Batch Mode Examples](#batch-mode-examples)
   - [Basic Commands](#basic-commands)
   - [Keyboard Shortcuts](#keyboard-shortcuts)
   - [Tab Completion](#tab-completion)
-- [⚙️ Available Commands](#️-available-commands)
+- [Available Commands](#available-commands)
   - [CQL Commands](#cql-commands)
   - [Meta-Commands](#meta-commands)
   - [AI Commands](#ai-commands)
-- [🛠️ Configuration](#️-configuration)
+- [Configuration](#configuration)
   - [Configuration Precedence](#configuration-precedence)
   - [CQLSHRC Compatibility](#cqlshrc-compatibility)
   - [CQLAI JSON Configuration](#cqlai-json-configuration)
@@ -70,19 +70,19 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
     - [Ollama](#ollama-local-models)
     - [OpenRouter](#openrouter-multiple-models)
     - [Mock Provider](#mock-provider-for-testing)
-- [🤖 AI-Powered Query Generation](#-ai-powered-query-generation)
-- [📦 Apache Parquet Support](#-apache-parquet-support)
-- [⚠️ Known Limitations](#️-known-limitations)
-- [🔨 Development](#-development)
-- [🏗️ Technology Stack](#️-technology-stack)
-- [🙏 Acknowledgements](#-acknowledgements)
-- [💬 Community & Support](#-community--support)
-- [📝 License](#-license)
-- [⚖️ Legal Notices](#️-legal-notices)
+- [AI-Powered Query Generation](#ai-powered-query-generation)
+- [Apache Parquet Support](#apache-parquet-support)
+- [Known Limitations](#known-limitations)
+- [Development](#development)
+- [Technology Stack](#technology-stack)
+- [Acknowledgements](#acknowledgements)
+- [Community & Support](#community--support)
+- [License](#license)
+- [Legal Notices](#legal-notices)
 
 ---
 
-## 📊 Project Status
+## Project Status
 
 **CQLAI is production-ready** and actively used in development, testing, and production environments with Cassandra clusters. The tool provides a complete, stable alternative to `cqlsh` with enhanced features and performance.
 
@@ -107,7 +107,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
 
 ---
 
-## ✨ Features
+## Features
 
 - **Interactive CQL Shell:** Execute any CQL query that your Cassandra cluster supports.
 - **Rich Terminal UI:**
@@ -135,7 +135,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Support for SSL/TLS connections with certificate authentication.
 - **Single Binary:** Distributed as a single, static binary with no external dependencies. Fast startup and small footprint.
 
-## 🔧 Installation
+## Installation
 
 You can install `cqlai` in several ways. For detailed instructions including package managers (APT, YUM) and Docker, see the [Installation Guide](docs/INSTALLATION.md).
 
@@ -168,7 +168,7 @@ docker build -t cqlai .
 docker run -it --rm --name cqlai-session cqlai --host your-cassandra-host
 ```
 
-## 📚 Usage
+## Usage
 
 ### Interactive Mode
 
@@ -621,7 +621,7 @@ SELECT * FROM <Tab>
 4. **File paths:** Remember to include quotes for file path completion
 5. **Navigate completions:** Use arrow keys to select from multiple options
 
-## ⚙️ Available Commands
+## Available Commands
 
 CQLAI supports all standard CQL commands plus additional meta-commands for enhanced functionality.
 
@@ -849,7 +849,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   .ai find orders placed in the last 30 days
   ```
 
-## 🛠️ Configuration
+## Configuration
 
 CQLAI supports multiple configuration methods for maximum flexibility and compatibility with existing Cassandra setups.
 
@@ -1229,7 +1229,7 @@ All environment variables supported by CQLAI. `CQLAI_*` variables take precedenc
 
 If you're migrating from `cqlsh`, CQLAI will automatically read your existing `~/.cassandra/cqlshrc` file. No changes are needed to start using CQLAI with your existing Cassandra configuration.
 
-## 🤖 AI-Powered Query Generation
+## AI-Powered Query Generation
 
 CQLAI includes built-in AI capabilities to convert natural language into CQL queries. Simply prefix your request with `.ai`:
 
@@ -1302,7 +1302,7 @@ For automation and scripting, you can disable the confirmation prompts for destr
 
 **Note**: Use with caution in production environments. These settings disable safety prompts that help prevent accidental data loss.
 
-## 📦 Apache Parquet Support
+## Apache Parquet Support
 
 CQLAI provides comprehensive support for Apache Parquet format, making it ideal for data analytics workflows and integration with modern data ecosystems.
 
@@ -1343,7 +1343,7 @@ AUTOSAVE OFF;
 
 For detailed documentation, see [Parquet Support Guide](docs/PARQUET.md).
 
-## ⚠️ Known Limitations
+## Known Limitations
 
 ### JSON Output (AUTOSAVE JSON and --format json)
 
@@ -1362,7 +1362,7 @@ When outputting data as JSON, there are some limitations due to how the underlyi
 #### Example
 ```sql
 -- Regular SELECT (has limitations)
-SELECT * FROM users;  
+SELECT * FROM users;
 -- Returns: {"id": 1, "age": 0, "active": false}  -- age and active might be NULL
 
 -- Using SELECT JSON (preserves types correctly)
@@ -1372,7 +1372,7 @@ SELECT JSON * FROM users;
 
 **Note**: Complex types (lists, sets, maps, vectors) are properly preserved in JSON output.
 
-## 🔨 Development
+## Development
 
 To work on `cqlai`, you'll need Go (≥ 1.24).
 
@@ -1414,7 +1414,7 @@ make check
 ```
 
 
-## 🏗️ Technology Stack
+## Technology Stack
 
 - **Language:** Go
 - **TUI Framework:** [Bubble Tea](https://github.com/charmbracelet/bubbletea)
@@ -1422,7 +1422,7 @@ make check
 - **Styling:** [Lip Gloss](https://github.com/charmbracelet/lipgloss)
 - **Cassandra Driver:** [gocql](https://github.com/gocql/gocql)
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 CQLAI builds upon the foundation laid by several open-source projects, particularly Apache Cassandra. We extend our sincere gratitude to the Apache Cassandra community for their outstanding work and contributions to the field of distributed databases.
 
@@ -1438,25 +1438,25 @@ CQLAI incorporates and extends functionality from various Cassandra tools and ut
 
 We encourage users to explore and contribute to the main Apache Cassandra project, as well as to provide feedback and suggestions for CQLAI through our [GitHub discussions](https://github.com/axonops/cqlai/discussions) and [issues](https://github.com/axonops/cqlai/issues) pages.
 
-## 💬 Community & Support
+## Community & Support
 
 ### Get Involved
-- 💡 **Share Ideas**: Visit our [GitHub Discussions](https://github.com/axonops/cqlai/discussions) to propose new features
-- 🐛 **Report Issues**: Found a bug? [Open an issue](https://github.com/axonops/cqlai/issues/new/choose)
-- 🤝 **Contribute**: We welcome pull requests! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
-- ⭐ **Star Us**: If you find CQLAI useful, please star our repository!
+- **Share Ideas**: Visit our [GitHub Discussions](https://github.com/axonops/cqlai/discussions) to propose new features
+- **Report Issues**: Found a bug? [Open an issue](https://github.com/axonops/cqlai/issues/new/choose)
+- **Contribute**: We welcome pull requests! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
+- **Star Us**: If you find CQLAI useful, please star our repository!
 
 ### Stay Connected
-- 🌐 **Website**: [axonops.com](https://axonops.com)
-- 📧 **Contact**: Visit our website for support options
+- **Website**: [axonops.com](https://axonops.com)
+- **Contact**: Visit our website for support options
 
-## 📝 License
+## License
 
 This project is licensed under the Apache 2.0 license. See the [LICENSE](LICENSE) file for details.
 
 Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES/) directory. To regenerate license attributions, run `make licenses`.
 
-## ⚖️ Legal Notices
+## Legal Notices
 
 *This project may contain trademarks or logos for projects, products, or services. Any use of third-party trademarks or logos are subject to those third-party's policies.*
 
@@ -1467,5 +1467,5 @@ Third-party dependency licenses are available in the [THIRD-PARTY-LICENSES](THIR
 ---
 
 <div align="center">
-  <p>Made with ❤️ by the <a href="https://axonops.com">AxonOps</a> Team</p>
+  <p>Made with  by the <a href="https://axonops.com">AxonOps</a> Team</p>
 </div>

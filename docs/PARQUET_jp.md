@@ -414,11 +414,11 @@ SELECT * FROM users WHERE country='US';
 -- これにより、次のカラムを持つParquetファイルが作成されます: id, name, email, countryなど
 
 -- 重要: 後続のクエリは同じスキーマを持つ必要があります
-SELECT * FROM users WHERE country='UK';  -- ✓ 動作 - 同じカラム
-SELECT * FROM users WHERE age > 18;      -- ✓ 動作 - 同じカラム
+SELECT * FROM users WHERE country='UK';  --  動作 - 同じカラム
+SELECT * FROM users WHERE age > 18;      --  動作 - 同じカラム
 
 -- これは失敗するか問題を引き起こします - 異なるカラム!
--- SELECT id, order_total FROM orders;   -- ✗ 異なるスキーマ
+-- SELECT id, order_total FROM orders;   --  異なるスキーマ
 
 -- AutoSaveを停止
 AUTOSAVE OFF;
@@ -895,9 +895,9 @@ AUTOSAVE OFF;
 
 ## 関連ドキュメント
 
-- [COPYコマンドリファレンス](./COPY.md)
-- [データ型ガイド](./DATA_TYPES.md)
-- [パフォーマンスチューニング](./PERFORMANCE.md)
+- [メタコマンド(COPYを含む)](../README.md#meta-commands)
+- [CQL型のサポート](./CQL_TYPE_SUPPORT_jp.md)
+- [ユーザー定義型](./UDT_SUPPORT_jp.md)
 - [Apache Parquet形式](https://parquet.apache.org/docs/)
 - [Apache Arrow](https://arrow.apache.org/)
 - [Delta Lake](https://delta.io/)

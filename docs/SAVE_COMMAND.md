@@ -111,10 +111,10 @@ Example output:
 Example output:
 ```
 +----+------------+------------------+------------+
-| id | name       | email            | created_at |
+| id | name | email | created_at |
 +----+------------+------------------+------------+
-| 1  | John Doe   | john@example.com | 2024-01-15 |
-| 2  | Jane Smith | jane@example.com | 2024-01-16 |
+| 1 | John Doe | john@example.com | 2024-01-15 |
+| 2 | Jane Smith | jane@example.com | 2024-01-16 |
 +----+------------+------------------+------------+
 ```
 
@@ -239,6 +239,5 @@ While not directly related to SAVE, these shortcuts help navigate results before
 
 ## See Also
 
-- [AUTOSAVE Command](./AUTOSAVE_COMMAND.md) - For continuous output recording
-- [COPY TO Command](./COPY_COMMAND.md) - For direct table export with full control
-- [OUTPUT Command](./OUTPUT_COMMAND.md) - For changing display format
+- [AUTOSAVE, COPY and OUTPUT](../README.md#meta-commands) - the rest of the commands that write files or change how results are drawn
+- [Parquet support](./PARQUET.md) - what the PARQUET format writes

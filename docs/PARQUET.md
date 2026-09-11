@@ -893,9 +893,9 @@ Priority is given to features that:
 
 ## Related Documentation
 
-- [COPY Command Reference](./COPY.md)
-- [Data Types Guide](./DATA_TYPES.md)
-- [Performance Tuning](./PERFORMANCE.md)
+- [Meta-commands, including COPY](../README.md#meta-commands)
+- [CQL type support](./CQL_TYPE_SUPPORT.md)
+- [User-defined types](./UDT_SUPPORT.md)
 - [Apache Parquet Format](https://parquet.apache.org/docs/)
 - [Apache Arrow](https://arrow.apache.org/)
 - [Delta Lake](https://delta.io/)
