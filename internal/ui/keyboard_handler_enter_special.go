@@ -11,10 +11,8 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 	upperCommand := strings.ToUpper(command)
 
 	if upperCommand == "EXIT" || upperCommand == "QUIT" {
-		// Give the wheel and the buttons back to the terminal on exit.
-		DisableAlternateScroll()
-		ResetMouseReporting()
-		return m, tea.Quit, true
+		updated, cmd := m.quit()
+		return updated, cmd, true
 	}
 
 	// MOUSE is handled here rather than in the router because it is UI state:

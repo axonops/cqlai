@@ -123,6 +123,7 @@ type MainModel struct {
 	form             fileForm       // Open SOURCE or COPY form
 	help             helpWindow     // Open help window, if any
 	capture          capturePanel   // Open capture window, if any
+	preferences      preferences    // Open PREFERENCES window, if any
 	// completingPath says the candidates on offer are filenames rather than
 	// CQL words. Applying one has to keep the directory in front of it; the
 	// word-based path would replace /tmp/rep with report.csv and lose the /tmp.
@@ -551,6 +552,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		updatedModel, cmd := m.handleKeyboardInput(msg)
+		return updatedModel, cmd
+
+	case tea.PasteMsg:
+		updatedModel, cmd := m.handlePaste(msg)
 		return updatedModel, cmd
 
 	case tea.MouseMsg:

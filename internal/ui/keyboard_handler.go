@@ -32,6 +32,13 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m, nil
 	}
 
+	// The preferences window takes the keys while it is open, for the same
+	// reason a form does: it is over the view, and every key in it is either
+	// typing into a setting or working the window.
+	if m.preferences.active {
+		return m.handlePreferencesKey(msg)
+	}
+
 	// A form takes the keys while it is open: it is over the view, and every
 	// key in it is either typing into a field or working the form.
 	if m.form.active {

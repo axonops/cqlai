@@ -799,6 +799,18 @@ Configuration sources are loaded in the following order (later sources override 
    - `CQLAI_HOST`, `CQLAI_PORT`, `CQLAI_KEYSPACE`, etc.
    - `CASSANDRA_HOST`, `CASSANDRA_PORT` (for compatibility)
 
+### Editing the configuration from inside CQLAI
+
+`FILE > PREFERENCES` on the tab line opens a window holding every setting in
+`cqlai.json` - the connection, how results are fetched and drawn, the history
+files, SSL, the AI providers and the auth provider. Fill them in, press `Save`,
+and it writes the JSON file it was loaded from, or `~/.cqlai.json` when none was
+found. Keys already in the file that CQLAI does not know about are left alone.
+
+What the window edits is what CQLAI starts with. It does not change the session
+running now: consistency, paging and output format are set for this session from
+the status line, or with `CONSISTENCY`, `PAGING` and `OUTPUT`.
+
 4. **Command-line flags** (highest priority)
    - `--host`, `--port`, `--keyspace`, `--username`, `--password`, etc.
 

@@ -55,10 +55,7 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 
 	// If already confirming, exit. Otherwise show confirmation.
 	if m.confirmExit {
-		// Give the wheel and the buttons back to the terminal on exit.
-		DisableAlternateScroll()
-		ResetMouseReporting()
-		return m, tea.Quit
+		return m.quit()
 	}
 	m.confirmExit = true
 	m.input.SetValue("")
@@ -70,15 +67,25 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 func (m *MainModel) handleCtrlD() (*MainModel, tea.Cmd) {
 	// If confirming exit, quit. Otherwise show confirmation.
 	if m.confirmExit {
-		// Give the wheel and the buttons back to the terminal on exit.
-		DisableAlternateScroll()
-		ResetMouseReporting()
-		return m, tea.Quit
+		return m.quit()
 	}
 	m.confirmExit = true
 	m.input.SetValue("")
 	m.input.Placeholder = "Really exit? (Ctrl+C/Ctrl+D again to confirm, any other key to cancel)"
 	return m, nil
+}
+
+// quit leaves cqlai, giving the terminal back what cqlai borrowed from it.
+//
+// Every way out comes through here: EXIT and QUIT typed at the prompt, Ctrl+C
+// and Ctrl+D confirmed, and QUIT in the FILE menu. The two lines before
+// tea.Quit were written out at each of them, and a shell left with mouse
+// reporting still on is not a thing the person who typed EXIT can undo. One of
+// four copies is how a rule quietly stops applying everywhere.
+func (m *MainModel) quit() (*MainModel, tea.Cmd) {
+	DisableAlternateScroll()
+	ResetMouseReporting()
+	return m, tea.Quit
 }
 
 // handleCtrlR handles Ctrl+R - toggle history search mode

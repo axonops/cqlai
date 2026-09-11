@@ -14,11 +14,16 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	Host                string        `json:"host"`
-	Port                int           `json:"port"`
-	Keyspace            string        `json:"keyspace"`
-	Username            string        `json:"username"`
-	Password            string        `json:"password"`
+	// These five carry omitempty like the rest of the file so that writing the
+	// configuration back - which the PREFERENCES window does - does not add
+	// "keyspace": "" and "password": "" to a file that never had them. Reading
+	// is unaffected: a key that is not there leaves the default in place, which
+	// is what an empty value meant anyway.
+	Host                string        `json:"host,omitempty"`
+	Port                int           `json:"port,omitempty"`
+	Keyspace            string        `json:"keyspace,omitempty"`
+	Username            string        `json:"username,omitempty"`
+	Password            string        `json:"password,omitempty"`
 	RequireConfirmation bool          `json:"requireConfirmation,omitempty"`
 	Consistency         string        `json:"consistency,omitempty"` // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	PageSize            int           `json:"pageSize,omitempty"`
@@ -33,6 +38,12 @@ type Config struct {
 	AI                  *AIConfig     `json:"ai,omitempty"`
 	AuthProvider        *AuthProvider `json:"authProvider,omitempty"`
 	LoadWarnings        []string      `json:"-"` // Warnings from loading config files (not serialized)
+
+	// SourcePath is the JSON file this config was read from, empty when none of
+	// the candidate paths existed. The PREFERENCES window writes back to it, so
+	// editing a setting lands in the file the settings came from rather than in
+	// a new one somewhere else.
+	SourcePath string `json:"-"`
 }
 
 // AuthProvider holds authentication provider configuration
@@ -176,6 +187,7 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 	}
 
 	if foundPath != "" {
+		config.SourcePath = foundPath
 		if err := json.Unmarshal(configData, config); err != nil {
 			logger.DebugfToFile("Config", "Failed to parse JSON config %s: %v", foundPath, err)
 			return nil, fmt.Errorf("error parsing config file %s: %w", foundPath, err)

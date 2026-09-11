@@ -12,7 +12,23 @@ import (
 
 // handleModalConfirmation handles Enter key when a modal is showing
 func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
-	if m.modal.Selected == 1 { // "Execute" button
+	return m.answerModal(m.modal.Selected)
+}
+
+// answerModal carries out the answer given, whether it was pressed with Enter
+// or clicked. Both go through here, so the button that was chosen is the one
+// that acts.
+func (m *MainModel) answerModal(choice int) (*MainModel, tea.Cmd) {
+	if m.modal.Type == ModalConfirmQuit {
+		leaving := choice == 1
+		m.modal = Modal{Type: ModalNone}
+		if leaving {
+			return m.quit()
+		}
+		return m, nil
+	}
+
+	if choice == 1 { // "Execute" button
 		// Execute the dangerous command
 		command := m.modal.Command
 		m.modal = Modal{Type: ModalNone}
