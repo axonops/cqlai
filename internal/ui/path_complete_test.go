@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/axonops/cqlai/internal/config"
 )
 
 // pathFixture builds a directory to complete against.
@@ -195,4 +197,66 @@ func TestParentDir(t *testing.T) {
 	} {
 		assert.Equal(t, want, parentDir(input), "above %q", input)
 	}
+}
+
+// TestNothingTypedStartsAtTheRoot.
+//
+// It used to list the directory cqlai was started from: a field that looks
+// empty, a listing you had no reason to expect, and no way up out of it, since
+// the way up is offered relative to a directory and an empty field names none.
+// The COPY forms never hit it because their File field is seeded with "/"; the
+// preferences window cannot do that, because its fields hold what is in the
+// configuration file.
+func TestNothingTypedStartsAtTheRoot(t *testing.T) {
+	got := completePath("")
+
+	require.NotEmpty(t, got.Matches, "nothing offered at all")
+	assert.Equal(t, pathRoot, got.Completed[:1], "completion should start at the root")
+
+	// What the root holds, rather than what the working directory holds.
+	root := completePath(pathRoot)
+	assert.Equal(t, root.Matches, got.Matches)
+}
+
+// TestWalkingUpFromTheRootListing: the root has nothing above it, and every
+// directory below it does.
+func TestWalkingUpFromTheRootListing(t *testing.T) {
+	assert.NotContains(t, completePath(pathRoot).Matches, parentEntry,
+		"the root should offer no way up")
+
+	// A directory of our own, so the test does not depend on what is on the
+	// machine running it.
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "below"), 0o750))
+
+	listing := completePath(dir + string(filepath.Separator) + "below" + string(filepath.Separator))
+	assert.Equal(t, parentEntry, listing.Matches[0], "the way up should be first")
+}
+
+// TestABareNameStillCompletesWhereYouAre: typing a name with no directory in
+// front of it means the working directory, which is what it means at a shell.
+func TestABareNameStillCompletesWhereYouAre(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "report.csv"), nil, 0o600))
+
+	here, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(here) })
+
+	assert.Equal(t, "report.csv", completePath("rep").Completed)
+}
+
+// TestAnEmptyPathSettingOffersTheRoot, which is where the complaint came from:
+// the preferences window holds path settings that start empty.
+func TestAnEmptyPathSettingOffersTheRoot(t *testing.T) {
+	m := prefModel(t, &config.Config{})
+	i := prefIndex(t, m, "HistoryFile")
+	m.preferences.focusField(i)
+	require.Empty(t, m.preferences.fields[i].value())
+
+	m = press(m, "tab")
+
+	assert.Equal(t, pathRoot, m.preferences.fields[i].value())
+	assert.Equal(t, completePath(pathRoot).Matches, m.preferences.matches)
 }
