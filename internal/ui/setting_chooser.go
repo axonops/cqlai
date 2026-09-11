@@ -352,7 +352,7 @@ func (m *MainModel) applySettingChoice(choice string) (*MainModel, tea.Cmd) {
 // It does not switch view: you clicked a control, so whatever you were reading
 // should still be in front of you.
 func (m *MainModel) runCommand(command string) (*MainModel, tea.Cmd) {
-	result := router.ProcessCommand(command, m.session, m.sessionManager)
+	result := m.processCommand(command)
 
 	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
 

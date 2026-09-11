@@ -603,6 +603,17 @@ Meta-commands provide additional functionality beyond standard CQL:
   OUTPUT EXPAND   -- Expanded vertical format
   OUTPUT ASCII    -- ASCII table format
   ```
+  The format decides how a result is drawn and nothing else. `OUTPUT JSON` used
+  to rewrite the query as `SELECT JSON`, so what came back was one column of
+  documents rather than the columns asked for; JSON is now written by CQLAI from
+  the values that come back, keeping their types. Typing `SELECT JSON` yourself
+  still does what it always did.
+
+  Changing the format redraws the result already on screen, in the new format,
+  without running the query again. `EXPAND ON` and `EXPAND OFF` are the same
+  setting by another name, as is the Output control on the status line. Only the
+  rows fetched so far are redrawn: a switch does not pull the rest of a result
+  in, and says how many rows are showing when there are more.
 
 #### Schema Description
 - **DESCRIBE** - Show schema information

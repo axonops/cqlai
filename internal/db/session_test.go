@@ -1,7 +1,6 @@
 package db
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/axonops/cqlai/internal/config"
@@ -96,74 +95,6 @@ func TestSetPageSize(t *testing.T) {
 			session.SetPageSize(tt.newSize)
 			if session.PageSize() != tt.expected {
 				t.Errorf("PageSize() = %d, want %d", session.PageSize(), tt.expected)
-			}
-		})
-	}
-}
-
-func TestConvertToJSONQuery(t *testing.T) {
-	tests := []struct {
-		name     string
-		query    string
-		expected string
-	}{
-		{
-			name:     "regular SELECT",
-			query:    "SELECT * FROM users",
-			expected: "SELECT JSON * FROM users",
-		},
-		{
-			name:     "SELECT with columns",
-			query:    "SELECT id, name FROM users WHERE id = 1",
-			expected: "SELECT JSON id, name FROM users WHERE id = 1",
-		},
-		{
-			name:     "SELECT DISTINCT",
-			query:    "SELECT DISTINCT country FROM users",
-			expected: "SELECT DISTINCT JSON country FROM users",
-		},
-		{
-			name:     "SELECT DISTINCT with multiple columns",
-			query:    "SELECT DISTINCT city, country FROM users",
-			expected: "SELECT DISTINCT JSON city, country FROM users",
-		},
-		{
-			name:     "already SELECT JSON",
-			query:    "SELECT JSON * FROM users",
-			expected: "SELECT JSON * FROM users",
-		},
-		{
-			name:     "already SELECT DISTINCT JSON",
-			query:    "SELECT DISTINCT JSON country FROM users",
-			expected: "SELECT DISTINCT JSON country FROM users",
-		},
-		{
-			name:     "lowercase select",
-			query:    "select * from users",
-			expected: "SELECT JSON * from users",
-		},
-		{
-			name:     "lowercase select distinct",
-			query:    "select distinct country from users",
-			expected: "SELECT DISTINCT JSON country from users",
-		},
-		{
-			name:     "non-SELECT query",
-			query:    "INSERT INTO users (id) VALUES (1)",
-			expected: "INSERT INTO users (id) VALUES (1)",
-		},
-		{
-			name:     "UPDATE query",
-			query:    "UPDATE users SET name = 'foo'",
-			expected: "UPDATE users SET name = 'foo'",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ConvertToJSONQuery(tt.query)
-			if !strings.EqualFold(result, tt.expected) && result != tt.expected {
-				t.Errorf("ConvertToJSONQuery(%q) = %q, want %q", tt.query, result, tt.expected)
 			}
 		})
 	}

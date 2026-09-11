@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"encoding/json"
-
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
@@ -506,53 +504,13 @@ func (m *MainModel) loadMoreTableData() {
 			}
 		}
 
-		// Update the table data and refresh the view
-		allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
-
 		// Clear cache to force rebuild (important!)
 		m.cachedTableLines = nil
-		m.lastTableData = allData
-
-		m.refreshTableContent(allData)
+		m.renderResults(m.resultRows())
 
 		// Update row count
 		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 	}
-}
-
-// Helper function to format table as JSON
-func (m *MainModel) formatTableAsJSON() string {
-	if m.slidingWindow == nil {
-		return ""
-	}
-
-	// Check if we have a single [json] column from SELECT JSON
-	if len(m.slidingWindow.Headers) == 1 && m.slidingWindow.Headers[0] == "[json]" {
-		// This is already JSON from SELECT JSON - just extract it
-		jsonStr := ""
-		for _, row := range m.slidingWindow.Rows {
-			if len(row) > 0 {
-				jsonStr += row[0] + "\n"
-			}
-		}
-		return jsonStr
-	}
-
-	// Convert regular table data to JSON
-	jsonStr := ""
-	for _, row := range m.slidingWindow.Rows {
-		jsonMap := make(map[string]interface{})
-		for i, header := range m.slidingWindow.Headers {
-			if i < len(row) {
-				jsonMap[header] = row[i]
-			}
-		}
-		jsonBytes, err := json.Marshal(jsonMap)
-		if err == nil {
-			jsonStr += string(jsonBytes) + "\n"
-		}
-	}
-	return jsonStr
 }
 
 // clickTab switches to whichever mode's tab covers a column.

@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/axonops/cqlai/internal/router"
 )
 
 // handleModalConfirmation handles Enter key when a modal is showing
@@ -50,7 +49,7 @@ func (m *MainModel) answerModal(choice int) (*MainModel, tea.Cmd) {
 
 		// Process the command
 		start := time.Now()
-		result := router.ProcessCommand(command, m.session, m.sessionManager)
+		result := m.processCommand(command)
 		m.lastQueryTime = time.Since(start)
 
 		// Add command to full history and viewport

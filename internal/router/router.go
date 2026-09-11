@@ -16,8 +16,16 @@ var metaHandler *MetaCommandHandler
 var sessionManager *session.Manager
 
 // InitRouter initializes the router with a session manager
+//
+// The meta handler is built once, on the first command, and keeps whatever it
+// was given for the life of the process. Pointing the router at a manager and
+// leaving the handler on an older one is two managers answering the same
+// question - which is how EXPAND could set a format that OUTPUT did not see.
 func InitRouter(mgr *session.Manager) {
 	sessionManager = mgr
+	if metaHandler != nil {
+		metaHandler.sessionManager = mgr
+	}
 }
 
 // GetMetaHandler returns the current meta command handler
@@ -153,18 +161,13 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 		logger.DebugToFile("ProcessCommand", "Routing to parseMetaCommand")
 		return parseMetaCommand(command, session, sessionMgr)
 	} else {
-		// Check if we need to transform SELECT to SELECT JSON
-		if sessionManager != nil && sessionManager.GetOutputFormat() == config.OutputFormatJSON {
-			// Check if it's a SELECT query that should be transformed (with word boundary)
-			if (upperCommand == "SELECT" || strings.HasPrefix(upperCommand, "SELECT ")) && !strings.Contains(upperCommand, "SELECT JSON") {
-				// Use db.ConvertToJSONQuery which properly handles SELECT DISTINCT
-				modifiedCommand := db.ConvertToJSONQuery(command)
-				if modifiedCommand != command {
-					logger.DebugfToFile("ProcessCommand", "Transformed query to: %s", modifiedCommand)
-					return session.ExecuteCQLQuery(modifiedCommand)
-				}
-			}
-		}
+		// OUTPUT JSON used to rewrite the query as SELECT JSON here, so what
+		// came back was one column of documents rather than the columns that
+		// were asked for. It answered the question and lost the result: the
+		// Results view could not draw it as a table, because the table was
+		// never fetched, and neither could SAVE or COPY. JSON is drawn from the
+		// values that come back, like every other format.
+
 		// Execute as regular CQL query
 		logger.DebugToFile("ProcessCommand", "Routing to executeCQLQuery")
 		result := session.ExecuteCQLQuery(command)

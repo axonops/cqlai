@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
@@ -123,7 +122,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	maxInitialRows := m.initialRowsToLoad()
 
 	// Load initial rows from the streaming processor
-	initialRows, hasMore, err := streamingResult.LoadMore(ctx, maxInitialRows)
+	page, err := streamingResult.LoadMore(ctx, maxInitialRows)
 	if err != nil {
 		logger.DebugfToFile("HandleEnterKey", "Error loading initial rows: %v", err)
 		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render(fmt.Sprintf("Error: %v", err))
@@ -136,15 +135,15 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 	}
 
 	// Add rows to sliding window
-	for _, row := range initialRows {
-		m.slidingWindow.AddRow(row)
+	for i, row := range page.Rows {
+		m.slidingWindow.AddRow(row, rawAt(page.Raw, i))
 	}
 
-	logger.DebugfToFile("HandleEnterKey", "Loaded %d initial rows", len(initialRows))
+	logger.DebugfToFile("HandleEnterKey", "Loaded %d initial rows", len(page.Rows))
 	logger.DebugfToFile("HandleEnterKey", "Sliding window has %d rows", len(m.slidingWindow.Rows))
 
 	// Check if we got any data
-	if len(initialRows) == 0 {
+	if len(page.Rows) == 0 {
 		// No data returned
 		m.fullHistoryContent += "\n" + "No results"
 		m.updateHistoryWrapping()
@@ -157,7 +156,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 
 	// Store the streaming result in sliding window for progressive loading
 	m.slidingWindow.streamingResult = streamingResult
-	m.slidingWindow.hasMoreData = hasMore
+	m.slidingWindow.hasMoreData = page.HasMore
 
 	// If auto-fetch is enabled, fetch all remaining pages immediately
 	if m.session != nil && m.session.AutoFetch() && m.slidingWindow.hasMoreData {
@@ -195,47 +194,35 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 
 	logger.DebugfToFile("HandleEnterKey", "Row count set to %d", m.rowCount)
 
-	// Prepare display based on format
-	outputFormat := config.OutputFormatTable
-	if m.sessionManager != nil {
-		outputFormat = m.sessionManager.GetOutputFormat()
-		logger.DebugfToFile("HandleEnterKey", "Got output format from session manager: %v", outputFormat)
-	}
-	logger.DebugfToFile("HandleEnterKey", "Using output format: %v", outputFormat)
-
-	switch outputFormat {
-	case config.OutputFormatExpand:
-		return m.displayExpandFormat(v.Headers, v.ColumnTypes)
-	case config.OutputFormatASCII:
-		return m.displayASCIIFormat(v.Headers, v.ColumnTypes)
-	case config.OutputFormatJSON:
-		return m.displayJSONFormat(v.Headers, v.ColumnTypes, v.ColumnNames)
-	default:
-		return m.displayTableFormat(v.Headers, v.ColumnTypes)
-	}
+	return m.displayResult(v.Headers, v.ColumnTypes)
 }
 
-// displayExpandFormat displays results in expanded vertical format
-func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) (*MainModel, tea.Cmd) {
-	// EXPAND format - use table viewport for pagination support
+// displayResult puts a streaming result on screen, in the format OUTPUT is set
+// to.
+//
+// There were four of these, one per format, and between them they were where
+// the format got written down a third time: each set m.resultFormat itself,
+// and which one ran was decided by a switch somewhere else. They differed in
+// two lines - whether to pull the rest of the rows in first - so that is all
+// that is left of them.
+func (m *MainModel) displayResult(headers, columnTypes []string) (*MainModel, tea.Cmd) {
 	m.tableHeaders = headers
 	m.columnTypes = columnTypes
-	m.resultFormat = config.OutputFormatExpand
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
 	m.cachedTableLines = nil    // Clear cache for new table
-
-	// Format initial data as expanded vertical format
-	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	m.lastTableData = allData // Store for pagination
 	m.resetHorizontalScroll()
 
-	// Format as expanded vertical table. The boundaries have to come from this
-	// layout: paging snaps to them, and a record here is many lines tall.
-	expandStr, boundaries := FormatExpandTableWithBoundaries(allData, m.styles)
-	m.tableRowBoundaries = boundaries
-	m.tableViewport.SetContent(expandStr)
+	format := m.outputFormat()
+	if onePassFormat(format) {
+		// AutoFetch only decides how much is pulled in; the result goes to the
+		// Results view either way, in every format.
+		m.fetchAllPages(string(format))
+	}
+
+	logger.DebugfToFile("HandleEnterKey", "Showing %d rows as %v", len(m.slidingWindow.Rows), format)
+	m.renderResults(m.resultRows())
 	m.tableViewport.GotoTop()
 
 	m.input.Reset()
@@ -244,7 +231,7 @@ func (m *MainModel) displayExpandFormat(headers []string, columnTypes []string) 
 
 // showQueryResult draws a result that arrived complete, in whatever format
 // OUTPUT is set to.
-func (m *MainModel) showQueryResult(data [][]string, columnTypes []string, outputFormat config.OutputFormat) {
+func (m *MainModel) showQueryResult(data [][]string, columnTypes []string, raw ...[]map[string]interface{}) {
 	if len(data) == 0 {
 		return
 	}
@@ -253,44 +240,33 @@ func (m *MainModel) showQueryResult(data [][]string, columnTypes []string, outpu
 	// written into the console as text instead, where it is wrapped to the
 	// window - which breaks an ASCII table's borders mid-row and gives up
 	// the sideways scrolling that wide output needs.
-	m.lastTableData = data
 	m.tableHeaders = data[0]
 	m.columnTypes = columnTypes
-	m.resultFormat = outputFormat
+	m.lastRawData = nil
+	if len(raw) > 0 {
+		m.lastRawData = raw[0]
+	}
 	m.resetHorizontalScroll()
 	m.hasTable = true
 	m.viewMode = "table"
 	m.initialColumnWidths = nil // Reset initial widths for new table
 	m.cachedTableLines = nil    // Clear cache for new table
-	m.tableRowBoundaries = nil
 
-	var content string
-	switch outputFormat {
-	case config.OutputFormatASCII:
-		content = FormatASCIITableWithTypes(data, columnTypes)
-	case config.OutputFormatJSON:
-		content = formatRowsAsJSON(data)
-	case config.OutputFormatExpand:
-		var boundaries []int
-		content, boundaries = FormatExpandTableWithBoundaries(data, m.styles)
-		m.tableRowBoundaries = boundaries
-	default:
-		content = m.formatTableForViewport(data)
-	}
-	if content == "" {
-		content = "No results"
-	}
+	// This result arrived whole. Any sliding window belongs to an earlier
+	// streaming one, and left in place it would answer for this result: how
+	// many rows are showing, whether there are more, and which rows to draw
+	// when the format changes.
+	m.slidingWindow = nil
 
-	m.tableViewport.SetContent(content)
+	m.renderResults(data)
 	m.tableViewport.GotoTop()
-	m.tableWidth = widestLine(content)
 }
 
 // jsonLines renders rows as one JSON object per line.
 //
 // A SELECT JSON already comes back as JSON in a single "[json]" column, so that
 // is passed through rather than wrapped in an object a second time.
-func jsonLines(headers []string, rows [][]string) string {
+func jsonLines(headers []string, rows [][]string, raw []map[string]interface{}) string {
 	var b strings.Builder
 
 	if len(headers) == 1 && headers[0] == "[json]" {
@@ -302,26 +278,60 @@ func jsonLines(headers []string, rows [][]string) string {
 		return b.String()
 	}
 
-	for _, row := range rows {
-		object := make(map[string]interface{}, len(headers))
-		for i, header := range headers {
-			if i < len(row) {
-				object[header] = row[i]
+	for i, row := range rows {
+		b.WriteByte('{')
+		for c, header := range headers {
+			if c > 0 {
+				b.WriteByte(',')
 			}
+			name := db.StripKeyMarker(header)
+			key, _ := json.Marshal(name)
+			b.Write(key)
+			b.WriteByte(':')
+			b.Write(jsonCell(name, row, c, rawRow(raw, i)))
 		}
-		if encoded, err := json.Marshal(object); err == nil {
-			b.WriteString(string(encoded) + "\n")
-		}
+		b.WriteString("}\n")
 	}
 	return b.String()
 }
 
+// jsonCell is one value, written from what it was rather than from how it is
+// drawn where that is still in hand.
+//
+// The string in the cell is a fallback: it is what a grid the shell made up has
+// instead of values, and what is left of a row whose values were dropped.
+func jsonCell(name string, row []string, i int, raw map[string]interface{}) []byte {
+	if value, ok := raw[name]; ok {
+		if encoded, err := json.Marshal(db.JSONValue(value)); err == nil {
+			return encoded
+		}
+	}
+
+	cell := ""
+	if i < len(row) {
+		cell = row[i]
+	}
+	encoded, err := json.Marshal(cell)
+	if err != nil {
+		return []byte(`""`)
+	}
+	return encoded
+}
+
+// rawRow is the values behind a row, or nil when there are none.
+func rawRow(raw []map[string]interface{}, i int) map[string]interface{} {
+	if i < len(raw) {
+		return raw[i]
+	}
+	return nil
+}
+
 // formatRowsAsJSON renders a result whose first row is its headers.
-func formatRowsAsJSON(data [][]string) string {
+func formatRowsAsJSON(data [][]string, raw []map[string]interface{}) string {
 	if len(data) < 2 {
 		return ""
 	}
-	return jsonLines(data[0], data[1:])
+	return jsonLines(data[0], data[1:], raw)
 }
 
 // widestLine is the width of the longest line, for horizontal scrolling.
@@ -367,122 +377,6 @@ func (m *MainModel) fetchAllPages(format string) {
 	m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 }
 
-// displayASCIIFormat displays results in ASCII table format
-func (m *MainModel) displayASCIIFormat(headers []string, columnTypes []string) (*MainModel, tea.Cmd) {
-	logger.DebugToFile("HandleEnterKey", "Formatting output as ASCII")
-
-	// Store headers and types for table view
-	m.tableHeaders = headers
-	m.columnTypes = columnTypes
-	m.resultFormat = config.OutputFormatASCII
-
-	// AutoFetch only decides how much is pulled in; the result goes to the
-	// Results view either way, the same as TABLE and EXPAND.
-	m.fetchAllPages("ASCII")
-
-	m.hasTable = true
-	m.viewMode = "table"
-	m.resetHorizontalScroll()
-	m.initialColumnWidths = nil // Reset initial widths for new table
-	m.cachedTableLines = nil    // Clear cache for new table
-
-	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	m.lastTableData = allData
-
-	asciiStr := FormatASCIITableWithTypes(allData, columnTypes)
-
-	// Add notice about more data if applicable. AutoFetch will have taken the
-	// lot already, so this only shows when it is off.
-	if m.slidingWindow.hasMoreData {
-		asciiStr += "\n" + m.styles.MutedText.Render(
-			fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
-				len(m.slidingWindow.Rows)))
-	}
-
-	// Set content in table viewport
-	// No record boundaries in this layout; stale ones would cap scrolling.
-	m.tableRowBoundaries = nil
-	m.tableViewport.SetContent(asciiStr)
-	m.tableViewport.GotoTop()
-
-	// Calculate width for horizontal scrolling
-	m.tableWidth = widestLine(asciiStr)
-
-	m.input.Reset()
-	return m, nil
-}
-
-// displayJSONFormat displays results in JSON format
-func (m *MainModel) displayJSONFormat(headers []string, columnTypes []string, columnNames []string) (*MainModel, tea.Cmd) {
-	logger.DebugToFile("HandleEnterKey", "Formatting output as JSON")
-
-	// Store headers and types for table view
-	m.tableHeaders = headers
-	m.columnTypes = columnTypes
-	m.resultFormat = config.OutputFormatJSON
-
-	// AutoFetch only decides how much is pulled in; the result goes to the
-	// Results view either way, the same as TABLE and EXPAND.
-	m.fetchAllPages("JSON")
-
-	m.hasTable = true
-	m.viewMode = "table"
-	m.resetHorizontalScroll()
-	m.initialColumnWidths = nil // Reset initial widths for new table
-	m.cachedTableLines = nil    // Clear cache for new table
-
-	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	m.lastTableData = allData
-
-	jsonStr := jsonLines(headers, m.slidingWindow.Rows)
-
-	// Add notice about more data if applicable. AutoFetch will have taken the
-	// lot already, so this only shows when it is off.
-	if m.slidingWindow.hasMoreData {
-		jsonStr += "\n" + m.styles.MutedText.Render(
-			fmt.Sprintf("(Showing %d rows. More data available. Use PgDn/Space to load more, or AUTOFETCH ON to fetch all.)",
-				len(m.slidingWindow.Rows)))
-	}
-
-	// Set content in table viewport
-	// No record boundaries in this layout; stale ones would cap scrolling.
-	m.tableRowBoundaries = nil
-	m.tableViewport.SetContent(jsonStr)
-	m.tableViewport.GotoTop()
-
-	// Calculate width for horizontal scrolling
-	m.tableWidth = widestLine(jsonStr)
-
-	m.input.Reset()
-	return m, nil
-}
-
-// displayTableFormat displays results in table format
-func (m *MainModel) displayTableFormat(headers []string, columnTypes []string) (*MainModel, tea.Cmd) {
-	// TABLE format - use table viewport
-	m.tableHeaders = headers
-	m.columnTypes = columnTypes
-	m.resultFormat = config.OutputFormatTable
-	m.hasTable = true
-	m.viewMode = "table"
-	m.initialColumnWidths = nil // Reset initial widths for new table
-	m.cachedTableLines = nil    // Clear cache for new table
-
-	// Format initial data for display
-	allData := append([][]string{headers}, m.slidingWindow.Rows...)
-	m.lastTableData = allData // Store for horizontal scrolling
-	m.resetHorizontalScroll()
-	logger.DebugfToFile("HandleEnterKey", "Formatting table with %d rows (including header)", len(allData))
-	tableStr := m.formatTableForViewport(allData)
-	logger.DebugfToFile("HandleEnterKey", "Table string length: %d", len(tableStr))
-	m.tableViewport.SetContent(tableStr)
-	m.tableViewport.GotoTop()
-	logger.DebugfToFile("HandleEnterKey", "Table viewport content set, viewMode: %s", m.viewMode)
-
-	m.input.Reset()
-	return m, nil
-}
-
 // processQueryResult handles QueryResult type
 func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainModel, tea.Cmd) {
 	// Query result with metadata
@@ -493,14 +387,8 @@ func (m *MainModel) processQueryResult(command string, v db.QueryResult) (*MainM
 
 		m.rowCount = v.RowCount
 
-		// Get output format from session manager
-		outputFormat := config.OutputFormatTable
-		if m.sessionManager != nil {
-			outputFormat = m.sessionManager.GetOutputFormat()
-		}
-		logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", outputFormat)
-
-		m.showQueryResult(v.Data, v.ColumnTypes, outputFormat)
+		logger.DebugfToFile("keyboard_handler_enter", "QueryResult Format: %v", m.outputFormat())
+		m.showQueryResult(v.Data, v.ColumnTypes, v.RawData)
 
 		// Write to the AutoSave file, unless the router already did: a streaming
 		// result is drained there and handed on as an ordinary QueryResult, and
@@ -543,16 +431,22 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 		// the header's detail row reads them by index and PARQUET builds a
 		// schema from them, so both would be quietly wrong.
 		m.columnTypes = nil
-		m.resultFormat = config.OutputFormatTable
+		m.lastRawData = nil
 		m.resetHorizontalScroll()
 		m.hasTable = true
 		m.viewMode = "table"
 		m.initialColumnWidths = nil // Reset initial widths for new table
 		m.cachedTableLines = nil    // Clear cache for new table
 
-		// Format and display in table viewport
-		tableStr := m.formatTableForViewport(v)
-		m.tableViewport.SetContent(tableStr)
+		// Nothing streamed this, so there is no window of rows to page: what is
+		// on screen is all of it.
+		m.slidingWindow = nil
+
+		// Drawn in whatever OUTPUT is set to, like every other result. It used
+		// to force the boxed table, which was a rule nothing else followed and
+		// one that changing the format on screen would have broken anyway: a
+		// grid drawn one way and redrawn another.
+		m.renderResults(v)
 		m.tableViewport.GotoTop() // Start at top of table
 
 		// Write to capture file if capturing

@@ -145,12 +145,9 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 						}
 					}
 
-					// Update the table data and refresh the view
-					allData := append([][]string{m.slidingWindow.Headers}, m.slidingWindow.Rows...)
 					// Clear cache to force rebuild
 					m.cachedTableLines = nil
-
-					m.refreshTableContent(allData)
+					m.renderResults(m.resultRows())
 
 					// Update row count
 					m.rowCount = int(m.slidingWindow.TotalRowsSeen)

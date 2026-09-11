@@ -8,39 +8,54 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/router"
+	session2 "github.com/axonops/cqlai/internal/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // outputModel builds a model holding one page of a result, with a second page
-// still to come.
-func outputModel(t *testing.T, autoFetch bool) *MainModel {
+// still to come, with OUTPUT set to the given format.
+func outputModel(t *testing.T, autoFetch bool, format config.OutputFormat) *MainModel {
 	t.Helper()
 
 	session := &db.Session{}
 	session.SetAutoFetch(autoFetch)
 
+	manager := session2.NewManager(&config.Config{})
+	require.NoError(t, manager.SetOutputFormat(format))
+
+	// OUTPUT is answered by the router, which keeps its own pointer to the
+	// manager: without this a command in a test would set the format somewhere
+	// the model is not looking.
+	router.InitRouter(manager)
+	t.Cleanup(func() { router.InitRouter(nil) })
+
 	window := NewSlidingWindowTable(1000, 10)
 	window.Headers = []string{"id", "name"}
 	window.ColumnNames = window.Headers
 	for _, row := range [][]string{{"1", "alice"}, {"2", "bob"}} {
-		window.AddRow(row)
+		window.AddRow(row, rowValues(window.Headers, row))
 	}
 
 	// A second page, delivered once and then exhausted.
 	remaining := [][]string{{"3", "carol"}, {"4", "dave"}}
 	window.hasMoreData = true
 	window.streamingResult = &db.StreamingResult{
-		LoadMore: func(_ context.Context, _ int) ([][]string, bool, error) {
-			rows := remaining
+		LoadMore: func(_ context.Context, _ int) (db.Page, error) {
+			page := db.Page{Rows: remaining}
+			for _, row := range remaining {
+				page.Raw = append(page.Raw, rowValues(window.Headers, row))
+			}
 			remaining = nil
-			return rows, false, nil
+			return page, nil
 		},
 	}
 
 	return &MainModel{
 		styles:          DefaultStyles(),
 		session:         session,
+		sessionManager:  manager,
 		windowWidth:     100,
 		windowHeight:    30,
 		viewMode:        "history",
@@ -58,10 +73,10 @@ func outputModel(t *testing.T, autoFetch bool) *MainModel {
 // half - and the Results view is where it can scroll sideways instead.
 func TestASCIIResultsGoToTheResultsView(t *testing.T) {
 	for _, autoFetch := range []bool{false, true} {
-		m := outputModel(t, autoFetch)
+		m := outputModel(t, autoFetch, config.OutputFormatASCII)
 		before := m.fullHistoryContent
 
-		m.displayASCIIFormat(m.slidingWindow.Headers, nil)
+		m.displayResult(m.slidingWindow.Headers, nil)
 
 		assert.Equal(t, "table", m.viewMode, "AutoFetch %v", autoFetch)
 		assert.True(t, m.hasTable, "AutoFetch %v", autoFetch)
@@ -74,10 +89,10 @@ func TestASCIIResultsGoToTheResultsView(t *testing.T) {
 // TestJSONResultsGoToTheResultsView: the same bug, in the other format.
 func TestJSONResultsGoToTheResultsView(t *testing.T) {
 	for _, autoFetch := range []bool{false, true} {
-		m := outputModel(t, autoFetch)
+		m := outputModel(t, autoFetch, config.OutputFormatJSON)
 		before := m.fullHistoryContent
 
-		m.displayJSONFormat(m.slidingWindow.Headers, nil, m.slidingWindow.ColumnNames)
+		m.displayResult(m.slidingWindow.Headers, nil)
 
 		assert.Equal(t, "table", m.viewMode, "AutoFetch %v", autoFetch)
 		assert.True(t, m.hasTable, "AutoFetch %v", autoFetch)
@@ -90,9 +105,9 @@ func TestJSONResultsGoToTheResultsView(t *testing.T) {
 // TestAutoFetchStillFetchesEverything. It decides how much is pulled in, which
 // is the part that should not have changed.
 func TestAutoFetchStillFetchesEverything(t *testing.T) {
-	m := outputModel(t, true)
+	m := outputModel(t, true, config.OutputFormatASCII)
 
-	m.displayASCIIFormat(m.slidingWindow.Headers, nil)
+	m.displayResult(m.slidingWindow.Headers, nil)
 
 	assert.False(t, m.slidingWindow.hasMoreData, "AutoFetch should have taken the rest")
 	assert.Len(t, m.slidingWindow.Rows, 4)
@@ -101,9 +116,9 @@ func TestAutoFetchStillFetchesEverything(t *testing.T) {
 
 // TestWithoutAutoFetchTheRestIsLeft, and the notice says so.
 func TestWithoutAutoFetchTheRestIsLeft(t *testing.T) {
-	m := outputModel(t, false)
+	m := outputModel(t, false, config.OutputFormatASCII)
 
-	m.displayASCIIFormat(m.slidingWindow.Headers, nil)
+	m.displayResult(m.slidingWindow.Headers, nil)
 
 	assert.True(t, m.slidingWindow.hasMoreData)
 	assert.Len(t, m.slidingWindow.Rows, 2)
@@ -113,9 +128,9 @@ func TestWithoutAutoFetchTheRestIsLeft(t *testing.T) {
 // TestTheNoticeIsGoneOnceEverythingIsFetched: it tells you to press PgDn for
 // rows that are already on screen otherwise.
 func TestTheNoticeIsGoneOnceEverythingIsFetched(t *testing.T) {
-	m := outputModel(t, true)
+	m := outputModel(t, true, config.OutputFormatASCII)
 
-	m.displayASCIIFormat(m.slidingWindow.Headers, nil)
+	m.displayResult(m.slidingWindow.Headers, nil)
 
 	assert.NotContains(t, stripAnsiForTest(m.tableViewport.GetContent()), "More data available")
 }
@@ -123,17 +138,15 @@ func TestTheNoticeIsGoneOnceEverythingIsFetched(t *testing.T) {
 // TestAllFourFormatsAgreeOnWhereResultsGo. ASCII and JSON were the odd ones
 // out; TABLE and EXPAND always used the Results view.
 func TestAllFourFormatsAgreeOnWhereResultsGo(t *testing.T) {
-	display := map[string]func(m *MainModel){
-		"ASCII":  func(m *MainModel) { m.displayASCIIFormat(m.slidingWindow.Headers, nil) },
-		"JSON":   func(m *MainModel) { m.displayJSONFormat(m.slidingWindow.Headers, nil, m.slidingWindow.ColumnNames) },
-		"EXPAND": func(m *MainModel) { m.displayExpandFormat(m.slidingWindow.Headers, nil) },
-	}
+	for _, format := range config.OutputFormats() {
+		parsed, err := config.ParseOutputFormat(format)
+		require.NoError(t, err)
 
-	for name, show := range display {
 		for _, autoFetch := range []bool{false, true} {
-			m := outputModel(t, autoFetch)
-			show(m)
-			assert.Equal(t, "table", m.viewMode, "%s with AutoFetch %v", name, autoFetch)
+			m := outputModel(t, autoFetch, parsed)
+			m.displayResult(m.slidingWindow.Headers, nil)
+			assert.Equal(t, "table", m.viewMode, "%s with AutoFetch %v", format, autoFetch)
+			assert.Equal(t, parsed, m.resultFormat, "%s with AutoFetch %v", format, autoFetch)
 		}
 	}
 }
@@ -157,7 +170,7 @@ func queryResultModel(t *testing.T) *MainModel {
 
 	return &MainModel{
 		styles:          DefaultStyles(),
-		sessionManager:  nil,
+		sessionManager:  session2.NewManager(&config.Config{}),
 		windowWidth:     100,
 		windowHeight:    30,
 		viewMode:        "history",
@@ -184,8 +197,9 @@ func TestEveryFormatUsesTheResultsViewOnTheDirectPath(t *testing.T) {
 	} {
 		m := queryResultModel(t)
 		before := m.fullHistoryContent
+		require.NoError(t, m.sessionManager.SetOutputFormat(format))
 
-		m.showQueryResult(data, nil, format)
+		m.showQueryResult(data, nil)
 
 		assert.Equal(t, "table", m.viewMode, "%s", format)
 		assert.True(t, m.hasTable, "%s", format)
@@ -198,7 +212,7 @@ func TestEveryFormatUsesTheResultsViewOnTheDirectPath(t *testing.T) {
 
 // TestJSONIsOneObjectPerRow.
 func TestJSONIsOneObjectPerRow(t *testing.T) {
-	out := formatRowsAsJSON([][]string{{"id", "name"}, {"1", "alice"}, {"2", "bob"}})
+	out := formatRowsAsJSON([][]string{{"id", "name"}, {"1", "alice"}, {"2", "bob"}}, nil)
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	require.Len(t, lines, 2)
@@ -208,14 +222,14 @@ func TestJSONIsOneObjectPerRow(t *testing.T) {
 
 // TestSelectJSONIsPassedThrough rather than wrapped in another object.
 func TestSelectJSONIsPassedThrough(t *testing.T) {
-	out := formatRowsAsJSON([][]string{{"[json]"}, {`{"id": 1}`}, {`{"id": 2}`}})
+	out := formatRowsAsJSON([][]string{{"[json]"}, {`{"id": 1}`}, {`{"id": 2}`}}, nil)
 
 	assert.Equal(t, "{\"id\": 1}\n{\"id\": 2}\n", out)
 }
 
 func TestNoRowsIsNoJSON(t *testing.T) {
-	assert.Empty(t, formatRowsAsJSON([][]string{{"id"}}))
-	assert.Empty(t, formatRowsAsJSON(nil))
+	assert.Empty(t, formatRowsAsJSON([][]string{{"id"}}, nil))
+	assert.Empty(t, formatRowsAsJSON(nil, nil))
 }
 
 // resultsModel puts content into the Results view as a given format, the way a
@@ -225,7 +239,8 @@ func resultsModel(t *testing.T, format config.OutputFormat, data [][]string) *Ma
 
 	m := queryResultModel(t)
 	m.columnWidths = []int{8, 8} // left over from an earlier table render
-	m.showQueryResult(data, nil, format)
+	require.NoError(t, m.sessionManager.SetOutputFormat(format))
+	m.showQueryResult(data, nil)
 	return m
 }
 
@@ -310,4 +325,16 @@ func TestNarrowContentDoesNotScrollSideways(t *testing.T) {
 	m.handleMouseWheelRight()
 
 	assert.Zero(t, m.horizontalOffset)
+}
+
+// rowValues is a row as the values behind it, which a real result carries and a
+// test has to make up.
+func rowValues(headers []string, row []string) map[string]interface{} {
+	values := make(map[string]interface{}, len(headers))
+	for i, header := range headers {
+		if i < len(row) {
+			values[header] = row[i]
+		}
+	}
+	return values
 }

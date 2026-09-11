@@ -710,34 +710,6 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	}
 }
 
-// ConvertToJSONQuery converts a SELECT query to SELECT JSON format
-// This is now a public method so it can be called from the router/UI layer when needed
-func ConvertToJSONQuery(query string) string {
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-
-	// Check if it's already a JSON query
-	if strings.Contains(upperQuery, "SELECT JSON") || strings.Contains(upperQuery, "SELECT DISTINCT JSON") {
-		return query
-	}
-
-	// Only convert SELECT queries
-	if !strings.HasPrefix(upperQuery, "SELECT") {
-		return query
-	}
-
-	// Handle SELECT DISTINCT
-	if strings.HasPrefix(upperQuery, "SELECT DISTINCT") {
-		// Replace "SELECT DISTINCT" with "SELECT DISTINCT JSON"
-		re := regexp.MustCompile(`(?i)^SELECT\s+DISTINCT\s+`)
-		return re.ReplaceAllString(query, "SELECT DISTINCT JSON ")
-	}
-
-	// Handle regular SELECT
-	// Replace "SELECT" with "SELECT JSON"
-	re := regexp.MustCompile(`(?i)^SELECT\s+`)
-	return re.ReplaceAllString(query, "SELECT JSON ")
-}
-
 // GetKeyColumns returns information about partition and clustering columns for a table
 func (s *Session) GetKeyColumns(query string) KeyColumns {
 	keyColumns := make(KeyColumns)
