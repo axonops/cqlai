@@ -128,16 +128,16 @@ When the AI generates a query, you can:
 ## Implementation Status
 
 Currently implemented:
-- ✅ Mock provider for testing
-- ✅ OpenAI API integration (GPT-4, GPT-3.5)
-- ✅ Anthropic API integration (Claude 3)
-- ✅ Google Gemini API integration
-- ✅ Ollama support (local models and OpenAI-compatible APIs)
-- ✅ OpenRouter integration (multiple model access)
-- ✅ Query plan generation and validation
-- ✅ CQL rendering from plans
-- ✅ UI modal for preview and confirmation
-- ✅ Schema context extraction
+- Mock provider for testing
+- OpenAI API integration (GPT-4, GPT-3.5)
+- Anthropic API integration (Claude 3)
+- Google Gemini API integration
+- Ollama support (local models and OpenAI-compatible APIs)
+- OpenRouter integration (multiple model access)
+- Query plan generation and validation
+- CQL rendering from plans
+- UI modal for preview and confirmation
+- Schema context extraction
 
 Future enhancements:
 - ⏳ Query optimization suggestions

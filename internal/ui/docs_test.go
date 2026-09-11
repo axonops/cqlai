@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -115,4 +116,50 @@ func TestTheDocsHaveNoDeadLinks(t *testing.T) {
 			assert.FileExists(t, target, "%s links to %s, which is not there", doc, found[0])
 		}
 	}
+}
+
+// TestTheDocsHaveNoDeadAnchors.
+//
+// The table of contents is a list of links into the same page, and stripping
+// the emoji out of the headings changed every anchor they pointed at.
+func TestTheDocsHaveNoDeadAnchors(t *testing.T) {
+	docs, err := filepath.Glob("../../docs/*.md")
+	require.NoError(t, err)
+	docs = append(docs, "../../README.md", "../../README_jp.md",
+		"../../README_es.md", "../../README_gl.md", "../../CONTRIBUTING.md")
+
+	anchor := regexp.MustCompile(`\]\(#([^)]+)\)`)
+	heading := regexp.MustCompile(`(?m)^#{1,6} +(.+)$`)
+
+	for _, doc := range docs {
+		text, err := os.ReadFile(doc) //nolint:gosec // a file in this repository
+		if err != nil {
+			continue // a file someone keeps locally rather than in the repository
+		}
+
+		headings := map[string]bool{}
+		for _, found := range heading.FindAllStringSubmatch(string(text), -1) {
+			headings[slug(found[1])] = true
+		}
+
+		for _, found := range anchor.FindAllStringSubmatch(string(text), -1) {
+			assert.True(t, headings[found[1]],
+				"%s links to %s, and no heading there makes that anchor", doc, found[0])
+		}
+	}
+}
+
+// slug turns a heading into the anchor GitHub gives it: lower case, spaces to
+// dashes, and anything else that is not a letter, a digit or a dash dropped.
+func slug(heading string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(heading)) {
+		switch {
+		case r == ' ':
+			b.WriteRune('-')
+		case r == '-' || r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

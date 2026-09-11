@@ -60,8 +60,8 @@ Produces output similar to `cqlsh`:
 ```
  column1 | column2 | column3
 ---------+---------+---------
- value1  | value2  | value3
- value4  | value5  | value6
+ value1 | value2 | value3
+ value4 | value5 | value6
 
 (2 rows)
 ```
@@ -248,8 +248,8 @@ DATE=$(date +%Y-%m-%d)
 
 # Generate report
 cqlai -e "
-  SELECT date, metric, value 
-  FROM metrics 
+  SELECT date, metric, value
+  FROM metrics
   WHERE date = '$DATE'
 " --format csv > "report_$DATE.csv"
 ```

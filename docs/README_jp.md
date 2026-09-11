@@ -19,7 +19,7 @@
 - [CQLSHRCサポート](CQLSHRC_SUPPORT_jp.md) - cqlsh設定との互換性
 
 ### 開発
-- [Gemini統合](GEMINI.md) - Google Gemini AI統合の詳細
+- [AI設定](AI_CONFIG_jp.md) - Geminiを含む各プロバイダの設定
 
 ## クイックリンク
 

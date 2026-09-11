@@ -60,8 +60,8 @@ cqlai -e "SELECT * FROM table;" --format ascii
 ```
  column1 | column2 | column3
 ---------+---------+---------
- value1  | value2  | value3
- value4  | value5  | value6
+ value1 | value2 | value3
+ value4 | value5 | value6
 
 (2 rows)
 ```

@@ -414,11 +414,11 @@ SELECT * FROM users WHERE country='US';
 -- これにより、次のカラムを持つParquetファイルが作成されます: id, name, email, countryなど
 
 -- 重要: 後続のクエリは同じスキーマを持つ必要があります
-SELECT * FROM users WHERE country='UK';  -- ✓ 動作 - 同じカラム
-SELECT * FROM users WHERE age > 18;      -- ✓ 動作 - 同じカラム
+SELECT * FROM users WHERE country='UK';  --  動作 - 同じカラム
+SELECT * FROM users WHERE age > 18;      --  動作 - 同じカラム
 
 -- これは失敗するか問題を引き起こします - 異なるカラム!
--- SELECT id, order_total FROM orders;   -- ✗ 異なるスキーマ
+-- SELECT id, order_total FROM orders;   --  異なるスキーマ
 
 -- AutoSaveを停止
 AUTOSAVE OFF;

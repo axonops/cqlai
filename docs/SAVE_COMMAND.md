@@ -111,10 +111,10 @@ Example output:
 Example output:
 ```
 +----+------------+------------------+------------+
-| id | name       | email            | created_at |
+| id | name | email | created_at |
 +----+------------+------------------+------------+
-| 1  | John Doe   | john@example.com | 2024-01-15 |
-| 2  | Jane Smith | jane@example.com | 2024-01-16 |
+| 1 | John Doe | john@example.com | 2024-01-15 |
+| 2 | Jane Smith | jane@example.com | 2024-01-16 |
 +----+------------+------------------+------------+
 ```
 

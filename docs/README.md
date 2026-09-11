@@ -19,7 +19,7 @@ This directory contains detailed documentation for CQLAI, a modern Cassandra CQL
 - [CQLSHRC Support](CQLSHRC_SUPPORT.md) - Compatibility with cqlsh configuration
 
 ### Development
-- [Gemini Integration](GEMINI.md) - Google Gemini AI integration details
+- [AI configuration](AI_CONFIG.md) - the providers, Gemini among them
 
 ## Quick Links
 
