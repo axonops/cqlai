@@ -372,22 +372,47 @@ still work.
 #### The FILE menu
 
 ```
-╭────────────╮
-│ AUTOSAVE   │
-│ SOURCE     │
-│ COPY TO    │
-│ COPY FROM  │
-╰────────────╯
+╭──────────────╮
+│ SAVE RESULTS │
+│ AUTOSAVE     │
+│ SOURCE       │
+│ COPY TO      │
+│ COPY FROM    │
+│──────────────│
+│ PREFERENCES  │
+│──────────────│
+│ QUIT         │
+╰──────────────╯
 ```
 
-`AUTOSAVE` saves every query from now on. `SOURCE` runs the CQL in a file, and
-`COPY TO`/`COPY FROM` move a whole table in or out.
+`SAVE RESULTS` writes what is on screen, and says so when there is nothing to
+write. `AUTOSAVE` saves every query from now on. `SOURCE` runs the CQL in a
+file, and `COPY TO`/`COPY FROM` move a whole table in or out. Below the first
+line, `PREFERENCES` edits the settings CQLAI starts with; below the second,
+`QUIT` leaves, asking first.
 
 Up and down move, Enter picks, Esc closes. `AutoSave: ` on the bottom line says
 whether it is on, and clicking it opens the same window.
 
-Saving the result of one query is the `SAVE` command rather than a menu entry -
-it acts on what is on screen rather than on a file.
+The windows that ask for a path - `SAVE RESULTS` and `AUTOSAVE`, and the `File`
+field on the three forms - open on a file browser under your home directory. Tab
+completes, `..` walks up, and the wheel scrolls the listing.
+
+#### The prompt
+
+A statement without a semicolon is not finished, so the prompt stays open and
+waits for the rest. Each line goes into the console as you type it, with the
+prompt it was typed at, and the prompt itself says which line you are on:
+
+```
+> SELECT *
+... FROM users
+... WHERE id = 1;
+```
+
+`Esc` gives up on the statement. A result that is only partly loaded says so on
+a line of its own at the end of it, with how many rows are showing and how to
+get the rest.
 
 #### Column headers
 
