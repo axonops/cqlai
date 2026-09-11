@@ -33,6 +33,12 @@ type fileMenuItem struct {
 	kind  fileKind   // for the two-step window
 	form  formAction // for a form
 	asks  bool       // true if this entry opens a form
+	prefs bool       // true for PREFERENCES, which opens its own window
+	quits bool       // true for QUIT, which is the end of it
+
+	// rule is a line across the menu rather than an entry. It cannot be
+	// selected, the arrow keys step over it, and a click on it does nothing.
+	rule bool
 }
 
 // fileMenu is the open menu, if any.
@@ -52,6 +58,14 @@ func fileMenuItems() []fileMenuItem {
 		{label: "SOURCE", form: sourcing, asks: true},
 		{label: "COPY TO", form: copyingTo, asks: true},
 		{label: "COPY FROM", form: copyingFrom, asks: true},
+		{rule: true},
+		// Below the line because it is not a file operation. The four above
+		// move data in or out; this one changes how cqlai starts.
+		{label: "PREFERENCES", prefs: true},
+		{rule: true},
+		// And last, on its own, because leaving is not like either group above
+		// it and is the one entry here you cannot undo.
+		{label: "QUIT", quits: true},
 	}
 }
 
@@ -62,6 +76,10 @@ func fileMenuItems() []fileMenuItem {
 // being something on screen, which made it the one entry that was sometimes
 // dimmed. The SAVE command is unchanged and still opens the same window.
 func (m *MainModel) fileItemAvailable(item fileMenuItem) bool {
+	if item.rule {
+		return false
+	}
+
 	// COPY names a keyspace and a table, and without a session there is nothing
 	// to name and nothing to complete against. SOURCE reads a file and
 	// AUTOSAVE writes them, so neither needs one.
@@ -129,6 +147,15 @@ func (m *MainModel) chooseFileMenuItem() (*MainModel, tea.Cmd) {
 
 	m.closeFileMenu()
 	switch {
+	case item.quits:
+		// Asked rather than done. The other three ways out have their own
+		// answer to this: Ctrl+C and Ctrl+D want the key twice, and typing EXIT
+		// is typing. A menu entry is one press away from the entry above it and
+		// sits under a button on the tab line, so it asks.
+		m.modal = NewQuitModal()
+		return m, nil
+	case item.prefs:
+		return m.openPreferences()
 	case item.asks:
 		return m.openFileForm(item.form)
 	case item.kind == saving:
@@ -211,8 +238,15 @@ func (m *MainModel) viewFileMenu(screenWidth, screenHeight int) (Layer, bool) {
 		Background(m.styles.Accent).
 		Bold(true)
 
+	ruleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(formPlaceholderColour))
+
 	var rows []string
 	for i, item := range g.items {
+		if item.rule {
+			rows = append(rows, ruleStyle.Render(strings.Repeat("─", g.innerWidth)))
+			continue
+		}
+
 		text := pad(" "+item.label, g.innerWidth)
 		switch {
 		case !m.fileItemAvailable(item):

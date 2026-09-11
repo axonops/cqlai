@@ -107,6 +107,26 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// A question takes every press while it is up. A click on an answer gives
+	// it; one anywhere else is ignored rather than taken as an answer, since a
+	// dialog asking whether to quit should not be dismissed by a stray click.
+	if m.modal.Type != ModalNone {
+		if choice, hit := m.modal.buttonAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			return m.answerModal(choice)
+		}
+		return m, nil
+	}
+
+	// A press inside the preferences window works it; anywhere else closes it,
+	// rather than acting on something underneath it.
+	if m.preferences.active {
+		if m.inPreferences(m.windowWidth, m.windowHeight, mouse.X, mouse.Y) {
+			return m.handlePreferencesClick(mouse.X, mouse.Y)
+		}
+		m.closePreferences()
+		return m, nil
+	}
+
 	// A press inside a form moves to the field pressed; anywhere else closes it,
 	// rather than acting on something underneath it.
 	if m.form.active {
@@ -163,6 +183,12 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// falls through to the tab line, which toggles the menu shut.
 	if m.fileMenu.active {
 		if i, hit := m.fileMenuItemAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
+			// A press on the separator, or on an entry that cannot be picked,
+			// leaves the menu as it is rather than moving the highlight
+			// somewhere nothing can be chosen from.
+			if !m.fileItemAvailable(fileMenuItems()[i]) {
+				return m, nil
+			}
 			m.fileMenu.selected = i
 			return m.chooseFileMenuItem()
 		}
@@ -290,6 +316,25 @@ func (m *MainModel) pressOpensCapture(mouse tea.Mouse) bool {
 
 // handleMouseWheel scrolls the view under the pointer.
 func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
+	// The preferences window is longer than the screen, so the wheel over it
+	// moves whichever of its two lists is under the pointer.
+	if m.preferences.active {
+		delta := 0
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			delta = -wheelLines
+		case tea.MouseWheelDown:
+			delta = wheelLines
+		}
+		if delta == 0 {
+			return m, nil
+		}
+		if len(m.preferences.matches) > 0 {
+			return m.scrollPrefMatches(delta)
+		}
+		return m.scrollPreferences(delta)
+	}
+
 	// A candidate list takes the wheel while it is showing: it is over the view
 	// and it is the thing just asked for.
 	if m.form.active && len(m.form.matches) > 0 {

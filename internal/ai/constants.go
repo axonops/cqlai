@@ -102,3 +102,19 @@ const (
 	UserMessagePrefix   = "User: "
 	AssistantPrefix     = "Assistant: "
 )
+
+// Providers is every provider cqlai can be pointed at, in the order the
+// PREFERENCES window offers them.
+//
+// The constants above are the names; this is the list. A provider added there
+// and not here is one the window cannot offer, so keep them together.
+func Providers() []string {
+	return []string{
+		string(ProviderOpenAI),
+		string(ProviderAnthropic),
+		string(ProviderGemini),
+		string(ProviderOllama),
+		string(ProviderOpenRouter),
+		string(ProviderMock),
+	}
+}

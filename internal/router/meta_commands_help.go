@@ -83,6 +83,13 @@ func HelpRows() [][]string {
 		{"", "  WITH DELIMITER=','", "Field separator (CSV only)"},
 		{"", "  WITH MAXROWS=n", "Max rows to import (-1=all)"},
 		{"", "  WITH SKIPROWS=n", "Skip first n rows (CSV only)"},
+		{"", "FILE menu (Alt+F)", "The same operations, as forms to fill in"},
+
+		// Configuration
+		{"─────────", "─────────", "─────────────"},
+		{"Settings", "FILE > PREFERENCES", "Edit the settings cqlai starts with"},
+		{"", "  Saved to", "cqlai.json, or ~/.cqlai.json when there is none"},
+		{"", "  This session", "The status line, which the file does not change"},
 
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},
@@ -103,6 +110,7 @@ func HelpRows() [][]string {
 		{"", "Ctrl+W", "Cut previous word"},
 		{"", "Alt+D", "Delete next word"},
 		{"", "Ctrl+Y", "Paste cut text"},
+		{"", "Terminal paste", "Goes into the prompt, a form, or preferences"},
 
 		// Navigation
 		{"─────────", "─────────", "─────────────"},
@@ -115,6 +123,7 @@ func HelpRows() [][]string {
 		{"─────────", "─────────", "─────────────"},
 		{"Exit", "EXIT or QUIT", "Exit cqlai"},
 		{"", "Ctrl+D", "Exit via EOF"},
+		{"", "FILE > QUIT", "The same from the menu, which asks first"},
 
 		{"", "", ""},
 		{"", "Type 'HELP <topic>' for more details", ""},

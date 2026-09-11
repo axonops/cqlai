@@ -103,6 +103,15 @@ func (m *MainModel) typeIntoHistorySearch(msg tea.KeyPressMsg) (*MainModel, tea.
 		}
 	}
 
+	return m.refreshHistorySearch()
+}
+
+// refreshHistorySearch finds the commands matching the query and puts the
+// selection on the newest of them.
+//
+// Typing and pasting both come through here, so a pasted query narrows the list
+// the same way a typed one does.
+func (m *MainModel) refreshHistorySearch() (*MainModel, tea.Cmd) {
 	if m.historyManager != nil {
 		m.historySearchResults = m.historyManager.SearchHistory(m.historySearchQuery)
 	} else {

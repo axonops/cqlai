@@ -283,6 +283,9 @@ func (m *MainModel) View() tea.View {
 	if layer, ok := m.viewFileForm(screenWidth, screenHeight); ok {
 		layerManager.AddLayer(layer)
 	}
+	if layer, ok := m.viewPreferences(screenWidth, screenHeight); ok {
+		layerManager.AddLayer(layer)
+	}
 	if layer, ok := m.viewFileMenu(screenWidth, screenHeight); ok {
 		layerManager.AddLayer(layer)
 	}
@@ -293,26 +296,15 @@ func (m *MainModel) View() tea.View {
 		layerManager.AddLayer(layer)
 	}
 
-	finalView = layerManager.Render(finalView)
-
-	// If modal is showing, render it as an overlay
-	if m.modal.Type != ModalNone {
-		// Use the actual window dimensions
-		screenWidth := m.windowWidth
-		screenHeight := m.windowHeight
-		if screenWidth == 0 {
-			// Fallback if window dimensions not yet set
-			screenWidth = viewportWidth
-		}
-		if screenHeight == 0 {
-			// Fallback if window dimensions not yet set
-			screenHeight = m.historyViewport.Height() + 3
-		}
-
-		// Render the modal overlay with the current view as background
-		return m.newView(m.modal.Render(screenWidth, screenHeight, m.styles, finalView))
+	// The confirmation dialog is the last layer: it is a question, and it is in
+	// the way on purpose. It used to be drawn by blanking the screen and
+	// placing the box on the empty result, which is why it was the one thing on
+	// screen a click could not reach.
+	if layer, ok := m.modal.Layer(screenWidth, screenHeight, m.styles); ok {
+		layerManager.AddLayer(layer)
 	}
 
+	finalView = layerManager.Render(finalView)
 	return m.newView(finalView)
 }
 
