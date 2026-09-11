@@ -209,7 +209,15 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		}
 		if i, hit := m.matchAt(m.windowWidth, m.windowHeight, mouse.X, mouse.Y); hit {
 			m.capture.match = i
+			m.capture.inList = true
 			return m.useMatch()
+		}
+		if m.onCapturePath(m.windowWidth, m.windowHeight, mouse.X, mouse.Y) {
+			// Back to the path, which is where a click on it is aimed: with the
+			// listing holding the keys, Enter was using a candidate and a path
+			// typed by hand could not be confirmed.
+			m.capture.inList = false
+			return m, nil
 		}
 		if m.inCapturePanel(m.windowWidth, m.windowHeight, mouse.X, mouse.Y) {
 			// The path step: a press in the box is aimed at the text field, so

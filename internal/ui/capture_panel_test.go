@@ -199,17 +199,25 @@ func TestTabListsTheCandidatesWhenFillingInIsNotEnough(t *testing.T) {
 	assert.Contains(t, rows[2+captureMatchesStart], "report.json")
 }
 
-// TestTypingClearsTheListedCandidates, since they no longer describe what is
-// in the box.
-func TestTypingClearsTheListedCandidates(t *testing.T) {
+// TestTypingListsWhatIsTypedNow, since what was listed a moment ago described
+// what was in the box before the keystroke.
+func TestTypingListsWhatIsTypedNow(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "report.csv"), nil, 0o600))
+
 	m := captureModel()
 	m.openCapturePanel(4)
 	m.chooseCaptureFormat()
-	m.capture.matches = []string{"a", "b"}
+	m.capture.matches = []string{"stale", "listing"}
+	m.capture.inList = true
+	m.capture.input.SetValue(dir + string(filepath.Separator))
+	m.capture.input.CursorEnd() // typing goes on the end, as it would
 
-	m.handleCaptureKey(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	m.handleCaptureKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
 
-	assert.Empty(t, m.capture.matches)
+	assert.Contains(t, m.capture.matches, "report.csv")
+	assert.NotContains(t, m.capture.matches, "stale")
+	assert.False(t, m.capture.inList, "typing is aimed at the path")
 }
 
 // TestAnEmptyPathStartsNothing.
@@ -429,16 +437,22 @@ func TestTheArrowsWalkTheWholeList(t *testing.T) {
 func TestEnterUsesTheHighlightedCandidate(t *testing.T) {
 	m := listingModel(t, 4)
 
-	// Past the way up at the top, then onto the second file.
-	for range 2 {
+	// Down from the path into the list, past the way up at the top, then onto
+	// the second file.
+	for range 3 {
 		m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	assert.True(t, strings.HasSuffix(m.capture.input.Value(), "file01.csv"),
 		"got %q", m.capture.input.Value())
-	assert.Empty(t, m.capture.matches, "the list should have gone")
 	assert.True(t, m.capture.active, "and it should not have started capturing")
+
+	// The browser stays up, showing the directory the file came from, and the
+	// keys go back to the path: the next Enter starts rather than picking
+	// something else.
+	assert.NotEmpty(t, m.capture.matches)
+	assert.False(t, m.capture.inList)
 }
 
 // TestClickingACandidateUsesIt.
@@ -475,7 +489,10 @@ func TestChoosingADirectoryOpensIt(t *testing.T) {
 	require.Equal(t, parentEntry, m.capture.matches[0])
 	require.Equal(t, "exports"+string(filepath.Separator), m.capture.matches[1])
 
-	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	// Down into the list, down again onto the directory, then Enter.
+	for range 2 {
+		m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	assert.Equal(t, inner+string(filepath.Separator), m.capture.input.Value())
@@ -497,6 +514,7 @@ func TestTheWayUpWalksBackOut(t *testing.T) {
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyTab})
 
 	require.Equal(t, parentEntry, m.capture.matches[0])
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown}) // into the list, on the way up
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	assert.Equal(t, dir+string(filepath.Separator), m.capture.input.Value())
@@ -504,21 +522,23 @@ func TestTheWayUpWalksBackOut(t *testing.T) {
 		"and it lists where it has arrived")
 }
 
-// TestEscapeGoesBackAStepEvenWithTheListShowing.
+// TestEscapeLeavesTheListThenTheStep.
 //
-// It used to put the list away and leave you on the path. The listing is there
-// from the moment the step opens now, rather than being something you asked
-// for, so putting it away would leave the field where it was with the browser
-// gone - and Escape does the same thing everywhere else in this window.
-func TestEscapeGoesBackAStepEvenWithTheListShowing(t *testing.T) {
+// The listing is where you are once you have stepped into it, so Escape is the
+// way out of it; from the path it goes back to the format, as it always did.
+func TestEscapeLeavesTheListThenTheStep(t *testing.T) {
 	m := listingModel(t, 4)
-	require.NotEmpty(t, m.capture.matches)
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	require.True(t, m.capture.inList)
 
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.False(t, m.capture.inList, "back to the path")
+	assert.Equal(t, captureEnterPath, m.capture.step, "still asking for a path")
+	assert.NotEmpty(t, m.capture.matches, "with the browser still there")
 
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	assert.Equal(t, captureChooseFormat, m.capture.step, "back to the format")
 	assert.True(t, m.capture.active, "back a step, not closed")
-	assert.Empty(t, m.capture.matches)
 }
 
 // TestTheWheelMovesTheList.
@@ -830,4 +850,73 @@ func TestTheListingOpensOnHome(t *testing.T) {
 	m, _ = m.chooseCaptureFormat()
 
 	assert.Contains(t, m.capture.matches, "exports"+string(filepath.Separator))
+}
+
+// TestThePathAndTheListingAreTwoPlacesToBe.
+//
+// The listing is there from the moment the step opens, so something has to say
+// which of them the keys are aimed at: without it every Enter used a candidate,
+// and a directory typed by hand could never be confirmed.
+func TestThePathAndTheListingAreTwoPlacesToBe(t *testing.T) {
+	m := listingModel(t, 4)
+	typed := m.capture.input.Value()
+
+	// It opens on the path, so Enter starts with what is typed.
+	require.False(t, m.capture.inList)
+
+	// Down goes into the listing, up at the top comes back out.
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	assert.True(t, m.capture.inList)
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	assert.False(t, m.capture.inList, "up from the first candidate is the way out")
+	assert.Equal(t, typed, m.capture.input.Value(), "and the path is untouched")
+
+	// From the path, Enter starts rather than picking.
+	//
+	// Starting it is global - the router holds what is being written where - so
+	// it is stopped again rather than left running for whatever test comes
+	// next, which would find AutoSave already on and the window offering OFF.
+	t.Cleanup(func() { m.runCommand(autoSaveWord + " OFF") })
+
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.False(t, m.capture.active, "Enter on the path should have started it")
+}
+
+// TestClickingThePathComesBackOutOfTheListing.
+func TestClickingThePathComesBackOutOfTheListing(t *testing.T) {
+	m := listingModel(t, 4)
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	require.True(t, m.capture.inList)
+
+	g, ok := m.captureGeometry(m.windowWidth, m.windowHeight)
+	require.True(t, ok)
+
+	m.handleMousePress(tea.Mouse{
+		X: g.x + 4, Y: g.y + 1 + capturePathRow, Button: tea.MouseLeft,
+	})
+
+	assert.False(t, m.capture.inList, "a click on the path is aimed at the path")
+	assert.True(t, m.capture.active, "and it should not have closed the window")
+}
+
+// TestTheHighlightSaysWhereTheKeysAreGoing: a marked candidate in a listing
+// that is not taking the keys says the opposite of what is true.
+func TestTheHighlightSaysWhereTheKeysAreGoing(t *testing.T) {
+	m := listingModel(t, 4)
+	rows := m.captureRows()
+
+	marked := func() int {
+		n := 0
+		for _, row := range rows {
+			if strings.HasPrefix(row, "> ") {
+				n++
+			}
+		}
+		return n
+	}
+	assert.Zero(t, marked(), "nothing is marked while the path has the keys")
+
+	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	rows = m.captureRows()
+	assert.Equal(t, 1, marked(), "and the candidate in hand is marked once it does")
 }

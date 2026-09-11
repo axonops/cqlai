@@ -68,6 +68,13 @@ type capturePanel struct {
 	matches     []string
 	match       int // which candidate is highlighted
 	matchScroll int // first candidate shown
+
+	// inList says the keys are aimed at the listing rather than at the path.
+	//
+	// The listing is there from the moment the step opens, so something has to
+	// say which of the two you are working: without it every Enter used a
+	// candidate and a path typed by hand could never be confirmed.
+	inList bool
 }
 
 // captureMatchRows is the most candidates shown at once. Anything longer
@@ -264,13 +271,17 @@ func (m *MainModel) captureRows() []string {
 
 	for i := first; i < last; i++ {
 		marker := "  "
-		if i == c.match {
+		if i == c.match && c.inList {
 			marker = "> "
 		}
 		rows = append(rows, marker+pad(c.matches[i], width))
 	}
 
-	return append(rows, "", "↑↓: Move   Enter: Use   Tab: Complete   Esc: Back")
+	keys := "↓: List   Tab: Complete   Enter: Start   Esc: Back"
+	if c.inList {
+		keys = "↑↓: Move   Enter: Use   ↑ at the top: Path   Esc: Path"
+	}
+	return append(rows, "", keys)
 }
 
 // matchWindow is the slice of candidates showing, so a long list scrolls with
@@ -287,6 +298,19 @@ func (c capturePanel) matchWindow() (first, last int) {
 // captureMatchesStart is how many rows sit above the candidates inside the
 // border: the title, a blank line, the path box, and another blank.
 const captureMatchesStart = 4
+
+// capturePathRow is the row the path box is drawn on, inside the border: the
+// title, a blank line, and then the box.
+const capturePathRow = 2
+
+// onCapturePath reports whether a press landed on the path box.
+func (m *MainModel) onCapturePath(screenWidth, screenHeight, col, row int) bool {
+	g, ok := m.captureGeometry(screenWidth, screenHeight)
+	if !ok || m.capture.step != captureEnterPath {
+		return false
+	}
+	return row == g.y+1+capturePathRow && col > g.x && col < g.x+g.width-1
+}
 
 // matchAt returns the candidate under a screen position.
 func (m *MainModel) matchAt(screenWidth, screenHeight, col, row int) (int, bool) {
@@ -341,16 +365,29 @@ func (m *MainModel) useMatch() (*MainModel, tea.Cmd) {
 	m.clearMatches()
 
 	if !strings.HasSuffix(chosen, string(filepath.Separator)) {
-		return m, nil
+		// A file: the path is answered. The listing stays up, showing the
+		// directory it came from, and the keys go back to the path so Enter
+		// starts rather than picking something else.
+		updated, cmd := m.listCapturePath()
+		updated.capture.inList = false
+		return updated, cmd
 	}
 
-	// Show what is in it. Going up lists rather than completes: with one entry
-	// in the parent, filling in as far as the candidates agree walked straight
+	// Show what is in it, and stay in the listing: walking a tree is several of
+	// these in a row. Going up lists rather than completes - with one entry in
+	// the parent, filling in as far as the candidates agree walked straight
 	// back into the directory just left.
+	var (
+		updated *MainModel
+		cmd     tea.Cmd
+	)
 	if wentUp {
-		return m.listCapturePath()
+		updated, cmd = m.listCapturePath()
+	} else {
+		updated, cmd = m.completeCapturePath()
 	}
-	return m.completeCapturePath()
+	updated.capture.inList = len(updated.capture.matches) > 0
+	return updated, cmd
 }
 
 // listCapturePath shows what is in the directory the path names, without
@@ -388,6 +425,14 @@ func (m *MainModel) listCapturePath() (*MainModel, tea.Cmd) {
 	}
 }
 
+// listCapturePathWith lists the directory again and carries a command along
+// with it, for the typing path: what was listed a moment ago described what was
+// in the box before this keystroke.
+func (m *MainModel) listCapturePathWith(cmd tea.Cmd) (*MainModel, tea.Cmd) {
+	updated, _ := m.listCapturePath()
+	return updated, cmd
+}
+
 // showNamed opens the list on the entry a name refers to, so it arrives showing
 // where you are rather than at its alphabetical start.
 func (m *MainModel) showNamed(name string) {
@@ -402,11 +447,12 @@ func (m *MainModel) showNamed(name string) {
 	}
 }
 
-// clearMatches takes the list down.
+// clearMatches takes the list down, and with it the keys it was holding.
 func (m *MainModel) clearMatches() {
 	m.capture.matches = nil
 	m.capture.match = 0
 	m.capture.matchScroll = 0
+	m.capture.inList = false
 }
 
 // captureHeaderRows is how many rows sit above the format entries inside the
@@ -555,17 +601,16 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 		return m, nil
 
 	default:
-		// While the candidates are showing they are what the arrows and Enter
-		// are aimed at.
-		//
-		// Escape is not among them any more: the listing is there from the
-		// moment the step opens rather than being something you asked for, so
-		// putting it away would leave the field where it was with the browser
-		// gone. Escape goes back a step, which is what it does everywhere else
-		// in this window.
-		if len(m.capture.matches) > 0 {
+		// The listing has the keys while you are in it, and gives them back at
+		// the top: Up from the first candidate is the way out, the same way Down
+		// from the path was the way in.
+		if m.capture.inList && len(m.capture.matches) > 0 {
 			switch msg.String() {
 			case "up":
+				if m.capture.match == 0 {
+					m.capture.inList = false
+					return m, nil
+				}
 				m.showMatch(m.capture.match - 1)
 				return m, nil
 			case "down":
@@ -573,6 +618,11 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 				return m, nil
 			case "enter":
 				return m.useMatch()
+			case "esc":
+				// Back to the path rather than out of the window: the listing
+				// is where you are, and leaving it is one step.
+				m.capture.inList = false
+				return m, nil
 			}
 		}
 
@@ -583,6 +633,11 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 			m.capture.step = captureChooseFormat
 			m.clearMatches()
 			return m, nil
+		case "down":
+			if len(m.capture.matches) > 0 {
+				m.capture.inList = true
+			}
+			return m, nil
 		case "tab":
 			return m.completeCapturePath()
 		case "enter":
@@ -591,8 +646,11 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 
 		var cmd tea.Cmd
 		m.capture.input, cmd = m.capture.input.Update(msg)
-		m.clearMatches() // what was listed no longer describes what is typed
-		return m, cmd
+		m.capture.inList = false // typing is aimed at the path
+
+		// What was listed no longer describes what is typed, so it is listed
+		// again from what is there now rather than left standing.
+		return m.listCapturePathWith(cmd)
 	}
 }
 
