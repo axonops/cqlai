@@ -239,6 +239,5 @@ SAVEに直接関連していませんが、これらのショートカットは�
 
 ## 参照
 
-- [AUTOSAVEコマンド](./AUTOSAVE_COMMAND.md) - 継続的な出力記録用
-- [COPY TOコマンド](./COPY_COMMAND.md) - 完全な制御でのテーブルの直接エクスポート用
-- [OUTPUTコマンド](./OUTPUT_COMMAND.md) - 表示形式の変更用
+- [AUTOSAVE、COPY、OUTPUT](../README.md#meta-commands) - ファイルに書き出す、または表示形式を変えるその他のコマンド
+- [Parquetサポート](./PARQUET.md) - PARQUET形式が書き出す内容

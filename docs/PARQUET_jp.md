@@ -895,9 +895,9 @@ AUTOSAVE OFF;
 
 ## 関連ドキュメント
 
-- [COPYコマンドリファレンス](./COPY.md)
-- [データ型ガイド](./DATA_TYPES.md)
-- [パフォーマンスチューニング](./PERFORMANCE.md)
+- [メタコマンド(COPYを含む)](../README.md#meta-commands)
+- [CQL型のサポート](./CQL_TYPE_SUPPORT_jp.md)
+- [ユーザー定義型](./UDT_SUPPORT_jp.md)
 - [Apache Parquet形式](https://parquet.apache.org/docs/)
 - [Apache Arrow](https://arrow.apache.org/)
 - [Delta Lake](https://delta.io/)

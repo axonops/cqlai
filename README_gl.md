@@ -305,12 +305,53 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Ctrl+Y` | Pegar texto cortado previamente | Igual |
 
 #### Cambio de Vista
+
+As lapelas lense de esquerda a dereita, e as teclas seguen a mesma orde.
+
 | Atallo | Acción |
 |----------|--------|
-| `F2` | Cambiar a vista de consulta/historial |
-| `F3` | Cambiar a vista de táboa |
-| `F4` | Cambiar a vista de trazas (cando o trazado está habilitado) |
-| `F5` | Cambiar a vista de conversa IA |
+| `F2` | Consola: o que escribiches e o que respondeu |
+| `F3` | Esquema: os keyspaces e as táboas, coas súas definicións |
+| `F4` | Resultados: a última consulta, no formato de `OUTPUT` |
+| `F5` | Trazas (cando o trazado está habilitado) |
+| `F6` | Chat: a conversa coa IA |
+
+#### O menú FILE
+
+`FILE` (Alt+F), na liña de lapelas, reúne o que traballa con ficheiros:
+
+```
+╭──────────────╮
+│ SAVE RESULTS │
+│ AUTOSAVE     │
+│ SOURCE       │
+│ COPY TO      │
+│ COPY FROM    │
+│──────────────│
+│ PREFERENCES  │
+│──────────────│
+│ QUIT         │
+╰──────────────╯
+```
+
+`SAVE RESULTS` escribe o que hai na pantalla. `AUTOSAVE` garda cada consulta a
+partir dese momento. `SOURCE` executa o CQL dun ficheiro, e `COPY TO`/`COPY
+FROM` moven unha táboa enteira. Baixo a primeira liña, `PREFERENCES` edita os
+axustes cos que arranca CQLAI; baixo a segunda, `QUIT` sae, preguntando antes.
+
+As ventás que piden unha ruta abren un explorador de ficheiros no teu directorio
+persoal. Tab completa, `..` sobe un nivel, e a roda despraza a lista.
+
+#### O explorador de esquema
+
+`SCHEMA` (F3) amosa os keyspaces e as táboas do clúster como unha árbore á
+esquerda, e a definición do seleccionado á dereita. Ao premer nun keyspace
+amósase a súa definición e desprégase; ao premer de novo prégase. Ao premer
+nunha táboa amósase o seu `CREATE TABLE`.
+
+As frechas percorren a árbore (dereita desprega, esquerda prega) e a roda
+despraza o panel que estea baixo o punteiro. O resto segue indo ao prompt, así
+que podes escribir unha consulta mentres miras a táboa da que trata.
 
 #### Desprazamento e Navegación de Táboa
 | Atallo | Acción | Alternativa macOS |
@@ -359,7 +400,7 @@ o terminal só informa dos xiros verticais como pulsacións de tecla.
 **Nota para Usuarios de macOS:**
 - A maioría de atallos `Ctrl` funcionan tal cal en macOS, pero tamén podes usar a tecla `⌘` (Comando) como alternativa
 - A tecla `Alt` está etiquetada como `Option` nos teclados Mac
-- As teclas de función (F1-F5) poden requirir manter premida a tecla `Fn` dependendo da túa configuración de Mac
+- As teclas de función (F1-F6) poden requirir manter premida a tecla `Fn` dependendo da túa configuración de Mac
 
 ### Autocompletado con Tabulador
 

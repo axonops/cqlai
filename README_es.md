@@ -308,12 +308,54 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Ctrl+Y` | Pegar texto cortado previamente | Igual |
 
 #### Cambio de Vista
+
+Las pestañas se leen de izquierda a derecha, y las teclas siguen el mismo orden.
+
 | Atajo | Acción |
 |----------|--------|
-| `F2` | Cambiar a vista de consulta/historial |
-| `F3` | Cambiar a vista de tabla |
-| `F4` | Cambiar a vista de trazas (cuando el trazado está habilitado) |
-| `F5` | Cambiar a vista de conversación IA |
+| `F2` | Consola: lo que escribiste y lo que respondió |
+| `F3` | Esquema: los keyspaces y las tablas, con sus definiciones |
+| `F4` | Resultados: la última consulta, en el formato de `OUTPUT` |
+| `F5` | Trazas (cuando el trazado está habilitado) |
+| `F6` | Chat: la conversación con la IA |
+
+#### El menú FILE
+
+`FILE` (Alt+F), en la línea de pestañas, reúne lo que trabaja con ficheros:
+
+```
+╭──────────────╮
+│ SAVE RESULTS │
+│ AUTOSAVE     │
+│ SOURCE       │
+│ COPY TO      │
+│ COPY FROM    │
+│──────────────│
+│ PREFERENCES  │
+│──────────────│
+│ QUIT         │
+╰──────────────╯
+```
+
+`SAVE RESULTS` escribe lo que hay en pantalla. `AUTOSAVE` guarda cada consulta a
+partir de ese momento. `SOURCE` ejecuta el CQL de un fichero, y `COPY TO`/`COPY
+FROM` mueven una tabla entera. Bajo la primera línea, `PREFERENCES` edita los
+ajustes con los que arranca CQLAI; bajo la segunda, `QUIT` sale, preguntando
+antes.
+
+Las ventanas que piden una ruta abren un explorador de ficheros en tu directorio
+personal. Tab completa, `..` sube un nivel, y la rueda desplaza la lista.
+
+#### El explorador de esquema
+
+`SCHEMA` (F3) muestra los keyspaces y las tablas del clúster como un árbol a la
+izquierda, y la definición de lo seleccionado a la derecha. Al pulsar sobre un
+keyspace se muestra su definición y se despliega; al pulsar de nuevo se pliega.
+Al pulsar sobre una tabla se muestra su `CREATE TABLE`.
+
+Las flechas recorren el árbol (derecha despliega, izquierda pliega) y la rueda
+desplaza el panel que esté bajo el puntero. Lo demás sigue yendo al prompt, así
+que puedes escribir una consulta mientras miras la tabla de la que trata.
 
 #### Desplazamiento y Navegación de Tabla
 | Atajo | Acción | Alternativa macOS |
@@ -362,7 +404,7 @@ porque el terminal solo informa de los giros verticales como pulsaciones de tecl
 **Nota para Usuarios de macOS:**
 - La mayoría de atajos `Ctrl` funcionan tal cual en macOS, pero también puedes usar la tecla `⌘` (Comando) como alternativa
 - La tecla `Alt` está etiquetada como `Option` en los teclados Mac
-- Las teclas de función (F1-F5) pueden requerir mantener presionada la tecla `Fn` dependiendo de tu configuración de Mac
+- Las teclas de función (F1-F6) pueden requerir mantener presionada la tecla `Fn` dependiendo de tu configuración de Mac
 
 ### Autocompletado con Tabulador
 
