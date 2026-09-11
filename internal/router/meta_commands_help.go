@@ -95,6 +95,8 @@ func HelpRows() [][]string {
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},
 		{"Keys", "F1 or Alt+H", "Open this help (F1 is taken by some terminals)"},
+		{"", "F2 to F6", "Console, Schema, Results, Trace, Chat"},
+		{"", "F3", "Browse keyspaces and tables, and their definitions"},
 		{"", "↑/↓ or Ctrl+P/N", "Navigate command history"},
 		{"", "Ctrl+R", "Search history"},
 		{"", "Tab", "Auto-complete"},

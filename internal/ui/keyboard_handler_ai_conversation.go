@@ -201,7 +201,7 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyPressMsg) (*MainModel, 
 		// Scroll conversation down by multiple lines
 		m.aiConversationViewport.ScrollDown(3)
 		return m, nil
-	case "f2", "f3", "f4", "f5":
+	case "f2", "f3", "f4", "f5", "f6":
 		// Don't handle function keys here - let them fall through to main handler
 		// by not returning anything in this case
 	default:
