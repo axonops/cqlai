@@ -339,9 +339,9 @@ func TestStickyHeaderRowsAreNotSelectable(t *testing.T) {
 func TestSelectionIsOffWithoutContent(t *testing.T) {
 	m := &MainModel{styles: DefaultStyles(), viewMode: "table", hasTable: false}
 
-	vp, name := m.selectionTarget()
-	assert.Nil(t, vp)
-	assert.Equal(t, "", name)
+	source, found := m.selectionTarget()
+	assert.False(t, found)
+	assert.Empty(t, source.view)
 
 	m.beginSelection(2, 2)
 	assert.False(t, m.selection.active)

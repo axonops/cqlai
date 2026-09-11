@@ -34,9 +34,7 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 
 	// If in multi-line mode, exit it
 	if m.multiLineMode {
-		m.multiLineMode = false
-		m.multiLineBuffer = nil
-		m.input.Placeholder = "Enter CQL command..."
+		m.endStatement()
 		m.input.Reset()
 
 		// Add cancellation message to history

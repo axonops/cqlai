@@ -108,26 +108,13 @@ func (m *MainModel) View() tea.View {
 			inputSection = m.aiConversationInput.View()
 		}
 	} else {
-		// Update placeholder if there's more data to fetch
-		if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
-			if m.session != nil && !m.session.AutoFetch() {
-				// Temporarily change placeholder to show more data hint
-				originalPlaceholder := m.input.Placeholder
-				m.input.Placeholder = "▼ MORE DATA AVAILABLE - Press Space or PgDn to load next page ▼"
-				inputSection = m.input.View()
-				m.input.Placeholder = originalPlaceholder // Restore original
-			} else {
-				inputSection = m.input.View()
-			}
-		} else {
-			inputSection = m.input.View()
-		}
+		// The prompt says what the prompt is for. That there are more rows to
+		// fetch is said at the end of the result, where the rows run out, which
+		// is where you are looking when you want them - it used to be written
+		// over the placeholder, so it collided with the hint for a statement
+		// being typed over several lines and took the row from it.
+		inputSection = m.input.View()
 
-		// If in multi-line mode, show the buffered lines above the input
-		if m.multiLineMode && len(m.multiLineBuffer) > 0 {
-			bufferedLines := m.styles.MutedText.Render("... " + strings.Join(m.multiLineBuffer, "\n... "))
-			inputSection = bufferedLines + "\n" + inputSection
-		}
 	}
 
 	// Function key hints are now shown in the status bar
@@ -214,7 +201,7 @@ func (m *MainModel) View() tea.View {
 	//
 	// selectionTarget names the view being drawn, which is the same question,
 	// so the two cannot disagree about which viewport is on screen.
-	if _, view := m.selectionTarget(); view == "history" {
+	if source, _ := m.selectionTarget(); source.view == "history" {
 		viewportSection = m.consoleScrollbar(viewportSection)
 	}
 

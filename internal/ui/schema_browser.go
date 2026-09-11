@@ -52,6 +52,11 @@ type schemaBrowser struct {
 	detailScroll int
 	detailWidth  int // the widest line, for scrolling sideways later
 
+	// drawn is the view as it was last rendered, both panes together. Dragging
+	// the mouse selects out of it: there is no viewport behind this view to
+	// anchor a selection to, and what is on screen is what a selection is over.
+	drawn []string
+
 	message string // what to say when there is no tree to draw
 }
 
@@ -328,6 +333,28 @@ func (m *MainModel) leaveAIConversation() {
 // lipglossWidthOf is the drawn width of a line, ignoring any colour in it.
 func lipglossWidthOf(line string) int {
 	return len([]rune(stripAnsi(line)))
+}
+
+// schemaOwnsKeys reports whether the tree should take the keys that move around
+// it.
+//
+// Only when nothing in front of it wants them. The tree is the background of
+// this view, and the things drawn over it - the completion list under the
+// prompt, the command history, a confirmation waiting for an answer - are all
+// worked with the same arrows. Taking them unconditionally moved the tree while
+// the list you were looking at stood still.
+func (m *MainModel) schemaOwnsKeys() bool {
+	switch {
+	case m.viewMode != "schema":
+		return false
+	case m.showCompletions && len(m.completions) > 0:
+		return false
+	case m.historySearchMode:
+		return false
+	case m.modal.Type != ModalNone:
+		return false
+	}
+	return true
 }
 
 // schemaKey handles the keys that work the tree, and reports whether it took

@@ -122,6 +122,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			!strings.HasPrefix(upperCommand, "EXIT") &&
 			!strings.HasPrefix(upperCommand, "QUIT"))
 
+	// echoed says the statement is already in the console: one typed over
+	// several lines is written there a line at a time as it is typed, and
+	// writing the whole thing again when it runs would be two of it.
+	echoed := false
+
 	// For CQL statements, check for semicolon (skip for AI-generated commands)
 	if isCQLStatement {
 		switch {
@@ -130,11 +135,13 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 			if !m.multiLineMode {
 				m.multiLineMode = true
 				m.multiLineBuffer = []string{command}
-				m.input.Placeholder = "... (multi-line mode, end with ;)"
+				m.continueStatement()
 			} else {
 				// Add to buffer (including empty lines for proper formatting)
 				m.multiLineBuffer = append(m.multiLineBuffer, command)
 			}
+			m.echoInput(command)
+
 			// Create a new empty textinput to ensure it's properly reset
 			newInput := textinput.New()
 			newInput.Placeholder = m.input.Placeholder
@@ -151,10 +158,10 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		case m.multiLineMode:
 			// We have a semicolon and we're in multi-line mode
 			m.multiLineBuffer = append(m.multiLineBuffer, command)
+			m.echoInput(command)
 			command = strings.Join(m.multiLineBuffer, " ")
-			m.multiLineMode = false
-			m.multiLineBuffer = nil
-			m.input.Placeholder = "Enter CQL command..."
+			echoed = true
+			m.endStatement()
 		}
 	}
 
@@ -164,9 +171,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		m.modal = NewConfirmationModal(command)
 
 		// Add command to history
-		m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
-		m.updateHistoryWrapping()
-		m.historyViewport.GotoBottom()
+		if !echoed {
+			m.fullHistoryContent += "\n" + m.styles.AccentText.Render(promptMark+command)
+			m.updateHistoryWrapping()
+			m.historyViewport.GotoBottom()
+		}
 
 		m.input.Reset()
 		return m, nil
@@ -196,7 +205,9 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	m.lastQueryTime = time.Since(start)
 
 	// Add command to history viewport
-	m.fullHistoryContent += "\n" + m.styles.AccentText.Render("> "+command)
+	if !echoed {
+		m.fullHistoryContent += "\n" + m.styles.AccentText.Render(promptMark+command)
+	}
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 

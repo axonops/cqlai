@@ -504,16 +504,21 @@ func TestTheWayUpWalksBackOut(t *testing.T) {
 		"and it lists where it has arrived")
 }
 
-// TestEscapePutsTheListAwayWithoutLosingThePath.
-func TestEscapePutsTheListAwayWithoutLosingThePath(t *testing.T) {
+// TestEscapeGoesBackAStepEvenWithTheListShowing.
+//
+// It used to put the list away and leave you on the path. The listing is there
+// from the moment the step opens now, rather than being something you asked
+// for, so putting it away would leave the field where it was with the browser
+// gone - and Escape does the same thing everywhere else in this window.
+func TestEscapeGoesBackAStepEvenWithTheListShowing(t *testing.T) {
 	m := listingModel(t, 4)
-	path := m.capture.input.Value()
+	require.NotEmpty(t, m.capture.matches)
 
 	m.handleCaptureKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 
+	assert.Equal(t, captureChooseFormat, m.capture.step, "back to the format")
+	assert.True(t, m.capture.active, "back a step, not closed")
 	assert.Empty(t, m.capture.matches)
-	assert.Equal(t, path, m.capture.input.Value())
-	assert.Equal(t, captureEnterPath, m.capture.step, "still asking for a path")
 }
 
 // TestTheWheelMovesTheList.
@@ -647,6 +652,7 @@ func TestTheWindowAndTheCommandAgreeAboutParquet(t *testing.T) {
 // TestTheDefaultNameSuitsTheKind.
 func TestTheDefaultNameSuitsTheKind(t *testing.T) {
 	m := helpModel()
+	m.lastTableData = [][]string{{"id"}, {"1"}} // something to save
 
 	m.openSavePanel()
 	m.capture.format = slices.Index(m.capture.formats, "JSON")
@@ -669,6 +675,7 @@ func TestBothWindowsAreTheSameWindow(t *testing.T) {
 
 	save := helpModel()
 	save.windowHeight = h
+	save.lastTableData = [][]string{{"id"}, {"1"}} // something to save
 	save.openSavePanel()
 	saveLayer, ok := save.viewCapturePanel(w, h)
 	require.True(t, ok)
@@ -694,6 +701,7 @@ func TestTabCompletesThePathInTheSaveWindowToo(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "results.csv"), nil, 0o600))
 
 	m := helpModel()
+	m.lastTableData = [][]string{{"id"}, {"1"}} // something to save
 	m.openSavePanel()
 	m.chooseCaptureFormat()
 	m.capture.input.SetValue(filepath.Join(dir, "res"))
@@ -726,4 +734,100 @@ func TestClickingATabWithTheSaveWindowOpenSwitchesView(t *testing.T) {
 
 	assert.False(t, m.capture.active, "the window should have gone")
 	assert.Equal(t, "table", m.viewMode, "and the tab should have acted")
+}
+
+// TestThePathStepOpensOnTheFileBrowser.
+//
+// The box used to arrive holding a name with nothing around it, and finding out
+// where that name was going meant pressing Tab to see.
+func TestThePathStepOpensOnTheFileBrowser(t *testing.T) {
+	for _, kind := range []fileKind{capturing, saving} {
+		m := captureModel()
+		m.lastTableData = [][]string{{"id"}, {"1"}}
+		m, _ = m.showFilePanel(kind, 0, true)
+		m, _ = m.chooseCaptureFormat()
+
+		require.Equal(t, captureEnterPath, m.capture.step)
+		assert.NotEmpty(t, m.capture.matches, "%v: no listing when the step opened", kind)
+	}
+}
+
+// TestTheListingWalksUpToADirectoryThatIsThere.
+//
+// AutoSave suggests a directory that does not exist yet - it is about to be
+// made - so the listing is of the nearest one above it, which is where it will
+// be made.
+func TestTheListingWalksUpToADirectoryThatIsThere(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "already-here.csv"), nil, 0o600))
+
+	m := captureModel()
+	m, _ = m.showFilePanel(capturing, 0, true)
+	m.capture.step = captureEnterPath
+	m.capture.input.SetValue(filepath.Join(dir, "not_made_yet") + string(filepath.Separator))
+
+	m, _ = m.listCapturePath()
+
+	assert.Contains(t, m.capture.matches, "already-here.csv")
+}
+
+// TestTheListingOpensOnWhatIsTyped rather than at its alphabetical start.
+func TestTheListingOpensOnWhatIsTyped(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"alpha.csv", "beta.csv", "gamma.csv"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o600))
+	}
+
+	m := captureModel()
+	m, _ = m.showFilePanel(saving, 0, true)
+	m.capture.step = captureEnterPath
+	m.capture.input.SetValue(filepath.Join(dir, "gamma.csv"))
+
+	m, _ = m.listCapturePath()
+
+	require.NotEmpty(t, m.capture.matches)
+	assert.Equal(t, "gamma.csv", m.capture.matches[m.capture.match])
+}
+
+// TestTheSuggestedPathIsUnderHome.
+//
+// A bare name goes to whatever directory cqlai was started in, which is not
+// somewhere you can see from this window and is rarely where you want a file
+// you will go looking for later.
+func TestTheSuggestedPathIsUnderHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	for _, kind := range []fileKind{capturing, saving} {
+		m := captureModel()
+		m.lastTableData = [][]string{{"id"}, {"1"}}
+		m, _ = m.showFilePanel(kind, 0, true)
+		m, _ = m.chooseCaptureFormat()
+
+		path := m.capture.input.Value()
+		assert.True(t, strings.HasPrefix(path, home+string(filepath.Separator)),
+			"%v: %q is not under %q", kind, path, home)
+
+		// AutoSave is given a directory, and the separator on the end is what
+		// says so.
+		if kind == capturing {
+			assert.True(t, strings.HasSuffix(path, string(filepath.Separator)),
+				"AutoSave should suggest a directory: %q", path)
+		} else {
+			assert.False(t, strings.HasSuffix(path, string(filepath.Separator)))
+		}
+	}
+}
+
+// TestTheListingOpensOnHome, which is where the suggested path is.
+func TestTheListingOpensOnHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.Mkdir(filepath.Join(home, "exports"), 0o750))
+
+	m := captureModel()
+	m, _ = m.showFilePanel(capturing, 0, true)
+	m, _ = m.chooseCaptureFormat()
+
+	assert.Contains(t, m.capture.matches, "exports"+string(filepath.Separator))
 }

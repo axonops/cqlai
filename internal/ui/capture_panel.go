@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -166,8 +167,18 @@ func (m *MainModel) openCapturePanelCentred() (*MainModel, tea.Cmd) {
 // pointing at nothing. Typing SAVE has nothing to point at either, so both
 // routes land in the same place.
 func (m *MainModel) openSavePanel() (*MainModel, tea.Cmd) {
+	// Asked with nothing on screen, it says so rather than opening a window
+	// that can only be cancelled. Both ways in come through here, so the menu
+	// entry and the typed command give the same answer.
+	if !m.hasResults() {
+		return m.report(noResultsToSave)
+	}
 	return m.showFilePanel(saving, 0, true)
 }
+
+// noResultsToSave is what there is to say when SAVE is asked for and there is
+// nothing to write.
+const noResultsToSave = "No query results available to save. Execute a query first."
 
 func (m *MainModel) showFilePanel(kind fileKind, anchorX int, centred bool) (*MainModel, tea.Cmd) {
 	if m.capture.active {
@@ -344,14 +355,51 @@ func (m *MainModel) useMatch() (*MainModel, tea.Cmd) {
 
 // listCapturePath shows what is in the directory the path names, without
 // filling anything in.
+//
+// The nearest directory at or above it that exists, because the name suggested
+// for AutoSave is a directory that is not there yet - it is about to be made -
+// and listing nothing says less than listing where it will go.
 func (m *MainModel) listCapturePath() (*MainModel, tea.Cmd) {
-	dir, _ := splitPath(m.capture.input.Value())
-
+	dir, name := splitPath(m.capture.input.Value())
 	m.clearMatches()
-	if got := completePath(dir); got.worthListing() {
-		m.capture.matches = got.Matches
+
+	for {
+		// An empty directory here is the one cqlai was started in, which is
+		// where a bare name is written. completePath reads an empty path as the
+		// root, which is the answer to a different question.
+		at := dir
+		if at == "" {
+			at = "." + string(filepath.Separator)
+		}
+
+		if matches := completePath(at).Matches; len(matches) > 0 {
+			m.capture.matches = matches
+			m.showNamed(name)
+			return m, nil
+		}
+
+		// Above a bare name there is the directory cqlai was started in, which
+		// parentDir gives as "" - the end of the walk rather than a step off
+		// it, so it is tried before giving up.
+		if dir == "" {
+			return m, nil
+		}
+		dir = parentDir(dir)
 	}
-	return m, nil
+}
+
+// showNamed opens the list on the entry a name refers to, so it arrives showing
+// where you are rather than at its alphabetical start.
+func (m *MainModel) showNamed(name string) {
+	if name == "" {
+		return
+	}
+	for i, match := range m.capture.matches {
+		if match == name || strings.TrimSuffix(match, string(filepath.Separator)) == name {
+			m.showMatch(i)
+			return
+		}
+	}
 }
 
 // clearMatches takes the list down.
@@ -508,7 +556,13 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 
 	default:
 		// While the candidates are showing they are what the arrows and Enter
-		// are aimed at; Escape puts them away and leaves the path alone.
+		// are aimed at.
+		//
+		// Escape is not among them any more: the listing is there from the
+		// moment the step opens rather than being something you asked for, so
+		// putting it away would leave the field where it was with the browser
+		// gone. Escape goes back a step, which is what it does everywhere else
+		// in this window.
 		if len(m.capture.matches) > 0 {
 			switch msg.String() {
 			case "up":
@@ -519,9 +573,6 @@ func (m *MainModel) handleCaptureKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) 
 				return m, nil
 			case "enter":
 				return m.useMatch()
-			case "esc":
-				m.clearMatches()
-				return m, nil
 			}
 		}
 
@@ -557,21 +608,43 @@ func (m *MainModel) chooseCaptureFormat() (*MainModel, tea.Cmd) {
 	m.capture.input.SetValue(m.defaultCaptureName())
 	m.capture.input.CursorEnd()
 	m.capture.input.Focus()
-	return m, nil
+	return m.listCapturePath()
 }
 
-// defaultCaptureName is a filename to start from, so there is something to edit
+// defaultCaptureName is a path to start from, so there is something to edit
 // rather than an empty box.
+//
+// Under the home directory: a bare name goes to whatever directory cqlai was
+// started in, which is not somewhere you can see from here and is rarely where
+// you want a file you will go looking for later. It also gives the listing that
+// opens with this step somewhere worth showing.
 func (m *MainModel) defaultCaptureName() string {
 	// AutoSave is given a directory and names the files inside it itself, so
 	// what it wants here is somewhere to put them - not a filename, which is
 	// what it used to offer and what it no longer takes.
 	if m.capture.kind == capturing {
-		return "autosave_" + time.Now().Format("20060102") + string(filepath.Separator)
+		return inHome("autosave_" + time.Now().Format("20060102") + string(filepath.Separator))
 	}
 
-	return fmt.Sprintf("results_%s%s", time.Now().Format("20060102_150405"),
-		extensionFor(m.capture.formats[m.capture.format]))
+	return inHome(fmt.Sprintf("results_%s%s", time.Now().Format("20060102_150405"),
+		extensionFor(m.capture.formats[m.capture.format])))
+}
+
+// inHome puts a name in the user's home directory, or leaves it where it is
+// when there is no home to put it in.
+func inHome(name string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return name
+	}
+
+	path := filepath.Join(home, name)
+	// Join drops a trailing separator, and here that separator is the
+	// difference between a directory to write files into and a file to write.
+	if strings.HasSuffix(name, string(filepath.Separator)) {
+		path += string(filepath.Separator)
+	}
+	return path
 }
 
 // completeCapturePath fills in as much of the path as the candidates agree on.

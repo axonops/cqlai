@@ -75,25 +75,66 @@ func (s textSelection) empty() bool {
 	return s.anchorLine == s.headLine && s.anchorCol == s.headCol
 }
 
-// selectionTarget returns the viewport a selection applies to and a name for
-// it, matching the viewport View draws. Both come from here so a selection
-// cannot end up recorded against one view and painted onto another.
+// selectionSource is what a selection is anchored to: the lines on screen, and
+// which of them is drawn at the top.
 //
-// It returns nil where the view has nothing to select: the "no table data" and
-// "no trace data" messages are drawn through a throwaway viewport, so there is
-// no content to anchor to.
-func (m *MainModel) selectionTarget() (*viewport.Model, string) {
+// Most views are a viewport, and for those it is the viewport's content and
+// scroll offset. The schema browser is not - it is two panes drawn side by side,
+// each scrolling on its own - so what it offers is the block of lines it just
+// drew. The selection does not care which it is: a span is lines and columns of
+// what is on screen either way.
+type selectionSource struct {
+	// vp is the viewport behind the lines, where there is one. Dragging past
+	// the top or bottom edge scrolls it; a view without one stops at the edge.
+	vp *viewport.Model
+
+	view   string // names it, so a span cannot be painted onto another view
+	lines  []string
+	offset int // content line drawn on the first row
+	height int // rows on screen
+}
+
+// selectionTarget returns what a selection applies to, matching what View
+// draws. Both come from here so a selection cannot end up recorded against one
+// view and painted onto another.
+//
+// It returns nothing where the view has nothing to select: the "no table data"
+// and "no trace data" messages are drawn through a throwaway viewport, so there
+// is no content to anchor to.
+func (m *MainModel) selectionTarget() (selectionSource, bool) {
+	fromViewport := func(vp *viewport.Model, view string) (selectionSource, bool) {
+		return selectionSource{
+			vp:     vp,
+			view:   view,
+			lines:  strings.Split(vp.GetContent(), "\n"),
+			offset: vp.YOffset(),
+			height: vp.Height(),
+		}, true
+	}
+
 	switch {
+	case m.viewMode == "schema":
+		// What it drew last, which is what is on screen: both panes, the
+		// headings and the divider between them. A definition is text like any
+		// other view's, and copying it out of here is the point of having it.
+		if len(m.schema.drawn) == 0 {
+			return selectionSource{}, false
+		}
+		return selectionSource{
+			view:   "schema",
+			lines:  m.schema.drawn,
+			height: len(m.schema.drawn),
+		}, true
 	case m.viewMode == "ai" && m.aiConversationActive:
-		return &m.aiConversationViewport, "ai"
+		return fromViewport(&m.aiConversationViewport, "ai")
 	case m.viewMode == "trace" && m.hasTrace:
-		return &m.traceViewport, "trace"
+		return fromViewport(&m.traceViewport, "trace")
 	case m.viewMode == "table" && m.hasTable:
-		return &m.tableViewport, "table"
+		return fromViewport(&m.tableViewport, "table")
 	case m.viewMode == "trace" || m.viewMode == "table":
-		return nil, ""
+		return selectionSource{}, false
 	default:
-		return &m.historyViewport, "history"
+		return fromViewport(&m.historyViewport, "history")
 	}
 }
 
@@ -124,18 +165,18 @@ func (m *MainModel) stickyHeaderRows() int {
 // docPosition converts a screen position into a line and column of the active
 // viewport's content.
 func (m *MainModel) docPosition(col, row int) (line, column int, ok bool) {
-	vp, _ := m.selectionTarget()
-	if vp == nil || col < 0 {
+	source, found := m.selectionTarget()
+	if !found || col < 0 {
 		return 0, 0, false
 	}
 
 	top := tabBarHeight + m.stickyHeaderRows()
-	bottom := tabBarHeight + vp.Height()
+	bottom := tabBarHeight + source.height
 	if row < top || row >= bottom {
 		return 0, 0, false
 	}
 
-	return vp.YOffset() + row - tabBarHeight, col, true
+	return source.offset + row - tabBarHeight, col, true
 }
 
 // beginSelection starts a drag, or picks out a word or a line if this press
@@ -146,7 +187,8 @@ func (m *MainModel) beginSelection(col, row int) (*MainModel, tea.Cmd) {
 		m.clearSelection()
 		return m, nil
 	}
-	_, view := m.selectionTarget()
+	source, _ := m.selectionTarget()
+	view := source.view
 
 	// A press soon after one on the same cell counts up: two for a word, three
 	// for a line, and a fourth starts over.
@@ -188,15 +230,22 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 	if !m.selection.dragging {
 		return m, nil
 	}
-	vp, view := m.selectionTarget()
-	if vp == nil || view != m.selection.view {
+	source, found := m.selectionTarget()
+	if !found || source.view != m.selection.view {
 		return m, nil
 	}
 
 	top := tabBarHeight + m.stickyHeaderRows()
-	bottom := tabBarHeight + vp.Height()
+	bottom := tabBarHeight + source.height
+	vp := source.vp
 	switch {
 	case row < top:
+		if vp == nil {
+			// Nothing to scroll: the schema panes move on their own, and a drag
+			// that runs off the top stops there.
+			row = top
+			break
+		}
 		vp.SetYOffset(max(0, vp.YOffset()-1))
 		row = top
 	case row >= bottom:
@@ -233,6 +282,10 @@ func (m *MainModel) endSelection() (*MainModel, tea.Cmd) {
 		m.selection.active = false
 		return m, nil
 	}
+
+	// Kept as well as sent. A right click pastes this when the terminal will
+	// not say what its clipboard holds, which is most of them.
+	m.lastCopied = text
 	return m, tea.SetClipboard(text)
 }
 
@@ -282,13 +335,13 @@ func wordCell(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
-// documentLines splits the active viewport's content into lines.
+// documentLines is the content a selection is over, by line.
 func (m *MainModel) documentLines() ([]string, bool) {
-	vp, view := m.selectionTarget()
-	if vp == nil || view != m.selection.view {
+	source, found := m.selectionTarget()
+	if !found || source.view != m.selection.view {
 		return nil, false
 	}
-	return strings.Split(vp.GetContent(), "\n"), true
+	return source.lines, true
 }
 
 // documentCells returns one line of content as one rune per column.
@@ -373,13 +426,13 @@ func (m *MainModel) highlightSelection(section string) string {
 	if !m.selection.active || m.selection.empty() {
 		return section
 	}
-	vp, view := m.selectionTarget()
-	if vp == nil || view != m.selection.view {
+	source, found := m.selectionTarget()
+	if !found || source.view != m.selection.view {
 		return section
 	}
 
 	startLine, startCol, endLine, endCol := m.selection.span()
-	offset := vp.YOffset()
+	offset := source.offset
 	sticky := m.stickyHeaderRows()
 
 	rows := strings.Split(section, "\n")

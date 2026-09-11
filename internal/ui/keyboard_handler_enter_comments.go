@@ -36,7 +36,8 @@ func (m *MainModel) handleBlockComment(command string) (*MainModel, tea.Cmd) {
 		// Multi-line block comment - enter special mode
 		m.multiLineMode = true
 		m.multiLineBuffer = []string{command}
-		m.input.Placeholder = "... (in block comment, end with */)"
+		m.continueStatement()
+		m.input.Placeholder = "end the comment with */"
 		m.input.Reset()
 		return m, nil
 	}
@@ -50,9 +51,7 @@ func (m *MainModel) handleMultiLineBlockComment(command string) (*MainModel, tea
 		// End of multi-line block comment
 		m.multiLineBuffer = append(m.multiLineBuffer, command)
 		fullComment := strings.Join(m.multiLineBuffer, "\n")
-		m.multiLineMode = false
-		m.multiLineBuffer = nil
-		m.input.Placeholder = "Enter CQL command..."
+		m.endStatement()
 		m.input.Reset()
 
 		// Add to history

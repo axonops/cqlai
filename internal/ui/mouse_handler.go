@@ -19,9 +19,13 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 	case tea.MouseClickMsg:
 		logger.DebugfToFile("Mouse", "Press Button=%v X=%d Y=%d Mod=%v",
 			mouse.Button, mouse.X, mouse.Y, mouse.Mod)
-		// Only the left button does anything. A right click is left alone so
-		// the terminal's own context menu, and whatever it binds paste to,
-		// still work.
+		// The right button pastes. Taking the mouse takes the terminal's own
+		// context menu away, and with it the paste everyone reaches for; most
+		// terminals still hand a shifted click back to themselves for anyone
+		// who wants the menu.
+		if mouse.Button == tea.MouseRight {
+			return m.requestPaste()
+		}
 		if mouse.Button != tea.MouseLeft {
 			return m, nil
 		}

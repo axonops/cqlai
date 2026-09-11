@@ -329,6 +329,20 @@ yet is dimmed, as is `CHAT` with no AI provider configured.
 | `F5` | Trace | Query trace, when tracing is enabled |
 | `F6` | Chat | The AI conversation |
 
+Text is selected by dragging with the mouse, and lands on the system clipboard
+when you let go.
+
+A right click pastes. It asks three things, in order, and takes the first
+answer: the terminal, through OSC 52, which is the only route that works through
+ssh and tmux and which most terminals refuse - a program that can read the
+clipboard can read what you copied out of a password manager; then the machine
+CQLAI is running on, through whichever of `wl-paste`, `xclip`, `xsel`, `pbpaste`
+or `powershell.exe Get-Clipboard` is there, which covers a local desktop
+including WSL; and failing both, whatever CQLAI itself last copied.
+
+The terminal's own paste works too, and both go wherever the keys are going: the
+prompt, a form, or the preferences window.
+
 Schema sits next to the console because what is in the database comes before
 anything a query has made of it. The keys read along the line with the tabs, so
 Results and Trace have moved from `F3` and `F4` to `F4` and `F5`.

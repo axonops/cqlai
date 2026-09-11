@@ -300,7 +300,7 @@ func (m *MainModel) ViewTabBar(width int) string {
 		Foreground(lipgloss.Color("#87D7FF"))
 
 	unavailableStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#585858"))
+		Foreground(dimmedColour)
 
 	separatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#3a3a3a"))

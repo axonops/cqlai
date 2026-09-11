@@ -79,8 +79,12 @@ func (m *MainModel) handleSpaceKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 
 	// Check if we should page down when there's more data
 	if m.viewMode == "table" && m.slidingWindow != nil && m.slidingWindow.hasMoreData {
-		// If input is empty and we're in table view with more data, use Space for paging
-		if m.input.Value() == "" {
+		// If input is empty and we're in table view with more data, use Space for paging.
+		//
+		// Not while a statement is being typed over several lines: the line is
+		// empty at the start of every one of them, and a space there is the
+		// first character of the next line rather than a page down.
+		if m.input.Value() == "" && !m.multiLineMode {
 			// Page down (same as PgDn)
 			return m.handlePageDown(msg)
 		}
