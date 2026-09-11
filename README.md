@@ -314,19 +314,41 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 #### The tab line
 
 ```
- FILE (Alt+F)    CONSOLE (F2)    RESULTS (F3)    TRACE (F4)    CHAT (F5)    HELP (F1/Alt+H)
+ FILE (Alt+F)  CONSOLE (F2)  SCHEMA (F3)  RESULTS (F4)  TRACE (F5)  CHAT (F6)  HELP (F1/Alt+H)
 ```
 
-The four views are shown as tabs, so you can see which one you are in and what
+The five views are shown as tabs, so you can see which one you are in and what
 the others are. Click a tab, or use the key on it. A view with nothing to show
 yet is dimmed, as is `CHAT` with no AI provider configured.
 
 | Shortcut | Tab | Shows |
 |----------|-----|-------|
 | `F2` | Console | The running transcript of commands and messages |
-| `F3` | Results | The last query's output, in whatever `OUTPUT` format is set |
-| `F4` | Trace | Query trace, when tracing is enabled |
-| `F5` | Chat | The AI conversation |
+| `F3` | Schema | The cluster's keyspaces and tables, with their definitions |
+| `F4` | Results | The last query's output, in whatever `OUTPUT` format is set |
+| `F5` | Trace | Query trace, when tracing is enabled |
+| `F6` | Chat | The AI conversation |
+
+Schema sits next to the console because what is in the database comes before
+anything a query has made of it. The keys read along the line with the tabs, so
+Results and Trace have moved from `F3` and `F4` to `F4` and `F5`.
+
+#### The schema browser
+
+`SCHEMA` is the cluster's keyspaces and tables as a tree, with the definition of
+whatever is selected beside it. Click a keyspace to see it and open it, click it
+again to fold it, and click a table for its `CREATE TABLE`.
+
+The arrows walk the tree - right opens a keyspace, left closes it - and the
+wheel moves whichever pane it is over. `Alt+Up` and `Alt+Down` scroll the
+definition. Everything else still goes to the prompt, so a query can be typed
+while looking at the table it is about. Pressing `F3` again, or clicking the tab
+you are already on, asks the cluster for the schema afresh.
+
+Nothing is fetched until the tab is opened: the keyspaces on first use, a
+keyspace's tables when it is first opened, and a definition when it is first
+shown. The definitions are the ones `DESCRIBE` produces, so the two cannot
+disagree.
 
 `FILE` and `HELP` are not views. They open a menu and a window over whatever you
 are looking at, and leave it there. On a narrow terminal the labels shorten and
@@ -467,7 +489,7 @@ only reports vertical wheel spins as key presses.
 **Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative
 - `Alt` key is labeled as `Option` on Mac keyboards
-- Function keys (F1-F5) may require holding `Fn` key depending on your Mac settings
+- Function keys (F1-F6) may require holding `Fn` key depending on your Mac settings
 
 ### Tab Completion
 

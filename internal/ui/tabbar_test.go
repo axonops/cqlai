@@ -48,12 +48,12 @@ func TestTabBarShowsKeysWhenThereIsRoom(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
 	wide := stripAnsiForTest(m.ViewTabBar(120))
-	for _, want := range []string{"CONSOLE (F2)", "RESULTS (F3)", "TRACE (F4)", "CHAT (F5)"} {
+	for _, want := range []string{"CONSOLE (F2)", "SCHEMA (F3)", "RESULTS (F4)", "TRACE (F5)", "CHAT (F6)"} {
 		assert.Contains(t, wide, want)
 	}
 
 	// Narrower: names survive, key hints are dropped rather than wrapping.
-	medium := stripAnsiForTest(m.ViewTabBar(40))
+	medium := stripAnsiForTest(m.ViewTabBar(50))
 	assert.Contains(t, medium, "CONSOLE")
 	assert.Contains(t, medium, "RESULTS")
 	assert.NotContains(t, medium, "(F2)")
@@ -140,10 +140,10 @@ func TestTabAvailability(t *testing.T) {
 // tab line has to resolve back to the mode drawn there.
 func TestModeAtMapsClicksToTabs(t *testing.T) {
 	const width = 120
-	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
+	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, session: connectedSession(), aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
 	spans := m.layoutTabs(width)
-	require.Len(t, modeSpans(spans), 4)
+	require.Len(t, modeSpans(spans), len(modeTabs))
 
 	for _, span := range spans {
 		for _, col := range []int{span.start, (span.start + span.end) / 2, span.end - 1} {
@@ -169,12 +169,14 @@ func TestModeAtMapsClicksToTabs(t *testing.T) {
 // unavailable must not respond.
 func TestUnavailableTabsIgnoreClicks(t *testing.T) {
 	const width = 120
-	m := &MainModel{viewMode: "history", aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}} // no results, no trace
+	// No results, no trace, and nothing connected: three of the five have
+	// nothing to show.
+	m := &MainModel{viewMode: "history", aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
 	for _, span := range m.layoutTabs(width) {
 		mode, ok := m.modeAt(width, (span.start+span.end)/2)
 		switch mode {
-		case "table", "trace":
+		case "table", "trace", "schema":
 			assert.False(t, ok, "%q has nothing to show and must not be clickable", mode)
 		default:
 			assert.True(t, ok, "%q should be clickable", mode)
@@ -389,9 +391,9 @@ func TestTheBarStillFitsWithoutAI(t *testing.T) {
 	}
 }
 
-// TestF5SaysWhyWhenAIIsNotConfigured. A key that silently does nothing is how
+// TestF6SaysWhyWhenAIIsNotConfigured. A key that silently does nothing is how
 // someone concludes the build is broken.
-func TestF5SaysWhyWhenAIIsNotConfigured(t *testing.T) {
+func TestF6SaysWhyWhenAIIsNotConfigured(t *testing.T) {
 	m := &MainModel{
 		viewMode:        "history",
 		styles:          DefaultStyles(),
@@ -399,9 +401,9 @@ func TestF5SaysWhyWhenAIIsNotConfigured(t *testing.T) {
 		historyViewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(10)),
 	}
 
-	m.handleF5()
+	m.showChat()
 
-	assert.Equal(t, "history", m.viewMode, "F5 should not have opened an empty AI view")
+	assert.Equal(t, "history", m.viewMode, "F6 should not have opened an empty AI view")
 	assert.False(t, m.aiConversationActive)
 
 	said := stripAnsiForTest(m.fullHistoryContent)
@@ -409,8 +411,8 @@ func TestF5SaysWhyWhenAIIsNotConfigured(t *testing.T) {
 	assert.Contains(t, said, "cqlai.json", "it should say where to set it")
 }
 
-// TestF5StillOpensAIWhenConfigured.
-func TestF5StillOpensAIWhenConfigured(t *testing.T) {
+// TestF6StillOpensAIWhenConfigured.
+func TestF6StillOpensAIWhenConfigured(t *testing.T) {
 	m := &MainModel{
 		viewMode:        "history",
 		styles:          DefaultStyles(),
@@ -419,19 +421,19 @@ func TestF5StillOpensAIWhenConfigured(t *testing.T) {
 		historyViewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(10)),
 	}
 
-	m.handleF5()
+	m.showChat()
 
 	assert.Equal(t, "ai", m.viewMode)
 	assert.True(t, m.aiConversationActive)
 	assert.Empty(t, m.fullHistoryContent, "nothing to explain when it is configured")
 }
 
-// TestF5IsNotAdvertisedWhenAIIsNotConfigured. Suggesting a key that then tells
+// TestF6IsNotAdvertisedWhenAIIsNotConfigured. Suggesting a key that then tells
 // you it cannot do anything is the same defect as showing the tab.
-func TestF5IsNotAdvertisedWhenAIIsNotConfigured(t *testing.T) {
+func TestF6IsNotAdvertisedWhenAIIsNotConfigured(t *testing.T) {
 	without := &MainModel{styles: DefaultStyles()}
 	with := &MainModel{styles: DefaultStyles(), aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
-	assert.NotContains(t, stripAnsiForTest(without.getWelcomeMessage()), "F5")
-	assert.Contains(t, stripAnsiForTest(with.getWelcomeMessage()), "F5")
+	assert.NotContains(t, stripAnsiForTest(without.getWelcomeMessage()), "F6")
+	assert.Contains(t, stripAnsiForTest(with.getWelcomeMessage()), "F6")
 }

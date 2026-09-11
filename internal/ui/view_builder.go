@@ -141,6 +141,11 @@ func (m *MainModel) View() tea.View {
 		// For AI view, just get the viewport content
 		viewportWidth = m.aiConversationViewport.Width()
 		viewportContent = m.aiConversationViewport.View()
+	case m.viewMode == "schema":
+		// Drawn as one block rather than through a viewport: it is two panes
+		// side by side, each scrolling on its own.
+		viewportWidth = m.windowWidth
+		viewportContent = m.viewSchema(m.windowWidth, m.historyViewport.Height())
 	case m.viewMode == "trace":
 		viewportWidth = m.historyViewport.Width()
 		if m.hasTrace {
@@ -376,7 +381,9 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString(m.styles.MutedText.Render("  • F4 - Switch to trace view"))
 	welcome.WriteString("\n")
 	if m.aiAvailable() {
-		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Switch to the Chat view"))
+		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Browse the schema"))
+		welcome.WriteString("\n")
+		welcome.WriteString(m.styles.MutedText.Render("  • F6 - Switch to the Chat view"))
 		welcome.WriteString("\n")
 	}
 	welcome.WriteString("\n")

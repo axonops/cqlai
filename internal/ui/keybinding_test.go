@@ -96,23 +96,34 @@ func TestAltArrowsScrollTheViewport(t *testing.T) {
 	assert.Less(t, m.tableViewport.YOffset(), down, "Alt+Up must scroll back up")
 }
 
-// TestFunctionKeysSwitchMode covers the four mode keys, which are the most
-// visible bindings and were all rewritten.
+// TestFunctionKeysSwitchMode covers the mode keys, which are the most visible
+// bindings, and that they land in the order the tabs are drawn in.
 func TestFunctionKeysSwitchMode(t *testing.T) {
 	tests := []struct {
 		code rune
 		want string
 	}{
 		{tea.KeyF2, "history"},
-		{tea.KeyF3, "table"},
-		{tea.KeyF4, "trace"},
+		{tea.KeyF3, "schema"},
+		{tea.KeyF4, "table"},
+		{tea.KeyF5, "trace"},
 	}
 
 	for _, tt := range tests {
 		m := tableModel(t)
 		m.hasTrace = true
+		m.session = connectedSession()
+		// The tree is already in hand, so switching to it asks the cluster
+		// nothing: what is under test is which key lands on which view.
+		m.schema = schemaBrowser{loaded: true, keyspaces: []string{"system"}, tables: map[string][]string{}, expanded: map[string]bool{}, definitions: map[string]string{}}
 		m.handleKeyboardInput(tea.KeyPressMsg{Code: tt.code})
 		assert.Equal(t, tt.want, m.viewMode, "%v should switch to %q", tt.code, tt.want)
+	}
+
+	// And they are the keys the tabs say they are.
+	for i, tab := range modeTabs {
+		assert.Equal(t, tab.key, []string{"F2", "F3", "F4", "F5", "F6"}[i],
+			"%s says %s", tab.label, tab.key)
 	}
 }
 

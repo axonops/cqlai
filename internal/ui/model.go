@@ -124,6 +124,7 @@ type MainModel struct {
 	help             helpWindow     // Open help window, if any
 	capture          capturePanel   // Open capture window, if any
 	preferences      preferences    // Open PREFERENCES window, if any
+	schema           schemaBrowser  // The SCHEMA view's tree and what it is showing
 
 	// lastRawData is the values behind lastTableData for a result that arrived
 	// whole, so JSON is written from what came back rather than from what was

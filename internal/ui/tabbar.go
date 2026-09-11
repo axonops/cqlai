@@ -28,15 +28,19 @@ var modeTabs = []modeTab{
 	// is a different thing, and this view is the running transcript of what you
 	// typed and what came back.
 	{mode: "history", label: "CONSOLE", short: "C", key: "F2"},
+	// The cluster itself, next to the console: what is in the database comes
+	// before anything a query has made of it, and the three that follow are all
+	// views of a result.
+	{mode: "schema", label: "SCHEMA", short: "S", key: "F3"},
 	// "Results" rather than "Table": the same view shows EXPAND, ASCII and JSON
 	// output, none of which is a table, and "table" already means a schema
 	// object to anyone using this.
-	{mode: "table", label: "RESULTS", short: "R", key: "F3"},
-	{mode: "trace", label: "TRACE", short: "T", key: "F4"},
+	{mode: "table", label: "RESULTS", short: "R", key: "F4"},
+	{mode: "trace", label: "TRACE", short: "T", key: "F5"},
 	// "Chat" rather than "AI": it is a conversation, and what it is a
 	// conversation with is not the useful half of the name. Two letters
 	// because the console has the C.
-	{mode: "ai", label: "CHAT", short: "Ch", key: "F5"},
+	{mode: "ai", label: "CHAT", short: "Ch", key: "F6"},
 }
 
 // hasResults reports whether there is anything for SAVE to write.
@@ -52,6 +56,10 @@ func (m *MainModel) hasResults() bool {
 // did before, so nobody loses a shortcut they were used to.
 func (m *MainModel) tabAvailable(mode string) bool {
 	switch mode {
+	case "schema":
+		// There is no schema to browse with nothing connected, and the tab says
+		// so by being dimmed rather than by opening on an apology.
+		return m.connected()
 	case "table":
 		return m.hasTable
 	case "trace":

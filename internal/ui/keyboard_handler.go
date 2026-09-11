@@ -106,6 +106,16 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		// Key wasn't handled, let it fall through to main switch
 	}
 
+	// The schema tree takes the keys that move around it while it is showing.
+	// Up and down are command history everywhere else, and there is no history
+	// to walk through while reading a tree; everything else still goes to the
+	// prompt, so a query can be typed while looking at the table it is about.
+	if m.viewMode == "schema" && !m.historySearchMode {
+		if updated, cmd, handled := m.schemaKey(msg); handled {
+			return updated, cmd
+		}
+	}
+
 	switch msg.String() {
 	case "ctrl+c":
 		return m.handleCtrlC()
@@ -155,13 +165,13 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m.handleTabKey()
 
 	case "f2":
-		return m.handleF2()
+		return m.showConsole()
 
 	case "f3":
-		return m.handleF3()
+		return m.showSchema()
 
 	case "f4":
-		return m.handleF4()
+		return m.showResults()
 
 	// Alt+H as well as F1: Terminator, Konsole and others take F1 for their
 	// own help before an application ever sees it, so a key that only works on
@@ -170,7 +180,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m.toggleHelp()
 
 	// Alt+F opens the FILE menu, matching Alt+H. There is no F-key for it:
-	// F2 to F5 are the views, and a menu is not one.
+	// F2 to F6 are the views, and a menu is not one.
 	case "alt+f":
 		span, ok := m.tabSpanFor(m.windowWidth, fileMode)
 		if !ok {
@@ -179,7 +189,10 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m.openFileMenu(span.start)
 
 	case "f5":
-		return m.handleF5()
+		return m.showTrace()
+
+	case "f6":
+		return m.showChat()
 
 	case "space":
 		// A space is part of what you are searching for. Without this it went

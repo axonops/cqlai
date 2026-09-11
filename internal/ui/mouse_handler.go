@@ -279,6 +279,15 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		return m.clickStatusSetting(mouse.X)
 	}
 
+	// A press on the schema tree picks what it lands on. The definition beside
+	// it is text like any other view, and a press there starts a selection, so
+	// what is on screen can still be copied out.
+	if m.viewMode == "schema" {
+		if _, hit := m.schemaRowAt(mouse.X, mouse.Y); hit {
+			return m.clickSchema(mouse.X, mouse.Y)
+		}
+	}
+
 	return m.beginSelection(mouse.X, mouse.Y)
 }
 
@@ -314,6 +323,18 @@ func (m *MainModel) pressOpensCapture(mouse tea.Mouse) bool {
 
 // handleMouseWheel scrolls the view under the pointer.
 func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
+	// The schema view is two panes, and the wheel moves whichever one it is
+	// over rather than whichever was touched last.
+	if m.viewMode == "schema" && !m.preferences.active && !m.form.active && !m.help.active {
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			return m.scrollSchema(mouse.X, -wheelLines)
+		case tea.MouseWheelDown:
+			return m.scrollSchema(mouse.X, wheelLines)
+		}
+		return m, nil
+	}
+
 	// The preferences window is longer than the screen, so the wheel over it
 	// moves whichever of its two lists is under the pointer.
 	if m.preferences.active {
@@ -539,13 +560,15 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 
 	switch mode {
 	case "history":
-		return m.handleF2()
+		return m.showConsole()
 	case "table":
-		return m.handleF3()
+		return m.showResults()
 	case "trace":
-		return m.handleF4()
+		return m.showTrace()
+	case "schema":
+		return m.showSchema()
 	case "ai":
-		return m.handleF5()
+		return m.showChat()
 	}
 	return m, nil
 }

@@ -6,8 +6,15 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// handleF2 handles F2 key - switch to query/history view
-func (m *MainModel) handleF2() (*MainModel, tea.Cmd) {
+// The views, one function each.
+//
+// Named for what they show rather than for the key that reaches them. They were
+// handleF2 to handleF6, and moving a tab along the line meant renaming three
+// functions and everything that called them - which is a rename with nothing
+// behind it, since none of them has anything to do with a particular key.
+
+// showConsole switches to the running transcript.
+func (m *MainModel) showConsole() (*MainModel, tea.Cmd) {
 	if m.viewMode != "history" {
 		m.viewMode = "history"
 		// If in AI conversation mode, also deactivate it
@@ -23,8 +30,8 @@ func (m *MainModel) handleF2() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// handleF3 handles F3 key - switch to table view
-func (m *MainModel) handleF3() (*MainModel, tea.Cmd) {
+// showResults switches to the last query's output.
+func (m *MainModel) showResults() (*MainModel, tea.Cmd) {
 	if m.viewMode != "table" {
 		m.viewMode = "table"
 		// If in AI conversation mode, also deactivate it
@@ -45,8 +52,8 @@ func (m *MainModel) handleF3() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// handleF4 handles F4 key - switch to trace view
-func (m *MainModel) handleF4() (*MainModel, tea.Cmd) {
+// showTrace switches to the query trace.
+func (m *MainModel) showTrace() (*MainModel, tea.Cmd) {
 	if m.viewMode != "trace" {
 		m.viewMode = "trace"
 		// If in AI conversation mode, also deactivate it
@@ -69,8 +76,21 @@ func (m *MainModel) handleF4() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// handleF5 handles F5 key - switch to AI view
-func (m *MainModel) handleF5() (*MainModel, tea.Cmd) {
+// showSchema switches to the schema browser, or asks the cluster again when it
+// is already showing.
+func (m *MainModel) showSchema() (*MainModel, tea.Cmd) {
+	if !m.connected() {
+		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Not connected.") +
+			m.styles.MutedText.Render(" There is no schema to browse.") + "\n"
+		m.updateHistoryWrapping()
+		m.historyViewport.GotoBottom()
+		return m, nil
+	}
+	return m.openSchema()
+}
+
+// showChat switches to the AI conversation.
+func (m *MainModel) showChat() (*MainModel, tea.Cmd) {
 	// Say why rather than doing nothing. A key that silently does nothing is
 	// how someone concludes the build is broken.
 	if !m.aiAvailable() {
@@ -85,7 +105,7 @@ func (m *MainModel) handleF5() (*MainModel, tea.Cmd) {
 		m.viewMode = "ai"
 		m.aiConversationActive = true
 
-		// Clear any existing conversation ID when entering AI view via F5
+		// Clear any existing conversation ID when entering the chat view
 		// This ensures we start fresh
 		m.aiConversationID = ""
 
