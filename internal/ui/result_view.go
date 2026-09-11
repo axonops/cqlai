@@ -90,17 +90,17 @@ func onePassFormat(format config.OutputFormat) bool {
 	return format == config.OutputFormatASCII || format == config.OutputFormatJSON
 }
 
-// moreRowsNotice says how much of a streaming result is showing, for the
-// formats that are built in one pass.
+// moreRowsNotice says how much of a result is showing, at the end of it.
 //
-// The boxed table and expand format grow as you page through them, and a line
-// at the bottom saying there is more is what the scrollbar already says. ASCII
-// art and JSON lines are drawn from whatever rows are in hand, so what is on
-// screen can be a fraction of the answer with nothing to say so.
-func (m *MainModel) moreRowsNotice(format config.OutputFormat) string {
-	if !onePassFormat(format) {
-		return ""
-	}
+// At the end because that is where the rows run out, and where you are looking
+// when you want the rest. It was written over the prompt's placeholder instead,
+// which is one row shared with whatever else has something to say there: a
+// statement typed over several lines lost its own hint to it.
+//
+// Every format says it. The boxed table and expand format page in as you
+// scroll, so the line moves down the result as more of it arrives; ASCII art
+// and JSON lines are drawn in one pass, so it sits under what there is.
+func (m *MainModel) moreRowsNotice(_ config.OutputFormat) string {
 	if m.slidingWindow == nil || !m.slidingWindow.hasMoreData {
 		return ""
 	}

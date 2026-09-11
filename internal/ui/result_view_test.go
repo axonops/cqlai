@@ -213,23 +213,27 @@ func TestMoreRowsArrivingMovesTheWidthWithThem(t *testing.T) {
 
 // TestTheNoticeFollowsTheRowsInHand: it is drawn with the content, so it says
 // what is true at the time rather than what was true when the result arrived.
+//
+// Every format says it, and says it at the end of the result. It used to be
+// written over the prompt's placeholder, which is one row shared with whatever
+// else has something to say there - a statement typed over several lines lost
+// its own hint to it.
 func TestTheNoticeFollowsTheRowsInHand(t *testing.T) {
-	m := outputModel(t, false, config.OutputFormatTable)
-	m.displayResult(m.slidingWindow.Headers, nil)
+	for _, format := range config.OutputFormats() {
+		parsed, err := config.ParseOutputFormat(format)
+		require.NoError(t, err)
 
-	// A boxed table pages in as you scroll, and the scrollbar says as much.
-	assert.NotContains(t, shown(m), "More data available")
+		m := outputModel(t, false, parsed)
+		m.displayResult(m.slidingWindow.Headers, nil)
 
-	// ASCII is drawn in one pass, so what is on screen can be a fraction of the
-	// answer with nothing else to say so.
-	m.processCommand("OUTPUT ASCII")
-	assert.Contains(t, shown(m), "More data available")
-	assert.Contains(t, shown(m), "Showing 2 rows")
+		assert.Contains(t, shown(m), "More data available", "%s", format)
+		assert.Contains(t, shown(m), "Showing 2 rows", "%s", format)
 
-	// And it goes when the rest arrives.
-	m.loadMoreTableDataHelper()
-	assert.NotContains(t, shown(m), "More data available")
-	assert.Contains(t, shown(m), "dave")
+		// And it goes when the rest arrives.
+		m.loadMoreTableDataHelper()
+		assert.NotContains(t, shown(m), "More data available", "%s", format)
+		assert.Contains(t, shown(m), "dave", "%s", format)
+	}
 }
 
 // TestSwitchingFormatFetchesNothingExtra.

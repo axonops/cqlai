@@ -53,7 +53,7 @@ func TestTheMenuIsThreeGroups(t *testing.T) {
 	groups = append(groups, group)
 
 	assert.Equal(t, [][]string{
-		{"AUTOSAVE", "SOURCE", "COPY TO", "COPY FROM"},
+		{"SAVE RESULTS", "AUTOSAVE", "SOURCE", "COPY TO", "COPY FROM"},
 		{"PREFERENCES"},
 		{"QUIT"},
 	}, groups)
@@ -241,4 +241,32 @@ func TestTheMenuIsDrawnWhereItIsClicked(t *testing.T) {
 		}
 		assert.Contains(t, drawn, item.label)
 	}
+}
+
+// TestSaveResultsIsThereBeforeThereAreResults.
+//
+// It was dimmed until a query had run - a fair description of the state and a
+// poor thing to look at, since a greyed-out entry on a freshly started shell
+// reads as one that is not there.
+func TestSaveResultsIsThereBeforeThereAreResults(t *testing.T) {
+	m := menuModel(t)
+	save := fileMenuItems()[menuEntry(t, "SAVE RESULTS")]
+	require.Empty(t, m.lastTableData)
+
+	assert.True(t, m.fileItemAvailable(save), "it should be pickable from the start")
+
+	// Picking it says why rather than opening a window that can only be
+	// cancelled.
+	m.fileMenu.selected = menuEntry(t, "SAVE RESULTS")
+	m, _ = m.chooseFileMenuItem()
+	assert.False(t, m.capture.active)
+	assert.Contains(t, stripAnsiForTest(m.fullHistoryContent), "Execute a query first")
+
+	// And with something on screen it opens the window.
+	m = menuModel(t)
+	m.lastTableData = [][]string{{"id"}, {"1"}}
+	m.fileMenu.selected = menuEntry(t, "SAVE RESULTS")
+	m, _ = m.chooseFileMenuItem()
+	assert.True(t, m.capture.active)
+	assert.Equal(t, saving, m.capture.kind)
 }

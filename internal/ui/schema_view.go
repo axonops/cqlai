@@ -171,6 +171,10 @@ func (m *MainModel) viewSchema(width, height int) string {
 
 		lines = append(lines, left+ruleStyle.Render(schemaDivider)+right)
 	}
+
+	// Kept for the selection, which is over what is on screen rather than over
+	// a viewport this view does not have.
+	m.schema.drawn = lines
 	return strings.Join(lines, "\n")
 }
 

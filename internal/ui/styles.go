@@ -62,3 +62,11 @@ func DefaultStyles() *Styles {
 
 	return st
 }
+
+// dimmedColour is what something that is there but has nothing to offer yet is
+// drawn in: a tab with no results behind it, a menu entry that cannot be picked.
+//
+// Dark enough to read as unavailable beside the ones that are, and light enough
+// to read at all. At #585858 a dimmed entry looked like one that was not there,
+// which is the opposite of what dimming rather than hiding is for.
+var dimmedColour = lipgloss.Color("#7A7A7A")

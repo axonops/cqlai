@@ -50,6 +50,7 @@ func TestBothRoutesToASaveDoTheSameThing(t *testing.T) {
 	typed.runCommand("SAVE TO '" + typedPath + "' AS CSV")
 
 	clicked := helpModel()
+	clicked.lastTableData = [][]string{{"id"}, {"1"}}
 	clicked.windowHeight = 30
 	clicked.lastTableData, clicked.columnTypes = data, types
 	clickedPath := filepath.Join(dir, "clicked.csv")

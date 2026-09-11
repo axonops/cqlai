@@ -50,10 +50,12 @@ type fileMenu struct {
 
 // fileMenuItems is what the menu offers, in the order it offers them.
 //
-// AutoSave first: it is a decision about everything that comes next, and the
-// one you are most likely to be here to make.
+// SAVE RESULTS first: it acts on what is on screen, which is what you were
+// looking at when you opened the menu. AutoSave next, because it is a decision
+// about everything that comes after it.
 func fileMenuItems() []fileMenuItem {
 	return []fileMenuItem{
+		{label: "SAVE RESULTS", kind: saving},
 		{label: "AUTOSAVE", kind: capturing},
 		{label: "SOURCE", form: sourcing, asks: true},
 		{label: "COPY TO", form: copyingTo, asks: true},
@@ -71,10 +73,11 @@ func fileMenuItems() []fileMenuItem {
 
 // available reports whether an item can be picked.
 //
-// SAVE RESULTS was here and is not any more. Everything left is a file
-// operation that stands on its own; saving what is on screen depends on there
-// being something on screen, which made it the one entry that was sometimes
-// dimmed. The SAVE command is unchanged and still opens the same window.
+// SAVE RESULTS is pickable whether or not there is anything to save. It was
+// dimmed until a query had run, which is a fair description of the state and a
+// poor thing to look at: a menu entry greyed out on a freshly started shell
+// reads as one that is not there. Picking it with nothing on screen says so, in
+// the same words the SAVE command uses.
 func (m *MainModel) fileItemAvailable(item fileMenuItem) bool {
 	if item.rule {
 		return false
@@ -232,7 +235,7 @@ func (m *MainModel) viewFileMenu(screenWidth, screenHeight int) (Layer, bool) {
 	}
 
 	itemStyle := lipgloss.NewStyle().Foreground(m.styles.Accent)
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#585858"))
+	dimStyle := lipgloss.NewStyle().Foreground(dimmedColour)
 	selectedStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#1c1c1c")).
 		Background(m.styles.Accent).

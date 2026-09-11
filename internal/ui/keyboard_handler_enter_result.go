@@ -23,9 +23,8 @@ import (
 // wrote no file, showed no error and said nothing at all. It had been that way
 // for every format since the window was shared in #129.
 func (m *MainModel) runSaveCommand(v *router.SaveCommand) (*MainModel, tea.Cmd) {
-	if len(m.lastTableData) == 0 {
-		errorMsg := "No query results available to save. Execute a query first."
-		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+errorMsg)
+	if !m.hasResults() {
+		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+noResultsToSave)
 		m.updateHistoryWrapping()
 		m.historyViewport.GotoBottom()
 		m.input.Reset()

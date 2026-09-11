@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -153,7 +154,8 @@ func TestWhatIsChecked(t *testing.T) {
 		{"Keyspace", "", "a keyspace is needed"},
 		{"Keyspace", "nosuch", "no keyspace of that name"},
 		{"Table", "nosuch", "no table of that name in this keyspace"},
-		{"File", pathRoot, "a file is needed"},
+		{"File", "", "a file is needed"},
+		{"File", pathRoot, "that is a directory"},
 		{"File", "/tmp/", "that is a directory"},
 		{"SKIPROWS", "many", "a whole number"},
 		{"DELIMITER", ";;", "one character"},
@@ -371,4 +373,31 @@ func TestEveryFieldHasAnInput(t *testing.T) {
 				"%s has no usable input", field.label)
 		}
 	}
+}
+
+// TestTheFileFieldStartsAtHome.
+//
+// The root is a long way from the file: a script to run, or a table to write,
+// is usually somewhere under the home directory, and starting there is a
+// listing worth reading rather than the top of the filesystem.
+func TestTheFileFieldStartsAtHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	for _, action := range []formAction{sourcing, copyingTo, copyingFrom} {
+		m := formModel(t, action)
+		assert.Equal(t, home+string(filepath.Separator), m.form.field("File"),
+			"%v should start in the home directory", action)
+	}
+}
+
+// TestTheStartingDirectoryIsNotAnAnswer: it is a place to look, and the form
+// says so rather than offering to run with it.
+func TestTheStartingDirectoryIsNotAnAnswer(t *testing.T) {
+	m := formModel(t, sourcing)
+	require.False(t, m.formReady())
+	assert.Contains(t, collect(m.formErrors()), "that is a directory")
+
+	set(t, m, "File", filepath.Join(t.TempDir(), "schema.cql"))
+	assert.True(t, m.formReady())
 }

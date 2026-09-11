@@ -110,7 +110,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	// Up and down are command history everywhere else, and there is no history
 	// to walk through while reading a tree; everything else still goes to the
 	// prompt, so a query can be typed while looking at the table it is about.
-	if m.viewMode == "schema" && !m.historySearchMode {
+	if m.schemaOwnsKeys() {
 		if updated, cmd, handled := m.schemaKey(msg); handled {
 			return updated, cmd
 		}

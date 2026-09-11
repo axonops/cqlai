@@ -122,6 +122,27 @@ func visibleLength(s string) int {
 func (m *MainModel) updateHistoryWrapping() {
 	if m.historyViewport.Width() > 0 {
 		wrapped := m.wrapHistoryContent(m.historyViewport.Width())
-		m.historyViewport.SetContent(wrapped)
+		m.historyViewport.SetContent(m.consoleContent(wrapped))
 	}
+}
+
+// consoleContent puts the transcript at the foot of the view, which is where a
+// shell puts it.
+//
+// A viewport draws its content from the top, so a session that had said little
+// so far left the welcome message at the top of the screen and the command you
+// had just run below it, with blank space between that and the prompt it was
+// typed at. Filled from the bottom, the answer appears where it was asked for,
+// and the top of the screen fills in as the session goes on.
+func (m *MainModel) consoleContent(wrapped string) string {
+	height := m.historyViewport.Height()
+	if height <= 0 || wrapped == "" {
+		return wrapped
+	}
+
+	blank := height - len(strings.Split(wrapped, "\n"))
+	if blank <= 0 {
+		return wrapped
+	}
+	return strings.Repeat("\n", blank) + wrapped
 }

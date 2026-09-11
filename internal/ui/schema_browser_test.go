@@ -331,3 +331,146 @@ func TestSchemaSitsNextToTheConsole(t *testing.T) {
 	}
 	assert.Equal(t, []string{"F2", "F3", "F4", "F5", "F6"}, keys)
 }
+
+// TestTheCompletionListKeepsTheArrows.
+//
+// The tree is the background of this view, and the completion list is drawn
+// over it. Taking the arrows unconditionally moved the tree behind while the
+// list you were reading stood still.
+func TestTheCompletionListKeepsTheArrows(t *testing.T) {
+	m := schemaModel(t)
+	m.input.SetValue("SELECT * FROM ")
+	m.showCompletions = true
+	m.completions = []string{"events", "users"}
+	m.completionIndex = 0
+
+	m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyDown})
+
+	assert.Equal(t, 1, m.completionIndex, "down should have moved the list")
+	assert.Equal(t, 0, m.schema.selected, "the tree behind it should not have moved")
+
+	m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyUp})
+	assert.Equal(t, 0, m.completionIndex)
+	assert.Equal(t, 0, m.schema.selected)
+
+	// With the list gone, the arrows are the tree's again.
+	m.showCompletions = false
+	m.completions = nil
+	m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyDown})
+	assert.Equal(t, 1, m.schema.selected)
+}
+
+// TestAQuestionOnScreenKeepsTheArrows, for the same reason: left and right
+// choose the answer, and Enter gives it.
+func TestAQuestionOnScreenKeepsTheArrows(t *testing.T) {
+	m := schemaModel(t)
+	m.modal = NewConfirmationModal("DROP TABLE users")
+
+	m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyRight})
+
+	assert.Equal(t, 1, m.modal.Selected, "right should have moved to the other answer")
+	assert.Equal(t, 0, m.schema.selected)
+	assert.False(t, m.schema.expanded["my_keyspace"], "the tree should not have opened")
+}
+
+// TestTheHistoryListKeepsTheArrows.
+func TestTheHistoryListKeepsTheArrows(t *testing.T) {
+	m := schemaModel(t)
+	m.commandHistory = []string{"SELECT * FROM users", "DROP TABLE events"}
+	m, _ = m.handleCtrlR()
+	require.True(t, m.historySearchMode)
+
+	before := m.historySearchIndex
+	m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyUp})
+
+	assert.NotEqual(t, before, m.historySearchIndex, "up should have moved the list")
+	assert.Equal(t, 0, m.schema.selected)
+}
+
+// TestTheDefinitionCanBeCopiedOut.
+//
+// The point of having the schema on screen is to take things out of it - a
+// column name, a whole CREATE TABLE - into the prompt. Selection was anchored to
+// a viewport, and this view has none: a drag over the definition recorded a span
+// against the console's content, so what reached the clipboard was whatever
+// happened to be on those rows of a view you were not looking at.
+func TestTheDefinitionCanBeCopiedOut(t *testing.T) {
+	m := schemaModel(t)
+	m, _ = m.toggleSchemaRow()
+	m, _ = m.selectSchemaRow(2) // my_keyspace.users
+
+	// What is on screen is what a selection is over, so it has to be drawn
+	// before it can be dragged across.
+	m.historyViewport.SetContent(strings.Repeat("console line\n", 40))
+	drawn := strings.Split(m.viewSchema(m.windowWidth, m.schemaHeight()), "\n")
+
+	// The row holding the CREATE TABLE line, and the columns it covers.
+	row, text := -1, ""
+	for i, line := range drawn {
+		if strings.Contains(stripAnsi(line), "CREATE TABLE") {
+			row, text = i, stripAnsi(line)
+			break
+		}
+	}
+	require.NotEqual(t, -1, row, "the definition should be on screen")
+
+	// In columns, not bytes: the line has a fold marker and a divider in it, and
+	// both are three bytes wide and one column wide.
+	from := columnOf(text, "CREATE TABLE")
+	to := from + len([]rune("CREATE TABLE my_keyspace.users ("))
+
+	cmd := drag(m, from, tabBarHeight+row, to, tabBarHeight+row)
+	assert.Equal(t, "CREATE TABLE my_keyspace.users (", clipboardText(t, cmd))
+	assert.NotContains(t, clipboardText(t, cmd), "console line",
+		"the selection should be over this view, not the one behind it")
+}
+
+// TestATreeNameCanBeCopiedOut too: the left-hand pane is text on screen like
+// any other.
+func TestATreeNameCanBeCopiedOut(t *testing.T) {
+	m := schemaModel(t)
+	m, _ = m.toggleSchemaRow()
+	drawn := strings.Split(m.viewSchema(m.windowWidth, m.schemaHeight()), "\n")
+
+	// Only the tree column: the definition beside it names the keyspace too.
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	row := -1
+	for i, line := range drawn {
+		pane := string([]rune(stripAnsi(line))[:g.treeWidth])
+		if strings.Contains(pane, "my_keyspace") {
+			row = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, row)
+
+	from := columnOf(stripAnsi(drawn[row]), "my_keyspace")
+	cmd := drag(m, from, tabBarHeight+row, from+len("my_keyspace"), tabBarHeight+row)
+	assert.Equal(t, "my_keyspace", clipboardText(t, cmd))
+}
+
+// TestADragInTheTreeIsNotAClick: a press on the tree selects a row, and one on
+// the definition starts a selection, so both have to be tried.
+func TestADragInTheTreeIsNotAClick(t *testing.T) {
+	m := schemaModel(t)
+	m, _ = m.toggleSchemaRow()
+	m.viewSchema(m.windowWidth, m.schemaHeight())
+
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	updated, _ := m.handleMousePress(tea.Mouse{
+		X: g.treeWidth + 6, Y: tabBarHeight + schemaHeaderRows, Button: tea.MouseLeft,
+	})
+	assert.True(t, updated.selection.dragging, "a press on the definition starts a selection")
+	assert.Equal(t, 0, updated.schema.selected, "and does not move the tree")
+}
+
+// columnOf is where a piece of text starts, counted in columns on screen rather
+// than in bytes: a fold marker and a divider are three bytes each and one column
+// each, and a selection is made of columns.
+func columnOf(line, text string) int {
+	i := strings.Index(line, text)
+	if i < 0 {
+		return -1
+	}
+	return len([]rune(line[:i]))
+}

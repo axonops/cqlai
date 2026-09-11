@@ -126,6 +126,14 @@ type MainModel struct {
 	preferences      preferences    // Open PREFERENCES window, if any
 	schema           schemaBrowser  // The SCHEMA view's tree and what it is showing
 
+	// lastCopied is what cqlai last put on the clipboard, and what a right
+	// click pastes when the terminal will not say what its clipboard holds.
+	lastCopied string
+
+	// pasteRequest counts right clicks, so an answer that arrives after the
+	// fallback has already pasted is ignored rather than pasted twice.
+	pasteRequest int
+
 	// lastRawData is the values behind lastTableData for a result that arrived
 	// whole, so JSON is written from what came back rather than from what was
 	// drawn in the cells.
@@ -513,7 +521,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fullHistoryContent = welcomeMsg
 			// Wrap content for initial display
 			wrapped := m.wrapHistoryContent(consoleWidth(newWidth))
-			m.historyViewport.SetContent(wrapped)
+			m.historyViewport.SetContent(m.consoleContent(wrapped))
 			m.ready = true
 		} else {
 			// Resize viewports
@@ -538,21 +546,13 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// The prompt and the trailing cursor cell are drawn outside the width
-		// the textinput is given, so it renders three columns wider than it is
-		// told. At newWidth-2 the input row was a column wider than the
-		// terminal and wrapped onto the next one. Measured from the prompt
-		// rather than written as a number, so the two cannot drift.
-		//
-		// Clamped because v2's textinput sizes its placeholder buffer from the
-		// width and panics on a negative one; v1 tolerated it. A terminal that
-		// reports no size, or one only a couple of columns wide, is enough to
-		// hit that.
-		inputWidth := max(newWidth-lipgloss.Width(m.input.Prompt)-1, 0)
-		m.input.SetWidth(inputWidth)
+		// Sized from the prompt in front of it, which is not the same width
+		// while a statement is being continued as it is at a fresh one.
+		width := inputWidth(newWidth, m.input.Prompt)
+		m.input.SetWidth(width)
 		// Also update AI conversation input width if initialized
 		if m.aiConversationInput.Value() != "" || m.aiConversationActive {
-			m.aiConversationInput.SetWidth(inputWidth)
+			m.aiConversationInput.SetWidth(width)
 		}
 		return m, nil
 
@@ -562,6 +562,18 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.PasteMsg:
 		updatedModel, cmd := m.handlePaste(msg)
+		return updatedModel, cmd
+
+	case tea.ClipboardMsg:
+		updatedModel, cmd := m.handleClipboard(msg)
+		return updatedModel, cmd
+
+	case systemClipboardMsg:
+		updatedModel, cmd := m.handleSystemClipboard(msg)
+		return updatedModel, cmd
+
+	case pasteFallbackMsg:
+		updatedModel, cmd := m.handlePasteFallback(msg)
 		return updatedModel, cmd
 
 	case tea.MouseMsg:

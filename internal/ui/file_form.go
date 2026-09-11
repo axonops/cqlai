@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -359,14 +360,26 @@ func (f fileForm) describe() string {
 	return "The statements run as if you had typed them."
 }
 
-// pathRoot is where the File field starts.
+// pathRoot is the top of the filesystem, and where a File field starts when
+// there is no home directory to start it in.
 //
 // Completion used to begin wherever cqlai was started from, which is rarely
 // where the file is and is not somewhere you can see: the field looked empty
-// and Tab produced a directory listing you had no reason to expect. From the
-// root the field says where it is looking, and every path from there is one you
-// could have typed.
+// and Tab produced a directory listing you had no reason to expect.
 const pathRoot = "/"
+
+// pathStart is where a File field starts: the user's home directory.
+//
+// Nearer to the file than the root is - a script to run or a table to write is
+// usually somewhere under it - and it says where it is looking, which is the
+// half that matters. The root is the fallback, for a user with no home.
+func pathStart() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return pathRoot
+	}
+	return strings.TrimSuffix(home, string(filepath.Separator)) + string(filepath.Separator)
+}
 
 // formPlaceholderColour is the grey an empty field's instruction is drawn in:
 // dim enough to read as a prompt rather than as something you typed, and the
@@ -473,14 +486,14 @@ func actionFields(action formAction, keyspace string) []formField {
 		return []formField{
 			{label: "Keyspace", kind: fieldKeyspace, input: newFormInput(keyspace, "Tab to list keyspaces")},
 			{label: "Table", kind: fieldTable, input: newFormInput("", "Tab to list tables")},
-			{label: "File", kind: fieldPath, input: newFormInput(pathRoot, ""), hint: "Tab completes"},
+			{label: "File", kind: fieldPath, input: newFormInput(pathStart(), ""), hint: "Tab completes"},
 			{label: "Columns", kind: fieldColumns, input: newFormInput("", "all of them"), hint: "or tick them off", optional: true},
 		}
 	case copyingFrom:
 		return []formField{
 			{label: "Keyspace", kind: fieldKeyspace, input: newFormInput(keyspace, "Tab to list keyspaces")},
 			{label: "Table", kind: fieldTable, input: newFormInput("", "Tab to list tables")},
-			{label: "File", kind: fieldPath, input: newFormInput(pathRoot, ""), hint: "Tab completes"},
+			{label: "File", kind: fieldPath, input: newFormInput(pathStart(), ""), hint: "Tab completes"},
 			// On the FROM form and not the TO form because this is where
 			// getting it wrong costs you: a CSV whose first row is column
 			// names, read with HEADER=false, inserts that row as data.
@@ -493,7 +506,7 @@ func actionFields(action formAction, keyspace string) []formField {
 		}
 	}
 	return []formField{
-		{label: "File", kind: fieldPath, input: newFormInput(pathRoot, ""), hint: "Tab completes"},
+		{label: "File", kind: fieldPath, input: newFormInput(pathStart(), ""), hint: "Tab completes"},
 	}
 }
 
@@ -1869,9 +1882,11 @@ func (m *MainModel) fieldError(i int) string {
 
 	case fieldPath:
 		switch {
-		case value == "" || value == pathRoot:
+		case value == "":
 			return "a file is needed"
-		case strings.HasSuffix(value, "/"):
+		case strings.HasSuffix(value, string(filepath.Separator)):
+			// Including the directory the field starts in, which is a place to
+			// look rather than an answer.
 			return "that is a directory"
 		}
 

@@ -113,7 +113,8 @@ func HelpRows() [][]string {
 		{"", "Ctrl+W", "Cut previous word"},
 		{"", "Alt+D", "Delete next word"},
 		{"", "Ctrl+Y", "Paste cut text"},
-		{"", "Terminal paste", "Goes into the prompt, a form, or preferences"},
+		{"", "Right click", "Paste into the prompt, a form, or preferences"},
+		{"", "Terminal paste", "The same, from the terminal's own paste"},
 
 		// Navigation
 		{"─────────", "─────────", "─────────────"},
