@@ -356,6 +356,15 @@ func IsDangerousCommand(command string) bool {
 }
 
 // isDDLCommand checks if a command is a DDL statement that modifies schema
+// ChangesSchema reports whether a statement changes the schema.
+//
+// The schema cache refreshes on these, and so does the SCHEMA view: what it has
+// fetched describes the cluster as it was, and a statement typed in the same
+// window is the one case cqlai can know about without asking.
+func ChangesSchema(command string) bool {
+	return isDDLCommand(command)
+}
+
 func isDDLCommand(command string) bool {
 	upperCommand := strings.ToUpper(strings.TrimSpace(command))
 

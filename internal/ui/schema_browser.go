@@ -58,6 +58,10 @@ type schemaBrowser struct {
 	drawn []string
 
 	message string // what to say when there is no tree to draw
+
+	// stale says the cluster has changed under what is kept here, so it is
+	// fetched again before it is next looked at.
+	stale bool
 }
 
 // rows is the tree as it stands: every keyspace, and the tables of the ones
@@ -88,6 +92,24 @@ func (s schemaBrowser) current() (schemaRow, bool) {
 	return rows[s.selected], true
 }
 
+// schemaChanged is called when a statement changes the schema.
+//
+// What the browser keeps describes the cluster as it was. Fetching it again
+// here would be a round trip per statement, and a SOURCE file of fifty of them
+// would make fifty: it is marked instead, and fetched again when it is next
+// looked at. Unless that is now - a change made while looking at the tree
+// should appear in it.
+func (m *MainModel) schemaChanged() {
+	if !m.schema.loaded {
+		return // nothing has been fetched, so nothing is out of date
+	}
+
+	m.schema.stale = true
+	if m.viewMode == "schema" {
+		m.refreshSchema()
+	}
+}
+
 // openSchema switches to the view, fetching the keyspaces the first time.
 //
 // Nothing is fetched until then: a cluster can hold hundreds of keyspaces, and
@@ -103,8 +125,12 @@ func (m *MainModel) openSchema() (*MainModel, tea.Cmd) {
 	m.leaveAIConversation()
 	m.input.Focus()
 
-	if !m.schema.loaded {
+	switch {
+	case !m.schema.loaded:
 		m.loadSchema()
+	case m.schema.stale:
+		// Changed since it was last looked at, by a statement typed here.
+		return m.refreshSchema()
 	}
 	return m, nil
 }
@@ -112,6 +138,7 @@ func (m *MainModel) openSchema() (*MainModel, tea.Cmd) {
 // refreshSchema drops everything and asks the cluster again.
 func (m *MainModel) refreshSchema() (*MainModel, tea.Cmd) {
 	open := m.schema.expanded
+	selected := m.schema.selected
 	m.schema = schemaBrowser{}
 	m.loadSchema()
 
@@ -122,6 +149,11 @@ func (m *MainModel) refreshSchema() (*MainModel, tea.Cmd) {
 			m.schema.expanded[keyspace] = true
 			m.schema.tables[keyspace] = m.tablesOf(keyspace)
 		}
+	}
+
+	// And the selection stays where it was, as far as the tree still goes.
+	if rows := len(m.schema.rows()); rows > 0 {
+		m.schema.selected = min(selected, rows-1)
 	}
 	m.showSchemaDetail()
 	return m, nil
