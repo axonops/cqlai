@@ -167,13 +167,6 @@ func (m *MainModel) processCommand(command string) interface{} {
 	if m.outputFormat() != before {
 		m.redrawResults()
 	}
-
-	// The schema browser keeps what it has fetched, and a statement typed here
-	// is the one thing that changes the cluster which cqlai can know about
-	// without asking.
-	if router.ChangesSchema(command) {
-		m.schemaChanged()
-	}
 	return result
 }
 
