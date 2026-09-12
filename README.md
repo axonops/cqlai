@@ -364,11 +364,13 @@ keyspace's tables when it is first opened, and a definition when it is first
 shown. The definitions are the ones `DESCRIBE` produces, so the two cannot
 disagree.
 
-A `CREATE`, `ALTER` or `DROP` typed in CQLAI drops what the browser has fetched,
-so the next look at it is the schema as it now is - at once if you are looking
-at the tree while it happens. A change made from somewhere else still needs
-`F3`: CQLAI cannot see those without asking, and asking on a timer is a query
-every few seconds for something that rarely changes.
+A schema change is noticed wherever it was made - here, in cqlsh, in another
+CQLAI, in an application. Cassandra keeps a schema version that changes whenever
+the schema does, whoever changed it; it is the value `nodetool describe cluster`
+prints under "Schema versions". CQLAI reads it every five seconds, which is one
+row, and when it differs from the last reading the browser and the tab
+completion both fetch again - at once if you are looking at the tree, and when
+you next open the tab if you are not. `F3` still asks immediately.
 
 `FILE` and `HELP` are not views. They open a menu and a window over whatever you
 are looking at, and leave it there. On a narrow terminal the labels shorten and

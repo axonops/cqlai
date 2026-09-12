@@ -126,6 +126,10 @@ type MainModel struct {
 	preferences      preferences    // Open PREFERENCES window, if any
 	schema           schemaBrowser  // The SCHEMA view's tree and what it is showing
 
+	// schemaVersion is what the cluster last said its schema version was, so a
+	// change made somewhere else can be noticed. Empty until the first reading.
+	schemaVersion string
+
 	// lastCopied is what cqlai last put on the clipboard, and what a right
 	// click pastes when the terminal will not say what its clipboard holds.
 	lastCopied string
@@ -489,7 +493,10 @@ func (m *MainModel) Init() tea.Cmd {
 	// mouse reporting is not asked for and wheel events would not arrive.
 	// Bubble Tea does not manage this mode; the rest is a field on the View.
 	EnableAlternateScroll()
-	return textinput.Blink
+
+	// Ask the cluster what its schema version is, and keep asking: a change
+	// made in another window is invisible here otherwise.
+	return tea.Batch(textinput.Blink, m.watchSchemaVersion())
 }
 
 // Update updates the main model.
@@ -566,6 +573,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.ClipboardMsg:
 		updatedModel, cmd := m.handleClipboard(msg)
+		return updatedModel, cmd
+
+	case schemaVersionMsg:
+		updatedModel, cmd := m.handleSchemaVersion(msg)
 		return updatedModel, cmd
 
 	case systemClipboardMsg:

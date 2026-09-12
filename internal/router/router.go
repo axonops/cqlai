@@ -172,9 +172,6 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 		logger.DebugToFile("ProcessCommand", "Routing to executeCQLQuery")
 		result := session.ExecuteCQLQuery(command)
 
-		// Refresh schema cache if this was a DDL command
-		refreshSchemaCacheIfNeeded(command, session)
-
 		// Check if we should capture the result
 		if metaHandler != nil && metaHandler.IsCapturing() {
 			logger.DebugfToFile("ProcessCommand", "Capturing enabled, checking result type: %T", result)
@@ -353,62 +350,4 @@ func handleOutputCommand(command string, session *db.Session) interface{} {
 // Delegates to the validation package
 func IsDangerousCommand(command string) bool {
 	return validation.IsDangerousCommand(command)
-}
-
-// isDDLCommand checks if a command is a DDL statement that modifies schema
-// ChangesSchema reports whether a statement changes the schema.
-//
-// The schema cache refreshes on these, and so does the SCHEMA view: what it has
-// fetched describes the cluster as it was, and a statement typed in the same
-// window is the one case cqlai can know about without asking.
-func ChangesSchema(command string) bool {
-	return isDDLCommand(command)
-}
-
-func isDDLCommand(command string) bool {
-	upperCommand := strings.ToUpper(strings.TrimSpace(command))
-
-	// Check for schema-modifying DDL commands
-	ddlKeywords := []string{
-		"CREATE KEYSPACE",
-		"CREATE TABLE",
-		"CREATE TYPE",
-		"CREATE INDEX",
-		"CREATE MATERIALIZED VIEW",
-		"ALTER KEYSPACE",
-		"ALTER TABLE",
-		"ALTER TYPE",
-		"DROP KEYSPACE",
-		"DROP TABLE",
-		"DROP TYPE",
-		"DROP INDEX",
-		"DROP MATERIALIZED VIEW",
-		"TRUNCATE",
-	}
-
-	for _, keyword := range ddlKeywords {
-		if strings.HasPrefix(upperCommand, keyword) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// refreshSchemaCacheIfNeeded refreshes the schema cache if the command modified schema
-func refreshSchemaCacheIfNeeded(command string, session *db.Session) {
-	if session == nil {
-		return
-	}
-
-	if isDDLCommand(command) {
-		logger.DebugfToFile("ProcessCommand", "DDL command detected, refreshing schema cache")
-		if cache := session.GetSchemaCache(); cache != nil {
-			if err := cache.Refresh(); err != nil {
-				logger.DebugfToFile("ProcessCommand", "Failed to refresh schema cache: %v", err)
-			} else {
-				logger.DebugfToFile("ProcessCommand", "Schema cache refreshed successfully")
-			}
-		}
-	}
 }
