@@ -474,3 +474,63 @@ func columnOf(line, text string) int {
 	}
 	return len([]rune(line[:i]))
 }
+
+// TestADDLStatementDropsWhatTheBrowserKnows.
+//
+// What it keeps describes the cluster as it was: after a CREATE TABLE the tree
+// and the definition beside it were still the schema from before the statement,
+// and only F3 would say otherwise.
+func TestADDLStatementDropsWhatTheBrowserKnows(t *testing.T) {
+	m := schemaModel(t)
+	m.viewMode = "history" // looking at the console, as you are when you type
+	require.NotEmpty(t, m.schema.definitions)
+
+	m.schemaChanged()
+
+	assert.True(t, m.schema.stale, "it should know it is out of date")
+	assert.NotEmpty(t, m.schema.definitions,
+		"and not have fetched anything yet: the tab is not open")
+
+	// Opening it fetches again. There is no cluster here, so what it finds is
+	// nothing - the point is that it went and looked.
+	m, _ = m.openSchema()
+	assert.False(t, m.schema.stale)
+	assert.Empty(t, m.schema.definitions, "the definitions should have been dropped")
+}
+
+// TestAChangeWhileLookingAtTheTreeShowsAtOnce.
+func TestAChangeWhileLookingAtTheTreeShowsAtOnce(t *testing.T) {
+	m := schemaModel(t)
+	require.Equal(t, "schema", m.viewMode)
+
+	m.schemaChanged()
+
+	assert.Empty(t, m.schema.definitions, "it should have fetched again there and then")
+	assert.False(t, m.schema.stale)
+}
+
+// TestNothingFetchedIsNothingToDropStale.
+func TestNothingFetchedIsNothingToDropStale(t *testing.T) {
+	m := schemaModel(t)
+	m.schema = schemaBrowser{} // never opened
+
+	m.schemaChanged()
+
+	assert.False(t, m.schema.stale, "there is nothing out of date yet")
+}
+
+// TestRefreshingKeepsWhereYouWere: the keyspaces left open stay open, and the
+// selection stays where it was, as far as the tree still goes.
+func TestRefreshingKeepsWhereYouWere(t *testing.T) {
+	m := schemaModel(t)
+	m, _ = m.toggleSchemaRow() // my_keyspace open
+	m, _ = m.selectSchemaRow(2)
+	require.True(t, m.schema.expanded["my_keyspace"])
+
+	// A cluster to find on the way back, so the tree is not empty.
+	m.schema.keyspaces = []string{"my_keyspace", "system"}
+	m, _ = m.refreshSchema()
+
+	assert.True(t, m.schema.expanded["my_keyspace"], "it should still be open")
+	assert.LessOrEqual(t, m.schema.selected, max(len(m.schema.rows())-1, 0))
+}
