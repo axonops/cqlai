@@ -20,17 +20,17 @@ func (m *MainModel) movePrefFocus(delta int) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	switch p.onButton {
-	case onRun:
-		if delta > 0 {
-			p.onButton = onCancel
-			return m, nil
-		}
-		p.focusField(len(p.fields) - 1)
-		return m, nil
-	case onCancel:
-		if delta < 0 {
-			p.onButton = onRun
+	// The buttons come after the settings, in the order they are drawn.
+	last := len(p.prefButtonLabels()) - 1
+	if p.onAButton() {
+		next := p.button + delta
+		switch {
+		case next < 0:
+			p.focusField(len(p.fields) - 1)
+		case next > last:
+			p.button = last
+		default:
+			p.button = next
 		}
 		return m, nil
 	}
@@ -41,7 +41,7 @@ func (m *MainModel) movePrefFocus(delta int) (*MainModel, tea.Cmd) {
 		return m, nil
 	case next >= len(p.fields):
 		p.blurAll()
-		p.onButton = onRun
+		p.button = 0
 		return m, nil
 	}
 	p.focusField(next)
@@ -231,11 +231,11 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 	case "pgdown":
 		return m.movePrefFocus(m.preferences.rows)
 	case "left":
-		if m.preferences.onButton != onNoButton {
+		if m.preferences.onAButton() {
 			return m.movePrefFocus(-1)
 		}
 	case "right":
-		if m.preferences.onButton != onNoButton {
+		if m.preferences.onAButton() {
 			return m.movePrefFocus(1)
 		}
 	case "tab":
@@ -253,17 +253,15 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 		// Only from a button. Enter is what you press to finish typing, and
 		// writing the file by reflex on the way past a setting is not what it
 		// should mean.
-		switch m.preferences.onButton {
-		case onRun:
-			return m.savePreferences()
-		case onCancel:
-			m.closePreferences()
-			return m, nil
+		if m.preferences.onAButton() {
+			return m.pressPrefButton(m.preferences.prefButtonLabels()[m.preferences.button])
 		}
 		return m.movePrefFocus(1)
 	}
 
-	// Anything else is typing.
+	// Anything else is typing, which is the answer to whatever went wrong.
+	m.preferences.failed = ""
+
 	if field := m.preferences.current(); field != nil && field.spec.kind != prefYesNo {
 		var cmd tea.Cmd
 		m.preferences.fields[m.preferences.focus].input, cmd = field.input.Update(msg)
@@ -277,14 +275,12 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 func (m *MainModel) handlePreferencesClick(col, row int) (*MainModel, tea.Cmd) {
 	if button, ok := m.prefButtonAt(m.windowWidth, m.windowHeight, col, row); ok {
 		m.preferences.blurAll()
-		switch button {
-		case "save":
-			m.preferences.onButton = onRun
-			return m.savePreferences()
-		case "cancel":
-			m.closePreferences()
-			return m, nil
+		for i, label := range m.preferences.prefButtonLabels() {
+			if label == button {
+				m.preferences.button = i
+			}
 		}
+		return m.pressPrefButton(button)
 	}
 
 	if i, ok := m.prefMatchAt(m.windowWidth, m.windowHeight, col, row); ok {

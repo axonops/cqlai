@@ -327,6 +327,12 @@ func (m *MainModel) getWelcomeMessage() string {
 	} else {
 		welcome.WriteString(m.styles.ErrorText.Render("✗ Not connected to Cassandra"))
 		welcome.WriteString("\n")
+		if m.connectError != "" {
+			welcome.WriteString(m.styles.MutedText.Render("  " + m.connectError))
+			welcome.WriteString("\n")
+		}
+		welcome.WriteString(m.styles.MutedText.Render("  FILE > CONNECT, or Alt+F then C, to connect"))
+		welcome.WriteString("\n")
 	}
 	welcome.WriteString("\n")
 

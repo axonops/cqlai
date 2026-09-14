@@ -279,16 +279,17 @@ func TestTheCursorStopsAtTheEndsAndReachesTheButtons(t *testing.T) {
 
 	m.preferences.focusField(len(m.preferences.fields) - 1)
 	m, _ = m.movePrefFocus(1)
-	assert.Equal(t, onRun, m.preferences.onButton)
+	assert.Equal(t, prefSave, m.preferences.prefButtonLabels()[m.preferences.button])
 	m, _ = m.movePrefFocus(1)
-	assert.Equal(t, onCancel, m.preferences.onButton)
+	assert.Equal(t, prefCancel, m.preferences.prefButtonLabels()[m.preferences.button])
 	m, _ = m.movePrefFocus(1)
-	assert.Equal(t, onCancel, m.preferences.onButton, "moving past Cancel went somewhere")
+	assert.Equal(t, prefCancel, m.preferences.prefButtonLabels()[m.preferences.button],
+		"moving past Cancel went somewhere")
 
 	// And back off them to the last setting.
 	m, _ = m.movePrefFocus(-1)
 	m, _ = m.movePrefFocus(-1)
-	assert.Equal(t, onNoButton, m.preferences.onButton)
+	assert.False(t, m.preferences.onAButton())
 	assert.Equal(t, len(m.preferences.fields)-1, m.preferences.focus)
 }
 
@@ -299,15 +300,17 @@ func TestTheButtonsAreWhereTheyAreDrawn(t *testing.T) {
 	require.True(t, ok)
 
 	row := g.y + 1 + g.buttonRow
-	saveEnd, cancelStart, _ := prefButtonSpans()
+	starts := m.preferences.prefButtonStarts()
+	saveEnd := len("  [ " + prefSave + " ]")
+	cancelStart := starts[1]
 
 	button, hit := m.prefButtonAt(m.windowWidth, m.windowHeight, g.x+2, row)
 	require.True(t, hit)
-	assert.Equal(t, "save", button)
+	assert.Equal(t, prefSave, button)
 
 	button, hit = m.prefButtonAt(m.windowWidth, m.windowHeight, g.x+2+cancelStart, row)
 	require.True(t, hit)
-	assert.Equal(t, "cancel", button)
+	assert.Equal(t, prefCancel, button)
 
 	_, hit = m.prefButtonAt(m.windowWidth, m.windowHeight, g.x+2+saveEnd, row)
 	assert.False(t, hit, "the gap between the buttons is a button")

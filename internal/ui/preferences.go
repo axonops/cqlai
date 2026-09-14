@@ -35,6 +35,22 @@ import (
 // someone who opened the window to change the port. What is drawn is what will
 // be written, and opening the window and saving it changes nothing.
 
+// prefPurpose is what the window is for.
+//
+// The same window either way: the same fields, the same checking, the same
+// layout. What differs is which settings it shows and what its buttons do -
+// which is not enough to justify a second window that drifts from this one.
+type prefPurpose int
+
+const (
+	// editingSettings is PREFERENCES: everything in the file, saved to it.
+	editingSettings prefPurpose = iota
+
+	// connecting is CONNECT: what a connection takes, tried rather than saved -
+	// or saved and then tried.
+	connecting
+)
+
 // prefKind is how a setting is edited.
 type prefKind int
 
@@ -138,11 +154,16 @@ type prefField struct {
 
 // preferences is the open window.
 type preferences struct {
-	active bool
-	fields []prefField
+	active  bool
+	purpose prefPurpose
+	fields  []prefField
 
-	focus    int // the field being edited
-	onButton buttonFocus
+	focus int // the field being edited
+
+	// button is which button the cursor is on, as an index into the labels, or
+	// noButton while a setting is being edited. An index rather than a name
+	// because CONNECT has three of them and PREFERENCES two.
+	button int
 
 	scroll int // the first line of the settings shown
 	rows   int // how many lines of settings the window has room for
@@ -156,6 +177,16 @@ type preferences struct {
 	// configuration cqlai is running on: see the note at the top.
 	cfg  *config.Config
 	path string // where Save will write
+
+	// failed is what went wrong last time the buttons were pressed - a
+	// connection that was refused, a file that could not be written. It stays
+	// on the window, because what you want next is to change a field and try
+	// again.
+	failed string
+
+	// saved is the file the settings were written to on the way to connecting,
+	// so the message afterwards can say so.
+	saved string
 }
 
 // prefLine is one drawn line of the settings area: a section heading, or a
@@ -190,11 +221,41 @@ func (p preferences) lineOf(field int) int {
 	return 0
 }
 
+// connectionSpecs is what a connection takes: the CONNECTION and SSL sections
+// of the settings, and nothing else. Where the file keeps them and how they are
+// checked is the same either way.
+func connectionSpecs() []prefSpec {
+	// The section a setting is in is written on the first setting of it, so
+	// walking the list means keeping track of which one we are in.
+	wanted := map[string]bool{"CONNECTION": true, "SSL": true}
+
+	specs := make([]prefSpec, 0, 16)
+	section := ""
+	for _, spec := range prefSpecs() {
+		if spec.section != "" {
+			section = spec.section
+		}
+		if wanted[section] {
+			specs = append(specs, spec)
+		}
+	}
+	return specs
+}
+
 // openPreferences reads the file into the window.
 func (m *MainModel) openPreferences() (*MainModel, tea.Cmd) {
+	return m.openSettings(editingSettings, prefSpecs())
+}
+
+// openConnect asks for a cluster to connect to.
+func (m *MainModel) openConnect() (*MainModel, tea.Cmd) {
+	return m.openSettings(connecting, connectionSpecs())
+}
+
+// openSettings reads the file into the window, showing the settings given.
+func (m *MainModel) openSettings(purpose prefPurpose, specs []prefSpec) (*MainModel, tea.Cmd) {
 	cfg := m.prefsFile()
 
-	specs := prefSpecs()
 	fields := make([]prefField, 0, len(specs))
 	for _, spec := range specs {
 		value := prefValue(cfg, spec.path)
@@ -206,11 +267,13 @@ func (m *MainModel) openPreferences() (*MainModel, tea.Cmd) {
 	}
 
 	m.preferences = preferences{
-		active: true,
-		fields: fields,
-		cfg:    cfg,
-		path:   cfg.SavePath(),
+		active:  true,
+		purpose: purpose,
+		fields:  fields,
+		cfg:     cfg,
+		path:    cfg.SavePath(),
 	}
+	m.preferences.button = noButton
 	m.preferences.rows, m.preferences.matchRows = m.fitPrefHeights(m.windowHeight)
 	m.preferences.focusField(0)
 
@@ -289,7 +352,7 @@ func (p *preferences) focusField(i int) {
 		p.fields[n].input.Blur()
 	}
 	p.focus = i
-	p.onButton = onNoButton
+	p.button = noButton
 	p.fields[i].input.Focus()
 	p.clearMatches()
 	p.show(i)
@@ -319,9 +382,22 @@ func (p *preferences) clearMatches() {
 	p.scrollTop = 0
 }
 
+// noButton says the cursor is on a setting rather than on a button.
+const noButton = -1
+
+// onAButton reports whether the cursor is on one.
+func (p preferences) onAButton() bool {
+	return p.button != noButton
+}
+
+// buttonIndex is which button the cursor is on, or noButton.
+func (p preferences) buttonIndex() int {
+	return p.button
+}
+
 // current is the setting being edited, or nil when the cursor is on a button.
 func (p *preferences) current() *prefField {
-	if p.onButton != onNoButton || p.focus < 0 || p.focus >= len(p.fields) {
+	if p.onAButton() || p.focus < 0 || p.focus >= len(p.fields) {
 		return nil
 	}
 	return &p.fields[p.focus]
