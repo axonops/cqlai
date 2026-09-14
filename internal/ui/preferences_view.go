@@ -42,6 +42,10 @@ var prefKeyLines = []string{
 
 const prefDescribe = "What cqlai starts with. The status line changes this session."
 
+// connectDescribe is the line under the title when the window is asking for a
+// cluster rather than editing the file.
+const connectDescribe = "Where to connect, and how. Save and Connect keeps it for next time."
+
 // fitPrefHeights works out how many settings and how many candidates this
 // screen has room for. Both are settled when the window opens.
 func (m *MainModel) fitPrefHeights(screenHeight int) (rows, matchRows int) {
@@ -71,10 +75,11 @@ func (p preferences) labelWidth() int {
 // change while it is open.
 func (p preferences) fixedWidth() int {
 	width := max(lipgloss.Width("Preferences"), lipgloss.Width(prefDescribe))
+	width = max(width, lipgloss.Width(connectDescribe))
 	for _, keys := range prefKeyLines {
 		width = max(width, lipgloss.Width(keys))
 	}
-	width = max(width, lipgloss.Width(prefSavedTo(p.path)))
+	width = max(width, lipgloss.Width(prefSavedTo(p)))
 
 	// The marker, the labels, the gap and a box; and a column at the edge for
 	// the scrollbar.
@@ -85,8 +90,11 @@ func (p preferences) fixedWidth() int {
 //
 // Beside the button rather than at the top: cqlai reads three possible files
 // and it is worth being able to see which one this is before pressing it.
-func prefSavedTo(path string) string {
-	return "Save writes " + path
+func prefSavedTo(p preferences) string {
+	if p.purpose == connecting {
+		return "Save and Connect writes " + p.path
+	}
+	return "Save writes " + p.path
 }
 
 // prefLineText draws one line of the settings area.
@@ -100,7 +108,7 @@ func (m *MainModel) prefLineText(line prefLine) string {
 
 	marker := "  "
 	switch {
-	case line.field == p.focus && p.onButton == onNoButton:
+	case line.field == p.focus && !p.onAButton():
 		marker = "> "
 	case m.prefWrong(line.field):
 		// Marked even when you are somewhere else, so a window that will not
@@ -131,8 +139,12 @@ func (p preferences) prefMatchWindow() (first, last int) {
 }
 
 // prefHint is the line under the settings saying what the one you are on is
-// for, or what is wrong with it.
+// for, what is wrong with it, or what went wrong when the buttons were pressed.
 func (m *MainModel) prefHint() string {
+	if m.preferences.failed != "" {
+		return m.preferences.failed
+	}
+
 	field := m.preferences.current()
 	if field == nil {
 		return ""
@@ -151,7 +163,7 @@ func (m *MainModel) prefKeys() string {
 	if len(m.preferences.matches) > 0 {
 		return "↑↓/wheel: Move   Enter: Use   Esc: Back"
 	}
-	if m.preferences.onButton != onNoButton {
+	if m.preferences.onAButton() {
 		return "↑↓: Move   Enter: Press   Esc: Close"
 	}
 
@@ -189,7 +201,12 @@ func (m *MainModel) prefRows() (rows []string, listRow, matchRow int, bars map[i
 	p := m.preferences
 	bars = map[int]rune{}
 
-	rows = []string{"Preferences", prefDescribe, ""}
+	title, describe := "Preferences", prefDescribe
+	if p.purpose == connecting {
+		title, describe = "Connect", connectDescribe
+	}
+
+	rows = []string{title, describe, ""}
 	listRow = len(rows)
 
 	lines := p.lines()
@@ -219,7 +236,7 @@ func (m *MainModel) prefRows() (rows []string, listRow, matchRow int, bars map[i
 		for range p.matchRows {
 			rows = append(rows, "")
 		}
-		return append(rows, "", prefSavedTo(p.path), m.prefButtons(), m.prefKeys()), listRow, -1, bars
+		return append(rows, "", prefSavedTo(p), m.prefButtons(), m.prefKeys()), listRow, -1, bars
 	}
 
 	firstMatch, lastMatch := p.prefMatchWindow()
@@ -250,52 +267,82 @@ func (m *MainModel) prefRows() (rows []string, listRow, matchRow int, bars map[i
 		rows = append(rows, "")
 	}
 
-	return append(rows, "", prefSavedTo(p.path), m.prefButtons(), m.prefKeys()), listRow, matchRow, bars
+	return append(rows, "", prefSavedTo(p), m.prefButtons(), m.prefKeys()), listRow, matchRow, bars
 }
 
-// The buttons at the foot. Saving from the keyboard alone would make this the
-// one window in cqlai that cannot be finished with the mouse.
+// The buttons at the foot. Finishing from the keyboard alone would make this
+// the one window in cqlai that cannot be finished with the mouse.
 const (
-	prefSave   = "Save"
-	prefCancel = "Cancel"
+	prefSave           = "Save"
+	prefCancel         = "Cancel"
+	prefConnect        = "Connect"
+	prefSaveAndConnect = "Save and Connect"
 )
+
+// prefButtonLabels is what the buttons say, which depends on what the window is
+// for: settings are saved, a connection is tried - or saved and then tried.
+//
+// The one that acts comes first and Cancel last, and the order is the order
+// they are drawn in and tabbed through.
+func (p preferences) prefButtonLabels() []string {
+	if p.purpose == connecting {
+		return []string{prefConnect, prefSaveAndConnect, prefCancel}
+	}
+	return []string{prefSave, prefCancel}
+}
 
 // prefButtons is the button row, at its full width so it sets the window's.
 func (m *MainModel) prefButtons() string {
-	return "  [ " + prefSave + " ]" + formButtonGap + "  [ " + prefCancel + " ]"
+	labels := m.preferences.prefButtonLabels()
+	row := make([]string, 0, len(labels))
+	for _, label := range labels {
+		row = append(row, "  [ "+label+" ]")
+	}
+	return strings.Join(row, formButtonGap)
 }
 
-// prefButtonSpans is where the two buttons sit inside the row, so drawing and
+// prefButtonStarts is where each button begins inside the row, so drawing and
 // clicking cannot disagree about which one was pressed.
-func prefButtonSpans() (saveEnd, cancelStart, cancelEnd int) {
-	saveEnd = 2 + lipgloss.Width("[ "+prefSave+" ]")
-	cancelStart = saveEnd + len(formButtonGap)
-	return saveEnd, cancelStart, cancelStart + 2 + lipgloss.Width("[ "+prefCancel+" ]")
+func (p preferences) prefButtonStarts() []int {
+	labels := p.prefButtonLabels()
+	starts := make([]int, 0, len(labels))
+
+	at := 0
+	for _, label := range labels {
+		starts = append(starts, at)
+		at += 2 + lipgloss.Width("[ "+label+" ]") + len(formButtonGap)
+	}
+	return starts
 }
 
-// renderPrefButtons draws the button row, with Save dimmed while something in
-// the window cannot be written.
+// renderPrefButtons draws the button row, with the ones that act dimmed while
+// something in the window cannot be used.
 func (m *MainModel) renderPrefButtons(inner int) string {
 	ready := lipgloss.NewStyle().Foreground(m.styles.Accent).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color(formPlaceholderColour))
 	plain := lipgloss.NewStyle().Foreground(m.styles.MutedText.GetForeground())
 
-	mark := func(label string, on bool) string {
-		if on {
-			return "> " + label
+	row := " "
+	for i, label := range m.preferences.prefButtonLabels() {
+		if i > 0 {
+			row += formButtonGap
 		}
-		return "  " + label
+
+		text := "  [ " + label + " ]"
+		if i == m.preferences.buttonIndex() {
+			text = "> [ " + label + " ]"
+		}
+
+		switch {
+		case label == prefCancel:
+			row += plain.Render(text)
+		case m.preferencesReady():
+			row += ready.Render(text)
+		default:
+			row += dim.Render(text)
+		}
 	}
 
-	save := mark("[ "+prefSave+" ]", m.preferences.onButton == onRun)
-	if m.preferencesReady() {
-		save = ready.Render(save)
-	} else {
-		save = dim.Render(save)
-	}
-
-	cancel := plain.Render(mark("[ "+prefCancel+" ]", m.preferences.onButton == onCancel))
-	row := " " + save + formButtonGap + cancel
 	if gap := inner - lipgloss.Width(stripAnsi(row)); gap > 0 {
 		row += strings.Repeat(" ", gap)
 	}
@@ -407,7 +454,10 @@ func (m *MainModel) viewPreferences(screenWidth, screenHeight int) (Layer, bool)
 // prefHintWrong reports whether the hint line is saying what is wrong rather
 // than what the setting is for.
 func (m *MainModel) prefHintWrong() bool {
-	if m.preferences.onButton != onNoButton {
+	if m.preferences.failed != "" {
+		return true
+	}
+	if m.preferences.onAButton() {
 		return false
 	}
 	_, wrong := m.preferenceErrors()[m.preferences.focus]
@@ -468,13 +518,11 @@ func (m *MainModel) prefButtonAt(screenWidth, screenHeight, col, row int) (strin
 
 	// One for the border, one for the row's own padding.
 	at := col - g.x - 2
-	saveEnd, cancelStart, cancelEnd := prefButtonSpans()
-
-	switch {
-	case at >= 0 && at < saveEnd:
-		return "save", true
-	case at >= cancelStart && at < cancelEnd:
-		return "cancel", true
+	labels := m.preferences.prefButtonLabels()
+	for i, start := range m.preferences.prefButtonStarts() {
+		if at >= start && at < start+2+lipgloss.Width("[ "+labels[i]+" ]") {
+			return labels[i], true
+		}
 	}
 	return "", false
 }

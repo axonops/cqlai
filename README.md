@@ -381,6 +381,8 @@ still work.
 
 ```
 ╭──────────────╮
+│ CONNECT      │
+│──────────────│
 │ SAVE RESULTS │
 │ AUTOSAVE     │
 │ SOURCE       │
@@ -392,6 +394,14 @@ still work.
 │ QUIT         │
 ╰──────────────╯
 ```
+
+`CONNECT` asks for a cluster: host, port, keyspace, username, password, the two
+timeouts and the SSL settings, with `Connect`, `Save and Connect` - which writes
+them to `cqlai.json` first - and `Cancel`. A connection that fails leaves the
+window open saying why, so you can change a field and try again.
+
+CQLAI starts whether or not a cluster answers. Without one it says so and why,
+the tabs that need a cluster are dimmed, and `CONNECT` is how you get one.
 
 `SAVE RESULTS` writes what is on screen, and says so when there is nothing to
 write. `AUTOSAVE` saves every query from now on. `SOURCE` runs the CQL in a

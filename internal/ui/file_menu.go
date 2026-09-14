@@ -34,6 +34,7 @@ type fileMenuItem struct {
 	form  formAction // for a form
 	asks  bool       // true if this entry opens a form
 	prefs bool       // true for PREFERENCES, which opens its own window
+	conn  bool       // true for CONNECT, which asks for a cluster
 	quits bool       // true for QUIT, which is the end of it
 
 	// rule is a line across the menu rather than an entry. It cannot be
@@ -50,11 +51,16 @@ type fileMenu struct {
 
 // fileMenuItems is what the menu offers, in the order it offers them.
 //
-// SAVE RESULTS first: it acts on what is on screen, which is what you were
-// looking at when you opened the menu. AutoSave next, because it is a decision
-// about everything that comes after it.
+// CONNECT first, on its own: it is not a file operation - it is how you get a
+// cluster at all, and the first thing to reach for on a shell that has none.
+//
+// SAVE RESULTS next: it acts on what is on screen, which is what you were
+// looking at when you opened the menu. AutoSave after it, because it is a
+// decision about everything that comes later.
 func fileMenuItems() []fileMenuItem {
 	return []fileMenuItem{
+		{label: "CONNECT", conn: true},
+		{rule: true},
 		{label: "SAVE RESULTS", kind: saving},
 		{label: "AUTOSAVE", kind: capturing},
 		{label: "SOURCE", form: sourcing, asks: true},
@@ -150,6 +156,8 @@ func (m *MainModel) chooseFileMenuItem() (*MainModel, tea.Cmd) {
 
 	m.closeFileMenu()
 	switch {
+	case item.conn:
+		return m.openConnect()
 	case item.quits:
 		// Asked rather than done. The other three ways out have their own
 		// answer to this: Ctrl+C and Ctrl+D want the key twice, and typing EXIT

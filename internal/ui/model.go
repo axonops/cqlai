@@ -130,6 +130,10 @@ type MainModel struct {
 	// change made somewhere else can be noticed. Empty until the first reading.
 	schemaVersion string
 
+	// connectError is why there is no cluster, when there is none: cqlai starts
+	// without one rather than refusing to, and the reason is worth saying once.
+	connectError string
+
 	// lastCopied is what cqlai last put on the clipboard, and what a right
 	// click pastes when the terminal will not say what its clipboard holds.
 	lastCopied string
@@ -378,7 +382,11 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		}
 	}
 
-	dbSession, err := db.NewSessionWithOptions(db.SessionOptions{
+	// A failed connection is not a reason to refuse to start. The one thing you
+	// cannot do from a shell that would not start is fix the connection that
+	// stopped it: CONNECT in the FILE menu is how, and it needs a shell to be
+	// opened from.
+	dbSession, connectErr := db.NewSessionWithOptions(db.SessionOptions{
 		Host:           cfg.Host,
 		Port:           cfg.Port,
 		Keyspace:       cfg.Keyspace,
@@ -390,8 +398,11 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		RequestTimeout: options.RequestTimeout,
 		ConfigFile:     options.ConfigFile,
 	})
-	if err != nil {
-		return nil, err
+	connectMessage := ""
+	if connectErr != nil {
+		logger.DebugfToFile("Startup", "Connecting: %v", connectErr)
+		connectMessage = connectErr.Error()
+		dbSession = nil
 	}
 
 	// Create session manager for application state
@@ -439,9 +450,12 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	statusBar.Host = cfg.Host
 	statusBar.Username = cfg.Username
 	statusBar.Keyspace = cfg.Keyspace
-	statusBar.Consistency = dbSession.Consistency()
+	if dbSession != nil {
+		statusBar.Consistency = dbSession.Consistency()
+	}
 
 	return &MainModel{
+		connectError:           connectMessage,
 		topBar:                 NewTopBarModel(),
 		statusBar:              statusBar,
 		input:                  ti,

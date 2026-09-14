@@ -35,9 +35,10 @@ func menuEntry(t *testing.T, label string) int {
 	return -1
 }
 
-// TestTheMenuIsThreeGroups: what moves data in and out, what changes how cqlai
-// starts, and leaving. Each line marks a change of subject.
-func TestTheMenuIsThreeGroups(t *testing.T) {
+// TestTheMenuIsFourGroups: getting a cluster at all, what moves data in and
+// out, what changes how cqlai starts, and leaving. Each line marks a change of
+// subject.
+func TestTheMenuIsFourGroups(t *testing.T) {
 	items := fileMenuItems()
 
 	var groups [][]string
@@ -53,6 +54,7 @@ func TestTheMenuIsThreeGroups(t *testing.T) {
 	groups = append(groups, group)
 
 	assert.Equal(t, [][]string{
+		{"CONNECT"},
 		{"SAVE RESULTS", "AUTOSAVE", "SOURCE", "COPY TO", "COPY FROM"},
 		{"PREFERENCES"},
 		{"QUIT"},

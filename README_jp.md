@@ -312,6 +312,8 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 
 ```
 ╭──────────────╮
+│ CONNECT      │
+│──────────────│
 │ SAVE RESULTS │
 │ AUTOSAVE     │
 │ SOURCE       │
@@ -323,6 +325,14 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 │ QUIT         │
 ╰──────────────╯
 ```
+
+`CONNECT` は接続先を尋ねます(ホスト、ポート、キースペース、ユーザー名、
+パスワード、2つのタイムアウト、SSL設定)。ボタンは `Connect`、`Save and Connect`
+(先に `cqlai.json` へ保存してから接続)、`Cancel` の3つです。接続に失敗した場合は
+理由を表示したままウィンドウが残るので、項目を直して再試行できます。
+
+CQLAIはクラスタに接続できなくても起動します。接続していない場合はその旨と理由を
+表示し、クラスタを必要とするタブは淡色表示になります。`CONNECT` から接続します。
 
 `SAVE RESULTS` は画面に表示されている結果を書き出します(何もない場合はその旨を
 表示します)。`AUTOSAVE` は以降の各クエリを保存し、`SOURCE` はファイル内のCQLを
