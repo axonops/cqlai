@@ -568,6 +568,18 @@ CQLAI provides intelligent, context-aware tab completion to speed up your workfl
 - Function and aggregate names
 - Index names
 
+**Statement Shapes:**
+
+CREATE TABLE, INDEX, MATERIALIZED VIEW, TYPE, FUNCTION, AGGREGATE, TRIGGER,
+KEYSPACE, ROLE and USER complete a word at a time, through their keywords,
+their brackets and their options - `CREATE FUNCTION` offers everything from the
+argument list to `CALLED ON NULL INPUT` to the language.
+
+So do SELECT, INSERT, UPDATE, DELETE and BATCH: after a column in a WHERE
+clause you get the operators (`=`, `IN`, `CONTAINS KEY`, `BETWEEN`, `LIKE`,
+`IS NOT NULL`), after the table the clauses that can follow it in the order
+they are written, and nothing at all once the statement is finished.
+
 **Context-Aware Completions:**
 ```sql
 -- After SELECT, suggests column names and keywords
@@ -584,6 +596,18 @@ DESCRIBE <Tab>         -- Shows: KEYSPACE, TABLE, TYPE, etc.
 
 -- After consistency command
 CONSISTENCY <Tab>      -- Shows: ONE, QUORUM, ALL, etc.
+
+-- After WITH, suggests the table options, and then their values
+... WITH <Tab>                        -- Shows: compaction = , gc_grace_seconds = , etc.
+... WITH compaction = {<Tab>          -- Shows: the keys the map takes
+... WITH compaction = {'class': <Tab> -- Shows: the compaction strategies
+... WITH gc_grace_seconds = <Tab>     -- Shows: <seconds>
+... WITH CLUSTERING ORDER BY (b <Tab> -- Shows: ASC, DESC
+
+-- An index completes through its target, its implementation and its options
+CREATE INDEX i ON t (<Tab>           -- Shows: keys(, values(, entries(, full(, <column name>
+... (email) USING <Tab>              -- Shows: 'sai', 'StorageAttachedIndex', etc.
+... USING 'sai' WITH OPTIONS = {<Tab> -- Shows: the options that index takes
 ```
 
 **File Path Completion:**
@@ -602,6 +626,7 @@ SOURCE '/path/<Tab>    -- Shows: files in /path/
   - Second Tab: Shows all available options in a modal
 - **Smart Filtering:** Completions are filtered based on current context
 - **Escape to Cancel:** Press `Esc` to close the completion modal
+- **What to Type:** Where the next word is yours to invent - the name of a keyspace, a table, a column, or a value - the list says so rather than going empty: `<table name>`, `<column name>`, `<value>`. A note like that is shown in italics and is never put into the prompt.
 
 #### Examples
 

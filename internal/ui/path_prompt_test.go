@@ -149,7 +149,9 @@ func TestChoosingAFilenameKeepsTheDirectory(t *testing.T) {
 	m.completionIndex = 1 // report.json
 	m.handleCompletionSelection()
 
-	assert.Equal(t, "CAPTURE CSV "+filepath.Join(dir, "report.json"), m.input.Value())
+	// With the space that finishes it: an unquoted path is finished as it
+	// stands, and the next thing typed is the next thing.
+	assert.Equal(t, "CAPTURE CSV "+filepath.Join(dir, "report.json")+" ", m.input.Value())
 	assert.False(t, m.showCompletions, "choosing one should put the list away")
 }
 
@@ -200,7 +202,9 @@ func TestCQLWordsAreStillAppliedAsWords(t *testing.T) {
 
 	m.handleCompletionSelection()
 
-	assert.Equal(t, "SELECT * FROM users", m.input.Value())
+	// With the space that finishes a word - a table name is a word, and the
+	// next thing typed is the next word.
+	assert.Equal(t, "SELECT * FROM users ", m.input.Value())
 }
 
 // TestNothingTypedSaysWhatIsExpected rather than listing the whole directory.

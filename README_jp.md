@@ -436,6 +436,16 @@ CQLAIは、ワークフローを高速化するためのインテリジェント
 - 関数と集約名
 - インデックス名
 
+**ステートメントの形:**
+
+CREATE TABLE、INDEX、MATERIALIZED VIEW、TYPE、FUNCTION、AGGREGATE、TRIGGER、
+KEYSPACE、ROLE、USERは、キーワード、括弧、オプションを通して1語ずつ補完されます。
+`CREATE FUNCTION`なら引数リストから`CALLED ON NULL INPUT`、言語まで提示します。
+
+SELECT、INSERT、UPDATE、DELETE、BATCHも同様です。WHERE句のカラムの後には演算子
+(`=`、`IN`、`CONTAINS KEY`、`BETWEEN`、`LIKE`、`IS NOT NULL`)、テーブルの後には
+続けられる句を記述順に提示し、文が完成したら何も提示しません。
+
 **コンテキスト対応補完:**
 ```sql
 -- SELECT後、カラム名とキーワードを提案
@@ -452,6 +462,18 @@ DESCRIBE <Tab>         -- 表示: KEYSPACE, TABLE, TYPE など
 
 -- 一貫性コマンド後
 CONSISTENCY <Tab>      -- 表示: ONE, QUORUM, ALL など
+
+-- WITHの後はテーブルオプション、続いてその値
+... WITH <Tab>                        -- 表示: compaction = , gc_grace_seconds = など
+... WITH compaction = {<Tab>          -- 表示: マップが取るキー
+... WITH compaction = {'class': <Tab> -- 表示: コンパクション戦略
+... WITH gc_grace_seconds = <Tab>     -- 表示: <seconds>
+... WITH CLUSTERING ORDER BY (b <Tab> -- 表示: ASC, DESC
+
+-- インデックスは対象、実装、オプションまで補完されます
+CREATE INDEX i ON t (<Tab>           -- 表示: keys(, values(, entries(, full(, <column name>
+... (email) USING <Tab>              -- 表示: 'sai', 'StorageAttachedIndex' など
+... USING 'sai' WITH OPTIONS = {<Tab> -- 表示: そのインデックスが取るオプション
 ```
 
 **ファイルパス補完:**
@@ -470,6 +492,7 @@ SOURCE '/path/<Tab>    -- 表示: /path/のファイル
   - 2回目のTab: モーダルですべての利用可能なオプションを表示
 - **スマートフィルタリング:** 補完は現在のコンテキストに基づいてフィルタリングされます
 - **Escでキャンセル:** `Esc`を押して補完モーダルを閉じます
+- **何を入力するか:** 次の語を自分で決める場所 - キースペース名、テーブル名、カラム名、値 - では、リストが空になる代わりにそれを示します: `<table name>`、`<column name>`、`<value>`。この注記はイタリックで表示され、プロンプトには挿入されません。
 
 #### 例
 

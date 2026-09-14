@@ -272,12 +272,12 @@ func (sce *SimpleCompletionEngine) getOutputCompletions(words []string, endsWith
 
 func (sce *SimpleCompletionEngine) getCreateCompletions(words []string, endsWithSpace bool) []string {
 	if len(words) == 1 && endsWithSpace {
-		return []string{"KEYSPACE", "TABLE", "INDEX", "TYPE", "TRIGGER", "FUNCTION", "AGGREGATE", "MATERIALIZED", "USER", "ROLE"}
+		return CreateObjectTypes
 	}
 	if len(words) == 2 && !endsWithSpace {
 		suggestions := []string{}
 		second := strings.ToLower(words[1])
-		for _, obj := range []string{"KEYSPACE", "TABLE", "INDEX", "TYPE", "TRIGGER", "FUNCTION", "AGGREGATE", "MATERIALIZED", "USER", "ROLE"} {
+		for _, obj := range CreateObjectTypes {
 			if strings.HasPrefix(strings.ToLower(obj), second) && strings.ToLower(obj) != second {
 				suggestions = append(suggestions, obj)
 			}
@@ -350,10 +350,7 @@ func (sce *SimpleCompletionEngine) getCreateCompletions(words []string, endsWith
 	if len(words) >= 6 && words[1] == "KEYSPACE" && endsWithSpace {
 		for i := 2; i < len(words)-1; i++ {
 			if words[i] == "REPLICATION" && words[i+1] == "=" && i+1 == len(words)-1 {
-				return []string{
-					"{'class': 'SimpleStrategy', 'replication_factor': 1}",
-					"{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}",
-				}
+				return ReplicationTemplates
 			}
 		}
 	}
@@ -429,12 +426,12 @@ func (sce *SimpleCompletionEngine) getAlterCompletions(words []string, endsWithS
 
 func (sce *SimpleCompletionEngine) getDropCompletions(words []string, endsWithSpace bool) []string {
 	if len(words) == 1 && endsWithSpace {
-		return []string{"KEYSPACE", "TABLE", "INDEX", "TYPE", "TRIGGER", "FUNCTION", "AGGREGATE", "MATERIALIZED", "USER", "ROLE"}
+		return CreateObjectTypes
 	}
 	if len(words) == 2 && !endsWithSpace {
 		suggestions := []string{}
 		second := strings.ToLower(words[1])
-		for _, obj := range []string{"KEYSPACE", "TABLE", "INDEX", "TYPE", "TRIGGER", "FUNCTION", "AGGREGATE", "MATERIALIZED", "USER", "ROLE"} {
+		for _, obj := range CreateObjectTypes {
 			if strings.HasPrefix(strings.ToLower(obj), second) && strings.ToLower(obj) != second {
 				suggestions = append(suggestions, obj)
 			}

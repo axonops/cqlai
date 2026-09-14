@@ -59,8 +59,11 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 		// Check for various complete value patterns
 		switch {
 		case strings.HasSuffix(currentInput, "'") || strings.HasSuffix(currentInput, "\""):
-			// Complete quoted string
-			endsWithCompleteValue = true
+			// A quoted string, if the quote is the one that closes it. An open
+			// quote is the start of a value, and the space put after it went
+			// inside the value: `compaction = {'` became `{' ` and the key
+			// picked from the list landed after the stray quote.
+			endsWithCompleteValue = quotesClosed(currentInput)
 		case strings.HasSuffix(upperInput, "TRUE") || strings.HasSuffix(upperInput, "FALSE"):
 			// Check if this is after an equals sign (boolean assignment)
 			if strings.Contains(currentInput, "=") {
@@ -123,50 +126,17 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 		m.showCompletions = false
 		m.completionIndex = -1
 		m.completionScrollOffset = 0
+	} else if len(m.completions) == 1 && completion.IsHint(m.completions[0]) {
+		// The one thing to say is what to type. Show it: there is nothing to
+		// apply, and applying it would take it straight back down again.
+		m.showCompletions = true
+		m.completingPath = false
+		m.completionIndex = 0
+		m.completionScrollOffset = 0
 	} else if len(m.completions) == 1 {
-		// Single completion - apply it immediately
-		selectedCompletion := m.completions[0]
-
-		// Apply the completion by appending to current input
-		newValue := ""
-
-		// Special case: if input ends with a dot (keyspace.), just append the table name
-		if strings.HasSuffix(currentInput, ".") { //nolint:gocritic // more readable as if
-			newValue = currentInput + selectedCompletion
-		} else if strings.HasSuffix(currentInput, " ") {
-			// Just append the completion
-			newValue = currentInput + selectedCompletion
-		} else {
-			// Check if we have a partial word to replace
-			lastSpace := strings.LastIndex(currentInput, " ")
-			if lastSpace >= 0 {
-				// Check if the last word is a complete token that shouldn't be replaced
-				lastWord := currentInput[lastSpace+1:]
-
-				// Check for keyspace.table pattern
-				if strings.Contains(lastWord, ".") { //nolint:gocritic // more readable as if
-					// If the completion starts with "(" it's column list for INSERT, not a table name
-					if strings.HasPrefix(selectedCompletion, "(") {
-						// Append column list after table name
-						newValue = currentInput + " " + selectedCompletion
-					} else {
-						// For keyspace.table patterns, replace the part after the dot
-						// The completion engine returns just the table name
-						dotIndex := strings.LastIndex(currentInput, ".")
-						newValue = currentInput[:dotIndex+1] + selectedCompletion
-					}
-				} else if lastWord == "*" || strings.HasSuffix(lastWord, ")") {
-					// Don't replace, just append
-					newValue = currentInput + " " + selectedCompletion
-				} else {
-					// Replace the partial word
-					newValue = currentInput[:lastSpace+1] + selectedCompletion
-				}
-			} else {
-				// Replace the entire input (single partial word)
-				newValue = selectedCompletion
-			}
-		}
+		// Single completion - apply it immediately, the same way Enter and
+		// Space apply one that was picked from a list.
+		newValue := applyCompletion(currentInput, m.completions[0])
 
 		m.input.SetValue(newValue)
 		m.input.SetCursor(len(newValue))
@@ -185,4 +155,9 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// quotesClosed reports whether every quote in the text has been closed.
+func quotesClosed(input string) bool {
+	return strings.Count(input, "'")%2 == 0 && strings.Count(input, "\"")%2 == 0
 }

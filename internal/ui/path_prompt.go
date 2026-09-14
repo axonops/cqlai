@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -103,7 +104,18 @@ func (m *MainModel) applyPathCompletion(name string) {
 		chosen = parentDir(dir)
 	}
 
-	m.input.SetValue(completion.ReplacePath(input, prefix, quote, chosen))
+	value := completion.ReplacePath(input, prefix, quote, chosen)
+
+	// A finished filename gets the space that finishes a word, the same as a
+	// completed keyword does - but only when it is finished. A directory has
+	// more path to come. So has a name inside a quote that is still open, which
+	// is not the same question as what the value ends with: the quote is at the
+	// front of the name, not the back.
+	if !strings.HasSuffix(chosen, string(filepath.Separator)) && quoteClosed(value, quote) {
+		value += " "
+	}
+
+	m.input.SetValue(value)
 	m.input.CursorEnd()
 	m.clearCompletions()
 }
@@ -115,4 +127,15 @@ func (m *MainModel) clearCompletions() {
 	m.completionIndex = -1
 	m.completionScrollOffset = 0
 	m.completingPath = false
+}
+
+// quoteClosed reports whether a quoted path has its closing quote, and is
+// therefore a finished argument.
+//
+// An unquoted path is finished as it stands; there is nothing to close.
+func quoteClosed(value, quote string) bool {
+	if quote == "" {
+		return true
+	}
+	return strings.Count(value, quote)%2 == 0
 }

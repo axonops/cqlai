@@ -83,6 +83,19 @@ func TestTheTranslationsSayWhichKeyReachesWhichView(t *testing.T) {
 	}
 }
 
+// TestEveryReadmeSaysWhatToTypeWhereCompletionStops.
+//
+// Completion answers a name it cannot look up with a note - `<column name>` -
+// and the notation is worth nothing if the reader has to work out that it is
+// not something to press Enter on.
+func TestEveryReadmeSaysWhatToTypeWhereCompletionStops(t *testing.T) {
+	for _, name := range []string{"README.md", "README_jp.md", "README_es.md", "README_gl.md"} {
+		doc := readDoc(t, name)
+		assert.Contains(t, doc, "`<table name>`", "%s should show the notation", name)
+		assert.Contains(t, doc, "`<column name>`", "%s should show the notation", name)
+	}
+}
+
 // TestTheHelpInTheAppNamesEveryView, since it is what F1 shows and the only
 // documentation anyone reads while they are using cqlai.
 func TestTheHelpInTheAppNamesEveryView(t *testing.T) {

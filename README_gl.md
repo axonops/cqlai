@@ -422,6 +422,18 @@ CQLAI proporciona autocompletado intelixente e consciente do contexto para acele
 - Nomes de funcións e agregados
 - Nomes de índices
 
+**Formas das Sentenzas:**
+
+CREATE TABLE, INDEX, MATERIALIZED VIEW, TYPE, FUNCTION, AGGREGATE, TRIGGER,
+KEYSPACE, ROLE e USER complétanse palabra a palabra, a traves das suas palabras
+clave, das suas parenteses e das suas opcions: `CREATE FUNCTION` ofrece dende a
+lista de argumentos ata `CALLED ON NULL INPUT` e a linguaxe.
+
+Tamen SELECT, INSERT, UPDATE, DELETE e BATCH: tras unha columna nun WHERE
+aparecen os operadores (`=`, `IN`, `CONTAINS KEY`, `BETWEEN`, `LIKE`,
+`IS NOT NULL`), tras a taboa as clausulas que poden seguila na sua orde, e nada
+cando a sentenza xa esta completa.
+
 **Autocompletados Conscientes do Contexto:**
 ```sql
 -- Despois de SELECT, suxire nomes de columnas e palabras clave
@@ -438,6 +450,18 @@ DESCRIBE <Tab>         -- Mostra: KEYSPACE, TABLE, TYPE, etc.
 
 -- Despois do comando de consistencia
 CONSISTENCY <Tab>      -- Mostra: ONE, QUORUM, ALL, etc.
+
+-- Despois de WITH, suxire as opcions de taboa e logo os seus valores
+... WITH <Tab>                        -- Mostra: compaction = , gc_grace_seconds = , etc.
+... WITH compaction = {<Tab>          -- Mostra: as claves que toma o mapa
+... WITH compaction = {'class': <Tab> -- Mostra: as estratexias de compactacion
+... WITH gc_grace_seconds = <Tab>     -- Mostra: <seconds>
+... WITH CLUSTERING ORDER BY (b <Tab> -- Mostra: ASC, DESC
+
+-- Un indice completase ata o seu obxectivo, a sua implementacion e as suas opcions
+CREATE INDEX i ON t (<Tab>           -- Mostra: keys(, values(, entries(, full(, <column name>
+... (email) USING <Tab>              -- Mostra: 'sai', 'StorageAttachedIndex', etc.
+... USING 'sai' WITH OPTIONS = {<Tab> -- Mostra: as opcions dese indice
 ```
 
 **Autocompletado de Rutas de Arquivo:**
@@ -456,6 +480,7 @@ SOURCE '/ruta/<Tab>    -- Mostra: arquivos en /ruta/
   - Segundo Tab: Mostra todas as opcións dispoñibles nun modal
 - **Filtrado Intelixente:** Os autocompletados fíltranse segundo o contexto actual
 - **Escape para Cancelar:** Preme `Esc` para pechar o modal de autocompletado
+- **Que Escribir:** Onde a seguinte palabra é túa para inventala - o nome dun keyspace, unha táboa, unha columna, ou un valor - a lista dío en vez de quedar baleira: `<table name>`, `<column name>`, `<value>`. Esa nota móstrase en cursiva e nunca se insire no prompt.
 
 #### Exemplos
 
