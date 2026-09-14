@@ -347,6 +347,13 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 			}
 			m.completions = m.completionEngine.Complete(fullInput)
 
+			// A note about what to type is an answer to Tab, not something to
+			// watch while typing the name it asked for: once it is all that is
+			// left, the list has nothing more to say.
+			if everyRowIsANote(m.completions) {
+				m.completions = nil
+			}
+
 			// If no completions match, hide the modal
 			if len(m.completions) == 0 {
 				m.showCompletions = false

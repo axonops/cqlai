@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
+	"github.com/axonops/cqlai/internal/ui/completion"
 )
 
 // handleEnterKey handles Enter key press
@@ -64,9 +65,14 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		return m.handleAICommand(command)
 	}
 
-	// If completions are showing, accept the selected one
+	// If completions are showing, accept the selected one - unless it is a
+	// hint, which is a note about what to type and has nothing to accept. The
+	// statement runs instead, so Enter does not have to be pressed twice.
 	if m.showCompletions && len(m.completions) > 0 && m.completionIndex >= 0 {
-		return m.handleCompletionSelection()
+		if !completion.IsHint(m.completions[m.completionIndex]) {
+			return m.handleCompletionSelection()
+		}
+		m.clearCompletions()
 	}
 
 	// Check if modal is showing FIRST before processing command

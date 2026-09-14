@@ -27,9 +27,48 @@ func NewCompletionEngine(dbSession *db.Session, sessionMgr *session.Manager) *Co
 	}
 }
 
-// Complete returns possible completions for the given input
+// Complete returns possible completions for the given input, and a note about
+// what to type where the next word is the user's to invent.
+//
+// The note is added here, in the one place every answer passes through, rather
+// than in each of the places an answer is worked out.
 func (ce *CompletionEngine) Complete(input string) []string {
-	return ce.CompleteNative(input)
+	suggestions := ce.CompleteNative(input)
+
+	suggestions = withoutASecondOpenBracket(input, suggestions)
+
+	switch hint, placement := hintFor(input); placement {
+	case hintInstead:
+		return []string{hint}
+	case hintAlongside:
+		return append(suggestions, hint)
+	case hintWhenNothingElse:
+		if len(suggestions) == 0 {
+			return []string{hint}
+		}
+	case noHint:
+	}
+	return suggestions
+}
+
+// withoutASecondOpenBracket drops the open bracket offered where one is open
+// already.
+//
+// `INSERT INTO t (` was answered with "(", which is the bracket that has just
+// been typed. The answer there is a column name, and the note saying so only
+// appears when there is nothing else in the list.
+func withoutASecondOpenBracket(input string, suggestions []string) []string {
+	if !strings.HasSuffix(strings.TrimRight(input, " "), "(") {
+		return suggestions
+	}
+
+	kept := make([]string, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		if suggestion != "(" {
+			kept = append(kept, suggestion)
+		}
+	}
+	return kept
 }
 
 // CompleteNative returns possible completions for the given input using native pattern matching
@@ -40,6 +79,12 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 	// For empty input, always return top-level commands
 	if strings.TrimSpace(input) == "" {
 		return ce.getTopLevelCommands()
+	}
+
+	// A batch is a run of statements, each finished with a semicolon. The one
+	// being typed is completed as the statement it is.
+	if inner, inBatch := statementInABatch(input); inBatch {
+		return ce.CompleteNative(inner)
 	}
 
 	// Special case: Check for INSERT INTO pattern FIRST
@@ -90,21 +135,46 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 		}
 	}
 
-	// Check if this looks like a complete INSERT statement
-	// If it ends with ) and has VALUES with balanced parens, it's likely complete
-	if strings.HasPrefix(upperInput, "INSERT INTO ") && strings.Contains(upperInput, "VALUES") && strings.HasSuffix(strings.TrimSpace(input), ")") {
-		// Count parentheses after VALUES to check if balanced
-		valuesIdx := strings.Index(upperInput, "VALUES")
-		if valuesIdx > 0 {
-			afterValues := input[valuesIdx+6:]
-			openCount := strings.Count(afterValues, "(")
-			closeCount := strings.Count(afterValues, ")")
-			if closeCount >= openCount && closeCount > 0 {
-				// Complete INSERT statement - return no suggestions
-				logger.DebugfToFile("Completion", "Complete INSERT statement detected, returning no suggestions")
-				return []string{}
-			}
-		}
+	// A table statement is answered here rather than by the parser below.
+	//
+	// The parser counts words, and a table statement is the one that defeats
+	// counting: IF NOT EXISTS moves everything along by three, a column
+	// definition is any number of words, and the options are a map. It offered
+	// types where the primary key goes and nothing at all after the table name.
+	if shape, handled := tableStatementCompletions(input); handled {
+		logger.DebugfToFile("Completion", "Table statement: %d suggestions", len(shape))
+		return filterByWord(input, shape)
+	}
+
+	// An index statement is answered here for the same reason: what it is on
+	// is in brackets, what it uses is a quoted name, and what it is given is a
+	// map, none of which the parser's word positions describe.
+	if shape, handled := indexStatementCompletions(input); handled {
+		logger.DebugfToFile("Completion", "Index statement: %d suggestions", len(shape))
+		return filterByWord(input, shape)
+	}
+
+	// A keyspace and a role are a WITH clause, the same shape as a table's.
+	if shape, handled := keyspaceOptionCompletions(input); handled {
+		logger.DebugfToFile("Completion", "Keyspace clause: %d suggestions", len(shape))
+		return filterByWord(input, shape)
+	}
+	if shape, handled := roleOptionCompletions(input); handled {
+		logger.DebugfToFile("Completion", "Role clause: %d suggestions", len(shape))
+		return filterByWord(input, shape)
+	}
+
+	// The rest of the CREATE statements are a sequence of words in a fixed
+	// order, which is written down once and walked.
+	if shape, handled := createStatementCompletions(input); handled {
+		logger.DebugfToFile("Completion", "Create statement: %d suggestions", len(shape))
+		return filterByWord(input, shape)
+	}
+
+	// The statements that read and write rows are walked the same way.
+	if shape, handled := ce.dmlCompletions(input); handled {
+		logger.DebugfToFile("Completion", "Row statement: %d suggestions", len(shape))
+		return filterByWord(input, shape)
 	}
 
 	// Use the simple completion engine
@@ -227,7 +297,7 @@ func (ce *CompletionEngine) completeNative(input string) []string {
 			logger.DebugfToFile("Completion", "First few commands: %v", suggestions[:min(5, len(suggestions))])
 		}
 	default:
-		suggestions = ce.getCompletionsForContext(words, afterSpace)
+		suggestions = ce.getCompletionsForContext(input, words, afterSpace)
 		logger.DebugfToFile("Completion", "BRANCH: Using context - getCompletionsForContext returned %d suggestions", len(suggestions))
 	}
 
@@ -385,7 +455,7 @@ func (ce *CompletionEngine) handleCopyNativeCompletion(input string) []string {
 }
 
 // getCompletionsForContext returns completions based on the command context
-func (ce *CompletionEngine) getCompletionsForContext(words []string, afterSpace bool) []string {
+func (ce *CompletionEngine) getCompletionsForContext(input string, words []string, afterSpace bool) []string {
 	if len(words) == 0 {
 		return ce.getTopLevelCommands()
 	}
@@ -398,6 +468,14 @@ func (ce *CompletionEngine) getCompletionsForContext(words []string, afterSpace 
 
 	// Get the first word to determine command type
 	firstWord := words[0]
+
+	// A table statement is answered by the same function that answers it
+	// higher up, rather than by a second copy of the rules. The copy here
+	// decided a materialized view was a table and offered the bracket its
+	// columns would go in.
+	if suggestions, handled := tableStatementCompletions(input); handled {
+		return suggestions
+	}
 
 	switch firstWord {
 	case "SELECT":
@@ -463,4 +541,23 @@ func (ce *CompletionEngine) getCompletionsForContext(words []string, afterSpace 
 
 	// If we don't recognize the command, return empty
 	return []string{}
+}
+
+// isTableStatement reports whether the statement is about a table, which is
+// what has a WITH clause of options.
+//
+// A materialized view takes the same options, and reaches the same place: ALTER
+// MATERIALIZED VIEW ... WITH is the table's list.
+func isTableStatement(words []string) bool {
+	if len(words) < 2 {
+		return false
+	}
+
+	switch words[1] {
+	case "TABLE", "COLUMNFAMILY":
+		return true
+	case "MATERIALIZED":
+		return true
+	}
+	return false
 }

@@ -5,7 +5,7 @@ import "strings"
 // getCreateCompletions returns completions for CREATE commands
 func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
-		return CreateDropObjectTypes
+		return CreateObjectTypes
 	}
 
 	lastWord := ""
@@ -91,10 +91,7 @@ func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []
 	if wordPos >= 6 && len(words) > 5 && words[1] == "KEYSPACE" {
 		for i := 2; i < len(words)-1; i++ {
 			if words[i] == "REPLICATION" && words[i+1] == "=" && wordPos == i+2 {
-				return []string{
-					"{'class': 'SimpleStrategy', 'replication_factor': 1}",
-					"{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}",
-				}
+				return ReplicationTemplates
 			}
 		}
 	}
@@ -156,7 +153,7 @@ func (ce *CompletionEngine) getCreateCompletions(words []string, wordPos int) []
 // getDropCompletions returns completions for DROP commands
 func (ce *CompletionEngine) getDropCompletions(words []string, wordPos int) []string {
 	if wordPos == 1 {
-		return CreateDropObjectTypes
+		return CreateObjectTypes
 	}
 
 	lastWord := ""

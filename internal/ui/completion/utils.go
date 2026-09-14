@@ -187,36 +187,42 @@ func GetCommandObjects(command, objectType string) []string {
 	}
 }
 
+// takesNoArguments are the functions written with an empty pair of brackets.
+//
+// Everything else is completed with the bracket open, waiting for a column.
+var takesNoArguments = map[string]bool{
+	"now": true, "uuid": true,
+	"currentTimeUUID": true, "currentTimestamp": true, "currentDate": true,
+	"CURRENT_DATE": true, "CURRENT_TIME": true,
+	"CURRENT_TIMESTAMP": true, "CURRENT_TIMEUUID": true,
+}
+
+// functionFamilies is every function a SELECT can use, in the families
+// Cassandra groups them in: one place to add to when Cassandra gains another.
+func functionFamilies() [][]string {
+	return [][]string{
+		AggregateFunctions,
+		ScalarMathFunctions,
+		CollectionFunctions,
+		MaskFunctions,
+		TimeFunctions,
+		SystemFunctions,
+	}
+}
+
 // getFunctionSuggestions returns CQL function suggestions for SELECT clause
 func (ce *CompletionEngine) getFunctionSuggestions() []string {
-	suggestions := []string{}
+	suggestions := make([]string, 0, 64)
 
-	// Add aggregate functions with opening parenthesis
-	for _, fn := range AggregateFunctions {
-		suggestions = append(suggestions, fn+"(")
-	}
-
-	// Add time/UUID functions with parentheses where appropriate
-	for _, fn := range TimeFunctions {
-		if fn == "now" || fn == "currentTimeUUID" || fn == "currentTimestamp" || fn == "currentDate" {
-			suggestions = append(suggestions, fn+"()")
-		} else {
+	for _, family := range functionFamilies() {
+		for _, fn := range family {
+			if takesNoArguments[fn] {
+				suggestions = append(suggestions, fn+"()")
+				continue
+			}
 			suggestions = append(suggestions, fn+"(")
 		}
 	}
-
-	// Add system functions with opening parenthesis
-	for _, fn := range SystemFunctions {
-		if fn == "uuid" {
-			suggestions = append(suggestions, fn+"()")
-		} else {
-			suggestions = append(suggestions, fn+"(")
-		}
-	}
-
-	// Add type conversion functions
-	suggestions = append(suggestions, "CAST(")
-
 	return suggestions
 }
 

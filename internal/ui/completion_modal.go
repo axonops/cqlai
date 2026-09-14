@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/axonops/cqlai/internal/ui/completion"
 )
 
 // CompletionModal represents a modal for showing completions
@@ -64,6 +65,11 @@ func (cm CompletionModal) RenderContent(styles *Styles) string {
 
 	// Title with scroll indicator
 	titleText := "Completions"
+	if cm.onlyNotes() {
+		// Nothing in the list can be inserted, so calling them completions
+		// would be a lie about what pressing Enter on one would do.
+		titleText = "What to type"
+	}
 	if len(cm.items) > cm.maxShow {
 		titleText = fmt.Sprintf("Completions (%d-%d of %d)",
 			cm.scrollOffset+1, endIndex, len(cm.items))
@@ -88,14 +94,23 @@ func (cm CompletionModal) RenderContent(styles *Styles) string {
 	for i, item := range displayItems {
 		actualIndex := cm.scrollOffset + i
 		var line string
-		if actualIndex == cm.selected {
+		switch {
+		case completion.IsHint(item):
+			// A note about what to type, not something to pick: no arrow, and
+			// the same italics the instructions are written in.
+			noteStyle := lipgloss.NewStyle().
+				Foreground(styles.MutedText.GetForeground()).
+				Italic(true).
+				Width(boxWidth - 2)
+			line = noteStyle.Render("  " + item)
+		case actualIndex == cm.selected:
 			// Selected item with arrow
 			itemStyle := lipgloss.NewStyle().
 				Foreground(styles.Accent).
 				Bold(true).
 				Width(boxWidth - 2)
 			line = itemStyle.Render("→ " + item)
-		} else {
+		default:
 			// Regular item
 			itemStyle := lipgloss.NewStyle().
 				Foreground(styles.MutedText.GetForeground()).
@@ -121,11 +136,32 @@ func (cm CompletionModal) RenderContent(styles *Styles) string {
 		Italic(true).
 		Width(boxWidth - 2).
 		Align(lipgloss.Center)
-	content = append(content, instructionStyle.Render("↑↓/Tab: Navigate • Enter: Accept • Esc: Close"))
+	instructions := "↑↓/Tab: Navigate • Enter: Accept • Esc: Close"
+	if cm.onlyNotes() {
+		instructions = "Type the name • Esc: Close"
+	}
+	content = append(content, instructionStyle.Render(instructions))
 
 	// Join all content
 	modalContent := strings.Join(content, "\n")
 	return modalStyle.Render(modalContent)
+}
+
+// onlyNotes reports whether every row is a note about what to type, with
+// nothing in the list to pick.
+func (cm CompletionModal) onlyNotes() bool {
+	return everyRowIsANote(cm.items)
+}
+
+// everyRowIsANote reports whether a list of completions is all notes about what
+// to type, with nothing in it to pick.
+func everyRowIsANote(items []string) bool {
+	for _, item := range items {
+		if !completion.IsHint(item) {
+			return false
+		}
+	}
+	return len(items) > 0
 }
 
 // GetOverlay returns the modal content and positioning information

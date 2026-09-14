@@ -1,9 +1,8 @@
 package ui
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
+	"github.com/axonops/cqlai/internal/ui/completion"
 )
 
 // handleSpaceKey handles Space key press
@@ -28,46 +27,20 @@ func (m *MainModel) handleSpaceKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 			return m, cmd
 		}
 
-		// Apply the completion like in handleEnterKey
-		currentInput := m.input.Value()
-		newValue := ""
-
-		// Special case: if input ends with a dot (keyspace.), just append the table name
-		if strings.HasSuffix(currentInput, ".") { //nolint:gocritic // more readable as if
-			newValue = currentInput + selectedCompletion
-		} else if strings.HasSuffix(currentInput, " ") {
-			// Just append the completion
-			newValue = currentInput + selectedCompletion
-		} else {
-			// Check if we have a partial word to replace
-			lastSpace := strings.LastIndex(currentInput, " ")
-			if lastSpace >= 0 {
-				// Check if the last word is a complete token that shouldn't be replaced
-				lastWord := currentInput[lastSpace+1:]
-
-				// Check for keyspace.table pattern
-				if strings.Contains(lastWord, ".") { //nolint:gocritic // more readable as if
-					// For keyspace.table patterns, always replace the part after the dot
-					// The completion engine returns just the table name
-					dotIndex := strings.LastIndex(currentInput, ".")
-					newValue = currentInput[:dotIndex+1] + selectedCompletion
-				} else if lastWord == "*" || strings.HasSuffix(lastWord, ")") {
-					// Don't replace, just append
-					newValue = currentInput + " " + selectedCompletion
-				} else {
-					// Replace the partial word
-					newValue = currentInput[:lastSpace+1] + selectedCompletion
-				}
-			} else {
-				// Replace the entire input (single partial word)
-				newValue = selectedCompletion
-			}
+		// A hint is a note about what to type, so the space is the first
+		// character of what is being typed rather than the end of a word.
+		if completion.IsHint(selectedCompletion) {
+			m.clearCompletions()
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(msg)
+			return m, cmd
 		}
 
-		// Add a space after the completion
-		completedText := newValue + " "
+		// Applied the same way Enter and Tab apply one, space included: which
+		// key was pressed is not a reason to get a different answer.
+		completedText := applyCompletion(m.input.Value(), selectedCompletion)
 		m.input.SetValue(completedText)
-		m.input.SetCursor(len(completedText)) // Move cursor to end after space
+		m.input.SetCursor(len(completedText))
 
 		// Hide completions
 		m.showCompletions = false
