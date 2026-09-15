@@ -97,28 +97,47 @@ func prefTestValue(spec prefSpec) string {
 // TestTheWindowShowsWhatIsConfigured.
 func TestTheWindowShowsWhatIsConfigured(t *testing.T) {
 	m := prefModel(t, &config.Config{
-		Host:     "cassandra.example.com",
-		Port:     9142,
-		Debug:    true,
-		Password: "hunter2",
-		SSL:      &config.SSLConfig{Enabled: true, CAPath: "/etc/ca.pem"},
-		AI:       &config.AIConfig{Provider: "anthropic"},
+		Debug:        true,
+		OutputFormat: "JSON",
+		HistoryFile:  "/tmp/history",
+		AI:           &config.AIConfig{Provider: "anthropic", APIKey: "hunter2"},
 	})
 
-	assert.Equal(t, "cassandra.example.com", m.preferences.fields[prefIndex(t, m, "Host")].value())
-	assert.Equal(t, "9142", m.preferences.fields[prefIndex(t, m, "Port")].value())
 	assert.Equal(t, "true", m.preferences.fields[prefIndex(t, m, "Debug")].value())
-	assert.Equal(t, "/etc/ca.pem", m.preferences.fields[prefIndex(t, m, "SSL.CAPath")].value())
+	assert.Equal(t, "JSON", m.preferences.fields[prefIndex(t, m, "OutputFormat")].value())
+	assert.Equal(t, "/tmp/history", m.preferences.fields[prefIndex(t, m, "HistoryFile")].value())
 	assert.Equal(t, "anthropic", m.preferences.fields[prefIndex(t, m, "AI.Provider")].value())
 
 	// An unset number is empty rather than 0: nothing here is meaningfully
 	// zero, and a box saying 0 reads as a value someone chose.
 	assert.Empty(t, m.preferences.fields[prefIndex(t, m, "PageSize")].value())
 
-	// The password is in the window but not on the screen.
-	password := m.preferences.fields[prefIndex(t, m, "Password")]
-	assert.Equal(t, "hunter2", password.value())
-	assert.NotContains(t, password.display(), "hunter2")
+	// A secret is in the window but not on the screen.
+	key := m.preferences.fields[prefIndex(t, m, "AI.APIKey")]
+	assert.Equal(t, "hunter2", key.value())
+	assert.NotContains(t, key.display(), "hunter2")
+}
+
+// TestTheWindowLeavesTheConnectionToConnect.
+//
+// The file kept one host at the top and a list of connections below it, and
+// two windows writing the same setting is the mistake this project keeps
+// finding in its own code. CONNECT has them, against the connection they
+// belong to.
+func TestTheWindowLeavesTheConnectionToConnect(t *testing.T) {
+	m := prefModel(t, &config.Config{Host: "cassandra.example.com"})
+
+	paths := map[string]bool{}
+	for _, field := range m.preferences.fields {
+		paths[field.spec.path] = true
+	}
+
+	for _, gone := range []string{"Host", "Port", "Keyspace", "Username", "Password", "SSL.Enabled", "SSL.CAPath"} {
+		assert.False(t, paths[gone], "%s belongs to a connection", gone)
+	}
+	for _, kept := range []string{"PageSize", "OutputFormat", "HistoryFile", "AI.Provider", "Consistency"} {
+		assert.True(t, paths[kept], "%s is cqlai's own setting", kept)
+	}
 }
 
 // TestSavingWritesTheFile, which is the point of the window.
@@ -127,9 +146,9 @@ func TestSavingWritesTheFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(`{"host":"old","port":9042}`), 0o600))
 
 	m := prefModel(t, &config.Config{Host: "old", Port: 9042, SourcePath: path})
-	m.setPrefField(prefIndex(t, m, "Host"), "new-host")
+	m.setPrefField(prefIndex(t, m, "HistoryFile"), "/tmp/new-history")
 	m.setPrefField(prefIndex(t, m, "PageSize"), "500")
-	m.preferences.fields[prefIndex(t, m, "SSL.Enabled")].yes = true
+	m.preferences.fields[prefIndex(t, m, "Debug")].yes = true
 
 	m, _ = m.savePreferences()
 	assert.False(t, m.preferences.active, "the window stays open after saving")
@@ -140,9 +159,10 @@ func TestSavingWritesTheFile(t *testing.T) {
 
 	var written map[string]any
 	require.NoError(t, json.Unmarshal(data, &written))
-	assert.Equal(t, "new-host", written["host"])
+	assert.Equal(t, "/tmp/new-history", written["historyFile"])
 	assert.Equal(t, float64(500), written["pageSize"])
-	assert.Equal(t, true, written["ssl"].(map[string]any)["enabled"])
+	assert.Equal(t, true, written["debug"])
+	assert.Equal(t, "old", written["host"], "a setting the window does not show is left alone")
 }
 
 // TestSavingAddsNoEmptySections: opening the window makes an SSL block and five
@@ -173,16 +193,16 @@ func TestSaveWaitsForSomethingItCanWrite(t *testing.T) {
 	path := m.preferences.path
 	require.NoError(t, os.Remove(path))
 
-	m.setPrefField(prefIndex(t, m, "Port"), "nine thousand")
+	m.setPrefField(prefIndex(t, m, "PageSize"), "nine thousand")
 	assert.False(t, m.preferencesReady())
-	assert.True(t, m.prefWrong(prefIndex(t, m, "Port")))
+	assert.True(t, m.prefWrong(prefIndex(t, m, "PageSize")))
 
 	m, _ = m.savePreferences()
 	assert.True(t, m.preferences.active, "the window closed on a value it could not write")
 	_, err := os.Stat(path)
 	assert.True(t, os.IsNotExist(err), "a file was written from a window that was not ready")
 
-	m.setPrefField(prefIndex(t, m, "Port"), "9042")
+	m.setPrefField(prefIndex(t, m, "PageSize"), "500")
 	assert.True(t, m.preferencesReady())
 
 	// A value that is not one of the ones offered is wrong in the same way.
@@ -226,7 +246,7 @@ func TestEverySettingCanBeClicked(t *testing.T) {
 // TestClickingAYesNoSettingChangesIt, since there is nothing to type into one.
 func TestClickingAYesNoSettingChangesIt(t *testing.T) {
 	m := prefModel(t, &config.Config{})
-	i := prefIndex(t, m, "SSL.Enabled")
+	i := prefIndex(t, m, "RequireConfirmation")
 	m.preferences.focusField(i)
 
 	g, _ := m.prefGeometry(m.windowWidth, m.windowHeight)
@@ -248,11 +268,11 @@ func TestSpaceChangesAYesNoSettingAndTypesIntoTheRest(t *testing.T) {
 	m = press(m, " ")
 	assert.True(t, m.preferences.fields[prefIndex(t, m, "Debug")].yes)
 
-	m.preferences.focusField(prefIndex(t, m, "Keyspace"))
+	m.preferences.focusField(prefIndex(t, m, "AI.Model"))
 	m = press(m, "a")
 	m = press(m, " ")
 	m = press(m, "b")
-	assert.Equal(t, "a b", m.preferences.fields[prefIndex(t, m, "Keyspace")].input.Value())
+	assert.Equal(t, "a b", m.preferences.fields[prefIndex(t, m, "AI.Model")].input.Value())
 }
 
 // TestTabOffersTheValuesForASetting.
@@ -323,7 +343,7 @@ func TestTheButtonsAreWhereTheyAreDrawn(t *testing.T) {
 func TestAPressOutsideTheWindowClosesIt(t *testing.T) {
 	m := prefModel(t, &config.Config{Host: "h"})
 	path := m.preferences.path
-	m.setPrefField(prefIndex(t, m, "Host"), "typed-but-not-saved")
+	m.setPrefField(prefIndex(t, m, "AI.Model"), "typed-but-not-saved")
 
 	updated, _ := m.handleMousePress(tea.Mouse{X: 0, Y: m.windowHeight - 1, Button: tea.MouseLeft})
 	assert.False(t, updated.preferences.active)
@@ -393,7 +413,7 @@ func lipglossWidth(line string) int {
 // put there by someone who opened the window to change the port.
 func TestTheWindowShowsTheFileRatherThanTheRunningConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cqlai.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"host":"from-the-file"}`), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(`{"pageSize":100,"ai":{"apiKey":"from-the-file"}}`), 0o600))
 
 	m := helpModel()
 	m.windowWidth = 120
@@ -401,11 +421,11 @@ func TestTheWindowShowsTheFileRatherThanTheRunningConfiguration(t *testing.T) {
 
 	// The running configuration, as LoadConfig leaves it: the file, with the
 	// environment applied over the top.
-	m.config = &config.Config{Host: "from-the-environment", Password: "from-the-environment", SourcePath: path}
+	m.config = &config.Config{PageSize: 999, Password: "from-the-environment", SourcePath: path}
 	m.openPreferences()
 
-	assert.Equal(t, "from-the-file", m.preferences.fields[prefIndex(t, m, "Host")].value())
-	assert.Empty(t, m.preferences.fields[prefIndex(t, m, "Password")].value())
+	assert.Equal(t, "100", m.preferences.fields[prefIndex(t, m, "PageSize")].value())
+	assert.Equal(t, "from-the-file", m.preferences.fields[prefIndex(t, m, "AI.APIKey")].value())
 
 	// And saving it back writes what was in the file, not what was around it.
 	saved, _ := m.savePreferences()
@@ -417,7 +437,7 @@ func TestTheWindowShowsTheFileRatherThanTheRunningConfiguration(t *testing.T) {
 
 	var written map[string]any
 	require.NoError(t, json.Unmarshal(data, &written))
-	assert.Equal(t, "from-the-file", written["host"])
+	assert.Equal(t, "from-the-file", written["ai"].(map[string]any)["apiKey"])
 	assert.NotContains(t, written, "password")
 }
 

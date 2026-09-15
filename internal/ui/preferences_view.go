@@ -32,6 +32,7 @@ const (
 // prefKeyLines is every line of keys the window can show. The widest sets the
 // width, so moving between settings does not change it.
 var prefKeyLines = []string{
+	"←→: List/Settings   ↑↓: Move   Enter: Choose   Esc: Close",
 	"↑↓: Setting   Tab: Complete   Esc: Close",
 	"↑↓: Setting   Tab: Values   Esc: Close",
 	"↑↓: Setting   Space: Change   Esc: Close",
@@ -40,11 +41,11 @@ var prefKeyLines = []string{
 	"↑↓/wheel: Move   Enter: Use   Esc: Back",
 }
 
-const prefDescribe = "What cqlai starts with. The status line changes this session."
+const prefDescribe = "What cqlai starts with. Connections are in CONNECT; the status line changes this session."
 
 // connectDescribe is the line under the title when the window is asking for a
 // cluster rather than editing the file.
-const connectDescribe = "Where to connect, and how. Save and Connect keeps it for next time."
+const connectDescribe = "Where to connect, and how. Save and Connect keeps it, and opens with it next time."
 
 // fitPrefHeights works out how many settings and how many candidates this
 // screen has room for. Both are settled when the window opens.
@@ -83,8 +84,16 @@ func (p preferences) fixedWidth() int {
 
 	// The marker, the labels, the gap and a box; and a column at the edge for
 	// the scrollbar.
-	return max(width, 2+p.labelWidth()+2+prefValueWidth) + 1
+	settings := max(width, 2+p.labelWidth()+2+prefValueWidth) + 1
+	if p.purpose == connecting {
+		// The connections down the left, and the rule between the two panes.
+		return settings + p.connectionListWidth() + len(prefPaneGap)
+	}
+	return settings
 }
+
+// prefPaneGap is the rule between the list of connections and the settings.
+const prefPaneGap = " │ "
 
 // prefSavedTo is the line above the buttons, saying which file Save writes.
 //
@@ -117,6 +126,65 @@ func (m *MainModel) prefLineText(line prefLine) string {
 	}
 
 	return marker + pad(field.spec.label, p.labelWidth()) + "  " + field.display()
+}
+
+// besideTheList puts the connection this row of the window sits beside in
+// front of it.
+//
+// One description of the two panes, used to draw them and to work out which of
+// them a click landed in: a second copy is how a click lands on the row above
+// the one pointed at.
+func (m *MainModel) besideTheList(row int, settings string) string {
+	p := m.preferences
+	if p.purpose != connecting {
+		return settings
+	}
+	return pad(p.connectionLine(row+p.listScroll), p.connectionListWidth()) + prefPaneGap + settings
+}
+
+// connectionStyle is how a row of the connection list is drawn: the cursor
+// stands out, the connection the settings belong to is marked, and the button
+// that makes a new one reads as one.
+func (m *MainModel) connectionStyle(row int) lipgloss.Style {
+	plain := lipgloss.NewStyle().Foreground(m.styles.MutedText.GetForeground())
+	accent := lipgloss.NewStyle().Foreground(m.styles.Accent)
+
+	p := m.preferences
+	switch {
+	case p.purpose != connecting:
+		return plain
+	case row == headingRow:
+		return accent.Bold(true) // CONNECTIONS, the same as a section heading
+	case p.onList && row == p.listCursor:
+		return accent.Bold(true)
+	case row == p.connectedRow():
+		// The one the shell is using, in the colour the rest of cqlai says
+		// that something is working in.
+		return lipgloss.NewStyle().Foreground(m.styles.Ok)
+	case row == createRow:
+		return accent
+	case row-firstConnection == p.chosen:
+		return accent
+	}
+	return plain
+}
+
+// splitPanes takes a row of the window apart into the list on the left and the
+// settings on the right, at the width the list is drawn with.
+//
+// One width, used to draw the row, to colour its two halves and to work out
+// which pane a click landed in.
+func (m *MainModel) splitPanes(row string) (list, settings string) {
+	if m.preferences.purpose != connecting {
+		return "", row
+	}
+
+	pane := m.preferences.connectionListWidth() + len([]rune(prefPaneGap))
+	letters := []rune(row)
+	if len(letters) < pane {
+		return row, ""
+	}
+	return string(letters[:pane]), string(letters[pane:])
 }
 
 // prefWindow is the part of the settings list that is showing.
@@ -167,7 +235,14 @@ func (m *MainModel) prefKeys() string {
 		return "↑↓: Move   Enter: Press   Esc: Close"
 	}
 
+	if m.preferences.onList {
+		return "←→: List/Settings   ↑↓: Move   Enter: Choose   Esc: Close"
+	}
+
 	keys := "↑↓: Setting   Esc: Close"
+	if m.preferences.purpose == connecting {
+		keys = "←: Connections   ↑↓: Setting   Esc: Close"
+	}
 	if field := m.preferences.current(); field != nil {
 		switch field.spec.kind {
 		case prefPath:
@@ -215,7 +290,7 @@ func (m *MainModel) prefRows() (rows []string, listRow, matchRow int, bars map[i
 	scrolls := len(lines) > p.rows
 
 	for i := first; i < last; i++ {
-		rows = append(rows, m.prefLineText(lines[i]))
+		rows = append(rows, m.besideTheList(len(rows)-listRow, m.prefLineText(lines[i])))
 		if scrolls {
 			bar := '░'
 			if thumb[i-first] {
@@ -226,7 +301,7 @@ func (m *MainModel) prefRows() (rows []string, listRow, matchRow int, bars map[i
 	}
 	// A short list still takes the whole area, so the window is one size.
 	for range p.rows - (last - first) {
-		rows = append(rows, "")
+		rows = append(rows, m.besideTheList(len(rows)-listRow, ""))
 	}
 
 	rows = append(rows, "", m.prefHint())
@@ -418,9 +493,19 @@ func (m *MainModel) viewPreferences(screenWidth, screenHeight int) (Layer, bool)
 			continue
 		}
 
+		// The left pane is a list of connections and the right one is the
+		// settings: a heading or a field that will not save colours its own
+		// side of the rule and not the other.
+		settings, list := row, ""
+		listStyle := textStyle
+		if i >= g.listRow && i < g.listRow+m.preferences.rows {
+			list, settings = m.splitPanes(row)
+			listStyle = m.connectionStyle(i - g.listRow + m.preferences.listScroll)
+		}
+
 		if bar, ok := g.bars[i]; ok {
 			// One column short, so the bar has the edge to itself.
-			text := style.Render(pad(" "+row, inner-1))
+			text := listStyle.Render(" "+list) + style.Render(pad(settings, inner-2-lipgloss.Width(list)))
 			switch bar {
 			case '█':
 				text += thumbStyle.Render("█")
@@ -433,7 +518,7 @@ func (m *MainModel) viewPreferences(screenWidth, screenHeight int) (Layer, bool)
 			continue
 		}
 
-		drawn = append(drawn, style.Render(pad(" "+row, inner)))
+		drawn = append(drawn, listStyle.Render(" "+list)+style.Render(pad(settings, inner-1-lipgloss.Width(list))))
 	}
 
 	box := lipgloss.NewStyle().
@@ -476,6 +561,11 @@ func (m *MainModel) prefFieldAt(screenWidth, screenHeight, col, row int) (int, b
 
 	n := row - g.y - 1 - g.listRow
 	if n < 0 || n >= m.preferences.rows {
+		return 0, false
+	}
+
+	// The left pane is a list of connections, not of settings.
+	if _, inList := m.connectionRowAt(g, col, n); inList {
 		return 0, false
 	}
 
@@ -534,4 +624,45 @@ func (m *MainModel) inPreferences(screenWidth, screenHeight, col, row int) bool 
 		return false
 	}
 	return col >= g.x && col < g.x+g.width && row >= g.y && row < g.y+g.height
+}
+
+// connectionRowAt is the row of the connection list a click landed on, if it
+// landed in the left pane at all.
+//
+// The pane is only there while the window is asking for a connection, and it
+// is as wide as the list plus the rule beside it - the same width the rows are
+// drawn with.
+func (m *MainModel) connectionRowAt(g prefGeometry, col, line int) (int, bool) {
+	p := m.preferences
+	if p.purpose != connecting {
+		return 0, false
+	}
+
+	pane := p.connectionListWidth() + len(prefPaneGap)
+	if col-g.x-1 >= pane {
+		return 0, false
+	}
+
+	row := line + p.listScroll
+	if row < 0 || row >= len(p.connectionRows()) {
+		return 0, false
+	}
+	return row, true
+}
+
+// prefConnectionAt is the connection row a click landed on.
+func (m *MainModel) prefConnectionAt(screenWidth, screenHeight, col, row int) (int, bool) {
+	g, ok := m.prefGeometry(screenWidth, screenHeight)
+	if !ok {
+		return 0, false
+	}
+	if col < g.x || col >= g.x+g.width {
+		return 0, false
+	}
+
+	line := row - g.y - 1 - g.listRow
+	if line < 0 || line >= m.preferences.rows {
+		return 0, false
+	}
+	return m.connectionRowAt(g, col, line)
 }

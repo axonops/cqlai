@@ -128,7 +128,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
     - Soporte para operacións complexas incluíndo DDL e DML.
     - **Require configuración de clave API** - non necesaria para a funcionalidade principal.
 - **Configuración:**
-    - Configuración simple mediante `cqlai.json` no directorio actual ou `~/.cqlai.json`.
+    - Configuración simple mediante `cqlai.json` no directorio actual ou `~/.cassandra/cqlai.json`, xunto a `cqlshrc`.
     - Soporte para conexións SSL/TLS con autenticación por certificado.
 - **Binario Único:** Distribuído como un único binario estático sen dependencias externas. Inicio rápido e pegada pequena.
 
@@ -323,11 +323,11 @@ As lapelas lense de esquerda a dereita, e as teclas seguen a mesma orde.
 ```
 ╭──────────────╮
 │ SAVE RESULTS │
-│ AUTOSAVE     │
 │ SOURCE       │
 │ COPY TO      │
 │ COPY FROM    │
 │──────────────│
+│ AUTOSAVE     │
 │ PREFERENCES  │
 │──────────────│
 │ QUIT         │
@@ -733,7 +733,8 @@ As fontes de configuración cárganse na seguinte orde (as fontes posteriores so
 
 2. **Arquivos de configuración JSON de CQLAI**
    - `./cqlai.json` (directorio actual)
-   - `~/.cqlai.json` (directorio home do usuario)
+   - `~/.cassandra/cqlai.json` (xunto a `cqlshrc`, e onde se crea un novo)
+   - `~/.cqlai.json` (directorio home do usuario, onde ía antes)
    - `~/.config/cqlai/config.json` (directorio de configuración XDG)
 
 3. **Variables de contorno**
@@ -855,9 +856,9 @@ Usa Anthropic para modelos potentes e conscientes do contexto. Ideal para consul
 
 - **Obter Clave API:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
 - **Modelos Recomendados:**
-  - `claude-3-opus-20240229` (máis potente)
-  - `claude-3-sonnet-20240229` (predeterminado, rendemento equilibrado)
-  - `claude-3-haiku-20240307` (máis rápido)
+  - `claude-opus-5` (predeterminado, o máis capaz)
+  - `claude-sonnet-5` (máis rápido, menos custoso)
+  - `claude-haiku-4-5` (o máis rápido)
 
 **Configuración:**
 ```json
@@ -865,7 +866,7 @@ Usa Anthropic para modelos potentes e conscientes do contexto. Ideal para consul
   "ai": {
     "provider": "anthropic",
     "apiKey": "sk-ant-...",
-    "model": "claude-3-sonnet-20240229"
+    "model": "claude-opus-5"
   }
 }
 ```
@@ -966,7 +967,7 @@ Usa OpenRouter para acceder a múltiples modelos de IA a través dunha soa API.
   "ai": {
     "provider": "openrouter",
     "apiKey": "sk-or-...",
-    "model": "anthropic/claude-3-sonnet",
+    "model": "anthropic/claude-opus-5",
     "url": "https://openrouter.ai/api/v1"
   }
 }
@@ -1036,8 +1037,9 @@ CQLAI busca arquivos de configuración nas seguintes localizacións:
 
 **Arquivos JSON de CQLAI:**
 1. `./cqlai.json` (directorio de traballo actual)
-2. `~/.cqlai.json` (directorio home do usuario)
-3. `~/.config/cqlai/config.json` (directorio de configuración XDG en Linux/macOS)
+2. `~/.cassandra/cqlai.json` (xunto a `cqlshrc`)
+3. `~/.cqlai.json` (directorio home do usuario)
+4. `~/.config/cqlai/config.json` (directorio de configuración XDG en Linux/macOS)
 
 ### Variables de Contorno
 

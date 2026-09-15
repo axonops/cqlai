@@ -50,7 +50,7 @@ AIプロバイダーは`cqlai.json`設定ファイルで設定されます。`cq
   "provider": "anthropic",
   "anthropic": {
     "apiKey": "your-anthropic-api-key-here",
-    "model": "claude-3-sonnet-20240229"  // オプション
+    "model": "claude-opus-5"  // オプション
   }
 }
 ```

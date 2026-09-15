@@ -19,25 +19,33 @@ type Config struct {
 	// "keyspace": "" and "password": "" to a file that never had them. Reading
 	// is unaffected: a key that is not there leaves the default in place, which
 	// is what an empty value meant anyway.
-	Host                string        `json:"host,omitempty"`
-	Port                int           `json:"port,omitempty"`
-	Keyspace            string        `json:"keyspace,omitempty"`
-	Username            string        `json:"username,omitempty"`
-	Password            string        `json:"password,omitempty"`
-	RequireConfirmation bool          `json:"requireConfirmation,omitempty"`
-	Consistency         string        `json:"consistency,omitempty"` // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
-	PageSize            int           `json:"pageSize,omitempty"`
-	MaxMemoryMB         int           `json:"maxMemoryMB,omitempty"`    // Max memory for results in MB (default: 10)
-	ConnectTimeout      int           `json:"connectTimeout,omitempty"` // Connection timeout in seconds
-	RequestTimeout      int           `json:"requestTimeout,omitempty"` // Request timeout in seconds
-	Debug               bool          `json:"debug,omitempty"`          // Enable debug logging
-	HistoryFile         string        `json:"historyFile,omitempty"`    // Path to CQL command history file
-	AIHistoryFile       string        `json:"aiHistoryFile,omitempty"`  // Path to AI command history file
-	OutputFormat        string        `json:"outputFormat,omitempty"`   // Default output format (TABLE, ASCII, EXPAND, JSON)
-	SSL                 *SSLConfig    `json:"ssl,omitempty"`
-	AI                  *AIConfig     `json:"ai,omitempty"`
-	AuthProvider        *AuthProvider `json:"authProvider,omitempty"`
-	LoadWarnings        []string      `json:"-"` // Warnings from loading config files (not serialized)
+	Host                string     `json:"host,omitempty"`
+	Port                int        `json:"port,omitempty"`
+	Keyspace            string     `json:"keyspace,omitempty"`
+	Username            string     `json:"username,omitempty"`
+	Password            string     `json:"password,omitempty"`
+	RequireConfirmation bool       `json:"requireConfirmation,omitempty"`
+	Consistency         string     `json:"consistency,omitempty"` // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
+	PageSize            int        `json:"pageSize,omitempty"`
+	MaxMemoryMB         int        `json:"maxMemoryMB,omitempty"`    // Max memory for results in MB (default: 10)
+	ConnectTimeout      int        `json:"connectTimeout,omitempty"` // Connection timeout in seconds
+	RequestTimeout      int        `json:"requestTimeout,omitempty"` // Request timeout in seconds
+	Debug               bool       `json:"debug,omitempty"`          // Enable debug logging
+	HistoryFile         string     `json:"historyFile,omitempty"`    // Path to CQL command history file
+	AIHistoryFile       string     `json:"aiHistoryFile,omitempty"`  // Path to AI command history file
+	OutputFormat        string     `json:"outputFormat,omitempty"`   // Default output format (TABLE, ASCII, EXPAND, JSON)
+	SSL                 *SSLConfig `json:"ssl,omitempty"`
+
+	// Name is what this connection is called in the CONNECT window, and
+	// Connections are the ones it has been told to keep. A saved connection is
+	// a configuration of its own with only the connection settings filled in,
+	// so the window edits one the same way it edits the file.
+	Name        string   `json:"name,omitempty"`
+	Connections []Config `json:"connections,omitempty"`
+
+	AI           *AIConfig     `json:"ai,omitempty"`
+	AuthProvider *AuthProvider `json:"authProvider,omitempty"`
+	LoadWarnings []string      `json:"-"` // Warnings from loading config files (not serialized)
 
 	// SourcePath is the JSON file this config was read from, empty when none of
 	// the candidate paths existed. The PREFERENCES window writes back to it, so
@@ -92,6 +100,31 @@ const (
 	OutputFormatExpand OutputFormat = "EXPAND"
 	OutputFormatJSON   OutputFormat = "JSON"
 )
+
+// ConfigPaths are the files cqlai reads its configuration from, in the order it
+// looks for them.
+//
+// The first is the working directory, which is a configuration for whatever is
+// being worked on rather than for the person. The rest are the person's, and
+// the one that counts is beside cqlshrc: cqlai already reads that file out of
+// ~/.cassandra, and keeping its own next to it is one directory to find rather
+// than two. The two after it are where the file used to go, and are still read
+// so that upgrading changes nothing.
+func ConfigPaths() []string {
+	home := os.Getenv("HOME")
+
+	return []string{
+		"cqlai.json",
+		filepath.Join(home, ".cassandra", "cqlai.json"),
+		filepath.Join(home, ".cqlai.json"),
+		filepath.Join(home, ".config", "cqlai", "config.json"),
+	}
+}
+
+// DefaultConfigPath is where a configuration that came from nowhere is written.
+func DefaultConfigPath() string {
+	return filepath.Join(os.Getenv("HOME"), ".cassandra", "cqlai.json")
+}
 
 // LoadConfig loads configuration from file and environment variables
 // If customConfigPath is provided and not empty, it will be used instead of default locations
@@ -156,12 +189,7 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 		configPaths = []string{customConfigPath[0]}
 		logger.DebugfToFile("Config", "Using custom config path: %s", customConfigPath[0])
 	} else {
-		// Use default locations
-		configPaths = []string{
-			"cqlai.json",
-			filepath.Join(os.Getenv("HOME"), ".cqlai.json"),
-			filepath.Join(os.Getenv("HOME"), ".config", "cqlai", "config.json"),
-		}
+		configPaths = ConfigPaths()
 		logger.DebugfToFile("Config", "Looking for JSON config files in: %v", configPaths)
 	}
 
@@ -194,6 +222,16 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 		}
 		logger.DebugfToFile("Config", "Config after JSON: host=%s, port=%d, username=%s, keyspace=%s",
 			config.Host, config.Port, config.Username, config.Keyspace)
+
+		// The connections the file keeps are what it connects to, and the
+		// first of them is the default. The settings at the top level are the
+		// same thing said twice; they are written to keep older builds - and
+		// anything reading the file by hand - working, and the list decides.
+		if standard, kept := config.DefaultConnection(); kept {
+			config.UseConnection(standard)
+			logger.DebugfToFile("Config", "Default connection %s: host=%s, port=%d",
+				ConnectionName(standard), config.Host, config.Port)
+		}
 	}
 
 	// Override with environment variables

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/router"
 )
 
@@ -175,4 +176,42 @@ func slug(heading string) string {
 		}
 	}
 	return b.String()
+}
+
+// TestTheReadmeSaysConnectionsAreKept.
+//
+// The list of saved connections is the answer to "do I have to type this host
+// again", and a reader who does not know it is there will.
+func TestTheReadmeSaysConnectionsAreKept(t *testing.T) {
+	for _, name := range []string{"README.md", "README_jp.md"} {
+		doc := readDoc(t, name)
+		assert.Contains(t, doc, createConnection, "%s should show the button", name)
+		assert.Contains(t, doc, `"connections"`, "%s should show what the file holds", name)
+	}
+}
+
+// TestTheDocsListTheConfigurationFiles.
+//
+// Where cqlai looks for its configuration is written out in eight documents in
+// four languages, and the code that looks is one function. Changing the code
+// and half the documents is how a reader ends up creating a file cqlai will
+// never read.
+func TestTheDocsListTheConfigurationFiles(t *testing.T) {
+	// ConfigPaths builds them from the home directory, and the documents write
+	// that as a tilde.
+	t.Setenv("HOME", "~")
+
+	for _, name := range []string{
+		"README.md", "README_jp.md", "README_es.md", "README_gl.md",
+		"docs/INSTALLATION.md", "docs/INSTALLATION_jp.md",
+		"docs/CQLSHRC_SUPPORT.md", "docs/CQLSHRC_SUPPORT_jp.md",
+	} {
+		doc := readDoc(t, name)
+		for _, path := range config.ConfigPaths() {
+			// The one in the working directory is written either way round:
+			// `cqlai.json`, or `./cqlai.json` to say which directory.
+			said := strings.Contains(doc, "`"+path+"`") || strings.Contains(doc, "`./"+path+"`")
+			assert.True(t, said, "%s does not say cqlai reads %s", name, path)
+		}
+	}
 }

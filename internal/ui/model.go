@@ -259,6 +259,14 @@ func (m *MainModel) rebuildAIConversation() {
 			if strings.HasPrefix(msg.Content, "Tool ") && strings.Contains(msg.Content, " result: ") {
 				continue
 			}
+
+			// What Claude thought on the way to the answer, above it and in
+			// the muted colour: it is worth reading and it is not the answer.
+			if msg.Type == "reasoning" {
+				conversation += "\n" + m.styles.MutedText.Render("Thinking:") + "\n" +
+					m.styles.MutedText.Render(m.wrapAIText(msg.Content)) + "\n"
+				continue
+			}
 			wrappedContent := m.wrapAIText(msg.Content)
 			// Check if this is an error message
 			if len(msg.Content) > 6 && msg.Content[:6] == "Error:" {
@@ -619,11 +627,15 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Clear and rebuild conversation messages from AI manager
 				m.aiConversationMessages = []AIMessage{}
 				for _, msg := range history {
-					m.aiConversationMessages = append(m.aiConversationMessages, AIMessage{
+					message := AIMessage{
 						Role:            msg.Role,
 						Content:         msg.Content,
 						SystemGenerated: msg.SystemGenerated,
-					})
+					}
+					if msg.Reasoning {
+						message.Type = "reasoning"
+					}
+					m.aiConversationMessages = append(m.aiConversationMessages, message)
 				}
 				logger.DebugfToFile("AI", "Synced %d messages from AI conversation history", len(history))
 				// Rebuild the conversation view

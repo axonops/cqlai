@@ -254,8 +254,9 @@ nano cqlai.json
 ### Configuration Locations
 CQLAI looks for configuration in the following order:
 1. `./cqlai.json` (current directory)
-2. `~/.cqlai.json` (user home directory)
-3. `~/.config/cqlai/config.json` (XDG config directory)
+2. `~/.cassandra/cqlai.json` (beside `cqlshrc`)
+3. `~/.cqlai.json` (user home directory)
+4. `~/.config/cqlai/config.json` (XDG config directory)
 
 ### Environment Variables
 Configuration can also be set via environment variables:
