@@ -28,11 +28,11 @@ func TestPastingIntoASetting(t *testing.T) {
 	assert.Equal(t, pastedKey, m.preferences.fields[i].value())
 
 	// It goes in at the cursor, like typing does.
-	m.preferences.focusField(prefIndex(t, m, "Host"))
+	m.preferences.focusField(prefIndex(t, m, "AI.Model"))
 	m = press(m, "a")
 	m = paste(m, "bc")
 	m = press(m, "d")
-	assert.Equal(t, "abcd", m.preferences.fields[prefIndex(t, m, "Host")].value())
+	assert.Equal(t, "abcd", m.preferences.fields[prefIndex(t, m, "AI.Model")].value())
 }
 
 // TestPastingClosesTheCandidateList, which was worked out from what was there
@@ -53,7 +53,7 @@ func TestPastingClosesTheCandidateList(t *testing.T) {
 // and the pasted text would go somewhere it could not be seen.
 func TestPastingIntoAYesNoSettingDoesNothing(t *testing.T) {
 	m := prefModel(t, &config.Config{})
-	i := prefIndex(t, m, "SSL.Enabled")
+	i := prefIndex(t, m, "Debug")
 	m.preferences.focusField(i)
 
 	m = paste(m, "yes")

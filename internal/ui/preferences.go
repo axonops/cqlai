@@ -173,6 +173,21 @@ type preferences struct {
 	scrollTop int // the first candidate shown
 	matchRows int
 
+	// The connections the file has been told to keep, drawn down the left of
+	// the CONNECT window. chosen is the one the settings on the right belong
+	// to; listCursor is the row of the list the cursor is on, which is not the
+	// same thing while the list is being moved through; onList says which of
+	// the two panes has the keys.
+	connections []config.Config
+	chosen      int
+	listCursor  int
+	listScroll  int
+	onList      bool
+
+	// connected is the name of the connection the shell is using, so the list
+	// can say which one that is. Empty when there is no cluster.
+	connected string
+
 	// cfg is the file as it was read, and what Save writes back. Not the
 	// configuration cqlai is running on: see the note at the top.
 	cfg  *config.Config
@@ -221,35 +236,107 @@ func (p preferences) lineOf(field int) int {
 	return 0
 }
 
-// connectionSpecs is what a connection takes: the CONNECTION and SSL sections
-// of the settings, and nothing else. Where the file keeps them and how they are
-// checked is the same either way.
+// connectionSections are the settings that belong to a connection rather than
+// to cqlai: where to connect and how.
+//
+// They are edited in CONNECT, against the connection they belong to, and not in
+// PREFERENCES: the file kept one host at the top and a list of connections
+// below it, and two windows writing the same setting is the mistake this
+// project keeps finding in its own code.
+var connectionSections = map[string]bool{"CONNECTION": true, "SSL": true}
+
+// connectionSpecs is what a connection takes: those sections, and nothing else.
+// Where the file keeps them and how they are checked is the same either way.
 func connectionSpecs() []prefSpec {
 	// The section a setting is in is written on the first setting of it, so
 	// walking the list means keeping track of which one we are in.
-	wanted := map[string]bool{"CONNECTION": true, "SSL": true}
+	wanted := connectionSections
 
-	specs := make([]prefSpec, 0, 16)
+	// The name the connection is kept under. First, because it is what the
+	// list on the left shows and what Save writes it as.
+	specs := []prefSpec{{
+		section: "CONNECTION DETAILS", path: "Name", label: "Name", kind: prefText,
+		hint: "what to call this connection - the host, left empty",
+	}}
 	section := ""
 	for _, spec := range prefSpecs() {
 		if spec.section != "" {
 			section = spec.section
 		}
-		if wanted[section] {
-			specs = append(specs, spec)
+		if !wanted[section] {
+			continue
 		}
+		// The section heading is on the name now.
+		if spec.section == "CONNECTION" {
+			spec.section = ""
+		}
+		specs = append(specs, spec)
+	}
+	return specs
+}
+
+// settingsSpecs is everything PREFERENCES edits: the settings that are cqlai's
+// own rather than a connection's.
+func settingsSpecs() []prefSpec {
+	specs := make([]prefSpec, 0, 32)
+
+	section := ""
+	heading := "" // the heading of the next section kept, moved onto its first setting
+	for _, spec := range prefSpecs() {
+		if spec.section != "" {
+			section, heading = spec.section, spec.section
+		}
+		if connectionSections[section] {
+			continue
+		}
+
+		spec.section = heading
+		heading = ""
+		specs = append(specs, spec)
 	}
 	return specs
 }
 
 // openPreferences reads the file into the window.
 func (m *MainModel) openPreferences() (*MainModel, tea.Cmd) {
-	return m.openSettings(editingSettings, prefSpecs())
+	return m.openSettings(editingSettings, settingsSpecs())
 }
 
 // openConnect asks for a cluster to connect to.
+//
+// The connections the file keeps are on the left, and the one the shell is
+// using - or would use - is what the settings start on, so the window opens on
+// the connection you are most likely to want.
 func (m *MainModel) openConnect() (*MainModel, tea.Cmd) {
-	return m.openSettings(connecting, connectionSpecs())
+	updated, cmd := m.openSettings(connecting, connectionSpecs())
+	if !updated.preferences.active {
+		return updated, cmd
+	}
+
+	p := &updated.preferences
+	p.connections = append([]config.Config{}, p.cfg.Connections...)
+
+	// A file written before there was a list has its connection at the top
+	// level: it becomes the first of them, which is the one cqlai opens with,
+	// and is what the top level meant.
+	if len(p.connections) == 0 && p.cfg.Host != "" {
+		p.connections = []config.Config{config.ConnectionSettings(*p.cfg)}
+	}
+	if len(p.connections) == 0 {
+		p.connections = []config.Config{{}}
+	}
+
+	// Which one the shell is using, so the list can say so - and so the window
+	// opens on it rather than on whatever happens to be first.
+	if updated.connected() && updated.config != nil {
+		p.connected = config.ConnectionName(*updated.config)
+	}
+
+	p.chosen = max(p.connectedRow()-firstConnection, 0)
+	p.listCursor = p.chosen + firstConnection
+	updated.loadConnection()
+	p.focusField(0)
+	return updated, cmd
 }
 
 // openSettings reads the file into the window, showing the settings given.

@@ -15,10 +15,22 @@ const (
 	ProviderMock       Provider = "mock"
 )
 
+// anthropicMaxTokens is the room an answer is given.
+//
+// It was 1024, which is a page: a plan with a long CQL statement in it, or an
+// answer about a schema, was cut off partway through and came back as a reply
+// that would not parse.
+const anthropicMaxTokens = 16000
+
 // Default model names for each provider
 const (
-	DefaultOpenAIModel     = "gpt-4-turbo-preview"
-	DefaultAnthropicModel  = "claude-3-sonnet-20240229"
+	DefaultOpenAIModel = "gpt-4-turbo-preview"
+
+	// DefaultAnthropicModel: claude-3-sonnet-20240229 was the default, and
+	// that model has been retired - the provider answered every question with
+	// a 404 until a model was named in the file.
+	DefaultAnthropicModel = "claude-opus-5"
+
 	DefaultGeminiModel     = "gemini-pro"
 	DefaultOllamaModel     = "llama3"
 	DefaultOpenRouterModel = "openai/gpt-4-turbo-preview"

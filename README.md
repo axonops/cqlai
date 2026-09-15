@@ -64,7 +64,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
   - [CQLAI JSON Configuration](#cqlai-json-configuration)
   - [AI Provider Configuration](#ai-provider-configuration)
     - [OpenAI](#openai-gpt-4--gpt-35)
-    - [Anthropic](#anthropic-claude-3)
+    - [Anthropic](#anthropic-claude)
     - [Google Gemini](#google-gemini)
     - [Synthetic](#synthetic-multiple-open-source-models)
     - [Ollama](#ollama-local-models)
@@ -131,7 +131,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Support for complex operations including DDL and DML.
     - **Requires API key configuration** - not needed for core functionality.
 - **Configuration:**
-    - Simple configuration via `cqlai.json` in current directory or `~/.cqlai.json`.
+    - Simple configuration via `cqlai.json` in the current directory or `~/.cassandra/cqlai.json`, beside `cqlshrc`.
     - Support for SSL/TLS connections with certificate authentication.
 - **Single Binary:** Distributed as a single, static binary with no external dependencies. Fast startup and small footprint.
 
@@ -384,30 +384,54 @@ still work.
 │ CONNECT      │
 │──────────────│
 │ SAVE RESULTS │
-│ AUTOSAVE     │
 │ SOURCE       │
 │ COPY TO      │
 │ COPY FROM    │
 │──────────────│
+│ AUTOSAVE     │
 │ PREFERENCES  │
 │──────────────│
 │ QUIT         │
 ╰──────────────╯
 ```
 
-`CONNECT` asks for a cluster: host, port, keyspace, username, password, the two
-timeouts and the SSL settings, with `Connect`, `Save and Connect` - which writes
-them to `cqlai.json` first - and `Cancel`. A connection that fails leaves the
-window open saying why, so you can change a field and try again.
+`CONNECT` asks for a cluster. The window is in two parts: the connections that
+have been saved are down the left, with `+ Create New Connection` above them,
+and the settings of whichever one is chosen are on the right - host, port,
+keyspace, username, password, the two timeouts and the SSL settings. `←` and
+`→` move between the two.
+
+A connection has a name, which is what the list shows; left empty it takes the
+name of its host. The first of them is the one CQLAI opens with and is marked
+`(default)`; the one it is connected to now is marked `(connected)`, and is the
+connection the window opens on.
+
+The settings at the top of the file are the default connection written out
+again, so that anything reading `cqlai.json` by hand still finds a host. The
+list is what decides: change it and the top of the file follows. `Save and Connect` writes it to `cqlai.json` under
+`connections` and makes it the one CQLAI opens with next time. `Connect` tries
+it without saving, and a connection that fails leaves the window open saying
+why, so you can change a field and try again.
+
+```json
+{
+  "host": "10.0.0.1",
+  "connections": [
+    { "name": "production", "host": "10.0.0.1", "port": 9042 },
+    { "name": "staging", "host": "10.0.1.1", "keyspace": "trial" }
+  ]
+}
+```
 
 CQLAI starts whether or not a cluster answers. Without one it says so and why,
 the tabs that need a cluster are dimmed, and `CONNECT` is how you get one.
 
 `SAVE RESULTS` writes what is on screen, and says so when there is nothing to
-write. `AUTOSAVE` saves every query from now on. `SOURCE` runs the CQL in a
-file, and `COPY TO`/`COPY FROM` move a whole table in or out. Below the first
-line, `PREFERENCES` edits the settings CQLAI starts with; below the second,
-`QUIT` leaves, asking first.
+write. `SOURCE` runs the CQL in a file, and `COPY TO`/`COPY FROM` move a whole
+table in or out. Below the first line are the two that settle something rather
+than act on it: `AUTOSAVE` saves every query from now on, and `PREFERENCES`
+edits the settings CQLAI starts with. Below the second, `QUIT` leaves, asking
+first.
 
 Up and down move, Enter picks, Esc closes. `AutoSave: ` on the bottom line says
 whether it is on, and clicking it opens the same window.
@@ -907,7 +931,8 @@ Configuration sources are loaded in the following order (later sources override 
 
 2. **CQLAI JSON configuration files**
    - `./cqlai.json` (current directory)
-   - `~/.cqlai.json` (user home directory)
+   - `~/.cassandra/cqlai.json` (beside `cqlshrc`, and where a new one is written)
+   - `~/.cqlai.json` (user home directory, where it used to go)
    - `~/.config/cqlai/config.json` (XDG config directory)
 
 3. **Environment variables**
@@ -916,11 +941,17 @@ Configuration sources are loaded in the following order (later sources override 
 
 ### Editing the configuration from inside CQLAI
 
-`FILE > PREFERENCES` on the tab line opens a window holding every setting in
-`cqlai.json` - the connection, how results are fetched and drawn, the history
-files, SSL, the AI providers and the auth provider. Fill them in, press `Save`,
-and it writes the JSON file it was loaded from, or `~/.cqlai.json` when none was
-found. Keys already in the file that CQLAI does not know about are left alone.
+`FILE > PREFERENCES` on the tab line opens a window holding CQLAI's own
+settings in `cqlai.json` - how results are fetched and drawn, the history files,
+the AI providers and the auth provider. Fill them in, press `Save`, and it
+writes the JSON file it was loaded from, or `~/.cassandra/cqlai.json` when none
+was found.
+Keys already in the file that CQLAI does not know about are left alone.
+
+Where to connect and how - host, port, keyspace, credentials, timeouts and SSL -
+belongs to a connection rather than to CQLAI, and is edited in `FILE > CONNECT`
+against the connection it belongs to. Two windows writing the same setting is
+the mistake this project keeps finding in its own code.
 
 What the window edits is what CQLAI starts with. It does not change the session
 running now: consistency, paging and output format are set for this session from
@@ -1035,15 +1066,20 @@ Use OpenAI for high-quality, general-purpose query generation. Requires an OpenA
 }
 ```
 
-#### Anthropic (Claude 3)
+#### Anthropic (Claude)
 
 Use Anthropic for powerful, context-aware models. Ideal for complex queries and reasoning. Requires an Anthropic API key.
 
+These models think before they answer. CQLAI asks for that reasoning and shows
+it in the `CHAT` tab under `Thinking:`, above the answer it led to - so there is
+something to read while it works rather than a pause. A model too old to be
+asked for it is asked once and then left alone.
+
 - **Get API Key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
 - **Recommended Models:**
-  - `claude-3-opus-20240229` (most powerful)
-  - `claude-3-sonnet-20240229` (default, balanced performance)
-  - `claude-3-haiku-20240307` (fastest)
+  - `claude-opus-5` (default, most capable)
+  - `claude-sonnet-5` (faster, less expensive)
+  - `claude-haiku-4-5` (fastest)
 
 **Configuration:**
 ```json
@@ -1051,7 +1087,7 @@ Use Anthropic for powerful, context-aware models. Ideal for complex queries and 
   "ai": {
     "provider": "anthropic",
     "apiKey": "sk-ant-...",
-    "model": "claude-3-sonnet-20240229"
+    "model": "claude-opus-5"
   }
 }
 ```
@@ -1152,7 +1188,7 @@ Use OpenRouter to access multiple AI models through a single API. OpenRouter pro
   "ai": {
     "provider": "openrouter",
     "apiKey": "sk-or-...",
-    "model": "anthropic/claude-3-sonnet",
+    "model": "anthropic/claude-opus-5",
     "url": "https://openrouter.ai/api/v1"
   }
 }
@@ -1222,8 +1258,9 @@ CQLAI searches for configuration files in the following locations:
 
 **CQLAI JSON files:**
 1. `./cqlai.json` (current working directory)
-2. `~/.cqlai.json` (user home directory)
-3. `~/.config/cqlai/config.json` (XDG config directory on Linux/macOS)
+2. `~/.cassandra/cqlai.json` (beside `cqlshrc`)
+3. `~/.cqlai.json` (user home directory)
+4. `~/.config/cqlai/config.json` (XDG config directory on Linux/macOS)
 
 ### Environment Variables
 

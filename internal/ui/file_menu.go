@@ -55,20 +55,21 @@ type fileMenu struct {
 // cluster at all, and the first thing to reach for on a shell that has none.
 //
 // SAVE RESULTS next: it acts on what is on screen, which is what you were
-// looking at when you opened the menu. AutoSave after it, because it is a
-// decision about everything that comes later.
+// looking at when you opened the menu, and SOURCE and the two COPY entries
+// after it move data in or out the same way - one file, now.
 func fileMenuItems() []fileMenuItem {
 	return []fileMenuItem{
 		{label: "CONNECT", conn: true},
 		{rule: true},
 		{label: "SAVE RESULTS", kind: saving},
-		{label: "AUTOSAVE", kind: capturing},
 		{label: "SOURCE", form: sourcing, asks: true},
 		{label: "COPY TO", form: copyingTo, asks: true},
 		{label: "COPY FROM", form: copyingFrom, asks: true},
 		{rule: true},
-		// Below the line because it is not a file operation. The four above
-		// move data in or out; this one changes how cqlai starts.
+		// Below the line, with the settings: neither of these acts on anything
+		// on screen. AUTOSAVE is a decision about every query that comes after,
+		// and PREFERENCES is one about how cqlai starts.
+		{label: "AUTOSAVE", kind: capturing},
 		{label: "PREFERENCES", prefs: true},
 		{rule: true},
 		// And last, on its own, because leaving is not like either group above

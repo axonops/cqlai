@@ -47,14 +47,22 @@ func (m *MainModel) connectWith(save bool) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// The settings on the right belong to the connection chosen on the left,
+	// and it is that connection the shell is about to use: the file keeps the
+	// list, and starts on the one last connected to.
+	m.storeConnection()
+	conn := m.preferences.connectionUnderCursor()
+
+	// The connection connected to is the one cqlai opens with next time, which
+	// is what puts it at the top of the list.
 	cfg := m.preferences.cfg
-	for _, field := range m.preferences.fields {
-		if err := setPrefValue(cfg, field.spec.path, field.value()); err != nil {
-			m.preferences.failed = err.Error()
-			return m, nil
-		}
-	}
+	cfg.Connections = namedConnections(m.preferences.connections)
+	cfg.MakeDefault(conn)
+
 	prunePrefs(cfg)
+	for i := range cfg.Connections {
+		prunePrefs(&cfg.Connections[i])
+	}
 
 	if save {
 		written, err := cfg.Save()
@@ -87,8 +95,11 @@ func (m *MainModel) connectWith(save bool) (*MainModel, tea.Cmd) {
 	m.adoptSession(session, cfg)
 
 	said := fmt.Sprintf("Connected to %s:%d", cfg.Host, cfg.Port)
+	if name := config.ConnectionName(conn); name != "" && name != cfg.Host {
+		said = fmt.Sprintf("Connected to %s, at %s:%d", name, cfg.Host, cfg.Port)
+	}
 	if saved != "" {
-		said += ", and the settings saved to " + saved
+		said += ", and the connection saved to " + saved
 	}
 	return m.report(said)
 }

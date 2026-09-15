@@ -89,7 +89,7 @@ func HelpRows() [][]string {
 		// Configuration
 		{"─────────", "─────────", "─────────────"},
 		{"Settings", "FILE > PREFERENCES", "Edit the settings cqlai starts with"},
-		{"", "  Saved to", "cqlai.json, or ~/.cqlai.json when there is none"},
+		{"", "  Saved to", "cqlai.json, or ~/.cassandra/cqlai.json when there is none"},
 		{"", "  This session", "The status line, which the file does not change"},
 
 		// Keyboard Shortcuts

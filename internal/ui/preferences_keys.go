@@ -218,6 +218,27 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 		}
 	}
 
+	// The list of connections has the keys while the cursor is in it.
+	if m.preferences.onList {
+		switch msg.String() {
+		case "esc":
+			m.closePreferences()
+			return m, nil
+		case "up":
+			m.moveConnectionCursor(-1)
+			return m, nil
+		case "down":
+			m.moveConnectionCursor(1)
+			return m, nil
+		case "enter", "right", "tab":
+			m.useConnectionRow()
+			m.preferences.onList = false
+			m.preferences.focusField(0)
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "esc":
 		m.closePreferences()
@@ -233,6 +254,15 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 	case "left":
 		if m.preferences.onAButton() {
 			return m.movePrefFocus(-1)
+		}
+		// Back to the list, from the settings of the connection it chose.
+		if m.preferences.purpose == connecting {
+			m.storeConnection()
+			m.preferences.blurAll()
+			m.preferences.onList = true
+			m.preferences.listCursor = max(m.preferences.chosen+firstConnection, createRow)
+			m.preferences.showConnectionRow(m.preferences.listCursor)
+			return m, nil
 		}
 	case "right":
 		if m.preferences.onAButton() {
@@ -288,7 +318,19 @@ func (m *MainModel) handlePreferencesClick(col, row int) (*MainModel, tea.Cmd) {
 		return m.usePrefMatch()
 	}
 
+	if i, ok := m.prefConnectionAt(m.windowWidth, m.windowHeight, col, row); ok {
+		if m.preferences.connectionRows()[i] == "" {
+			return m, nil // the blank row under the button
+		}
+		m.preferences.blurAll()
+		m.preferences.onList = true
+		m.preferences.listCursor = i
+		m.useConnectionRow()
+		return m, nil
+	}
+
 	if i, ok := m.prefFieldAt(m.windowWidth, m.windowHeight, col, row); ok {
+		m.preferences.onList = false
 		m.preferences.focusField(i)
 		if m.preferences.fields[i].spec.kind == prefYesNo {
 			return m.togglePrefField()

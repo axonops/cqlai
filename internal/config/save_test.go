@@ -109,7 +109,7 @@ func TestSaveCreatesFileWhenNoneWasLoaded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	want := filepath.Join(home, ".cqlai.json")
+	want := filepath.Join(home, ".cassandra", "cqlai.json")
 	if written != want {
 		t.Fatalf("wrote %s, want %s", written, want)
 	}

@@ -159,10 +159,9 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 
 		// Use retry logic for API calls
 		response, err := retryWithBackoff(ctx, 3, func(ctx context.Context) (*anthropic.Message, error) {
-			return c.client.Messages.New(ctx, anthropic.MessageNewParams{
-				Model:       anthropic.Model(c.Model),
-				MaxTokens:   1024,
-				Temperature: param.NewOpt(0.2), // Low temperature for more deterministic output
+			return askAnthropic(ctx, c.client, anthropic.MessageNewParams{
+				Model:     anthropic.Model(c.Model),
+				MaxTokens: anthropicMaxTokens,
 				System: []anthropic.TextBlockParam{
 					{Text: systemPrompt},
 				},
@@ -174,8 +173,12 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 			return nil, fmt.Errorf("anthropic API error: %v", err)
 		}
 
-		// Add the assistant's response to messages
-		assistantMessage := anthropic.NewAssistantMessage()
+		// The assistant's turn goes back into the conversation as it came.
+		//
+		// It was rebuilt from the text and tool_use blocks, which drops every
+		// other kind. Claude thinks before it answers on the current models -
+		// adaptively, without being asked - and a turn that comes back missing
+		// the thinking it did is not the turn the model took.
 		var toolResults []struct {
 			ID     string
 			Result *CommandResult
@@ -194,9 +197,6 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 		for _, content := range response.Content {
 			switch content.Type {
 			case "text":
-				// Assistant responded with text
-				assistantMessage.Content = append(assistantMessage.Content, anthropic.NewTextBlock(content.Text))
-
 				// Only try to parse as QueryPlan if no tools were used at all
 				// (Pure text response that should be a JSON query plan)
 				if !hasToolUse {
@@ -225,14 +225,6 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 					logger.DebugfToFile("Anthropic", "Failed to parse tool input: %v", err)
 					inputMap = make(map[string]any)
 				}
-
-				// Preserve the exact JSON bytes from the API to avoid key re-ordering issues
-				// The API expects the input to be preserved exactly as sent
-				assistantMessage.Content = append(assistantMessage.Content, anthropic.NewToolUseBlock(
-					content.ID,
-					content.Input, // Pass the original JSON bytes, not the parsed object
-					content.Name,
-				))
 
 				// Execute the tool
 				result := ExecuteToolCall(content.Name, inputMap)
@@ -292,8 +284,8 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 		}
 
 		// If we have tool uses, add the assistant message and tool results
-		if hasToolUse && len(assistantMessage.Content) > 0 {
-			messages = append(messages, assistantMessage)
+		if hasToolUse {
+			messages = append(messages, response.ToParam())
 
 			// Add all tool results as user messages
 			for _, tr := range toolResults {
@@ -309,9 +301,9 @@ func (c *AnthropicClient) ProcessRequestWithTools(ctx context.Context, prompt st
 					isError,
 				)))
 			}
-		} else if len(assistantMessage.Content) > 0 {
+		} else if len(response.Content) > 0 {
 			// No tools were used, but we have text content
-			messages = append(messages, assistantMessage)
+			messages = append(messages, response.ToParam())
 			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock("Please respond with ONLY the QueryPlan JSON object, no other text.")))
 		}
 	}
@@ -352,10 +344,9 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 	logger.DebugfToFile("AIConversation", "[%s] Calling Anthropic API with %d messages and %d tools", conv.ID, len(conv.anthropicMessages), len(tools))
 
 	response, err := retryWithBackoff(ctx, 3, func(ctx context.Context) (*anthropic.Message, error) {
-		return conv.anthropicClient.Messages.New(ctx, anthropic.MessageNewParams{
-			Model:       anthropic.Model(conv.Model),
-			MaxTokens:   1024,
-			Temperature: param.NewOpt(0.2), // Low temperature for more deterministic output
+		return askAnthropic(ctx, conv.anthropicClient, anthropic.MessageNewParams{
+			Model:     anthropic.Model(conv.Model),
+			MaxTokens: anthropicMaxTokens,
 			System: []anthropic.TextBlockParam{
 				{Text: SystemPrompt},
 			},
@@ -380,91 +371,91 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 	if hasToolUse {
 		logger.DebugfToFile("AIConversation", "[%s] Response contains tool uses", conv.ID)
 
-		// Process tool uses
-		assistantMessage := anthropic.NewAssistantMessage()
+		// Process tool uses. The turn itself goes back into the conversation as
+		// it came, below: rebuilding it here dropped every block that was not
+		// text or a tool call, and the thinking Claude did is one of those.
 		var toolResults []struct {
 			ID     string
 			Result *CommandResult
 		}
 
 		for _, content := range response.Content {
-			switch content.Type {
-			case "text":
-				assistantMessage.Content = append(assistantMessage.Content, anthropic.NewTextBlock(content.Text))
-			case "tool_use":
-				// Parse the tool input
-				var inputMap map[string]any
-				if err := json.Unmarshal(content.Input, &inputMap); err != nil {
-					logger.DebugfToFile("AIConversation", "[%s] Failed to parse tool input: %v", conv.ID, err)
-					continue
-				}
-
-				// Add the tool use to the assistant message, preserving exact JSON bytes
-				assistantMessage.Content = append(assistantMessage.Content, anthropic.NewToolUseBlock(
-					content.ID,
-					content.Input, // Already preserving the original JSON bytes
-					content.Name,
-				))
-
-				// Execute the tool
-				result := ExecuteToolCall(content.Name, inputMap)
-
-				// Check for special cases
-				if content.Name == ToolSubmitQueryPlan.String() && result.Success && result.QueryPlan != nil {
-					logger.DebugfToFile("AIConversation", "[%s] Query plan submitted via tool", conv.ID)
-					return result.QueryPlan, nil, nil
-				}
-
-				if content.Name == ToolInfo.String() && result.Success && result.InfoResponse != nil {
-					logger.DebugfToFile("AIConversation", "[%s] Info response submitted via tool", conv.ID)
-					// Return a QueryPlan that represents an informational response
-					return &AIResult{
-						Operation:   "INFO",
-						Confidence:  result.InfoResponse.Confidence,
-						ReadOnly:    true,
-						InfoContent: result.InfoResponse.Content,
-						InfoTitle:   result.InfoResponse.Title,
-					}, nil, nil
-				}
-
-				// Check if user interaction is needed
-				if result.NeedsUserSelection {
-					return nil, &InteractionRequest{
-						Type:             "selection",
-						SelectionType:    result.SelectionType,
-						SelectionOptions: result.SelectionOptions,
-						ConversationID:   conv.ID,
-					}, nil
-				}
-
-				if result.NeedsMoreInfo {
-					return nil, &InteractionRequest{
-						Type:           "info",
-						InfoMessage:    result.InfoMessage,
-						ConversationID: conv.ID,
-					}, nil
-				}
-
-				if result.NotRelevant {
-					return nil, &InteractionRequest{
-						Type:           "not_relevant",
-						InfoMessage:    result.InfoMessage,
-						ConversationID: conv.ID,
-					}, nil
-				}
-
-				// Store tool result for later
-				toolResults = append(toolResults, struct {
-					ID     string
-					Result *CommandResult
-				}{ID: content.ID, Result: result})
+			if content.Type != "tool_use" {
+				continue
 			}
+
+			// Parse the tool input
+			var inputMap map[string]any
+			if err := json.Unmarshal(content.Input, &inputMap); err != nil {
+				logger.DebugfToFile("AIConversation", "[%s] Failed to parse tool input: %v", conv.ID, err)
+				continue
+			}
+
+			// Execute the tool
+			result := ExecuteToolCall(content.Name, inputMap)
+
+			// Check for special cases
+			if content.Name == ToolSubmitQueryPlan.String() && result.Success && result.QueryPlan != nil {
+				logger.DebugfToFile("AIConversation", "[%s] Query plan submitted via tool", conv.ID)
+				return result.QueryPlan, nil, nil
+			}
+
+			if content.Name == ToolInfo.String() && result.Success && result.InfoResponse != nil {
+				logger.DebugfToFile("AIConversation", "[%s] Info response submitted via tool", conv.ID)
+				// Return a QueryPlan that represents an informational response
+				return &AIResult{
+					Operation:   "INFO",
+					Confidence:  result.InfoResponse.Confidence,
+					ReadOnly:    true,
+					InfoContent: result.InfoResponse.Content,
+					InfoTitle:   result.InfoResponse.Title,
+				}, nil, nil
+			}
+
+			// Check if user interaction is needed
+			if result.NeedsUserSelection {
+				return nil, &InteractionRequest{
+					Type:             "selection",
+					SelectionType:    result.SelectionType,
+					SelectionOptions: result.SelectionOptions,
+					ConversationID:   conv.ID,
+				}, nil
+			}
+
+			if result.NeedsMoreInfo {
+				return nil, &InteractionRequest{
+					Type:           "info",
+					InfoMessage:    result.InfoMessage,
+					ConversationID: conv.ID,
+				}, nil
+			}
+
+			if result.NotRelevant {
+				return nil, &InteractionRequest{
+					Type:           "not_relevant",
+					InfoMessage:    result.InfoMessage,
+					ConversationID: conv.ID,
+				}, nil
+			}
+
+			// Store tool result for later
+			toolResults = append(toolResults, struct {
+				ID     string
+				Result *CommandResult
+			}{ID: content.ID, Result: result})
 		}
 
-		// Add the assistant message with tool uses to anthropicMessages
-		conv.anthropicMessages = append(conv.anthropicMessages, assistantMessage)
+		// Add the assistant's turn to anthropicMessages, as it came back
+		conv.anthropicMessages = append(conv.anthropicMessages, response.ToParam())
 
-		// Extract text for conversation history
+		// Extract text for conversation history, after the reasoning that led
+		// to it.
+		if reasoning := reasoningOf(response); reasoning != "" {
+			conv.Messages = append(conv.Messages, ConversationMessage{
+				Role: "assistant", Content: reasoning, Reasoning: true,
+			})
+		}
+
 		var assistantText string
 		for _, content := range response.Content {
 			if content.Type == "text" {
@@ -517,6 +508,11 @@ func (conv *AIConversation) continueAnthropic(ctx context.Context, userInput str
 
 	// Add assistant response to conversation history if not already added
 	if !hasToolUse {
+		if reasoning := reasoningOf(response); reasoning != "" {
+			conv.Messages = append(conv.Messages, ConversationMessage{
+				Role: "assistant", Content: reasoning, Reasoning: true,
+			})
+		}
 		conv.Messages = append(conv.Messages, ConversationMessage{Role: "assistant", Content: responseText})
 	}
 

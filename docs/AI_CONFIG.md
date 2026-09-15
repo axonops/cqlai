@@ -51,7 +51,7 @@ AI providers are configured in the `cqlai.json` configuration file. Copy `cqlai.
   "provider": "anthropic",
   "anthropic": {
     "apiKey": "your-anthropic-api-key-here",
-    "model": "claude-3-sonnet-20240229"  // Optional
+    "model": "claude-opus-5"  // Optional
   }
 }
 ```
@@ -84,7 +84,7 @@ AI providers are configured in the `cqlai.json` configuration file. Copy `cqlai.
   "provider": "openrouter",
   "openrouter": {
     "apiKey": "your-openrouter-api-key-here",
-    "model": "anthropic/claude-3-sonnet",  // Optional
+    "model": "anthropic/claude-opus-5",  // Optional
     "url": "https://openrouter.ai/api/v1"  // Optional, defaults to https://openrouter.ai/api/v1
   }
 }

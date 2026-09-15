@@ -26,17 +26,17 @@ import (
 const SaveFileMode = 0o600
 
 // SavePath is the file Save writes to: the one this config was loaded from, or
-// ~/.cqlai.json when nothing was found.
+// the default place when nothing was found.
 //
 // The first candidate LoadConfig looks at is a relative "cqlai.json", which is
 // whatever directory cqlai happened to start in. That is fine to read and a
-// poor place to create, so a config that came from nowhere goes to the home
-// directory rather than to the working one.
+// poor place to create, so a config that came from nowhere goes beside cqlshrc
+// rather than into the working directory.
 func (c *Config) SavePath() string {
 	if c.SourcePath != "" {
 		return c.SourcePath
 	}
-	return filepath.Join(os.Getenv("HOME"), ".cqlai.json")
+	return DefaultConfigPath()
 }
 
 // Save writes the configuration, and reports the file it wrote.
