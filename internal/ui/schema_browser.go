@@ -52,6 +52,9 @@ type schemaBrowser struct {
 	detailScroll int
 	detailWidth  int // the widest line, for scrolling sideways later
 
+	// review is what the model made of the definition, drawn under it.
+	review schemaReview
+
 	// drawn is the view as it was last rendered, both panes together. Dragging
 	// the mouse selects out of it: there is no viewport behind this view to
 	// anchor a selection to, and what is on screen is what a selection is over.
@@ -213,7 +216,15 @@ func (m *MainModel) showSchemaDetail() {
 
 	row, ok := m.schema.current()
 	if !ok {
+		m.closeSchemaReview()
 		return
+	}
+
+	// A review is of the definition it was asked about. Moving to another one
+	// puts it away rather than leaving an answer about one table under
+	// another's definition.
+	if !m.reviewIsAbout(row.key()) {
+		m.closeSchemaReview()
 	}
 
 	text, known := m.schema.definitions[row.key()]
@@ -468,7 +479,7 @@ func (m *MainModel) clickSchema(col, row int) (*MainModel, tea.Cmd) {
 func (m *MainModel) scrollSchema(col, delta int) (*MainModel, tea.Cmd) {
 	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
 	if col >= g.treeWidth {
-		return m.scrollSchemaDetail(delta, g.height)
+		return m.scrollSchemaDetail(delta, g.detailRows)
 	}
 
 	// The tree scrolls by moving the selection, so what is showing and what is

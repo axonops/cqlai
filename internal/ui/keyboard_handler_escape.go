@@ -14,6 +14,12 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// So does the review under a definition.
+	if m.viewMode == "schema" && m.schema.review.open {
+		m.closeSchemaReview()
+		return m, nil
+	}
+
 	// If AI conversation is active and processing, cancel it
 	if m.aiConversationActive && m.aiProcessing {
 		m.aiProcessing = false

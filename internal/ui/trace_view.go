@@ -17,7 +17,7 @@ import (
 // analyseButton is what the button says, and what the rule says once the pane
 // is open.
 const (
-	analyseButton  = "[ Analyse with AI ]"
+	analyseButton  = "[ Analyse Trace ]"
 	analysingLabel = "[ Analysing... ]"
 	analysisLabel  = " Analysis "
 	dragHint       = " drag to resize "

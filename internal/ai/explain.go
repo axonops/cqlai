@@ -153,6 +153,44 @@ Rules:
 - Never restate the whole trace. The reader has it.
 - Where the trace covers several pages, the numbers to reason about are the totals across them, not one page's: a page that read 65 rows is not a query that read 65 rows.`
 
+// SchemaInstructions is what to make of a table's definition.
+//
+// The same discipline as the trace: the shape of the answer is dictated, and
+// it is read in a pane beside the definition it is about rather than instead
+// of it.
+const SchemaInstructions = `You are reading a Cassandra table or keyspace definition, for an engineer who has it on screen beside your answer.
+
+Answer in exactly these three sections, with these headings, in this order, and write nothing else:
+
+WHAT IT IS
+One line: what the partition key is, what the rows inside a partition are ordered by, and what the table appears to model. Two lines at most.
+
+RISKS
+What will go wrong with this definition, at most four lines, each starting with "- ", worst first. The things that punish a Cassandra cluster months later:
+- a partition that grows without bound, or one row per partition
+- a partition key with too few distinct values, or one value that takes most of the traffic
+- a clustering order that cannot serve the query the table is obviously for
+- a collection that grows without bound, or a non-frozen collection read whole
+- a secondary index on a high-cardinality or very low-cardinality column
+- a compaction strategy that does not match how the data is written and expired: time series without TWCS, heavy overwrites without LCS
+- a default TTL that will leave tombstones in the read path
+- text where a timeuuid, timestamp or uuid is meant
+If nothing of the kind is there, write exactly "- Nothing that will bite."
+
+WHAT TO CHANGE
+The changes worth making, at most three lines, each starting with "- ", each naming the column or the setting. Say when a change means writing the data again into a new table, because in Cassandra it usually does. If the definition is sound, write exactly "- Nothing to change."
+
+Rules:
+- No preamble, no closing summary, no markdown, no bold, no numbered lists.
+- Every line under 100 characters.
+- Judge what is in front of you. Do not invent queries the table might serve; where the shape only makes sense for a query you cannot see, say so as a risk.
+- Never restate the definition. The reader has it.`
+
+// ReviewSchema asks what a definition will do to whoever runs it.
+func ReviewSchema(ctx context.Context, providerConfig *config.AIConfig, definition string) (string, error) {
+	return Explain(ctx, providerConfig, SchemaInstructions, definition)
+}
+
 // AnalyseTrace asks what a query trace shows.
 func AnalyseTrace(ctx context.Context, providerConfig *config.AIConfig, trace string) (string, error) {
 	return Explain(ctx, providerConfig, TraceInstructions, trace)
