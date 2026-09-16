@@ -619,6 +619,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updatedModel, cmd := m.handleMouseInput(msg)
 		return updatedModel, cmd
 
+	case schemaReviewedMsg:
+		updated, cmd := m.schemaReviewed(msg)
+		return updated, cmd
+
 	case traceAnalysedMsg:
 		updated, cmd := m.traceAnalysed(msg)
 		return updated, cmd

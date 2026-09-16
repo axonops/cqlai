@@ -44,6 +44,18 @@ type schemaGeometry struct {
 	detailWidth   int
 	treeFirst     int // the first tree row drawn
 	detailFirst   int // the first line of the definition drawn
+
+	// The definition pane splits in two once there is a review of it: the
+	// definition above, the review below, and a line between them that is
+	// dragged to give either of them room.
+	detailRows int
+	ruleRow    int // rows from the top of the panes, or -1 while there is none
+	reviewRows int
+	reviewTop  int
+
+	// The columns the button on the heading row covers, so that drawing it and
+	// clicking it cannot disagree.
+	buttonFrom, buttonTo int
 }
 
 // schemaGeometryFor places the panes for a screen.
@@ -66,7 +78,28 @@ func (m *MainModel) schemaGeometry(width, height int) schemaGeometry {
 	first = min(first, max(rows-g.height, 0))
 	g.treeFirst = max(first, 0)
 
-	g.detailFirst = min(max(m.schema.detailScroll, 0), max(len(m.schema.detail)-g.height, 0))
+	// The button sits at the right of the definition pane's heading.
+	button := reviewButton
+	if m.schema.review.running {
+		button = reviewingNow
+	}
+	g.buttonTo = max(width-1, 0)
+	g.buttonFrom = max(g.buttonTo-lipgloss.Width(button)+1, 0)
+
+	g.detailRows = g.height
+	g.ruleRow = -1
+	if m.schema.review.open {
+		// What the pane was asked for is squeezed to fit rather than written
+		// back: a terminal made small and large again gives it back the size
+		// it had.
+		room := max(g.height-reviewRuleRows, definitionMin+reviewMin)
+		g.reviewRows = min(max(m.schema.review.rows, reviewMin), room-definitionMin)
+		g.detailRows = room - g.reviewRows
+		g.ruleRow = g.detailRows
+		g.reviewTop = g.ruleRow + reviewRuleRows
+	}
+
+	g.detailFirst = min(max(m.schema.detailScroll, 0), max(len(m.schema.detail)-g.detailRows, 0))
 	return g
 }
 
@@ -94,6 +127,90 @@ func (m *MainModel) schemaDetailHeading() string {
 		return "TABLE  " + row.key()
 	}
 	return "KEYSPACE  " + row.keyspace
+}
+
+// schemaDetailHeadingRow is the heading over the definition, with the button
+// that reviews it at the right-hand end.
+func (m *MainModel) schemaDetailHeadingRow(g schemaGeometry, headingStyle lipgloss.Style) string {
+	heading := m.schemaDetailHeading()
+
+	button := reviewButton
+	style := lipgloss.NewStyle().Foreground(m.styles.Accent).Bold(true)
+	switch {
+	case m.schema.review.running:
+		button, style = reviewingNow, lipgloss.NewStyle().Foreground(m.styles.MutedText.GetForeground())
+	case len(m.schema.detail) == 0:
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color(formPlaceholderColour))
+	}
+
+	room := g.detailWidth - lipgloss.Width(button)
+	if room < lipgloss.Width(heading)+1 {
+		// Too narrow for both: the heading says what the pane is, and Alt+A
+		// still reviews it.
+		return headingStyle.Render(pad(heading, g.detailWidth))
+	}
+	return headingStyle.Render(pad(heading, room)) + style.Render(button)
+}
+
+// schemaDetailRow is one row of the right-hand pane: a line of the definition,
+// the line between the panes, or a line of the review under it.
+//
+// One description of where those are, used to draw them and to work out what a
+// press landed on.
+func (m *MainModel) schemaDetailRow(g schemaGeometry, row int, detailBar []bool) string {
+	textStyle := lipgloss.NewStyle().Foreground(m.styles.MutedText.GetForeground())
+	ruleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3a3a"))
+	thumbStyle := lipgloss.NewStyle().Foreground(m.styles.Accent)
+	trackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3a3a"))
+
+	switch {
+	case row == g.ruleRow:
+		if m.schema.review.dragging {
+			ruleStyle = lipgloss.NewStyle().Foreground(m.styles.Accent)
+		}
+		label := textStyle.Render(reviewHeading) + ruleStyle.Render(dragHint)
+		line := strings.Repeat("─", max(g.detailWidth-lipgloss.Width(stripAnsi(label))-1, 0))
+		return ruleStyle.Render("─") + label + ruleStyle.Render(line)
+
+	case g.ruleRow >= 0 && row > g.ruleRow:
+		return m.schemaReviewRow(g, row-g.reviewTop)
+	}
+
+	definition := ""
+	if g.detailFirst+row < len(m.schema.detail) {
+		definition = m.schema.detail[g.detailFirst+row]
+	}
+
+	drawn := textStyle.Render(pad(cut(definition, g.detailWidth-1), g.detailWidth-1))
+	return drawn + scrollbarCell(detailBar, row, len(m.schema.detail) > g.detailRows, thumbStyle, trackStyle)
+}
+
+// schemaReviewRow is one row of the review pane.
+func (m *MainModel) schemaReviewRow(g schemaGeometry, row int) string {
+	textStyle := lipgloss.NewStyle().Foreground(m.styles.MutedText.GetForeground())
+	if m.schema.review.failed {
+		textStyle = m.styles.ErrorText
+	}
+	headingStyle := lipgloss.NewStyle().Foreground(m.styles.Accent).Bold(true)
+	thumbStyle := lipgloss.NewStyle().Foreground(m.styles.Accent)
+	trackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3a3a"))
+
+	lines := m.schema.review.lines
+	first := min(max(m.schema.review.scroll, 0), max(len(lines)-g.reviewRows, 0))
+
+	text := ""
+	if first+row < len(lines) {
+		text = lines[first+row]
+	}
+
+	style := textStyle
+	if isHeadingLine(text) {
+		style = headingStyle
+	}
+
+	bar := scrollbarColumn(min(g.reviewRows, len(lines)), first, len(lines))
+	return style.Render(pad(cut(text, g.detailWidth-1), g.detailWidth-1)) +
+		scrollbarCell(bar, row, len(lines) > g.reviewRows, thumbStyle, trackStyle)
 }
 
 // schemaLine is a row as it is drawn: a keyspace with the marker saying which
@@ -129,7 +246,7 @@ func (m *MainModel) viewSchema(width, height int) string {
 	// The scrollbars say how much of each side you are looking at. A schema is
 	// a long thing in both panes and neither has a border to hint at it.
 	treeBar := scrollbarColumn(min(g.height, len(rows)), g.treeFirst, len(rows))
-	detailBar := scrollbarColumn(min(g.height, len(m.schema.detail)), g.detailFirst, len(m.schema.detail))
+	detailBar := scrollbarColumn(min(g.detailRows, len(m.schema.detail)), g.detailFirst, len(m.schema.detail))
 
 	headingStyle := lipgloss.NewStyle().Foreground(m.styles.Accent).Bold(true)
 
@@ -137,7 +254,7 @@ func (m *MainModel) viewSchema(width, height int) string {
 	lines = append(lines,
 		headingStyle.Render(pad(schemaTreeHeading, g.treeWidth))+
 			ruleStyle.Render(schemaDivider)+
-			headingStyle.Render(pad(m.schemaDetailHeading(), g.detailWidth)),
+			m.schemaDetailHeadingRow(g, headingStyle),
 		ruleStyle.Render(strings.Repeat("─", g.treeWidth)+schemaDivider+strings.Repeat("─", g.detailWidth)),
 	)
 
@@ -161,15 +278,7 @@ func (m *MainModel) viewSchema(width, height int) string {
 		left := style.Render(pad(text, g.treeWidth-1))
 		left += scrollbarCell(treeBar, i, len(rows) > g.height, thumbStyle, trackStyle)
 
-		// The right-hand pane.
-		definition := ""
-		if g.detailFirst+i < len(m.schema.detail) {
-			definition = m.schema.detail[g.detailFirst+i]
-		}
-		right := treeStyle.Render(pad(cut(definition, g.detailWidth-1), g.detailWidth-1))
-		right += scrollbarCell(detailBar, i, len(m.schema.detail) > g.height, thumbStyle, trackStyle)
-
-		lines = append(lines, left+ruleStyle.Render(schemaDivider)+right)
+		lines = append(lines, left+ruleStyle.Render(schemaDivider)+m.schemaDetailRow(g, i, detailBar))
 	}
 
 	// Kept for the selection, which is over what is on screen rather than over

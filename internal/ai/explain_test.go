@@ -104,3 +104,50 @@ func TestTheTraceInstructionsDictateTheShapeOfTheAnswer(t *testing.T) {
 		assert.Contains(t, TraceInstructions, wanted, "the instructions should say %q", wanted)
 	}
 }
+
+// TestTheSchemaInstructionsSayWhatPunishesACluster.
+//
+// The same discipline as the trace: three headings, a line count, and the
+// things that go wrong in Cassandra named, so the answer is a review of this
+// definition rather than an essay about data modelling.
+func TestTheSchemaInstructionsSayWhatPunishesACluster(t *testing.T) {
+	for _, wanted := range []string{
+		"WHAT IT IS", "RISKS", "WHAT TO CHANGE",
+		"at most four lines", "at most three lines",
+		"grows without bound", "secondary index", "compaction strategy", "TWCS",
+		"writing the data again",
+		"No preamble", "no markdown",
+		"Never restate the definition",
+	} {
+		assert.Contains(t, SchemaInstructions, wanted, "the instructions should say %q", wanted)
+	}
+}
+
+// TestADefinitionIsSentAndTheReviewComesBack.
+func TestADefinitionIsSentAndTheReviewComesBack(t *testing.T) {
+	var asked struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&asked))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"WHAT IT IS\nOne row per user."}}]}`))
+	}))
+	defer provider.Close()
+
+	said, err := ReviewSchema(context.Background(), &config.AIConfig{
+		Provider: "openai", APIKey: "k", Model: "gpt-4o", URL: provider.URL,
+	}, "CREATE TABLE users (id uuid PRIMARY KEY);")
+
+	require.NoError(t, err)
+	assert.Contains(t, said, "One row per user")
+
+	require.Len(t, asked.Messages, 2)
+	assert.Contains(t, asked.Messages[0].Content, "WHAT IT IS", "the shape of the answer is dictated")
+	assert.Equal(t, "CREATE TABLE users (id uuid PRIMARY KEY);", asked.Messages[1].Content,
+		"the definition is what is sent - no rows")
+}

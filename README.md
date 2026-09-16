@@ -372,18 +372,55 @@ row, and when it differs from the last reading the browser and the tab
 completion both fetch again - at once if you are looking at the tree, and when
 you next open the tab if you are not. `F3` still asks immediately.
 
+#### Reviewing a definition
+
+`SCHEMA` shows what a table is. What it does not say is whether the definition
+is any good: whether the partition will grow without bound, whether the
+clustering serves the query the table is obviously for, whether the compaction
+strategy matches how the data is written. Cassandra punishes those months
+later, by which time the table has data in it and the answer is to write it all
+again somewhere else.
+
+`[ Review Schema ]` at the top right of the definition pane - or `Alt+A` -
+sends the definition to the configured AI provider. The answer appears under
+it, in the pane it is about:
+
+```
+ KEYSPACES          │ TABLE  shop.events_by_user              [ Review Schema ]
+ ─────────────────  │ ────────────────────────────────────────────────────────
+ ▾ shop             │ CREATE TABLE shop.events_by_user (
+     events_by_user │     user_id uuid,
+     users          │     created_at timestamp,
+ ▸ system           │     PRIMARY KEY (user_id, created_at)
+                    │ ─ Review  drag to resize ───────────────────────────────
+                    │ WHAT IT IS
+                    │ Partitioned by user_id, ordered by created_at. A feed.
+                    │
+                    │ RISKS
+                    │ - The partition grows without bound: every event a user
+                    │   ever has lands in one.
+                    │
+                    │ WHAT TO CHANGE
+                    │ - Add a time bucket: ((user_id, month), created_at).
+```
+
+The definition is what gets sent - no rows. The line between the two is dragged
+the way the trace's is, `Esc` puts the review away, and moving to another table
+puts it away too: an answer about one definition does not belong under
+another's.
+
 #### Reading a trace
 
 `TRACE` shows the trace of the last query, when tracing is on. It is forty rows
 of microsecond timings and node names, and what you usually want from it is
 which step was slow and what to do about it.
 
-`[ Analyse with AI ]` at the top right of the view - or `Alt+A` - sends the
+`[ Analyse Trace ]` at the top right of the view - or `Alt+A` - sends the
 trace to the configured AI provider and asks. The answer appears under the
 trace, in the same view:
 
 ```
-  Alt+A reads this trace with the AI                    [ Analyse with AI ]
+  Alt+A reads this trace with the AI                      [ Analyse Trace ]
  activity                      source     source_elapsed
  Parsing SELECT * FROM users   10.0.0.1   120
  Read 3 sstables               10.0.0.2   9100

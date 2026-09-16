@@ -32,10 +32,14 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		return m.handleMousePress(mouse)
 
 	case tea.MouseMotionMsg:
-		// The line between the trace and its analysis follows the pointer
+		// The line between a pane and the answer under it follows the pointer
 		// while it is being dragged.
 		if m.trace.dragging {
 			m.dragTraceRule(mouse.Y)
+			return m, nil
+		}
+		if m.schema.review.dragging {
+			m.dragSchemaRule(mouse.Y)
 			return m, nil
 		}
 
@@ -46,6 +50,10 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 	case tea.MouseReleaseMsg:
 		if m.trace.dragging {
 			m.trace.dragging = false
+			return m, nil
+		}
+		if m.schema.review.dragging {
+			m.schema.review.dragging = false
 			return m, nil
 		}
 		return m.endSelection()
@@ -314,6 +322,18 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		}
 	}
 
+	// The definition pane has a button above it and, once there is a review, a
+	// line between the two that is dragged to give either of them room.
+	if m.viewMode == "schema" {
+		if m.schemaReviewButtonAt(mouse.X, mouse.Y) {
+			return m.startSchemaReview()
+		}
+		if m.schemaReviewRuleAt(mouse.X, mouse.Y) {
+			m.schema.review.dragging = true
+			return m, nil
+		}
+	}
+
 	// A press on the schema tree picks what it lands on. The definition beside
 	// it is text like any other view, and a press there starts a selection, so
 	// what is on screen can still be copied out.
@@ -373,6 +393,17 @@ func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// The schema view is two panes, and the wheel moves whichever one it is
 	// over rather than whichever was touched last.
 	if m.viewMode == "schema" && !m.preferences.active && !m.form.active && !m.help.active {
+		// The definition pane is itself two panes once there is a review.
+		if m.inSchemaReview(mouse.X, mouse.Y) {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.scrollSchemaReview(-wheelLines)
+			case tea.MouseWheelDown:
+				m.scrollSchemaReview(wheelLines)
+			}
+			return m, nil
+		}
+
 		switch mouse.Button {
 		case tea.MouseWheelUp:
 			return m.scrollSchema(mouse.X, -wheelLines)

@@ -192,8 +192,12 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	// its own would be typed into the command line, which is where every key
 	// in this view goes unless it is asked for.
 	case "alt+a":
-		if m.viewMode == "trace" {
+		// The same key wherever there is something on screen to ask about.
+		switch m.viewMode {
+		case "trace":
 			return m.startTraceAnalysis()
+		case "schema":
+			return m.startSchemaReview()
 		}
 		return m, nil
 
