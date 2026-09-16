@@ -372,6 +372,54 @@ row, and when it differs from the last reading the browser and the tab
 completion both fetch again - at once if you are looking at the tree, and when
 you next open the tab if you are not. `F3` still asks immediately.
 
+#### Reading a trace
+
+`TRACE` shows the trace of the last query, when tracing is on. It is forty rows
+of microsecond timings and node names, and what you usually want from it is
+which step was slow and what to do about it.
+
+`[ Analyse with AI ]` at the top right of the view - or `Alt+A` - sends the
+trace to the configured AI provider and asks. The answer appears under the
+trace, in the same view:
+
+```
+  Alt+A reads this trace with the AI                    [ Analyse with AI ]
+ activity                      source     source_elapsed
+ Parsing SELECT * FROM users   10.0.0.1   120
+ Read 3 sstables               10.0.0.2   9100
+ ─ Analysis  drag to resize ────────────────────────────────────────────────
+ TIME
+   3.9ms  seq scan across 3 sstables, ReadStage-2
+   1.8ms  submitted 1 concurrent range request
+
+ FINDINGS
+ - A range scan across the whole ring, not a partition lookup.
+ - 100 live rows, 0 tombstones: the read itself is clean.
+
+ WHAT TO DO
+ - Query by the partition key instead of scanning.
+```
+
+The answer comes back in those three sections, with a line each: where the
+time went, what the trace shows that the timings do not say on their own, and
+what to change. Asked for an explanation, the models write an essay restating
+the trace you already have in front of you, so the shape of the answer is
+dictated rather than suggested.
+
+Drag the line between the two panes with the mouse to give either of them more
+room; let go and it stays where you left it. `Esc` puts the analysis away.
+
+The trace is sent as it was read from `system_traces`, not as it is drawn: the
+drawn table is cut to the width of the screen, and what gets cut off is the end
+of the activity - the part that says what happened.
+
+A query read a page at a time is one request per page, each traced separately
+by Cassandra, and the view covers all of them: every page's events, a `Page`
+column saying which is which, and a total that is the sum. A trace of the last
+page alone says a scan read 65 rows when the query read 565. A query read to
+the end can be hundreds of requests, so the last 20 pages are kept and the
+summary says how many there were.
+
 `FILE` and `HELP` are not views. They open a menu and a window over whatever you
 are looking at, and leave it there. On a narrow terminal the labels shorten and
 then the buttons go, rather than the tab names giving way - `Alt+F` and `F1`

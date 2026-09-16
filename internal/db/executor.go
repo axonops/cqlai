@@ -276,13 +276,19 @@ func (s *Session) getColumnTypeUsingMetadata(keyspace, table, column string) str
 	return s.getColumnTypeFromSystemTable(keyspace, table, column)
 }
 
-// captureTracer implements gocql.Tracer to capture trace IDs
+// captureTracer implements gocql.Tracer to capture trace IDs.
+//
+// Straight through to the session, on every request. A paged query is one
+// request per page and the driver traces each of them; this kept the id in a
+// field of its own that was copied to the session when the first page came
+// back, so every page after that was traced and thrown away - the TRACE view
+// showed the first page's trace whichever page you were reading.
 type captureTracer struct {
-	traceID []byte
+	session *Session
 }
 
 func (t *captureTracer) Trace(traceID []byte) {
-	t.traceID = traceID
+	t.session.noteTrace(traceID)
 }
 
 // ExecuteCQLQueryWithValues executes a statement with bind parameters.
@@ -389,17 +395,11 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	// Create the query
 	q := s.Query(query)
 
-	// Enable tracing if needed and capture trace ID
-	var tracer *captureTracer
+	// Enable tracing if needed. Every request of this query is traced, the
+	// pages after the first included.
 	if s.tracing {
-		tracer = &captureTracer{}
-		q = q.Trace(tracer)
-		defer func() {
-			// Store the trace ID for later retrieval
-			if tracer != nil && tracer.traceID != nil {
-				s.lastTraceID = tracer.traceID
-			}
-		}()
+		s.startTracing()
+		q = q.Trace(&captureTracer{session: s})
 	}
 
 	iter := q.Iter()
@@ -607,17 +607,11 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 		q.PageSize(s.pageSize)
 	}
 
-	// Enable tracing if needed and capture trace ID
-	var tracer *captureTracer
+	// Enable tracing if needed. Every request of this query is traced, the
+	// pages after the first included.
 	if s.tracing {
-		tracer = &captureTracer{}
-		q = q.Trace(tracer)
-		defer func() {
-			// Store the trace ID for later retrieval
-			if tracer != nil && tracer.traceID != nil {
-				s.lastTraceID = tracer.traceID
-			}
-		}()
+		s.startTracing()
+		q = q.Trace(&captureTracer{session: s})
 	}
 
 	iter := q.Iter()

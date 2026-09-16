@@ -32,11 +32,22 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 		return m.handleMousePress(mouse)
 
 	case tea.MouseMotionMsg:
+		// The line between the trace and its analysis follows the pointer
+		// while it is being dragged.
+		if m.trace.dragging {
+			m.dragTraceRule(mouse.Y)
+			return m, nil
+		}
+
 		// Motion only arrives with a button held, and only matters mid-drag;
 		// extendSelection returns straight away otherwise.
 		return m.extendSelection(mouse.X, mouse.Y)
 
 	case tea.MouseReleaseMsg:
+		if m.trace.dragging {
+			m.trace.dragging = false
+			return m, nil
+		}
 		return m.endSelection()
 
 	case tea.MouseWheelMsg:
@@ -291,6 +302,18 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		return m.clickStatusSetting(mouse.X)
 	}
 
+	// The TRACE view has a button above it and, once there is an analysis, a
+	// line between the two panes that is dragged to give either of them room.
+	if m.viewMode == "trace" {
+		if m.traceButtonAt(mouse.X, mouse.Y) {
+			return m.startTraceAnalysis()
+		}
+		if m.traceRuleAt(mouse.Y) {
+			m.trace.dragging = true
+			return m, nil
+		}
+	}
+
 	// A press on the schema tree picks what it lands on. The definition beside
 	// it is text like any other view, and a press there starts a selection, so
 	// what is on screen can still be copied out.
@@ -335,6 +358,18 @@ func (m *MainModel) pressOpensCapture(mouse tea.Mouse) bool {
 
 // handleMouseWheel scrolls the view under the pointer.
 func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
+	// The trace view is two panes once the analysis is open, and the wheel
+	// moves whichever one it is over.
+	if m.viewMode == "trace" && m.trace.open && !m.preferences.active && !m.form.active && !m.help.active {
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			return m.scrollTrace(mouse.Y, -wheelLines)
+		case tea.MouseWheelDown:
+			return m.scrollTrace(mouse.Y, wheelLines)
+		}
+		return m, nil
+	}
+
 	// The schema view is two panes, and the wheel moves whichever one it is
 	// over rather than whichever was touched last.
 	if m.viewMode == "schema" && !m.preferences.active && !m.form.active && !m.help.active {

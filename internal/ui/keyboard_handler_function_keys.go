@@ -63,6 +63,11 @@ func (m *MainModel) showTrace() (*MainModel, tea.Cmd) {
 			m.aiProcessing = false
 			m.input.SetValue("")
 		}
+		// The trace of the request last made, which after paging through a
+		// result is the page last fetched rather than the first: every page is
+		// its own traced request.
+		m.fetchTrace()
+
 		// Refresh the trace view if we have trace data
 		if m.hasTrace {
 			m.refreshTraceView()

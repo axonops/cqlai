@@ -169,6 +169,7 @@ type MainModel struct {
 
 	// Tracing support
 	traceViewport         viewport.Model // Viewport for trace results
+	trace                 traceAnalysis  // The pane under the trace, and what is in it
 	hasTrace              bool           // Whether we have trace data to display
 	traceData             [][]string     // Store trace results
 	traceHeaders          []string       // Store trace column headers
@@ -575,6 +576,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// The trace was just given the whole view back, which is right when it
+		// has it to itself and wrong while the analysis is under it: the two
+		// panes are given their shares again here.
+		m.fitTracePanes()
+
 		// Sized from the prompt in front of it, which is not the same width
 		// while a statement is being continued as it is at a fresh one.
 		width := inputWidth(newWidth, m.input.Prompt)
@@ -612,6 +618,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		updatedModel, cmd := m.handleMouseInput(msg)
 		return updatedModel, cmd
+
+	case traceAnalysedMsg:
+		updated, cmd := m.traceAnalysed(msg)
+		return updated, cmd
 
 	case AICQLResultMsg:
 		// Handle AI CQL generation result

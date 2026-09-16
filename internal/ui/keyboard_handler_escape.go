@@ -7,6 +7,13 @@ import (
 
 // handleEscapeKey handles the ESC key press with its many contexts
 func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
+	// The analysis pane under the trace closes, giving the trace the view
+	// back. A pane that cannot be put away is one more thing in the way.
+	if m.viewMode == "trace" && m.trace.open {
+		m.closeTraceAnalysis()
+		return m, nil
+	}
+
 	// If AI conversation is active and processing, cancel it
 	if m.aiConversationActive && m.aiProcessing {
 		m.aiProcessing = false

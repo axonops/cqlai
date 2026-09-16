@@ -127,11 +127,21 @@ func (m *MainModel) selectionTarget() (selectionSource, bool) {
 		}, true
 	case m.viewMode == "ai" && m.aiConversationActive:
 		return fromViewport(&m.aiConversationViewport, "ai")
-	case m.viewMode == "trace" && m.hasTrace:
-		return fromViewport(&m.traceViewport, "trace")
+	case m.viewMode == "trace":
+		// What it drew last, which is what is on screen: the trace, and the
+		// analysis under it. Both are worth copying out, and the view is two
+		// panes and a rule rather than the one viewport it used to be.
+		if len(m.trace.drawn) == 0 {
+			return selectionSource{}, false
+		}
+		return selectionSource{
+			view:   "trace",
+			lines:  m.trace.drawn,
+			height: len(m.trace.drawn),
+		}, true
 	case m.viewMode == "table" && m.hasTable:
 		return fromViewport(&m.tableViewport, "table")
-	case m.viewMode == "trace" || m.viewMode == "table":
+	case m.viewMode == "table":
 		return selectionSource{}, false
 	default:
 		return fromViewport(&m.historyViewport, "history")
