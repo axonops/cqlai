@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/axonops/cqlai/internal/db"
 )
 
 // captureTraceData captures trace data if tracing is enabled
@@ -16,64 +18,59 @@ func (m *MainModel) captureTraceData(command string) {
 			strings.HasPrefix(upperCmd, "DESC")) {
 		// Give Cassandra a moment to write trace data
 		time.Sleep(50 * time.Millisecond)
-
-		// Retrieve trace data
-		traceData, traceHeaders, traceInfo, err := m.session.GetTraceData()
-		if err == nil && len(traceData) > 0 {
-			// Add summary info as a header to the trace content
-			summaryLine := ""
-			if traceInfo != nil {
-				summaryLine = fmt.Sprintf("Trace Session - Coordinator: %s | Total Duration: %d μs\n",
-					traceInfo.Coordinator, traceInfo.Duration)
-			}
-
-			// Combine headers and data into a single table structure
-			fullTraceData := make([][]string, 0, len(traceData)+1)
-			fullTraceData = append(fullTraceData, traceHeaders)
-			fullTraceData = append(fullTraceData, traceData...)
-
-			// Store trace data for refreshing
-			m.traceData = fullTraceData
-			m.traceHeaders = traceHeaders
-			m.traceInfo = traceInfo
-			m.hasTrace = true
-			m.traceHorizontalOffset = 0 // Reset horizontal scroll
-
-			// Use the existing formatTableForViewport method temporarily storing the offset
-			originalOffset := m.horizontalOffset
-			originalData := m.lastTableData
-			originalWidth := m.tableWidth
-			originalHeaders := m.tableHeaders
-			originalColWidths := m.columnWidths
-			originalCachedLines := m.cachedTableLines
-			originalInitialWidths := m.initialColumnWidths
-
-			// Set trace data temporarily
-			m.horizontalOffset = m.traceHorizontalOffset
-			m.lastTableData = fullTraceData
-			m.cachedTableLines = nil    // Force rebuild for trace data
-			m.initialColumnWidths = nil // Reset column widths for trace
-
-			// Format using existing table renderer
-			traceTable := m.formatTableForViewport(fullTraceData)
-
-			// Store trace-specific values
-			m.traceTableWidth = m.tableWidth
-			m.traceColumnWidths = m.columnWidths
-
-			// Restore original table values
-			m.horizontalOffset = originalOffset
-			m.lastTableData = originalData
-			m.tableWidth = originalWidth
-			m.tableHeaders = originalHeaders
-			m.columnWidths = originalColWidths
-			m.cachedTableLines = originalCachedLines
-			m.initialColumnWidths = originalInitialWidths
-
-			// Prepend summary line to the table
-			finalContent := summaryLine + traceTable
-			m.traceViewport.SetContent(finalContent)
-			m.traceViewport.GotoTop()
-		}
+		m.fetchTrace()
 	}
+}
+
+// fetchTrace reads the trace of the request the shell last made, and puts it
+// in the view.
+//
+// A paged query is one traced request per page, so which trace this is depends
+// on when it is asked for: after the query it is the first page's, and after
+// paging through the results it is the page last fetched. The summary line
+// says which.
+//
+// The drawing is refreshTraceView's. This held a copy of it - the same swap of
+// the table renderer's state, the same summary line without the page on it -
+// and the copy that ran last was the one without, so the view updated on every
+// page and said nothing to show for it.
+func (m *MainModel) fetchTrace() {
+	if m.session == nil || !m.session.Tracing() {
+		return
+	}
+
+	traceData, traceHeaders, traceInfo, err := m.session.GetTraceData()
+	if err != nil || len(traceData) == 0 {
+		return
+	}
+
+	// The headers are a row of the table the renderer draws.
+	full := make([][]string, 0, len(traceData)+1)
+	full = append(full, traceHeaders)
+	full = append(full, traceData...)
+
+	m.traceData = full
+	m.traceHeaders = traceHeaders
+	m.traceInfo = traceInfo
+	m.hasTrace = true
+	m.traceHorizontalOffset = 0
+
+	m.refreshTraceView()
+	m.traceViewport.GotoTop()
+}
+
+// tracePagesSaid says how much of the query the trace covers, where it is more
+// than one request.
+//
+// A paged query is traced per page, and the total above it is the sum of them:
+// without this the view says a scan took nine milliseconds without saying that
+// was six requests, or that there were forty more it is not showing.
+func tracePagesSaid(info *db.TraceInfo) string {
+	switch {
+	case info == nil || info.Pages <= 1:
+		return ""
+	case info.Shown < info.Pages:
+		return fmt.Sprintf(" | %d pages, the last %d shown", info.Pages, info.Shown)
+	}
+	return fmt.Sprintf(" | %d pages", info.Pages)
 }

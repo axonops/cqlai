@@ -188,6 +188,15 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		}
 		return m.openFileMenu(span.start)
 
+	// Alt+A reads the trace with the AI, matching Alt+F and Alt+H. A letter on
+	// its own would be typed into the command line, which is where every key
+	// in this view goes unless it is asked for.
+	case "alt+a":
+		if m.viewMode == "trace" {
+			return m.startTraceAnalysis()
+		}
+		return m, nil
+
 	case "f5":
 		return m.showTrace()
 

@@ -134,17 +134,10 @@ func (m *MainModel) View() tea.View {
 		viewportWidth = m.windowWidth
 		viewportContent = m.viewSchema(m.windowWidth, m.historyViewport.Height())
 	case m.viewMode == "trace":
-		viewportWidth = m.historyViewport.Width()
-		if m.hasTrace {
-			viewportWidth = m.traceViewport.Width()
-			viewportContent = m.traceViewport.View()
-		} else {
-			// Create a temporary viewport for empty trace message
-			emptyMsg := m.styles.MutedText.Render("\n  No trace data available. Enable tracing with 'TRACING ON' to capture query traces.\n")
-			tempViewport := m.historyViewport
-			tempViewport.SetContent(emptyMsg)
-			viewportContent = tempViewport.View()
-		}
+		// Drawn as one block rather than through a viewport: the trace has the
+		// button above it and, once there is one, the analysis below.
+		viewportWidth = m.windowWidth
+		viewportContent = m.viewTrace(m.windowWidth, m.traceHeight())
 	case m.viewMode == "table":
 		viewportWidth = m.historyViewport.Width()
 		if m.hasTable {

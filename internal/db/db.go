@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
@@ -29,7 +30,55 @@ type Session struct {
 	cassandraVersion string
 	schemaCache      *SchemaCache
 	udtRegistry      *UDTRegistry
-	lastTraceID      []byte // Store the last trace ID for retrieval
+
+	// The traces of the requests this query has made, in the order they were
+	// made.
+	//
+	// A paged query is one request per page, each traced separately by
+	// Cassandra under its own session id, and every one of them is kept: a
+	// trace of the last page alone says a scan read sixty-five rows when the
+	// query read five hundred. The driver hands them over on whichever
+	// goroutine fetched the page, which is why they are behind a lock.
+	traceMu  sync.Mutex
+	traceIDs [][]byte
+}
+
+// tracedPagesKept is how many pages of a query are held on to.
+//
+// A query read to the end with auto-fetch on is hundreds of requests, and a
+// trace of all of them is a table nobody reads and a question no model should
+// be asked to answer. The most recent are the ones worth having; the summary
+// says when there were more.
+const tracedPagesKept = 20
+
+// noteTrace records the trace of a request that has just come back.
+func (s *Session) noteTrace(traceID []byte) {
+	s.traceMu.Lock()
+	defer s.traceMu.Unlock()
+
+	kept := make([]byte, len(traceID))
+	copy(kept, traceID)
+	s.traceIDs = append(s.traceIDs, kept)
+}
+
+// startTracing forgets the traces of the query before this one.
+func (s *Session) startTracing() {
+	s.traceMu.Lock()
+	defer s.traceMu.Unlock()
+
+	s.traceIDs = nil
+}
+
+// tracedRequests is the traces to show and how many requests the query made,
+// which are not the same number once a query has run to more pages than are
+// kept.
+func (s *Session) tracedRequests() (ids [][]byte, made int) {
+	s.traceMu.Lock()
+	defer s.traceMu.Unlock()
+
+	made = len(s.traceIDs)
+	from := max(made-tracedPagesKept, 0)
+	return append([][]byte{}, s.traceIDs[from:]...), made
 }
 
 // SessionOptions represents options for creating a session with command-line overrides
@@ -397,68 +446,100 @@ func (s *Session) GetSchemaCache() *SchemaCache {
 // TraceInfo holds trace session summary information
 type TraceInfo struct {
 	Coordinator string
-	Duration    int
+
+	// Duration is how long the query took across every request it made, which
+	// for a paged query is the sum of its pages.
+	Duration int
+
+	// Pages is how many requests the query made, and Shown how many of them
+	// the events below are from: a query read to the end makes hundreds, and
+	// only the most recent are kept.
+	Pages int
+	Shown int
 }
 
-// GetTraceData retrieves trace data for the last executed query
+// GetTraceData retrieves the trace of the last query, across every page of it.
+//
+// A paged query is one traced request per page, and the page last fetched is
+// not the query: a trace of that alone says a scan read sixty-five rows when
+// the query read five hundred. The events of every page kept are returned
+// together, each one saying which page it came from.
 func (s *Session) GetTraceData() ([][]string, []string, *TraceInfo, error) {
-	if s.lastTraceID == nil {
+	traceIDs, made := s.tracedRequests()
+	if len(traceIDs) == 0 {
 		return nil, nil, nil, fmt.Errorf("no trace data available")
 	}
 
-	// Query the system_traces.events table for trace events
-	// Note: Always use LOCAL_ONE consistency for system_traces queries
-	// because trace data may not be replicated to all nodes yet
-	query := `SELECT event_id, activity, source, source_elapsed, thread
-	          FROM system_traces.events
-	          WHERE session_id = ?
-	          ORDER BY event_id`
-
-	// Use LOCAL_ONE consistency for trace queries regardless of session consistency
-	iter := s.Session.Query(query, s.lastTraceID).Consistency(gocql.LocalOne).Iter()
-	defer iter.Close()
-
-	// Define headers
+	// The page column earns its place only when there is more than one.
+	paged := len(traceIDs) > 1
 	headers := []string{"Event", "Activity", "Source", "Source Elapsed (μs)", "Thread"}
+	if paged {
+		headers = append([]string{"Page"}, headers...)
+	}
 
-	// Collect results
+	// Always LOCAL_ONE for system_traces: trace data may not be replicated to
+	// all nodes yet.
+	const events = `SELECT event_id, activity, source, source_elapsed, thread
+	                FROM system_traces.events
+	                WHERE session_id = ?
+	                ORDER BY event_id`
+	const session = `SELECT coordinator, duration
+	                 FROM system_traces.sessions
+	                 WHERE session_id = ?`
+
 	var results [][]string
+	info := &TraceInfo{Pages: made}
+	first := made - len(traceIDs) // the page the kept ones start at
 
-	var eventID gocql.UUID
-	var activity, source, thread string
-	var sourceElapsed int
+	for i, traceID := range traceIDs {
+		page := first + i + 1
+		before := len(results)
 
-	for iter.Scan(&eventID, &activity, &source, &sourceElapsed, &thread) {
-		row := []string{
-			eventID.String()[:8], // Short event ID
-			activity,
-			source,
-			fmt.Sprintf("%d", sourceElapsed),
-			thread,
+		iter := s.Session.Query(events, traceID).Consistency(gocql.LocalOne).Iter()
+
+		var eventID gocql.UUID
+		var activity, source, thread string
+		var sourceElapsed int
+
+		for iter.Scan(&eventID, &activity, &source, &sourceElapsed, &thread) {
+			row := []string{
+				eventID.String()[:8], // Short event ID
+				activity,
+				source,
+				fmt.Sprintf("%d", sourceElapsed),
+				thread,
+			}
+			if paged {
+				row = append([]string{fmt.Sprintf("%d", page)}, row...)
+			}
+			results = append(results, row)
 		}
-		results = append(results, row)
-	}
-
-	if err := iter.Close(); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to retrieve trace data: %v", err)
-	}
-
-	// Get session info - also use LOCAL_ONE consistency
-	var traceInfo *TraceInfo
-	var coordinator string
-	var duration int
-	sessionIter := s.Session.Query(`SELECT coordinator, duration
-	                                FROM system_traces.sessions
-	                                WHERE session_id = ?`, s.lastTraceID).Consistency(gocql.LocalOne).Iter()
-	if sessionIter.Scan(&coordinator, &duration) {
-		traceInfo = &TraceInfo{
-			Coordinator: coordinator,
-			Duration:    duration,
+		if err := iter.Close(); err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to retrieve trace data: %v", err)
 		}
-	}
-	_ = sessionIter.Close()
 
-	return results, headers, traceInfo, nil
+		// Cassandra writes a trace after answering, so the newest page - or
+		// the oldest, read the moment it was asked for - can have nothing
+		// under it yet. Shown counts the pages that did.
+		if len(results) == before {
+			continue
+		}
+		info.Shown++
+
+		var coordinator string
+		var duration int
+		summary := s.Session.Query(session, traceID).Consistency(gocql.LocalOne).Iter()
+		if summary.Scan(&coordinator, &duration) {
+			info.Coordinator = coordinator
+			info.Duration += duration
+		}
+		_ = summary.Close()
+	}
+
+	if len(results) == 0 {
+		return nil, nil, nil, fmt.Errorf("no trace data available")
+	}
+	return results, headers, info, nil
 }
 
 // Keyspace returns the current keyspace

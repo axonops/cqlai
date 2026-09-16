@@ -254,8 +254,9 @@ func (m *MainModel) refreshTraceView() {
 	if m.traceInfo != nil {
 		// Highlight "Trace Session" with accent color
 		highlightedTitle := m.styles.AccentText.Bold(true).Render("Trace Session")
-		summaryLine = fmt.Sprintf("%s - Coordinator: %s | Total Duration: %d μs\n",
-			highlightedTitle, m.traceInfo.Coordinator, m.traceInfo.Duration)
+		summaryLine = fmt.Sprintf("%s - Coordinator: %s | Total Duration: %d μs%s\n",
+			highlightedTitle, m.traceInfo.Coordinator, m.traceInfo.Duration,
+			tracePagesSaid(m.traceInfo))
 	}
 
 	// Temporarily swap in trace data and settings
