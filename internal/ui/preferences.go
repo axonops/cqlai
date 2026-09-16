@@ -121,17 +121,16 @@ func prefSpecs() []prefSpec {
 	// and model being retyped. They are the same three settings every time,
 	// which is a reason to generate them rather than to write the same three
 	// lines five times over.
-	for _, provider := range []struct{ section, path string }{
-		{"CHAT - OPENAI", "AI.OpenAI"},
-		{"CHAT - ANTHROPIC", "AI.Anthropic"},
-		{"CHAT - GEMINI", "AI.Gemini"},
-		{"CHAT - OLLAMA", "AI.Ollama"},
-		{"CHAT - OPENROUTER", "AI.OpenRouter"},
-	} {
+	//
+	// Which providers there are comes from the same table the CHAT tab talks
+	// to them through, so a provider cannot be offered a block here without
+	// being reachable, or be reachable without one.
+	for _, provider := range ai.ProviderBlocks() {
+		path := "AI." + provider.Field
 		specs = append(specs,
-			prefSpec{section: provider.section, path: provider.path + ".APIKey", label: "API key", kind: prefSecret},
-			prefSpec{path: provider.path + ".Model", label: "Model", kind: prefText},
-			prefSpec{path: provider.path + ".URL", label: "URL", kind: prefText, hint: "where the provider is, for one that runs locally"},
+			prefSpec{section: "CHAT - " + strings.ToUpper(provider.Name), path: path + ".APIKey", label: "API key", kind: prefSecret},
+			prefSpec{path: path + ".Model", label: "Model", kind: prefText},
+			prefSpec{path: path + ".URL", label: "URL", kind: prefText, hint: "where the provider is, for one that runs locally"},
 		)
 	}
 

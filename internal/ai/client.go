@@ -1,145 +1,64 @@
 package ai
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/config"
-	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 )
 
-// AIClient defines the interface for an AI client.
-type AIClient interface {
-	ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error)
-	SetAPIKey(key string)
-}
-
-// ConvertDBConfigToAIConfig converts config.AIConfig to local AIConfig for the AI client
+// ConvertDBConfigToAIConfig resolves the configuration down to the four
+// things a request needs: which provider, its key, its model and its URL.
+//
+// A provider's own block in cqlai.json overrides the general settings above
+// it, and what is still unset comes from the provider's row in the table.
 func ConvertDBConfigToAIConfig(dbConfig *config.AIConfig) *AIConfig {
-	logger.DebugfToFile("AI", "ConvertDBConfigToAIConfig called")
-
 	if dbConfig == nil {
-		logger.DebugfToFile("AI", "dbConfig is nil, returning mock config")
-		// Return default mock config if no AI config provided
-		return &AIConfig{
-			Provider: "mock",
-			APIKey:   "",
-			Model:    "",
-		}
+		// Mock, so that nothing built from this reaches a provider by
+		// accident when there is no configuration at all.
+		return &AIConfig{Provider: string(ProviderMock)}
 	}
 
-	logger.DebugfToFile("AI", "dbConfig.Provider: %s", dbConfig.Provider)
-
-	config := &AIConfig{
+	settings := &AIConfig{
 		Provider: dbConfig.Provider,
 		APIKey:   dbConfig.APIKey,
 		Model:    dbConfig.Model,
-		URL:      dbConfig.URL, // Use top-level URL as base
+		URL:      dbConfig.URL,
+	}
+	if settings.Provider == "" {
+		settings.Provider = string(ProviderMock)
 	}
 
-	if config.Provider == "" {
-		logger.DebugfToFile("AI", "Provider is empty, defaulting to mock")
-		config.Provider = "mock" // Default to mock for safety
+	p, known := providerNamed(Provider(settings.Provider))
+	if !known {
+		logger.DebugfToFile("AI", "No such provider: %s", settings.Provider)
+		return settings
 	}
 
-	// Use provider-specific config if available
-	switch Provider(config.Provider) {
-	case ProviderOpenAI:
-		if dbConfig.OpenAI != nil {
-			if dbConfig.OpenAI.APIKey != "" {
-				config.APIKey = dbConfig.OpenAI.APIKey
-			}
-			if dbConfig.OpenAI.Model != "" {
-				config.Model = dbConfig.OpenAI.Model
-			}
+	if block := p.settings(dbConfig); block != nil {
+		if block.APIKey != "" {
+			settings.APIKey = block.APIKey
 		}
-		if config.Model == "" {
-			config.Model = DefaultOpenAIModel
+		if block.Model != "" {
+			settings.Model = block.Model
 		}
-	case ProviderAnthropic:
-		logger.DebugfToFile("AI", "Processing Anthropic config")
-		if dbConfig.Anthropic != nil {
-			logger.DebugfToFile("AI", "Anthropic config exists: APIKey=%v, Model=%s",
-				dbConfig.Anthropic.APIKey != "", dbConfig.Anthropic.Model)
-			if dbConfig.Anthropic.APIKey != "" {
-				config.APIKey = dbConfig.Anthropic.APIKey
-				logger.DebugfToFile("AI", "Set Anthropic API key")
-			}
-			if dbConfig.Anthropic.Model != "" {
-				config.Model = dbConfig.Anthropic.Model
-				logger.DebugfToFile("AI", "Set Anthropic model: %s", config.Model)
-			}
-		}
-		if config.Model == "" {
-			config.Model = DefaultAnthropicModel
-			logger.DebugfToFile("AI", "Using default Anthropic model: %s", config.Model)
-		}
-	case ProviderGemini:
-		if dbConfig.Gemini != nil {
-			if dbConfig.Gemini.APIKey != "" {
-				config.APIKey = dbConfig.Gemini.APIKey
-			}
-			if dbConfig.Gemini.Model != "" {
-				config.Model = dbConfig.Gemini.Model
-			}
-		}
-		if config.Model == "" {
-			config.Model = DefaultGeminiModel
-		}
-	case ProviderOllama:
-		if dbConfig.Ollama != nil {
-			if dbConfig.Ollama.APIKey != "" {
-				config.APIKey = dbConfig.Ollama.APIKey
-			}
-			if dbConfig.Ollama.Model != "" {
-				config.Model = dbConfig.Ollama.Model
-			}
-			if dbConfig.Ollama.URL != "" {
-				config.URL = dbConfig.Ollama.URL // Provider-specific URL overrides top-level
-			}
-		}
-		if config.Model == "" {
-			config.Model = DefaultOllamaModel
-		}
-		if config.URL == "" {
-			config.URL = "http://localhost:11434/v1" // Default Ollama URL
-		}
-		logger.DebugfToFile("AI", "Ollama config: URL=%s, Model=%s", config.URL, config.Model)
-	case ProviderOpenRouter:
-		logger.DebugfToFile("AI", "Processing OpenRouter config")
-		if dbConfig.OpenRouter != nil {
-			logger.DebugfToFile("AI", "OpenRouter config exists: APIKey=%v, Model=%s",
-				dbConfig.OpenRouter.APIKey != "", dbConfig.OpenRouter.Model)
-			if dbConfig.OpenRouter.APIKey != "" {
-				config.APIKey = dbConfig.OpenRouter.APIKey
-				logger.DebugfToFile("AI", "Set OpenRouter API key")
-			}
-			if dbConfig.OpenRouter.Model != "" {
-				config.Model = dbConfig.OpenRouter.Model
-				logger.DebugfToFile("AI", "Set OpenRouter model: %s", config.Model)
-			}
-			if dbConfig.OpenRouter.URL != "" {
-				config.URL = dbConfig.OpenRouter.URL // Provider-specific URL overrides top-level
-				logger.DebugfToFile("AI", "Set OpenRouter URL: %s", config.URL)
-			}
-		}
-		if config.Model == "" {
-			config.Model = DefaultOpenRouterModel
-			logger.DebugfToFile("AI", "Using default OpenRouter model: %s", config.Model)
-		}
-		if config.URL == "" {
-			config.URL = "https://openrouter.ai/api/v1" // Default OpenRouter URL
-			logger.DebugfToFile("AI", "Using default OpenRouter URL: %s", config.URL)
+		if block.URL != "" {
+			settings.URL = block.URL
 		}
 	}
+	if settings.Model == "" {
+		settings.Model = p.model
+	}
+	if settings.URL == "" {
+		settings.URL = p.url
+	}
 
-	logger.DebugfToFile("AI", "Final AI config: Provider=%s, HasAPIKey=%v, Model=%s, URL=%s",
-		config.Provider, config.APIKey != "", config.Model, config.URL)
+	logger.DebugfToFile("AI", "AI settings: provider=%s, key=%v, model=%s, url=%s",
+		settings.Provider, settings.APIKey != "", settings.Model, settings.URL)
 
-	return config
+	return settings
 }
 
 // AIConfig holds configuration for AI providers
@@ -148,22 +67,6 @@ type AIConfig struct {
 	APIKey   string
 	Model    string // Optional model override
 	URL      string // For providers that support custom URLs (Ollama, OpenRouter)
-}
-
-// BaseAIClient provides common functionality
-type BaseAIClient struct {
-	APIKey string
-	Model  string
-}
-
-func (c *BaseAIClient) SetAPIKey(key string) {
-	c.APIKey = key
-}
-
-// Message represents a single message in a conversation.
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
 }
 
 // extractJSON attempts to extract JSON from a text response
@@ -239,116 +142,6 @@ func extractBalancedJSON(text string) string {
 	}
 
 	return ""
-}
-
-// createAIClient creates the appropriate AI client based on configuration
-func createAIClient(aiConfig *AIConfig, providerConfig *config.AIConfig) (AIClient, error) {
-	if aiConfig == nil {
-		return nil, fmt.Errorf("AI configuration is required")
-	}
-
-	switch Provider(aiConfig.Provider) {
-	case ProviderOpenAI:
-		return NewOpenAIClient(aiConfig.APIKey, aiConfig.Model), nil
-	case ProviderAnthropic:
-		return NewAnthropicClient(aiConfig.APIKey, aiConfig.Model), nil
-	case ProviderOllama:
-		if providerConfig == nil || providerConfig.Ollama == nil {
-			return nil, fmt.Errorf("ollama configuration is missing from cqlai.json")
-		}
-		return NewOllamaClient(providerConfig.Ollama), nil
-	case ProviderOpenRouter:
-		return NewOpenRouterClient(aiConfig.APIKey, aiConfig.Model), nil
-	default:
-		// Add a mock client for safety, so the app doesn't crash if config is missing
-		if aiConfig.Provider == "mock" {
-			return &MockAIClient{}, nil
-		}
-		return nil, fmt.Errorf(ErrInvalidProvider, aiConfig.Provider)
-	}
-}
-
-// MockAIClient is a mock client for testing and safe fallback.
-type MockAIClient struct{}
-
-func (m *MockAIClient) ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error) {
-	return nil, fmt.Errorf(ErrUnsupportedMethod, "mock", "tool calling")
-}
-
-func (m *MockAIClient) SetAPIKey(key string) {
-	// No-op for mock client
-}
-
-// GenerateCQLFromRequest is a high-level function that processes user requests and may generate CQL or return informational responses
-func GenerateCQLFromRequest(ctx context.Context, session *db.Session, aiConfig *config.AIConfig, userRequest string) (*AIResult, string, error) {
-	// Initialize local AI for fuzzy search if needed
-	_ = InitializeLocalAI(session) // Ignore error and continue without local AI
-
-	// Get minimal schema context (just list of keyspaces for initial context)
-	schemaContext := "Available keyspaces: "
-	if globalAI != nil && globalAI.cache != nil {
-		globalAI.cache.Mu.RLock()
-		if len(globalAI.cache.Keyspaces) > 0 {
-			schemaContext += strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", ")
-			if len(globalAI.cache.Keyspaces) > 10 {
-				schemaContext += fmt.Sprintf(" (and %d more)", len(globalAI.cache.Keyspaces)-10)
-			}
-		}
-		globalAI.cache.Mu.RUnlock()
-	} else {
-		// Fallback to getting schema from session
-		sc, err := session.GetSchemaContext(20)
-		if err == nil {
-			schemaContext = sc
-		}
-	}
-
-	// Convert config to local AI config
-	localConfig := ConvertDBConfigToAIConfig(aiConfig)
-	logger.DebugfToFile("AI", "AI Config: provider=%s, has_api_key=%v", localConfig.Provider, localConfig.APIKey != "")
-
-	// Create AI client
-	client, err := createAIClient(localConfig, aiConfig)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create AI client: %v", err)
-	}
-	logger.DebugfToFile("AI", "Created AI client of type: %T", client)
-
-	// Generate with tools (all clients support tools now)
-	logger.DebugfToFile("AI", "Attempting to process request with tools for: %s", userRequest)
-	plan, err := client.ProcessRequestWithTools(ctx, userRequest, schemaContext)
-	if err != nil {
-		// Check if this is an interaction request
-		if _, ok := err.(*InteractionRequest); ok {
-			logger.DebugfToFile("AI", "User interaction needed, returning to UI")
-			return nil, "", err // Return the request as-is to preserve type
-		}
-
-		logger.DebugfToFile("AI", "ProcessRequestWithTools failed: %v", err)
-		return nil, "", fmt.Errorf("failed to generate CQL plan: %v", err)
-	}
-	logger.DebugfToFile("AI", "ProcessRequestWithTools succeeded")
-
-	// Check if this is an informational response
-	if plan.Operation == "INFO" {
-		logger.DebugfToFile("AI", "Returning informational response: %s", plan.InfoContent)
-		// For informational responses, return the content instead of CQL
-		return plan, plan.InfoContent, nil
-	}
-
-	// Validate plan for CQL operations
-	validator := &PlanValidator{Schema: nil} // TODO: Pass actual schema
-	if err := validator.ValidatePlan(plan); err != nil {
-		return nil, "", fmt.Errorf("invalid plan: %v", err)
-	}
-
-	// Render CQL
-	cql, err := RenderCQL(plan)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to render CQL: %v", err)
-	}
-
-	return plan, cql, nil
 }
 
 // FormatPlanAsJSON returns a pretty-printed JSON representation of the plan

@@ -14,9 +14,17 @@ import (
 )
 
 const (
-	openAiBaseURL      = "https://api.openai.com/v1"
-	openRouterBaseURL  = "https://openrouter.ai/api/v1"
-	ollamaBaseURL      = "http://localhost:11434/v1"
+	openAiBaseURL     = "https://api.openai.com/v1"
+	openRouterBaseURL = "https://openrouter.ai/api/v1"
+
+	// ollamaBaseURL is Ollama's OpenAI-compatible endpoint, not its own API
+	// at /api. It is the one cqlai has always pointed at.
+	ollamaBaseURL = "http://localhost:11434/v1"
+
+	// geminiBaseURL is Gemini's OpenAI-compatible endpoint, which answers
+	// chat completions with tool calls the same way the others do.
+	geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
 	maxConversations   = 100            // Maximum number of conversations to keep
 	conversationMaxAge = 24 * time.Hour // Maximum age before cleanup
 )
@@ -61,43 +69,31 @@ func (cm *ConversationManager) StartConversation(provider, model, apiKey, baseUR
 		MaxRounds:       10,
 	}
 
-	// Initialize provider-specific client
-	switch provider {
-	case "anthropic":
+	// Build the client for whichever API this provider speaks. Which one,
+	// and where it lives, come from the provider table.
+	p, known := providerNamed(Provider(provider))
+	if !known || p.speaks == noAPI {
+		return nil, fmt.Errorf(ErrInvalidProvider, provider)
+	}
+
+	url := baseURL
+	if url == "" {
+		url = p.url
+	}
+	conv.BaseURL = url
+
+	switch p.speaks {
+	case anthropicAPI:
 		client := anthropic.NewClient(anthropicoption.WithAPIKey(apiKey))
 		conv.anthropicClient = &client
-	case "openai":
-		url := baseURL
-		if url == "" {
-			url = openAiBaseURL
-		}
+	case openAIAPI:
 		client := openai.NewClient(
 			openaioption.WithAPIKey(apiKey),
 			openaioption.WithBaseURL(url),
 		)
 		conv.openaiClient = &client
-	case "openrouter":
-		url := baseURL
-		if url == "" {
-			url = openRouterBaseURL
-		}
-		client := openai.NewClient(
-			openaioption.WithAPIKey(apiKey),
-			openaioption.WithBaseURL(url),
-		)
-		conv.openrouterClient = &client
-	case "ollama":
-		url := baseURL
-		if url == "" {
-			url = ollamaBaseURL
-		}
-		client := openai.NewClient(
-			openaioption.WithAPIKey(apiKey),
-			openaioption.WithBaseURL(url),
-		)
-		conv.ollamaClient = &client
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", provider)
+	case noAPI:
+		return nil, fmt.Errorf(ErrInvalidProvider, provider)
 	}
 
 	// Store the conversation
@@ -202,16 +198,9 @@ func (conv *AIConversation) Continue(ctx context.Context, userInput string) (*AI
 
 	logger.DebugfToFile("AIConversation", "[%s] Round %d: Continuing with input: %s", conv.ID, conv.CurrentRound, userInput)
 
-	switch conv.Provider {
-	case "anthropic":
-		return conv.continueAnthropic(ctx, userInput)
-	case "openai":
-		return conv.continueOpenAI(ctx, userInput)
-	case "openrouter":
-		return conv.continueOpenRouter(ctx, userInput)
-	case "ollama":
-		return conv.continueOllama(ctx, userInput)
-	default:
-		return nil, nil, fmt.Errorf("unsupported provider: %s", conv.Provider)
+	p, known := providerNamed(Provider(conv.Provider))
+	if !known || p.continues == nil {
+		return nil, nil, fmt.Errorf(ErrInvalidProvider, conv.Provider)
 	}
+	return p.continues(conv, ctx, userInput)
 }

@@ -20,27 +20,21 @@ func IsConfigured(cfg *config.AIConfig) bool {
 		return false
 	}
 
-	switch Provider(cfg.Provider) {
-	case ProviderMock:
-		return true
-
-	case ProviderOllama:
-		// Ollama runs locally and takes no key, so a URL is what it needs.
-		return providerURL(cfg, cfg.Ollama) != ""
-
-	case ProviderOpenAI:
-		return providerKey(cfg, cfg.OpenAI) != ""
-	case ProviderAnthropic:
-		return providerKey(cfg, cfg.Anthropic) != ""
-	case ProviderGemini:
-		return providerKey(cfg, cfg.Gemini) != ""
-	case ProviderOpenRouter:
-		return providerKey(cfg, cfg.OpenRouter) != ""
-
-	default:
+	p, known := providerNamed(Provider(cfg.Provider))
+	if !known {
 		// No provider at all, or one nothing here knows how to talk to.
 		return false
 	}
+
+	switch p.needs {
+	case needsNothing:
+		return true
+	case needsURL:
+		return providerURL(cfg, p.settings(cfg)) != ""
+	case needsKey:
+		return providerKey(cfg, p.settings(cfg)) != ""
+	}
+	return false
 }
 
 // providerKey is the key for a provider: its own, or the general one it falls

@@ -1183,7 +1183,7 @@ Use Google Gemini for a fast and capable model from Google. Requires a Google AI
 
 - **Get API Key:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 - **Recommended Model:**
-  - `gemini-pro` (default)
+  - `gemini-3.8-flash` (default)
 
 **Configuration:**
 ```json
@@ -1191,7 +1191,7 @@ Use Google Gemini for a fast and capable model from Google. Requires a Google AI
   "ai": {
     "provider": "gemini",
     "apiKey": "...",
-    "model": "gemini-pro"
+    "model": "gemini-3.8-flash"
   }
 }
 ```

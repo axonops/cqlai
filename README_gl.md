@@ -877,7 +877,7 @@ Usa Google Gemini para un modelo rápido e capaz de Google. Require unha clave A
 
 - **Obter Clave API:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 - **Modelo Recomendado:**
-  - `gemini-pro` (predeterminado)
+  - `gemini-3.8-flash` (predeterminado)
 
 **Configuración:**
 ```json
@@ -885,7 +885,7 @@ Usa Google Gemini para un modelo rápido e capaz de Google. Require unha clave A
   "ai": {
     "provider": "gemini",
     "apiKey": "...",
-    "model": "gemini-pro"
+    "model": "gemini-3.8-flash"
   }
 }
 ```

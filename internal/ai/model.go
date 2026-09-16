@@ -66,9 +66,11 @@ type AIConversation struct {
 	// Provider-specific clients and message history
 	anthropicClient   *anthropic.Client
 	anthropicMessages []anthropic.MessageParam // Track actual Anthropic message format
-	openaiClient      *openai.Client
-	openrouterClient  *openai.Client // OpenRouter uses OpenAI-compatible client
-	ollamaClient      *openai.Client // Ollama uses OpenAI-compatible client
+
+	// openaiClient is every provider that speaks the OpenAI API - OpenAI
+	// itself and OpenRouter - which differ only in the base URL it was
+	// built with. Ollama is not one of them: it is asked over its own API.
+	openaiClient *openai.Client
 }
 
 // ConversationMessage represents a message in the conversation
@@ -121,11 +123,6 @@ type WhereClause struct {
 type OrderClause struct {
 	Column string `json:"column"`
 	Order  string `json:"order"` // ASC or DESC
-}
-
-// PlanValidator validates a query plan against schema
-type PlanValidator struct {
-	Schema any // Will be *db.SchemaCatalog when we integrate
 }
 
 // Resolver handles fuzzy table name resolution
