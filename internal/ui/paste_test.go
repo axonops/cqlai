@@ -21,18 +21,18 @@ func paste(m *MainModel, text string) *MainModel {
 // what pasting is for.
 func TestPastingIntoASetting(t *testing.T) {
 	m := prefModel(t, &config.Config{})
-	i := prefIndex(t, m, "AI.APIKey")
+	i := prefIndex(t, m, "AI.Anthropic.APIKey")
 	m.preferences.focusField(i)
 
 	m = paste(m, pastedKey)
 	assert.Equal(t, pastedKey, m.preferences.fields[i].value())
 
 	// It goes in at the cursor, like typing does.
-	m.preferences.focusField(prefIndex(t, m, "AI.Model"))
+	m.preferences.focusField(prefIndex(t, m, "AI.Anthropic.Model"))
 	m = press(m, "a")
 	m = paste(m, "bc")
 	m = press(m, "d")
-	assert.Equal(t, "abcd", m.preferences.fields[prefIndex(t, m, "AI.Model")].value())
+	assert.Equal(t, "abcd", m.preferences.fields[prefIndex(t, m, "AI.Anthropic.Model")].value())
 }
 
 // TestPastingClosesTheCandidateList, which was worked out from what was there
@@ -192,7 +192,7 @@ func TestAClipboardMessageNobodyAskedForIsIgnored(t *testing.T) {
 // TestARightClickGoesWhereTheKeysGo, the same as any other paste.
 func TestARightClickGoesWhereTheKeysGo(t *testing.T) {
 	m := prefModel(t, &config.Config{})
-	i := prefIndex(t, m, "AI.APIKey")
+	i := prefIndex(t, m, "AI.Anthropic.APIKey")
 	m.preferences.focusField(i)
 
 	m, _ = m.handleMouseInput(tea.MouseClickMsg{Button: tea.MouseRight, X: 10, Y: 5})

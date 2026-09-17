@@ -1033,6 +1033,11 @@ writes the JSON file it was loaded from, or `~/.cassandra/cqlai.json` when none
 was found.
 Keys already in the file that CQLAI does not know about are left alone.
 
+`CHAT` holds one setting, which provider to ask. Its key, its model and where it
+lives belong to the provider and are in the provider's own section below -
+`CHAT - ANTHROPIC`, `CHAT - OLLAMA` and so on - so switching provider does not
+mean retyping them, and a key is never in a box that does not say whose it is.
+
 Where to connect and how - host, port, keyspace, credentials, timeouts and SSL -
 belongs to a connection rather than to CQLAI, and is edited in `FILE > CONNECT`
 against the connection it belongs to. Two windows writing the same setting is
