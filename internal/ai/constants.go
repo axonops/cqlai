@@ -31,7 +31,10 @@ const (
 	// a 404 until a model was named in the file.
 	DefaultAnthropicModel = "claude-opus-5"
 
-	DefaultGeminiModel     = "gemini-pro"
+	// DefaultGeminiModel: gemini-pro was the default and has been retired,
+	// the same way claude-3-sonnet was.
+	DefaultGeminiModel = "gemini-3.8-flash"
+
 	DefaultOllamaModel     = "llama3"
 	DefaultOpenRouterModel = "openai/gpt-4-turbo-preview"
 )
@@ -99,14 +102,8 @@ const (
 	EnvAIModel       = "AI_MODEL"
 )
 
-// Error messages
-const (
-	ErrNoAPIKey          = "API key is required for %s" // #nosec G101 - This is an error message, not a credential
-	ErrUnsupportedMethod = "%s client does not support %s"
-	ErrInvalidProvider   = "unsupported AI provider: %s"
-	ErrJSONParsing       = "failed to parse JSON response"
-	ErrNoToolCalls       = "no tool calls in response"
-)
+// ErrInvalidProvider is what a provider that cannot be talked to is told.
+const ErrInvalidProvider = "unsupported AI provider: %s"
 
 // System message prefixes
 const (
@@ -114,19 +111,3 @@ const (
 	UserMessagePrefix   = "User: "
 	AssistantPrefix     = "Assistant: "
 )
-
-// Providers is every provider cqlai can be pointed at, in the order the
-// PREFERENCES window offers them.
-//
-// The constants above are the names; this is the list. A provider added there
-// and not here is one the window cannot offer, so keep them together.
-func Providers() []string {
-	return []string{
-		string(ProviderOpenAI),
-		string(ProviderAnthropic),
-		string(ProviderGemini),
-		string(ProviderOllama),
-		string(ProviderOpenRouter),
-		string(ProviderMock),
-	}
-}

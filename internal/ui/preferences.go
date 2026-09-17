@@ -111,27 +111,27 @@ func prefSpecs() []prefSpec {
 		{path: "SSL.InsecureSkipVerify", label: "Skip verification", kind: prefYesNo, hint: "accept any certificate - not for production"},
 		{path: "SSL.AllowLegacyCN", label: "Allow legacy CN", kind: prefYesNo, hint: "certificates with no subject alternative name"},
 
-		{section: "CHAT", path: "AI.Provider", label: "Provider", kind: prefChoice, choices: ai.Providers, hint: "the service the CHAT tab asks"},
-		{path: "AI.APIKey", label: "API key", kind: prefSecret, hint: "used when the provider below has none of its own"},
-		{path: "AI.Model", label: "Model", kind: prefText, hint: "used when the provider below has none of its own"},
-		{path: "AI.URL", label: "URL", kind: prefText, hint: "used when the provider below has none of its own"},
+		// Which provider, and nothing else. A key and a model mean nothing
+		// without knowing whose they are, and every provider has a section of
+		// its own below holding exactly those - so a general key here was a
+		// second place to put the same thing, and the one that loses.
+		{section: "CHAT", path: "AI.Provider", label: "Provider", kind: prefChoice, choices: ai.Providers, hint: "the service the CHAT tab asks - its settings are in its own section below"},
 	}
 
 	// A block per provider, so the one in use can be switched without its key
 	// and model being retyped. They are the same three settings every time,
 	// which is a reason to generate them rather than to write the same three
 	// lines five times over.
-	for _, provider := range []struct{ section, path string }{
-		{"CHAT - OPENAI", "AI.OpenAI"},
-		{"CHAT - ANTHROPIC", "AI.Anthropic"},
-		{"CHAT - GEMINI", "AI.Gemini"},
-		{"CHAT - OLLAMA", "AI.Ollama"},
-		{"CHAT - OPENROUTER", "AI.OpenRouter"},
-	} {
+	//
+	// Which providers there are comes from the same table the CHAT tab talks
+	// to them through, so a provider cannot be offered a block here without
+	// being reachable, or be reachable without one.
+	for _, provider := range ai.ProviderBlocks() {
+		path := "AI." + provider.Field
 		specs = append(specs,
-			prefSpec{section: provider.section, path: provider.path + ".APIKey", label: "API key", kind: prefSecret},
-			prefSpec{path: provider.path + ".Model", label: "Model", kind: prefText},
-			prefSpec{path: provider.path + ".URL", label: "URL", kind: prefText, hint: "where the provider is, for one that runs locally"},
+			prefSpec{section: "CHAT - " + strings.ToUpper(provider.Name), path: path + ".APIKey", label: "API key", kind: prefSecret, hint: "this provider's key"},
+			prefSpec{path: path + ".Model", label: "Model", kind: prefText, hint: "left empty for this provider's default"},
+			prefSpec{path: path + ".URL", label: "URL", kind: prefText, hint: "where the provider is, for one that runs locally"},
 		)
 	}
 

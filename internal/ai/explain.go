@@ -20,10 +20,11 @@ import (
 // it is read - and the tool loop is in the way of getting one.
 //
 // The clients are built the way the conversation builds them, from the SDKs
-// directly. There is a second set of provider clients in this package behind
-// an AIClient interface, and nothing reaches it: going through that instead
-// put a second copy of four SDKs' worth of machinery in the binary - five
-// megabytes - for the same three requests.
+// directly. There was a second set of provider clients in this package behind
+// an AIClient interface that nothing reached: going through that instead put a
+// second copy of four SDKs' worth of machinery in the binary - five megabytes
+// - for the same three requests. It is gone, and which provider speaks which
+// API is one table now.
 
 // Explain asks the configured provider to explain something.
 func Explain(ctx context.Context, providerConfig *config.AIConfig, instructions, subject string) (string, error) {
@@ -34,19 +35,20 @@ func Explain(ctx context.Context, providerConfig *config.AIConfig, instructions,
 	settings := ConvertDBConfigToAIConfig(providerConfig)
 	key, model := settings.APIKey, settings.Model
 
+	p, known := providerNamed(Provider(settings.Provider))
+	if !known || p.speaks == noAPI {
+		return "", fmt.Errorf("the %s provider cannot be asked to explain things", settings.Provider)
+	}
+
 	var said string
 	var err error
 
-	switch Provider(settings.Provider) {
-	case ProviderAnthropic:
+	switch p.speaks {
+	case anthropicAPI:
 		said, err = explainWithAnthropic(ctx, key, model, instructions, subject)
-	case ProviderOpenAI:
-		said, err = explainWithOpenAI(ctx, key, model, openAiBaseURL, settings.URL, instructions, subject)
-	case ProviderOpenRouter:
-		said, err = explainWithOpenAI(ctx, key, model, openRouterBaseURL, settings.URL, instructions, subject)
-	case ProviderOllama:
-		said, err = explainWithOpenAI(ctx, key, model, ollamaBaseURL, settings.URL, instructions, subject)
-	default:
+	case openAIAPI:
+		said, err = explainWithOpenAI(ctx, key, model, settings.URL, instructions, subject)
+	case noAPI:
 		return "", fmt.Errorf("the %s provider cannot be asked to explain things", settings.Provider)
 	}
 
@@ -91,12 +93,8 @@ func explainWithAnthropic(ctx context.Context, key, model, instructions, subject
 }
 
 // explainWithOpenAI asks anything that speaks the OpenAI API: OpenAI itself,
-// OpenRouter, and Ollama.
-func explainWithOpenAI(ctx context.Context, key, model, standardURL, configuredURL, instructions, subject string) (string, error) {
-	url := configuredURL
-	if url == "" {
-		url = standardURL
-	}
+// OpenRouter, Gemini and Ollama.
+func explainWithOpenAI(ctx context.Context, key, model, url, instructions, subject string) (string, error) {
 	if model == "" {
 		return "", fmt.Errorf("no model is configured")
 	}

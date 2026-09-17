@@ -4,48 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
 	"github.com/openai/openai-go/shared/constant"
 )
-
-// OpenAIClient implements the AIClient interface for OpenAI using the official SDK
-type OpenAIClient struct {
-	BaseAIClient
-	client *openai.Client
-}
-
-// NewOpenAIClient creates a new OpenAI client using the official SDK
-func NewOpenAIClient(apiKey string, model string) *OpenAIClient {
-	if model == "" {
-		model = string(openai.ChatModelGPT4oMini)
-	}
-
-	// Create HTTP client with timeout for better reliability
-	httpClient := &http.Client{
-		Timeout: 60 * time.Second,
-	}
-
-	client := openai.NewClient(
-		option.WithAPIKey(apiKey),
-		option.WithHTTPClient(httpClient),
-	)
-
-	return &OpenAIClient{
-		BaseAIClient: BaseAIClient{
-			APIKey: apiKey,
-			Model:  model,
-		},
-		client: &client,
-	}
-}
 
 // retryWithBackoffOpenAI retries a function with exponential backoff on rate limit or server errors
 func retryWithBackoffOpenAI[T any](ctx context.Context, maxRetries int, fn func(context.Context) (T, error)) (T, error) {
@@ -121,194 +88,12 @@ func getOpenAITools() []openai.ChatCompletionToolParam {
 	return tools
 }
 
-// ProcessRequestWithTools implements tool calling using OpenAI's native function calling API
-func (c *OpenAIClient) ProcessRequestWithTools(ctx context.Context, prompt string, schema string) (*AIResult, error) {
-	if c.APIKey == "" {
-		return nil, fmt.Errorf("API key is required for %s", "OpenAI")
-	}
-
-	// Build the initial messages
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(SystemPrompt),
-		openai.UserMessage(fmt.Sprintf("Context: %s\n\nUser Request: %s", schema, prompt)),
-	}
-
-	// Get all tool definitions
-	tools := getOpenAITools()
-
-	// Make the API call with tools
-	params := openai.ChatCompletionNewParams{
-		Messages:    messages,
-		Model:       openai.ChatModel(c.Model),
-		Tools:       tools,
-		Temperature: param.NewOpt(0.2), // Low temperature for more deterministic output
-	}
-
-	// Allow up to 5 rounds of tool calls
-	for attempts := 0; attempts < 5; attempts++ {
-		logger.DebugfToFile("OpenAI", "Round %d: Sending request with tools", attempts+1)
-
-		// Use retry logic for API calls
-		completion, err := retryWithBackoffOpenAI(ctx, 3, func(ctx context.Context) (*openai.ChatCompletion, error) {
-			return c.client.Chat.Completions.New(ctx, params)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("OpenAI API error: %v", err)
-		}
-
-		if len(completion.Choices) == 0 {
-			return nil, fmt.Errorf("no response from OpenAI")
-		}
-
-		choice := completion.Choices[0]
-
-		// Check if the model wants to call functions
-		if len(choice.Message.ToolCalls) > 0 {
-			logger.DebugfToFile("OpenAI", "Model requested %d tool calls", len(choice.Message.ToolCalls))
-
-			// Convert tool calls to param format
-			toolCallParams := make([]openai.ChatCompletionMessageToolCallParam, len(choice.Message.ToolCalls))
-			for i, tc := range choice.Message.ToolCalls {
-				toolCallParams[i] = openai.ChatCompletionMessageToolCallParam{
-					ID:   tc.ID,
-					Type: tc.Type,
-					Function: openai.ChatCompletionMessageToolCallFunctionParam{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-
-			// Add the assistant's message with tool calls to the conversation
-			// Create the assistant message param with tool calls
-			assistantMsgParam := openai.ChatCompletionAssistantMessageParam{
-				ToolCalls: toolCallParams,
-			}
-			// If there's content, set it using the helper to handle the union type properly
-			if choice.Message.Content != "" {
-				// Create a basic assistant message with content, then merge tool calls
-				baseMsg := openai.AssistantMessage(choice.Message.Content)
-				if baseMsg.OfAssistant != nil {
-					baseMsg.OfAssistant.ToolCalls = toolCallParams
-				}
-				messages = append(messages, baseMsg)
-			} else {
-				// No content, just tool calls - create the union manually
-				messages = append(messages, openai.ChatCompletionMessageParamUnion{
-					OfAssistant: &assistantMsgParam,
-				})
-			}
-
-			// Process each tool call
-			for _, toolCall := range choice.Message.ToolCalls {
-				logger.DebugfToFile("OpenAI", "Processing tool call: %s with ID: %s", toolCall.Function.Name, toolCall.ID)
-
-				// Validate tool call ID length (OpenAI requires max 40 chars)
-				if len(toolCall.ID) > 40 {
-					logger.DebugfToFile("OpenAI", "Warning: tool call ID too long (%d chars): %s", len(toolCall.ID), toolCall.ID)
-					// This shouldn't happen with valid OpenAI responses, but log it for debugging
-				}
-
-				// Parse the arguments
-				var args map[string]any
-				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-					logger.DebugfToFile("OpenAI", "Failed to parse tool arguments: %v", err)
-					// Note: ToolMessage takes content first, then toolCallID
-					messages = append(messages, openai.ToolMessage(fmt.Sprintf("Error parsing arguments: %v", err), toolCall.ID))
-					continue
-				}
-
-				// Execute the tool and get the result
-				result := ExecuteToolCall(toolCall.Function.Name, args)
-
-				// Log tool execution result
-				logger.DebugfToFile("OpenAI", "Tool %s execution: Success=%v, Data=%s, Error=%v",
-					toolCall.Function.Name, result.Success, result.Data, result.Error)
-
-				// Check if this is a submit_query_plan tool and it succeeded
-				if toolCall.Function.Name == ToolSubmitQueryPlan.String() && result.Success && result.QueryPlan != nil {
-					logger.DebugfToFile("OpenAI", "Query plan submitted via tool, returning immediately")
-					return result.QueryPlan, nil
-				}
-
-				// Check if this is an info tool and it succeeded
-				if toolCall.Function.Name == ToolInfo.String() && result.Success && result.InfoResponse != nil {
-					logger.DebugfToFile("OpenAI", "Info response submitted via tool, returning as informational response")
-					// Return a QueryPlan that represents an informational response
-					return &AIResult{
-						Operation:   "INFO",
-						Confidence:  result.InfoResponse.Confidence,
-						ReadOnly:    true,
-						InfoContent: result.InfoResponse.Content,
-						InfoTitle:   result.InfoResponse.Title,
-					}, nil
-				}
-
-				// Check if user interaction is needed
-				if result.NeedsUserSelection || result.NeedsMoreInfo || result.NotRelevant {
-					if result.NeedsUserSelection {
-						return nil, &InteractionRequest{
-							Type:             "selection",
-							SelectionType:    result.SelectionType,
-							SelectionOptions: result.SelectionOptions,
-						}
-					}
-					if result.NeedsMoreInfo {
-						return nil, &InteractionRequest{
-							Type:        "info",
-							InfoMessage: result.InfoMessage,
-						}
-					}
-					if result.NotRelevant {
-						return nil, &InteractionRequest{
-							Type:        "not_relevant",
-							InfoMessage: result.InfoMessage,
-						}
-					}
-				}
-
-				// Add the tool response
-				responseContent := result.Data
-				if result.Error != nil {
-					responseContent = fmt.Sprintf("Error: %v", result.Error)
-				}
-				// Note: ToolMessage takes content first, then toolCallID
-				messages = append(messages, openai.ToolMessage(responseContent, toolCall.ID))
-			}
-
-			// Update params with new messages
-			params.Messages = messages
-			continue
-		}
-
-		// No tool calls, try to parse the response as a QueryPlan
-		responseText := choice.Message.Content
-		logger.DebugfToFile("OpenAI", "Response: %s", responseText)
-
-		// Extract JSON from the response
-		jsonStr := extractJSON(responseText)
-		if jsonStr == "" {
-			jsonStr = responseText
-		}
-
-		var plan AIResult
-		if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
-			logger.DebugfToFile("OpenAI", "Failed to parse JSON: %v", err)
-			// Add a message asking for proper JSON format
-			messages = append(messages, openai.AssistantMessage(responseText))
-			messages = append(messages, openai.UserMessage("Please respond with ONLY the QueryPlan JSON object, no other text."))
-			params.Messages = messages
-			continue
-		}
-
-		logger.DebugfToFile("OpenAI", "Successfully parsed QueryPlan")
-		return &plan, nil
-	}
-
-	return nil, fmt.Errorf("failed to generate query plan after 5 attempts")
-}
-
-// continueOpenAI continues an OpenAI conversation
+// continueOpenAI continues a conversation with anything that speaks the
+// OpenAI API: OpenAI itself, and OpenRouter.
+//
+// OpenRouter had its own copy of this file, identical to the character apart
+// from the names in it. Two copies of a conversation are two places to fix a
+// bug in one, and the second copy is the one nobody remembers.
 func (conv *AIConversation) continueOpenAI(ctx context.Context, userInput string) (*AIResult, *InteractionRequest, error) {
 	// Build messages array from conversation history using the official SDK types
 	var messages []openai.ChatCompletionMessageParamUnion
@@ -353,11 +138,11 @@ func (conv *AIConversation) continueOpenAI(ctx context.Context, userInput string
 	tools := getOpenAITools()
 
 	// Make API call using the stored client
-	logger.DebugfToFile("AIConversation", "[%s] Calling OpenAI API with %d messages and %d tools", conv.ID, len(messages), len(tools))
+	logger.DebugfToFile("AIConversation", "[%s] Calling %s with %d messages and %d tools", conv.ID, conv.Provider, len(messages), len(tools))
 
 	// Use the existing client from the conversation
 	if conv.openaiClient == nil {
-		return nil, nil, fmt.Errorf("OpenAI client not initialized")
+		return nil, nil, fmt.Errorf("%s client not initialized", conv.Provider)
 	}
 
 	// Use retry logic for API calls
@@ -371,11 +156,11 @@ func (conv *AIConversation) continueOpenAI(ctx context.Context, userInput string
 		})
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("openAI API error: %v", err)
+		return nil, nil, fmt.Errorf("%s API error: %v", conv.Provider, err)
 	}
 
 	if len(completion.Choices) == 0 {
-		return nil, nil, fmt.Errorf("no response from OpenAI")
+		return nil, nil, fmt.Errorf("no response from %s", conv.Provider)
 	}
 
 	choice := completion.Choices[0]

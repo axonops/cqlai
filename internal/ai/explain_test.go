@@ -16,10 +16,10 @@ import (
 // Asking the model to explain something.
 //
 // The clients are built the way the conversation builds them, from the SDKs
-// directly. There is a second set of provider clients in this package behind
-// an AIClient interface and nothing reaches it: going through that instead put
-// a second copy of four SDKs' worth of machinery in the binary - five
-// megabytes - for the same three requests.
+// directly. There was a second set of provider clients in this package behind
+// an AIClient interface that nothing reached: going through that instead put a
+// second copy of four SDKs' worth of machinery in the binary - five megabytes
+// - for the same three requests.
 
 // TestThereIsNothingToExplainWithoutSomethingToExplain.
 func TestThereIsNothingToExplainWithoutSomethingToExplain(t *testing.T) {

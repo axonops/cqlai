@@ -29,7 +29,7 @@ AI providers are configured in the `cqlai.json` configuration file. Copy `cqlai.
     "provider": "mock",  // Options: mock, openai, anthropic, gemini, ollama, openrouter
     "apiKey": "",        // General API key (overridden by provider-specific)
     "model": "",         // General model (overridden by provider-specific)
-    "url": ""            // General URL (overridden by provider-specific, for Ollama/OpenRouter)
+    "url": ""            // General URL (overridden by provider-specific)
   }
 }
 ```
@@ -62,7 +62,7 @@ AI providers are configured in the `cqlai.json` configuration file. Copy `cqlai.
   "provider": "gemini",
   "gemini": {
     "apiKey": "your-gemini-api-key-here",
-    "model": "gemini-pro"  // Optional, defaults to gemini-pro
+    "model": "gemini-3.8-flash"  // Optional, defaults to gemini-3.8-flash
   }
 }
 ```
@@ -113,9 +113,9 @@ The AI generates a structured query plan that includes:
 
 ### Safety Features
 - **Read-only by default**: The AI prefers SELECT queries unless explicitly asked to modify data
-- **Dangerous operation warnings**: Destructive operations (DROP, DELETE, TRUNCATE) show warnings
-- **Confirmation required**: Dangerous operations require additional confirmation if enabled
-- **Schema validation**: Queries are validated against your current Cassandra schema
+- **Dangerous operation warnings**: DROP, DELETE, TRUNCATE and ALTER show a warning above the CQL, whether or not the model thought to add one
+- **Confirmation required**: nothing is run until you press Enter on the query in front of you
+- **Preview before execution**: the CQL is shown as it will be run, and can be edited first
 
 ### Modal Controls
 When the AI generates a query, you can:

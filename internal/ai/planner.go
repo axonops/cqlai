@@ -6,52 +6,32 @@ import (
 	"strings"
 )
 
-// ValidatePlan checks if a plan is valid against the schema
-func (v *PlanValidator) ValidatePlan(plan *AIResult) error {
-	// Basic validation
-	if plan.Operation == "" {
-		return fmt.Errorf("operation is required")
+// warnAboutPlan puts a warning on a plan that will destroy or change something.
+//
+// The modal shows plan.Warning above the CQL it is about to run. The model can
+// set one itself through the tool call, and for the operations that cannot be
+// undone it should not be the only thing that does: this says so whether the
+// model thought to or not.
+//
+// It was on a PlanValidator that only the unreachable half of this package
+// ever called, so the warning never appeared.
+func warnAboutPlan(plan *AIResult) {
+	if plan == nil || plan.ReadOnly || plan.Warning != "" {
+		return
 	}
 
-	// Operation-specific validation
 	switch strings.ToUpper(plan.Operation) {
-	case "SELECT", "UPDATE", "DELETE":
-		if plan.Table == "" {
-			return fmt.Errorf("table is required for %s operation", plan.Operation)
-		}
-	case "INSERT":
-		if plan.Table == "" {
-			return fmt.Errorf("table is required for INSERT operation")
-		}
-		if len(plan.Values) == 0 {
-			return fmt.Errorf("values are required for INSERT operation")
-		}
-	case "CREATE", "ALTER", "DROP":
-		// DDL operations have different requirements
-		if plan.Table == "" && plan.Keyspace == "" {
-			return fmt.Errorf("table or keyspace required for DDL operation")
-		}
+	case "DROP", "TRUNCATE", "DELETE":
+		plan.Warning = "This is a destructive operation that will permanently delete data"
+	case "ALTER":
+		plan.Warning = "This operation will modify the schema"
 	}
-
-	// Check for dangerous operations
-	if !plan.ReadOnly {
-		switch strings.ToUpper(plan.Operation) {
-		case "DROP", "TRUNCATE", "DELETE":
-			if plan.Warning == "" {
-				plan.Warning = "This is a destructive operation that will permanently delete data"
-			}
-		case "ALTER":
-			if plan.Warning == "" {
-				plan.Warning = "This operation will modify the schema"
-			}
-		}
-	}
-
-	return nil
 }
 
 // RenderCQL converts a validated plan to CQL
 func RenderCQL(plan *AIResult) (string, error) {
+	warnAboutPlan(plan)
+
 	switch strings.ToUpper(plan.Operation) {
 	case "SELECT":
 		return renderSelect(plan)

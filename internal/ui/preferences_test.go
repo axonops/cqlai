@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/config"
 )
 
@@ -100,7 +101,7 @@ func TestTheWindowShowsWhatIsConfigured(t *testing.T) {
 		Debug:        true,
 		OutputFormat: "JSON",
 		HistoryFile:  "/tmp/history",
-		AI:           &config.AIConfig{Provider: "anthropic", APIKey: "hunter2"},
+		AI:           &config.AIConfig{Provider: "anthropic", Anthropic: &config.AIProviderConfig{APIKey: "hunter2"}},
 	})
 
 	assert.Equal(t, "true", m.preferences.fields[prefIndex(t, m, "Debug")].value())
@@ -113,7 +114,7 @@ func TestTheWindowShowsWhatIsConfigured(t *testing.T) {
 	assert.Empty(t, m.preferences.fields[prefIndex(t, m, "PageSize")].value())
 
 	// A secret is in the window but not on the screen.
-	key := m.preferences.fields[prefIndex(t, m, "AI.APIKey")]
+	key := m.preferences.fields[prefIndex(t, m, "AI.Anthropic.APIKey")]
 	assert.Equal(t, "hunter2", key.value())
 	assert.NotContains(t, key.display(), "hunter2")
 }
@@ -268,11 +269,11 @@ func TestSpaceChangesAYesNoSettingAndTypesIntoTheRest(t *testing.T) {
 	m = press(m, " ")
 	assert.True(t, m.preferences.fields[prefIndex(t, m, "Debug")].yes)
 
-	m.preferences.focusField(prefIndex(t, m, "AI.Model"))
+	m.preferences.focusField(prefIndex(t, m, "AI.Anthropic.Model"))
 	m = press(m, "a")
 	m = press(m, " ")
 	m = press(m, "b")
-	assert.Equal(t, "a b", m.preferences.fields[prefIndex(t, m, "AI.Model")].input.Value())
+	assert.Equal(t, "a b", m.preferences.fields[prefIndex(t, m, "AI.Anthropic.Model")].input.Value())
 }
 
 // TestTabOffersTheValuesForASetting.
@@ -343,7 +344,7 @@ func TestTheButtonsAreWhereTheyAreDrawn(t *testing.T) {
 func TestAPressOutsideTheWindowClosesIt(t *testing.T) {
 	m := prefModel(t, &config.Config{Host: "h"})
 	path := m.preferences.path
-	m.setPrefField(prefIndex(t, m, "AI.Model"), "typed-but-not-saved")
+	m.setPrefField(prefIndex(t, m, "AI.Anthropic.Model"), "typed-but-not-saved")
 
 	updated, _ := m.handleMousePress(tea.Mouse{X: 0, Y: m.windowHeight - 1, Button: tea.MouseLeft})
 	assert.False(t, updated.preferences.active)
@@ -413,7 +414,7 @@ func lipglossWidth(line string) int {
 // put there by someone who opened the window to change the port.
 func TestTheWindowShowsTheFileRatherThanTheRunningConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cqlai.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"pageSize":100,"ai":{"apiKey":"from-the-file"}}`), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(`{"pageSize":100,"ai":{"anthropic":{"apiKey":"from-the-file"}}}`), 0o600))
 
 	m := helpModel()
 	m.windowWidth = 120
@@ -425,7 +426,7 @@ func TestTheWindowShowsTheFileRatherThanTheRunningConfiguration(t *testing.T) {
 	m.openPreferences()
 
 	assert.Equal(t, "100", m.preferences.fields[prefIndex(t, m, "PageSize")].value())
-	assert.Equal(t, "from-the-file", m.preferences.fields[prefIndex(t, m, "AI.APIKey")].value())
+	assert.Equal(t, "from-the-file", m.preferences.fields[prefIndex(t, m, "AI.Anthropic.APIKey")].value())
 
 	// And saving it back writes what was in the file, not what was around it.
 	saved, _ := m.savePreferences()
@@ -437,7 +438,8 @@ func TestTheWindowShowsTheFileRatherThanTheRunningConfiguration(t *testing.T) {
 
 	var written map[string]any
 	require.NoError(t, json.Unmarshal(data, &written))
-	assert.Equal(t, "from-the-file", written["ai"].(map[string]any)["apiKey"])
+	ai := written["ai"].(map[string]any)
+	assert.Equal(t, "from-the-file", ai["anthropic"].(map[string]any)["apiKey"])
 	assert.NotContains(t, written, "password")
 }
 
@@ -494,4 +496,49 @@ func TestATerminalTooSmallGetsNoPreferences(t *testing.T) {
 	m, _ = m.openPreferences()
 	assert.False(t, m.preferences.active)
 	assert.Contains(t, m.fullHistoryContent, "too small")
+}
+
+// TestTheChatSectionIsOnlyWhichProvider.
+//
+// A key, a model and a URL mean nothing without knowing whose they are, and
+// every provider has a section of its own holding exactly those three. A
+// general set in CHAT was a second place to put the same thing - and the one
+// that loses, so it was a place to put a key and watch it have no effect.
+func TestTheChatSectionIsOnlyWhichProvider(t *testing.T) {
+	m := prefModel(t, &config.Config{})
+
+	var chat []string
+	section := ""
+	for _, field := range m.preferences.fields {
+		if field.spec.section != "" {
+			section = field.spec.section
+		}
+		if section == "CHAT" {
+			chat = append(chat, field.spec.path)
+		}
+	}
+
+	assert.Equal(t, []string{"AI.Provider"}, chat)
+}
+
+// TestEveryProviderHasItsOwnKeyModelAndURL, which is what CHAT no longer needs
+// to carry. The providers come from the table the CHAT tab talks to them
+// through, so one cannot be offered here without being reachable.
+func TestEveryProviderHasItsOwnKeyModelAndURL(t *testing.T) {
+	m := prefModel(t, &config.Config{})
+
+	paths := map[string]bool{}
+	for _, field := range m.preferences.fields {
+		paths[field.spec.path] = true
+	}
+
+	blocks := ai.ProviderBlocks()
+	require.NotEmpty(t, blocks)
+
+	for _, block := range blocks {
+		for _, setting := range []string{".APIKey", ".Model", ".URL"} {
+			assert.True(t, paths["AI."+block.Field+setting],
+				"%s has nowhere to put its %s", block.Name, strings.TrimPrefix(setting, "."))
+		}
+	}
 }
