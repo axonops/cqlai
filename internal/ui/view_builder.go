@@ -137,7 +137,7 @@ func (m *MainModel) View() tea.View {
 		// Drawn as one block rather than through a viewport: the trace has the
 		// button above it and, once there is one, the analysis below.
 		viewportWidth = m.windowWidth
-		viewportContent = m.viewTrace(m.windowWidth, m.traceHeight())
+		viewportContent = m.viewTrace(m.windowWidth, m.viewHeight())
 	case m.viewMode == "table":
 		viewportWidth = m.historyViewport.Width()
 		if m.hasTable {
@@ -147,6 +147,7 @@ func (m *MainModel) View() tea.View {
 			// Create a temporary viewport for empty table message
 			emptyMsg := m.styles.MutedText.Render("\n  No table data available. Execute a SELECT query to view results in table format.\n")
 			tempViewport := m.historyViewport
+			tempViewport.SetHeight(m.viewHeight())
 			tempViewport.SetContent(emptyMsg)
 			viewportContent = tempViewport.View()
 		}
@@ -201,8 +202,17 @@ func (m *MainModel) View() tea.View {
 	// Build the final view. The tabs get their own line above the status bar so
 	// the modes and their keys are always on screen, rather than something you
 	// have to have read the README to know about.
+	// The RESULTS view has its own tabs under the line, choosing between the
+	// query output and the trace of the requests that fetched it. viewTop
+	// reports the row they take, so what draws them and what hit-tests under
+	// them cannot disagree about where the content begins.
+	tabLines := []string{m.ViewTabBar(viewportWidth)}
+	if insideResults(m.viewMode) {
+		tabLines = append(tabLines, m.viewResultTabs(viewportWidth))
+	}
+
 	finalView = lipgloss.JoinVertical(lipgloss.Left,
-		m.ViewTabBar(viewportWidth),
+		strings.Join(tabLines, "\n"),
 		viewportSection,
 		inputSection,
 		infoBar,
@@ -360,16 +370,13 @@ func (m *MainModel) getWelcomeMessage() string {
 	welcome.WriteString("\n")
 	welcome.WriteString(m.styles.MutedText.Render("  • Alt+← / Alt+→ - Horizontal scroll for wide tables"))
 	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F2 - Switch to history/query view"))
-	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F3 - Switch to table view"))
-	welcome.WriteString("\n")
-	welcome.WriteString(m.styles.MutedText.Render("  • F4 - Switch to trace view"))
-	welcome.WriteString("\n")
-	if m.aiAvailable() {
-		welcome.WriteString(m.styles.MutedText.Render("  • F5 - Browse the schema"))
-		welcome.WriteString("\n")
-		welcome.WriteString(m.styles.MutedText.Render("  • F6 - Switch to the Chat view"))
+	// The views and their keys, from the tabs themselves. This was a list
+	// written by hand beside them, and it said F3 reached the table, F4 the
+	// trace and F5 the schema - none of which had been true since the tabs
+	// were reordered, because a list is only updated when someone remembers
+	// there are two of them.
+	for _, line := range m.viewKeyLines() {
+		welcome.WriteString(m.styles.MutedText.Render("  • " + line))
 		welcome.WriteString("\n")
 	}
 	welcome.WriteString("\n")

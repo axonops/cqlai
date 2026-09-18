@@ -313,7 +313,7 @@ As lapelas lense de esquerda a dereita, e as teclas seguen a mesma orde.
 | `F2` | Consola: o que escribiches e o que respondeu |
 | `F3` | Esquema: os keyspaces e as táboas, coas súas definicións |
 | `F4` | Resultados: a última consulta, no formato de `OUTPUT` |
-| `F5` | Trazas (cando o trazado está habilitado) |
+| `F5` | Trazas: a outra lapela de `RESULTS`, cando o trazado está habilitado |
 | `F6` | Chat: a conversa coa IA |
 
 #### O menú FILE

@@ -211,9 +211,9 @@ func isHeadingLine(line string) bool {
 	return true
 }
 
-// traceHeight is how many rows the view has under the tab line.
+// traceHeight is how many rows the view has under its tabs.
 func (m *MainModel) traceHeight() int {
-	return m.historyViewport.Height()
+	return m.viewHeight()
 }
 
 // closeTraceAnalysis puts the pane away, giving the trace the whole view back.

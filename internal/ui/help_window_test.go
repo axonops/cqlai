@@ -270,13 +270,13 @@ func TestTheButtonGivesWayToTheTabNames(t *testing.T) {
 	assert.Contains(t, wide, "HELP")
 
 	// Room for the names and the button, but not the key hints.
-	medium := stripAnsiForTest(m.ViewTabBar(64))
+	medium := stripAnsiForTest(m.ViewTabBar(63))
 	assert.Contains(t, medium, "CONSOLE")
 	assert.NotContains(t, medium, "(F2)")
 	assert.Contains(t, medium, "HELP")
 
 	// Room for the names only. The button goes rather than the names.
-	tight := stripAnsiForTest(m.ViewTabBar(50))
+	tight := stripAnsiForTest(m.ViewTabBar(40))
 	assert.Contains(t, tight, "CONSOLE")
 	assert.NotContains(t, tight, "HELP")
 }
@@ -321,7 +321,7 @@ func TestTheLabelShortensBeforeTheButtonGoes(t *testing.T) {
 func TestTheTabsDoNotGiveUpTheirNamesForALabelThatWillNotBeDrawn(t *testing.T) {
 	m := helpModel()
 
-	bar := stripAnsiForTest(m.ViewTabBar(58))
+	bar := stripAnsiForTest(m.ViewTabBar(52))
 	assert.Contains(t, bar, "CONSOLE", "the names should survive here")
 	assert.Contains(t, bar, "?", "and the buttons shorten rather than going")
 }

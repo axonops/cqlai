@@ -48,9 +48,16 @@ func TestTabBarShowsKeysWhenThereIsRoom(t *testing.T) {
 	m := &MainModel{viewMode: "history", hasTable: true, hasTrace: true, aiConfig: configuredAI(), lastTableData: [][]string{{"id"}, {"1"}}}
 
 	wide := stripAnsiForTest(m.ViewTabBar(120))
-	for _, want := range []string{"CONSOLE (F2)", "SCHEMA (F3)", "RESULTS (F4)", "TRACE (F5)", "CHAT (F6)"} {
+	for _, want := range []string{"CONSOLE (F2)", "SCHEMA (F3)", "RESULTS (F4)", "CHAT (F6)"} {
 		assert.Contains(t, wide, want)
 	}
+	assert.NotContains(t, wide, "TRACE", "the trace is a tab inside RESULTS, not one on this line")
+
+	// It is on the line inside the view, with the key it always had.
+	m.viewMode = "table"
+	inner := stripAnsiForTest(m.viewResultTabs(120))
+	assert.Contains(t, inner, "QUERY RESULTS (F4)")
+	assert.Contains(t, inner, "TRACE (F5)")
 
 	// Narrower: names survive, key hints are dropped rather than wrapping.
 	medium := stripAnsiForTest(m.ViewTabBar(50))
@@ -202,21 +209,50 @@ func TestClickingATabSwitchesMode(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"table", "trace"} {
+	middleOf := func(spans []tabSpan, mode string) int {
+		for _, span := range spans {
+			if span.mode == mode {
+				return (span.start + span.end) / 2
+			}
+		}
+		return -1
+	}
+
+	for _, want := range []string{"history", "table"} {
 		t.Run(want, func(t *testing.T) {
 			m := newModel()
+			m.viewMode = "schema"
 
-			var col int
-			for _, span := range m.layoutTabs(width) {
-				if span.mode == want {
-					col = (span.start + span.end) / 2
-				}
-			}
-
-			m.clickTab(col)
+			m.clickTab(middleOf(m.layoutTabs(width), want))
 			assert.Equal(t, want, m.viewMode, "clicking the %s tab should switch to it", want)
 		})
 	}
+
+	// The trace is a tab inside the RESULTS view rather than one on the line.
+	t.Run("trace", func(t *testing.T) {
+		m := newModel()
+		m.clickTab(middleOf(m.layoutTabs(width), "table"))
+		require.Equal(t, "table", m.viewMode)
+
+		m, _ = m.handleMousePress(tea.Mouse{
+			X: middleOf(m.resultTabSpans(width), "trace"), Y: tabBarHeight, Button: tea.MouseLeft,
+		})
+		assert.Equal(t, "trace", m.viewMode, "clicking the trace tab inside the view should switch to it")
+	})
+
+	// And the line reopens whichever of the two you were last reading, rather
+	// than always dropping you back on the query output.
+	t.Run("remembers", func(t *testing.T) {
+		m := newModel()
+		m.viewMode = "trace"
+		m.resultTab = "trace"
+
+		m.clickTab(middleOf(m.layoutTabs(width), "history"))
+		require.Equal(t, "history", m.viewMode)
+
+		m.clickTab(middleOf(m.layoutTabs(width), "trace"))
+		assert.Equal(t, "trace", m.viewMode)
+	})
 }
 
 // TestClickingAnUnavailableTabDoesNothing pairs with dimming: a tab with
@@ -343,7 +379,7 @@ func TestTheChatTabIsDimmedWithoutAProvider(t *testing.T) {
 
 	bar := stripAnsiForTest(m.ViewTabBar(120))
 	assert.Contains(t, bar, "CHAT", "still on the line")
-	for _, want := range []string{"CONSOLE", "RESULTS", "TRACE"} {
+	for _, want := range []string{"CONSOLE", "SCHEMA", "RESULTS"} {
 		assert.Contains(t, bar, want, "the other tabs should be untouched")
 	}
 

@@ -13,12 +13,27 @@ import (
 // saying so. The tabs put the choices and their keys in front of you, and mark
 // the ones that have nothing to show yet.
 
-// modeTab is one entry in the tab bar.
+// modeTab is one entry in a tab bar.
 type modeTab struct {
-	mode  string // matches MainModel.viewMode
+	// modes are the MainModel.viewMode values this tab covers, in the order
+	// its own tabs offer them. All but one tab covers a single view; RESULTS
+	// covers the query output and the trace of the requests that fetched it,
+	// which are two tabs inside it rather than two items on this line.
+	modes []string
+
 	label string
 	short string // one or two letters for a terminal too narrow for the label
 	key   string
+}
+
+// covers reports whether a view is one this tab leads to.
+func (t modeTab) covers(mode string) bool {
+	for _, m := range t.modes {
+		if m == mode {
+			return true
+		}
+	}
+	return false
 }
 
 // modeTabs lists the tabs in display order. The labels are capitals so the
@@ -27,20 +42,24 @@ var modeTabs = []modeTab{
 	// "Console" rather than "History": Ctrl+R searches command history, which
 	// is a different thing, and this view is the running transcript of what you
 	// typed and what came back.
-	{mode: "history", label: "CONSOLE", short: "C", key: "F2"},
+	{modes: []string{"history"}, label: "CONSOLE", short: "C", key: "F2"},
 	// The cluster itself, next to the console: what is in the database comes
 	// before anything a query has made of it, and the three that follow are all
 	// views of a result.
-	{mode: "schema", label: "SCHEMA", short: "S", key: "F3"},
+	{modes: []string{"schema"}, label: "SCHEMA", short: "S", key: "F3"},
 	// "Results" rather than "Table": the same view shows EXPAND, ASCII and JSON
 	// output, none of which is a table, and "table" already means a schema
 	// object to anyone using this.
-	{mode: "table", label: "RESULTS", short: "R", key: "F4"},
-	{mode: "trace", label: "TRACE", short: "T", key: "F5"},
+	//
+	// The trace is inside it rather than beside it. A trace is of the requests
+	// that fetched the result, so it is the same thing looked at another way,
+	// and it was taking one of the five places on a line that shortens the
+	// names to single letters when it runs out of room. F5 still reaches it.
+	{modes: resultModes(), label: "RESULTS", short: "R", key: "F4"},
 	// "Chat" rather than "AI": it is a conversation, and what it is a
 	// conversation with is not the useful half of the name. Two letters
 	// because the console has the C.
-	{mode: "ai", label: "CHAT", short: "Ch", key: "F6"},
+	{modes: []string{"ai"}, label: "CHAT", short: "Ch", key: "F6"},
 }
 
 // hasResults reports whether there is anything for SAVE to write.
@@ -72,6 +91,28 @@ func (m *MainModel) tabAvailable(mode string) bool {
 	default:
 		return true
 	}
+}
+
+// tabShows reports whether a tab has any view worth opening behind it.
+func (m *MainModel) tabShows(t modeTab) bool {
+	for _, mode := range t.modes {
+		if m.tabAvailable(mode) {
+			return true
+		}
+	}
+	return false
+}
+
+// tabTarget is the view a tab opens on: the one already showing when this tab
+// is the one showing, and otherwise the one it was last left on.
+func (m *MainModel) tabTarget(t modeTab) string {
+	if t.covers(m.viewMode) {
+		return m.viewMode
+	}
+	if t.covers(m.resultTab) {
+		return m.resultTab
+	}
+	return t.modes[0]
 }
 
 // visibleTabs is the tabs to draw.
@@ -194,12 +235,12 @@ func (m *MainModel) layoutTabs(width int) []tabSpan {
 		}
 
 		spans = append(spans, tabSpan{
-			mode:      t.mode,
+			mode:      m.tabTarget(t),
 			label:     labels[i],
 			start:     next,
 			end:       end,
-			available: m.tabAvailable(t.mode),
-			active:    m.viewMode == t.mode,
+			available: m.tabShows(t),
+			active:    t.covers(m.viewMode),
 		})
 		col = end
 	}
@@ -290,7 +331,15 @@ func (m *MainModel) ViewTabBar(width int) string {
 	if len(spans) == 0 {
 		return strings.Repeat(" ", max(width, 0))
 	}
+	return renderTabs(spans, width)
+}
 
+// renderTabs draws a line of tabs.
+//
+// The tab line and the tabs inside the RESULTS view are the same thing at two
+// sizes, and an active tab that looked different in the two would read as two
+// unrelated controls rather than one idea nested in itself.
+func renderTabs(spans []tabSpan, width int) string {
 	activeStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#1c1c1c")).
 		Background(lipgloss.Color("#87D7FF")).
@@ -329,6 +378,5 @@ func (m *MainModel) ViewTabBar(width int) string {
 	if pad := width - col; pad > 0 {
 		b.WriteString(strings.Repeat(" ", pad))
 	}
-
 	return b.String()
 }

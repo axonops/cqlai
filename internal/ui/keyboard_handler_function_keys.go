@@ -30,8 +30,10 @@ func (m *MainModel) showConsole() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// showResults switches to the last query's output.
+// showResults switches to the last query's output, which is one of the two
+// tabs of the RESULTS view.
 func (m *MainModel) showResults() (*MainModel, tea.Cmd) {
+	m.resultTab = "table"
 	if m.viewMode != "table" {
 		m.viewMode = "table"
 		// If in AI conversation mode, also deactivate it
@@ -52,8 +54,10 @@ func (m *MainModel) showResults() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// showTrace switches to the query trace.
+// showTrace switches to the query trace, which is the other tab of the RESULTS
+// view.
 func (m *MainModel) showTrace() (*MainModel, tea.Cmd) {
+	m.resultTab = "trace"
 	if m.viewMode != "trace" {
 		m.viewMode = "trace"
 		// If in AI conversation mode, also deactivate it

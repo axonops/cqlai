@@ -52,6 +52,15 @@ func TestTheReadmeSaysWhichKeyReachesWhichView(t *testing.T) {
 		assert.Contains(t, readme, tab.label+" ("+tab.key+")",
 			"the tab line should show %s", tab.label)
 	}
+
+	// The RESULTS view has two tabs of its own, and they have keys like any
+	// other view. A reader who cannot find the trace in the README because it
+	// is one level down is a reader who thinks it is gone.
+	for _, tab := range resultTabs {
+		assert.Contains(t, readme, tab.label+" ("+tab.key+")",
+			"the tabs inside RESULTS should show %s", tab.label)
+	}
+	assert.Contains(t, readme, "`F5` | Trace", "the key table should still say F5 reaches the trace")
 }
 
 // TestTheReadmeListsWhatTheFileMenuOffers.
@@ -106,6 +115,9 @@ func TestTheHelpInTheAppNamesEveryView(t *testing.T) {
 	}
 
 	for _, tab := range modeTabs {
+		assert.Contains(t, help.String(), tab.key, "the help should name %s", tab.key)
+	}
+	for _, tab := range resultTabs {
 		assert.Contains(t, help.String(), tab.key, "the help should name %s", tab.key)
 	}
 }
