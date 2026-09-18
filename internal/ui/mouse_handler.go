@@ -310,6 +310,15 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		return m.clickStatusSetting(mouse.X)
 	}
 
+	// The row under the line, in the RESULTS view, is its own tabs.
+	if mode, available := m.resultTabAt(mouse.X, mouse.Y); mode != "" {
+		m.closeSettingChooser()
+		if !available {
+			return m, nil
+		}
+		return m.showMode(mode)
+	}
+
 	// The TRACE view has a button above it and, once there is an analysis, a
 	// line between the two panes that is dragged to give either of them room.
 	if m.viewMode == "trace" {
@@ -636,6 +645,14 @@ func (m *MainModel) clickTab(col int) (*MainModel, tea.Cmd) {
 		return m.openFileMenu(span.start)
 	}
 
+	return m.showMode(mode)
+}
+
+// showMode opens a view by the name the rest of the shell knows it by.
+//
+// The tab line, the tabs inside RESULTS and the function keys all arrive here,
+// so a view cannot be reachable one way and not another.
+func (m *MainModel) showMode(mode string) (*MainModel, tea.Cmd) {
 	switch mode {
 	case "history":
 		return m.showConsole()

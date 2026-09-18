@@ -180,13 +180,13 @@ func (m *MainModel) docPosition(col, row int) (line, column int, ok bool) {
 		return 0, 0, false
 	}
 
-	top := tabBarHeight + m.stickyHeaderRows()
-	bottom := tabBarHeight + source.height
+	top := m.viewTop() + m.stickyHeaderRows()
+	bottom := m.viewTop() + source.height
 	if row < top || row >= bottom {
 		return 0, 0, false
 	}
 
-	return source.offset + row - tabBarHeight, col, true
+	return source.offset + row - m.viewTop(), col, true
 }
 
 // beginSelection starts a drag, or picks out a word or a line if this press
@@ -245,8 +245,8 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	top := tabBarHeight + m.stickyHeaderRows()
-	bottom := tabBarHeight + source.height
+	top := m.viewTop() + m.stickyHeaderRows()
+	bottom := m.viewTop() + source.height
 	vp := source.vp
 	switch {
 	case row < top:

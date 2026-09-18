@@ -159,7 +159,7 @@ func (m *MainModel) traceRuleAt(row int) bool {
 	if m.viewMode != "trace" || !m.trace.open {
 		return false
 	}
-	return row-tabBarHeight == m.traceLayout().ruleRow
+	return row-m.viewTop() == m.traceLayout().ruleRow
 }
 
 // traceButtonAt reports whether a press landed on the button.
@@ -169,7 +169,7 @@ func (m *MainModel) traceButtonAt(col, row int) bool {
 	}
 
 	g := m.traceLayout()
-	return row-tabBarHeight == 0 && col >= g.buttonFrom && col <= g.buttonTo
+	return row-m.viewTop() == 0 && col >= g.buttonFrom && col <= g.buttonTo
 }
 
 // dragTraceRule moves the line between the panes to where the pointer is.
@@ -183,7 +183,7 @@ func (m *MainModel) dragTraceRule(row int) {
 	}
 
 	height := m.traceHeight()
-	rule := min(max(row-tabBarHeight, traceHeaderRows+traceMin), height-traceRuleRows-analysisMin)
+	rule := min(max(row-m.viewTop(), traceHeaderRows+traceMin), height-traceRuleRows-analysisMin)
 
 	m.trace.rows = height - rule - traceRuleRows
 	m.fitTracePanes()
@@ -207,5 +207,5 @@ func (m *MainModel) overTraceAnalysis(row int) bool {
 	if !m.trace.open {
 		return false
 	}
-	return row-tabBarHeight > m.traceLayout().ruleRow
+	return row-m.viewTop() > m.traceLayout().ruleRow
 }

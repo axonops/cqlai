@@ -149,11 +149,17 @@ type MainModel struct {
 	// completingPath says the candidates on offer are filenames rather than
 	// CQL words. Applying one has to keep the directory in front of it; the
 	// word-based path would replace /tmp/rep with report.csv and lose the /tmp.
-	completingPath     bool
-	selection          textSelection // Text being dragged out with the mouse, if any
-	viewMode           string        // "history", "table", "trace", or "ai_info"
-	columnTypes        []string      // Store column data types
-	tableRowBoundaries []int         // Line numbers where table rows start
+	completingPath bool
+	selection      textSelection // Text being dragged out with the mouse, if any
+	viewMode       string        // "history", "schema", "table", "trace" or "ai"
+
+	// resultTab is which of the RESULTS tabs the view was last left on, so
+	// that clicking RESULTS on the tab line reopens what you were reading
+	// rather than always the query output.
+	resultTab string
+
+	columnTypes        []string // Store column data types
+	tableRowBoundaries []int    // Line numbers where table rows start
 
 	// AI conversation view
 	aiConversationActive   bool            // Whether AI conversation view is active
@@ -545,8 +551,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// and the content is wrapped to the narrower width so no line
 			// loses a character to it.
 			m.historyViewport = viewport.New(viewport.WithWidth(consoleWidth(newWidth)), viewport.WithHeight(newHeight))
-			m.tableViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
-			m.traceViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(newHeight))
+			// One row shorter: these two are the RESULTS view, and its tabs
+			// take the row under the tab line.
+			m.tableViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(resultHeight(newHeight)))
+			m.traceViewport = viewport.New(viewport.WithWidth(newWidth), viewport.WithHeight(resultHeight(newHeight)))
 			welcomeMsg := m.getWelcomeMessage()
 			m.fullHistoryContent = welcomeMsg
 			// Wrap content for initial display
@@ -558,9 +566,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.historyViewport.SetWidth(consoleWidth(newWidth))
 			m.historyViewport.SetHeight(newHeight)
 			m.tableViewport.SetWidth(newWidth)
-			m.tableViewport.SetHeight(newHeight)
+			m.tableViewport.SetHeight(resultHeight(newHeight))
 			m.traceViewport.SetWidth(newWidth)
-			m.traceViewport.SetHeight(newHeight)
+			m.traceViewport.SetHeight(resultHeight(newHeight))
 
 			// Re-wrap history content for new width
 			m.updateHistoryWrapping()

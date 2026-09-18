@@ -314,19 +314,27 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 #### The tab line
 
 ```
- FILE (Alt+F)  CONSOLE (F2)  SCHEMA (F3)  RESULTS (F4)  TRACE (F5)  CHAT (F6)  HELP (F1/Alt+H)
+ FILE (Alt+F)  CONSOLE (F2)  SCHEMA (F3)  RESULTS (F4)  CHAT (F6)  HELP (F1/Alt+H)
 ```
 
-The five views are shown as tabs, so you can see which one you are in and what
-the others are. Click a tab, or use the key on it. A view with nothing to show
-yet is dimmed, as is `CHAT` with no AI provider configured.
+The views are shown as tabs, so you can see which one you are in and what the
+others are. Click a tab, or use the key on it. A view with nothing to show yet
+is dimmed, as is `CHAT` with no AI provider configured.
+
+`RESULTS` holds two tabs of its own, on the line under it: the last query's
+output, and the trace of the requests that fetched it. They are the same thing
+looked at two ways, which is why they share a place on the line above.
+
+```
+ QUERY RESULTS (F4)  TRACE (F5)
+```
 
 | Shortcut | Tab | Shows |
 |----------|-----|-------|
 | `F2` | Console | The running transcript of commands and messages |
 | `F3` | Schema | The cluster's keyspaces and tables, with their definitions |
 | `F4` | Results | The last query's output, in whatever `OUTPUT` format is set |
-| `F5` | Trace | Query trace, when tracing is enabled |
+| `F5` | Trace | The trace of the requests that fetched it, when tracing is enabled |
 | `F6` | Chat | The AI conversation |
 
 Text is selected by dragging with the mouse, and lands on the system clipboard

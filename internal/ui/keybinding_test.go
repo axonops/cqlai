@@ -120,10 +120,15 @@ func TestFunctionKeysSwitchMode(t *testing.T) {
 		assert.Equal(t, tt.want, m.viewMode, "%v should switch to %q", tt.code, tt.want)
 	}
 
-	// And they are the keys the tabs say they are.
+	// And they are the keys the tabs say they are, on the line and inside the
+	// RESULTS view: F5 reaches the trace as it always has, from the tab inside
+	// that view rather than one of its own on the line.
 	for i, tab := range modeTabs {
-		assert.Equal(t, tab.key, []string{"F2", "F3", "F4", "F5", "F6"}[i],
+		assert.Equal(t, tab.key, []string{"F2", "F3", "F4", "F6"}[i],
 			"%s says %s", tab.label, tab.key)
+	}
+	for i, tab := range resultTabs {
+		assert.Equal(t, tab.key, []string{"F4", "F5"}[i], "%s says %s", tab.label, tab.key)
 	}
 }
 

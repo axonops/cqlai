@@ -143,20 +143,20 @@ func TestTheLineBetweenThePanesIsDragged(t *testing.T) {
 	m, _ = m.startTraceAnalysis()
 
 	rule := m.traceLayout().ruleRow
-	require.True(t, m.traceRuleAt(rule+tabBarHeight), "the line is where the view says it is")
-	assert.False(t, m.traceRuleAt(rule+tabBarHeight+1), "and the row under it is the analysis")
+	require.True(t, m.traceRuleAt(rule+m.viewTop()), "the line is where the view says it is")
+	assert.False(t, m.traceRuleAt(rule+m.viewTop()+1), "and the row under it is the analysis")
 
 	// Pressing it starts the drag, moving takes the line with it, and letting
 	// go stops.
-	m, _ = m.handleMousePress(tea.Mouse{X: 10, Y: rule + tabBarHeight, Button: tea.MouseLeft})
+	m, _ = m.handleMousePress(tea.Mouse{X: 10, Y: rule + m.viewTop(), Button: tea.MouseLeft})
 	require.True(t, m.trace.dragging)
 
-	m.dragTraceRule(rule + tabBarHeight - 4)
+	m.dragTraceRule(rule + m.viewTop() - 4)
 	assert.Equal(t, rule-4, m.traceLayout().ruleRow, "the line followed the pointer")
 	assert.Greater(t, m.trace.viewport.Height(), 3, "and the pane grew")
 
 	m.trace.dragging = false
-	m.dragTraceRule(rule + tabBarHeight + 2)
+	m.dragTraceRule(rule + m.viewTop() + 2)
 	assert.Equal(t, rule-4, m.traceLayout().ruleRow, "let go, and it stays where it was left")
 }
 
@@ -194,10 +194,10 @@ func TestTheButtonIsWhereTheViewDrawsIt(t *testing.T) {
 	m := traceModel(t)
 	g := m.traceLayout()
 
-	assert.True(t, m.traceButtonAt(g.buttonFrom, tabBarHeight))
-	assert.True(t, m.traceButtonAt(g.buttonTo, tabBarHeight))
-	assert.False(t, m.traceButtonAt(g.buttonFrom-1, tabBarHeight))
-	assert.False(t, m.traceButtonAt(g.buttonFrom, tabBarHeight+1), "the row under it is the trace")
+	assert.True(t, m.traceButtonAt(g.buttonFrom, m.viewTop()))
+	assert.True(t, m.traceButtonAt(g.buttonTo, m.viewTop()))
+	assert.False(t, m.traceButtonAt(g.buttonFrom-1, m.viewTop()))
+	assert.False(t, m.traceButtonAt(g.buttonFrom, m.viewTop()+1), "the row under it is the trace")
 }
 
 // lineHolding is the line this text is on, or -1.
@@ -254,8 +254,8 @@ func TestTheAnalysisCanBeCopied(t *testing.T) {
 	finding := lineHolding(m.trace.drawn, "- A range scan")
 	require.GreaterOrEqual(t, finding, 0, "the analysis is drawn")
 
-	m, _ = m.handleMousePress(tea.Mouse{X: 0, Y: finding + tabBarHeight, Button: tea.MouseLeft})
-	m, _ = m.extendSelection(40, finding+tabBarHeight)
+	m, _ = m.handleMousePress(tea.Mouse{X: 0, Y: finding + m.viewTop(), Button: tea.MouseLeft})
+	m, _ = m.extendSelection(40, finding+m.viewTop())
 	m, cmd := m.endSelection()
 
 	assert.Equal(t, "- A range scan across the whole ring.", m.lastCopied)
@@ -270,8 +270,8 @@ func TestTheTraceCanStillBeCopied(t *testing.T) {
 	row := lineHolding(m.trace.drawn, "Read 3 sstables")
 	require.GreaterOrEqual(t, row, 0)
 
-	m, _ = m.handleMousePress(tea.Mouse{X: 0, Y: row + tabBarHeight, Button: tea.MouseLeft})
-	m, _ = m.extendSelection(60, row+tabBarHeight)
+	m, _ = m.handleMousePress(tea.Mouse{X: 0, Y: row + m.viewTop(), Button: tea.MouseLeft})
+	m, _ = m.extendSelection(60, row+m.viewTop())
 	m, _ = m.endSelection()
 
 	assert.Contains(t, m.lastCopied, "Read 3 sstables")
@@ -283,7 +283,7 @@ func TestAPressOnTheRuleDoesNotStartASelection(t *testing.T) {
 	m, _ = m.startTraceAnalysis()
 	_ = m.viewTrace(m.windowWidth, m.traceHeight())
 
-	m, _ = m.handleMousePress(tea.Mouse{X: 20, Y: m.traceLayout().ruleRow + tabBarHeight, Button: tea.MouseLeft})
+	m, _ = m.handleMousePress(tea.Mouse{X: 20, Y: m.traceLayout().ruleRow + m.viewTop(), Button: tea.MouseLeft})
 
 	assert.True(t, m.trace.dragging)
 	assert.False(t, m.selection.dragging)
@@ -326,7 +326,7 @@ func TestAPaneDraggedToASizeKeepsIt(t *testing.T) {
 	m.ready = true
 
 	m.trace.dragging = true
-	m.dragTraceRule(m.traceLayout().ruleRow + tabBarHeight - 3)
+	m.dragTraceRule(m.traceLayout().ruleRow + m.viewTop() - 3)
 	m.trace.dragging = false
 	dragged := m.trace.viewport.Height()
 
@@ -380,16 +380,16 @@ func TestTheWheelMovesTheTracePaneItIsOver(t *testing.T) {
 
 	g := m.traceLayout()
 
-	m, _ = m.scrollTrace(g.traceTop+1+tabBarHeight, 3)
+	m, _ = m.scrollTrace(g.traceTop+1+m.viewTop(), 3)
 	assert.Equal(t, 3, m.traceViewport.YOffset())
 	assert.Equal(t, 0, m.trace.viewport.YOffset(), "the pane under it did not move")
 
-	m, _ = m.scrollTrace(g.analysisTop+1+tabBarHeight, 5)
+	m, _ = m.scrollTrace(g.analysisTop+1+m.viewTop(), 5)
 	assert.Equal(t, 5, m.trace.viewport.YOffset())
 	assert.Equal(t, 3, m.traceViewport.YOffset(), "and the trace stayed where it was")
 
 	// Neither scrolls past what it holds.
-	m, _ = m.scrollTrace(g.analysisTop+1+tabBarHeight, 500)
+	m, _ = m.scrollTrace(g.analysisTop+1+m.viewTop(), 500)
 	assert.Equal(t, m.trace.viewport.TotalLineCount()-m.trace.viewport.Height(), m.trace.viewport.YOffset())
 }
 

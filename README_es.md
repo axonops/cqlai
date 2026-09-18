@@ -316,7 +316,7 @@ Las pestañas se leen de izquierda a derecha, y las teclas siguen el mismo orden
 | `F2` | Consola: lo que escribiste y lo que respondió |
 | `F3` | Esquema: los keyspaces y las tablas, con sus definiciones |
 | `F4` | Resultados: la última consulta, en el formato de `OUTPUT` |
-| `F5` | Trazas (cuando el trazado está habilitado) |
+| `F5` | Trazas: la otra pestaña de `RESULTS`, cuando el trazado está habilitado |
 | `F6` | Chat: la conversación con la IA |
 
 #### El menú FILE

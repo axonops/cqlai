@@ -315,21 +315,28 @@ func TestTheHeadingsStayWhileTheTreeScrolls(t *testing.T) {
 }
 
 // TestSchemaSitsNextToTheConsole: what is in the database comes before anything
-// a query has made of it, and the three that follow are all views of a result.
+// a query has made of it, and what follows is a view of a result.
 func TestSchemaSitsNextToTheConsole(t *testing.T) {
-	order := make([]string, 0, len(modeTabs))
+	var order []string
 	for _, tab := range modeTabs {
-		order = append(order, tab.mode)
+		order = append(order, tab.modes...)
 	}
 	assert.Equal(t, []string{"history", "schema", "table", "trace", "ai"}, order)
 
 	// And the keys read along the line with them: a bar whose keys are out of
-	// order is one you have to read rather than count along.
+	// order is one you have to read rather than count along. RESULTS carries
+	// F4; the trace is inside it, on F5, where it has always been.
 	keys := make([]string, 0, len(modeTabs))
 	for _, tab := range modeTabs {
 		keys = append(keys, tab.key)
 	}
-	assert.Equal(t, []string{"F2", "F3", "F4", "F5", "F6"}, keys)
+	assert.Equal(t, []string{"F2", "F3", "F4", "F6"}, keys)
+
+	inner := make([]string, 0, len(resultTabs))
+	for _, tab := range resultTabs {
+		inner = append(inner, tab.key)
+	}
+	assert.Equal(t, []string{"F4", "F5"}, inner)
 }
 
 // TestTheCompletionListKeepsTheArrows.
