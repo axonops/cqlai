@@ -273,11 +273,15 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 
 // endSelection finishes a drag and puts the text on the system clipboard.
 //
-// Bubble Tea writes it with OSC 52, which is the one way a terminal application
-// can reach the clipboard of whatever machine the terminal is on - it works
-// through ssh and through tmux, where shelling out to xclip does not. Reading
-// the clipboard back is a different matter and most terminals refuse it, which
-// is why there is still no right-click paste.
+// It goes out twice. Bubble Tea writes it with OSC 52, which is the one way a
+// terminal application can reach the clipboard of whatever machine the terminal
+// is on - it works through ssh and through tmux, where shelling out to xclip
+// does not. But terminals are free to ignore OSC 52 and several do, so the
+// machine cqlai runs on is told as well, through pbcopy or its equivalent.
+// Locally one of the two lands; remotely OSC 52 is the one that can.
+//
+// Reading the clipboard back is a different matter and most terminals refuse
+// it, which is why there is still no right-click paste.
 //
 // The highlight stays up until the next click or keypress, so you can see what
 // you got.
@@ -296,7 +300,11 @@ func (m *MainModel) endSelection() (*MainModel, tea.Cmd) {
 	// Kept as well as sent. A right click pastes this when the terminal will
 	// not say what its clipboard holds, which is most of them.
 	m.lastCopied = text
-	return m, tea.SetClipboard(text)
+
+	// Both routes. OSC 52 is the one that reaches the terminal's own machine
+	// through ssh or tmux; the command line is the one that works on the
+	// terminals which ignore OSC 52, macOS Terminal.app among them.
+	return m, tea.Batch(tea.SetClipboard(text), writeSystemClipboard(text))
 }
 
 // clearSelection takes the highlight down.
