@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-23
+
+Copying with the mouse did not reach the system clipboard. On macOS nothing was
+copied at all; on Windows the clipboard was cleared instead. Both looked like
+they had worked, because pasting back into CQLAI falls back to what CQLAI
+itself last copied, so the text never had to leave the process to seem fine.
+
+### Fixed
+
+- **macOS**: releasing a drag-selection wrote the text out through OSC 52 only.
+  Terminal.app drops that write outright and iTerm2 refuses it until
+  "Applications in terminal may access clipboard" is enabled, so the highlight
+  appeared and the clipboard never changed. `Command + C` could not make up for
+  it: mouse reporting is on by default and has already taken the terminal's own
+  click-and-drag selection away. Copying now also tells the machine, through
+  `pbcopy` — the same way the paste side already asks it with `pbpaste`
+  ([#210](https://github.com/axonops/cqlai/issues/210)).
+- **Windows**: the new write went out as `powershell.exe -NoProfile -Command
+  Set-Clipboard`, which runs the cmdlet with no `-Value`. A process's stdin does
+  not reach the PowerShell pipeline, so it cleared the clipboard rather than
+  setting it — and exited 0, which the caller took for success and stopped
+  trying. Copying in CQLAI silently destroyed whatever you had copied
+  elsewhere. The text is piped in with `$input` now, and `clip.exe` follows as a
+  second route for a machine where PowerShell is missing or refuses to run.
+
+Over ssh with no clipboard tool, OSC 52 is still the only route that can work,
+and it is still taken. Locally one of the two lands.
+
 ## [0.2.0] - 2026-09-18
 
 Sixty merged changes since 0.1.7, most of them the terminal UI. CQLAI stopped
