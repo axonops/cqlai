@@ -109,22 +109,39 @@ func systemClipboard() string {
 // still the one that can.
 
 // clipboardWriters are the commands that can put text on the clipboard, in the
-// order they are tried. They mirror clipboardReaders.
+// order they are tried. They answer clipboardReaders, one route for one route,
+// except on Windows where there are two.
+//
+// The PowerShell one has to pipe $input into the cmdlet. "Set-Clipboard" on its
+// own runs it with no -Value: the process's stdin never reaches the PowerShell
+// pipeline, so it clears the clipboard and exits 0. Exit 0 is the trap - the
+// loop below takes it for success and stops - so the copy was lost and whatever
+// had been on the clipboard went with it. It is what Windows Terminal showed:
+// copying inside cqlai worked, because pasting there falls back to what cqlai
+// itself last copied, and nothing outside it ever saw the text.
+//
+// clip.exe follows as a second route for a machine where PowerShell is missing
+// or refuses to run. PowerShell goes first because it is the one that carries
+// the box-drawing characters in a copied table through unharmed.
 func clipboardWriters() [][]string {
-	powershell := []string{"powershell.exe", "-NoProfile", "-Command", "Set-Clipboard"}
+	powershell := []string{"powershell.exe", "-NoProfile", "-Command", "$input | Set-Clipboard"}
+	clip := []string{"clip.exe"}
 
 	switch runtime.GOOS {
 	case "darwin":
 		return [][]string{{"pbcopy"}}
 	case "windows":
-		return [][]string{powershell}
+		return [][]string{powershell, clip}
 	}
 
+	// Linux, and WSL - where the clipboard belongs to Windows and these last
+	// two are how it is reached.
 	return [][]string{
 		{"wl-copy"},
 		{"xclip", "-selection", "clipboard", "-in"},
 		{"xsel", "--clipboard", "--input"},
 		powershell,
+		clip,
 	}
 }
 
