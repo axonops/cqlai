@@ -48,16 +48,40 @@ func drag(m *MainModel, fromCol, fromRow, toCol, toRow int) tea.Cmd {
 // clipboardText runs the command endSelection returned and reads the text back
 // out, which is what would reach the terminal as OSC 52.
 //
-// Bubble Tea keeps the message type unexported, so this goes by its name and
-// its contents rather than a type assertion.
+// A copy goes out twice - OSC 52 and the machine's own clipboard tool - so what
+// comes back is a batch, and this picks the OSC 52 half out of it. Bubble Tea
+// keeps that message type unexported, so it goes by its name and its contents
+// rather than a type assertion.
 func clipboardText(t *testing.T, cmd tea.Cmd) string {
 	t.Helper()
 	require.NotNil(t, cmd, "releasing a drag should have produced a clipboard command")
 
+	for _, msg := range runClipboardCmd(cmd) {
+		if strings.Contains(fmt.Sprintf("%T", msg), "lipboard") {
+			return fmt.Sprintf("%s", msg)
+		}
+	}
+
+	t.Fatalf("no clipboard command in %T", cmd())
+	return ""
+}
+
+// runClipboardCmd runs a command and flattens a batch into the messages its
+// members produced.
+func runClipboardCmd(cmd tea.Cmd) []tea.Msg {
 	msg := cmd()
-	require.Contains(t, fmt.Sprintf("%T", msg), "lipboard",
-		"expected a clipboard command, got %T", msg)
-	return fmt.Sprintf("%s", msg)
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+
+	var msgs []tea.Msg
+	for _, member := range batch {
+		if member != nil {
+			msgs = append(msgs, member())
+		}
+	}
+	return msgs
 }
 
 // TestDragSelectsAndCopies is the point of the feature: no modifier key, and

@@ -94,3 +94,90 @@ func systemClipboard() string {
 	}
 	return ""
 }
+
+// Writing to the clipboard of the machine cqlai is running on.
+//
+// Copying goes out through OSC 52 as well, which is the only route that
+// survives ssh and tmux, but plenty of terminals drop it: macOS Terminal.app
+// ignores the write outright and iTerm2 refuses it until the setting is turned
+// on. On those a drag-select looked like it copied and the clipboard never
+// changed - and Command + C cannot make up for it, because mouse reporting has
+// already taken the terminal's own selection away.
+//
+// So the machine is told as well, the same way the paste side already asks it.
+// Locally one of the two lands; over ssh with no clipboard tool, OSC 52 is
+// still the one that can.
+
+// clipboardWriters are the commands that can put text on the clipboard, in the
+// order they are tried. They answer clipboardReaders, one route for one route,
+// except on Windows where there are two.
+//
+// The PowerShell one has to pipe $input into the cmdlet. "Set-Clipboard" on its
+// own runs it with no -Value: the process's stdin never reaches the PowerShell
+// pipeline, so it clears the clipboard and exits 0. Exit 0 is the trap - the
+// loop below takes it for success and stops - so the copy was lost and whatever
+// had been on the clipboard went with it. It is what Windows Terminal showed:
+// copying inside cqlai worked, because pasting there falls back to what cqlai
+// itself last copied, and nothing outside it ever saw the text.
+//
+// clip.exe follows as a second route for a machine where PowerShell is missing
+// or refuses to run. PowerShell goes first because it is the one that carries
+// the box-drawing characters in a copied table through unharmed.
+func clipboardWriters() [][]string {
+	powershell := []string{"powershell.exe", "-NoProfile", "-Command", "$input | Set-Clipboard"}
+	clip := []string{"clip.exe"}
+
+	switch runtime.GOOS {
+	case "darwin":
+		return [][]string{{"pbcopy"}}
+	case "windows":
+		return [][]string{powershell, clip}
+	}
+
+	// Linux, and WSL - where the clipboard belongs to Windows and these last
+	// two are how it is reached.
+	return [][]string{
+		{"wl-copy"},
+		{"xclip", "-selection", "clipboard", "-in"},
+		{"xsel", "--clipboard", "--input"},
+		powershell,
+		clip,
+	}
+}
+
+// writeSystemClipboard puts text on the machine's clipboard.
+//
+// It reports nothing: the copy has already gone out through OSC 52, so a
+// machine with no clipboard tool is not a failure worth a message, and the text
+// is never logged - it is the clipboard.
+func writeSystemClipboard(text string) tea.Cmd {
+	return func() tea.Msg {
+		writeToMachineClipboard(text)
+		return nil
+	}
+}
+
+// writeToMachineClipboard is the write itself, behind a variable so a test can
+// take the machine's real clipboard out of the picture.
+var writeToMachineClipboard = setSystemClipboard
+
+// setSystemClipboard runs the first clipboard writer this machine has.
+func setSystemClipboard(text string) {
+	for _, writer := range clipboardWriters() {
+		path, err := exec.LookPath(writer[0])
+		if err != nil {
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), clipboardWait)
+		// #nosec G204 - the command and its arguments are from the fixed table
+		// above; only which of them exists on this machine varies.
+		cmd := exec.CommandContext(ctx, path, writer[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		err = cmd.Run()
+		cancel()
+		if err == nil {
+			return
+		}
+	}
+}
