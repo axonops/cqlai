@@ -227,3 +227,33 @@ func TestTheDocsListTheConfigurationFiles(t *testing.T) {
 		}
 	}
 }
+
+// TestTheDocsNameEveryClipboardToolCqlaiLooksFor.
+//
+// Copying on a stock Linux desktop reaches no further than cqlai itself: no
+// VTE terminal supports OSC 52, and wl-clipboard, xclip and xsel are none of
+// them installed by default. Someone has to be told which to install, and the
+// list they are told is only right if it is the list the code actually walks.
+func TestTheDocsNameEveryClipboardToolCqlaiLooksFor(t *testing.T) {
+	readme := readDoc(t, "README.md")
+
+	for _, table := range [][][]string{clipboardWriters(), clipboardReaders()} {
+		for _, command := range table {
+			assert.Contains(t, readme, command[0],
+				"the README should name %s, which is a tool cqlai tries", command[0])
+		}
+	}
+}
+
+// TestTheDocsSayHowToInstallAClipboardTool: naming the tool is not the same as
+// saying how to get it, and the person reading this has just watched a copy do
+// nothing.
+func TestTheDocsSayHowToInstallAClipboardTool(t *testing.T) {
+	for _, name := range []string{"README.md", "docs/INSTALLATION.md"} {
+		doc := readDoc(t, name)
+
+		assert.Contains(t, doc, "apt install wl-clipboard", "%s should say how to install it", name)
+		assert.Contains(t, doc, "apt install xclip", "%s should say what X11 needs instead", name)
+		assert.Contains(t, doc, "XDG_SESSION_TYPE", "%s should say how to tell which", name)
+	}
+}

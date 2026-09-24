@@ -181,3 +181,27 @@ func (m *MainModel) handlePasteFallback(msg pasteFallbackMsg) (*MainModel, tea.C
 	m.pasteRequest = 0
 	return m.pasteText(m.lastCopied)
 }
+
+// handleNoClipboardTool says, once, that a copy had only the terminal to go
+// through.
+//
+// Once: it is guidance, not an error, and a line on every drag-release would
+// be worse than the silence it replaces. Worded as a condition rather than a
+// failure, because nothing here can tell whether the terminal took the OSC 52
+// write - on one that did, the copy is on the desktop and this line is only
+// noise to be read past.
+func (m *MainModel) handleNoClipboardTool() (*MainModel, tea.Cmd) {
+	if m.saidNoClipboardTool {
+		return m, nil
+	}
+	m.saidNoClipboardTool = true
+
+	m.fullHistoryContent += "\n" +
+		m.styles.MutedText.Render("Copied. Nothing on this machine took it for the desktop's clipboard, so it "+
+			"reached it only if this terminal supports OSC 52 - GNOME Terminal and the rest of "+
+			"VTE do not. To be sure of it, "+clipboardToolAdvice()+".")
+	m.updateHistoryWrapping()
+	m.historyViewport.GotoBottom()
+
+	return m, nil
+}

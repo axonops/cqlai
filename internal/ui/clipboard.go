@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -145,15 +146,27 @@ func clipboardWriters() [][]string {
 	}
 }
 
+// noClipboardToolMsg says a copy found nothing on this machine to hand the
+// text to, so the terminal was its only chance of reaching the desktop.
+type noClipboardToolMsg struct{}
+
 // writeSystemClipboard puts text on the machine's clipboard.
 //
-// It reports nothing: the copy has already gone out through OSC 52, so a
-// machine with no clipboard tool is not a failure worth a message, and the text
-// is never logged - it is the clipboard.
+// It says when no tool took the text. On the read side silence is right - a
+// right click has somewhere sensible to fall back to - but a copy does not:
+// nothing here can tell whether the terminal took the OSC 52 write, so a
+// machine with no clipboard tool is one where the copy may have gone nowhere
+// and nothing said so. A stock Ubuntu desktop is exactly that machine: VTE,
+// which GNOME Terminal and Ptyxis are built on, has never supported OSC 52,
+// and wl-clipboard, xclip and xsel are none of them installed by default.
+//
+// The text itself is never logged - it is the clipboard.
 func writeSystemClipboard(text string) tea.Cmd {
 	return func() tea.Msg {
-		writeToMachineClipboard(text)
-		return nil
+		if writeToMachineClipboard(text) {
+			return nil
+		}
+		return noClipboardToolMsg{}
 	}
 }
 
@@ -161,8 +174,9 @@ func writeSystemClipboard(text string) tea.Cmd {
 // take the machine's real clipboard out of the picture.
 var writeToMachineClipboard = setSystemClipboard
 
-// setSystemClipboard runs the first clipboard writer this machine has.
-func setSystemClipboard(text string) {
+// setSystemClipboard runs the first clipboard writer this machine has, and
+// reports whether one of them took the text.
+func setSystemClipboard(text string) bool {
 	for _, writer := range clipboardWriters() {
 		path, err := exec.LookPath(writer[0])
 		if err != nil {
@@ -177,7 +191,24 @@ func setSystemClipboard(text string) {
 		err = cmd.Run()
 		cancel()
 		if err == nil {
-			return
+			return true
 		}
 	}
+	return false
+}
+
+// clipboardToolAdvice is what to install, for the desktop this is running on.
+func clipboardToolAdvice() string {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		// Both ship their own, so reaching here means it would not run.
+		return "this machine's own clipboard tool would not run"
+	}
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		return "install wl-clipboard"
+	}
+	if os.Getenv("DISPLAY") != "" {
+		return "install xclip"
+	}
+	return "install wl-clipboard, or xclip on X11"
 }
