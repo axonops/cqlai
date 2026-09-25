@@ -339,7 +339,8 @@ looked at two ways, which is why they share a place on the line above.
 | `F6` | Chat | The AI conversation |
 
 Text is selected by dragging with the mouse, and lands on the system clipboard
-when you let go.
+when you let go - on Linux once `wl-clipboard` or `xclip` is installed, which
+[Mouse Support](#mouse-support) explains.
 
 A right click pastes. It asks three things, in order, and takes the first
 answer: the terminal, through OSC 52, which is the only route that works through
@@ -622,14 +623,33 @@ selects a word, triple-click selects a line, and dragging past the top or bottom
 edge scrolls, so a selection can run further than one screen. `Esc`, or a click
 somewhere else, clears it.
 
-The copy goes out as OSC 52, the escape sequence a terminal program uses to
-write the clipboard. That works through `ssh` and through `tmux`, where shelling
-out to `xclip` or `pbcopy` would put the text on the wrong machine.
+The copy takes two routes, because neither one works everywhere. It goes out as
+OSC 52, the escape sequence a terminal program uses to write the clipboard,
+which is the only route that survives `ssh` and `tmux` - shelling out there
+would put the text on the wrong machine. And it is handed to the machine CQLAI
+is running on, through whichever of `wl-copy`, `xclip`, `xsel`, `pbcopy`,
+`clip.exe` or `powershell.exe Set-Clipboard` is there. Locally one of the two
+lands.
 
-**There is no right-click paste.** Reading the clipboard needs OSC 52 *read*,
-which iTerm2, kitty, foot and WezTerm all refuse by default, for good reason -
-any program on the far end of an ssh session could otherwise help itself to
-whatever you last copied. Whatever your terminal binds paste to, usually
+**On a Linux desktop it has to be the second one**, and nothing provides it out
+of the box. No VTE-based terminal supports OSC 52 - GNOME Terminal and Ptyxis
+among them - and `wl-clipboard`, `xclip` and `xsel` are none of them installed
+by default. A stock desktop therefore has neither half, and a copy reaches no
+further than CQLAI itself:
+
+```bash
+sudo apt install wl-clipboard          # Wayland, which is the Ubuntu default
+sudo apt install xclip                 # X11 - echo $XDG_SESSION_TYPE to check
+```
+
+CQLAI says so the first time a copy finds nothing to hand the text to, rather
+than failing quietly.
+
+Reading the clipboard is the harder direction: OSC 52 *read* is refused by
+default in iTerm2, kitty, foot and WezTerm, for good reason - any program on the
+far end of an ssh session could otherwise help itself to whatever you last
+copied. That is why right-click paste asks the machine as well, and falls back
+to what CQLAI itself last copied. Whatever your terminal binds paste to, usually
 `Shift`+right-click or `Ctrl+Shift+V`, still works.
 
 `MOUSE OFF` hands the mouse back to the terminal, so its own selection, its

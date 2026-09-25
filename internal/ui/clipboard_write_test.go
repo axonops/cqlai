@@ -2,6 +2,7 @@ package ui
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,7 @@ import (
 // on purpose, and a test run should not take over what the person at the
 // keyboard had copied.
 func init() {
-	writeToMachineClipboard = func(string) {}
+	writeToMachineClipboard = func(string) bool { return true }
 }
 
 // TestCopyAlsoGoesToTheMachine is issue #210: on macOS the copy only went out
@@ -24,9 +25,10 @@ func TestCopyAlsoGoesToTheMachine(t *testing.T) {
 
 	var got string
 	var calls int
-	writeToMachineClipboard = func(text string) {
+	writeToMachineClipboard = func(text string) bool {
 		got = text
 		calls++
+		return true
 	}
 
 	m := selectionModel(5, "first line", "second line", "third line")
@@ -50,7 +52,7 @@ func TestClickWithoutDraggingLeavesTheMachineAlone(t *testing.T) {
 	t.Cleanup(func() { writeToMachineClipboard = original })
 
 	calls := 0
-	writeToMachineClipboard = func(string) { calls++ }
+	writeToMachineClipboard = func(string) bool { calls++; return true }
 
 	m := selectionModel(5, "first line")
 	m.beginSelection(4, 1)
@@ -127,4 +129,83 @@ func TestTheWritersTakeTheirTextOnStdin(t *testing.T) {
 				"%q looks like it wants the text as an argument; it is given stdin", writer)
 		}
 	}
+}
+
+// TestACopyNoMachineTookSaysSo.
+//
+// A stock Ubuntu desktop has neither half of the copy: VTE, which GNOME
+// Terminal and Ptyxis are built on, has never supported OSC 52, and
+// wl-clipboard, xclip and xsel are none of them installed by default. Both
+// routes failed silently, the in-app paste went on working off what cqlai
+// itself last copied, and it looked like the copy had worked.
+func TestACopyNoMachineTookSaysSo(t *testing.T) {
+	original := writeToMachineClipboard
+	t.Cleanup(func() { writeToMachineClipboard = original })
+	writeToMachineClipboard = func(string) bool { return false }
+
+	msg := writeSystemClipboard("some text")()
+
+	assert.Equal(t, noClipboardToolMsg{}, msg)
+}
+
+// TestACopyTheMachineTookSaysNothing: on a machine with a clipboard tool there
+// is nothing to warn about.
+func TestACopyTheMachineTookSaysNothing(t *testing.T) {
+	original := writeToMachineClipboard
+	t.Cleanup(func() { writeToMachineClipboard = original })
+	writeToMachineClipboard = func(string) bool { return true }
+
+	assert.Nil(t, writeSystemClipboard("some text")())
+}
+
+// TestTheNoteIsWrittenOnceAndNotAgain: it is guidance, and guidance on every
+// drag-release is worse than the silence it replaces.
+func TestTheNoteIsWrittenOnceAndNotAgain(t *testing.T) {
+	m := selectionModel(5, "first line")
+
+	m, _ = m.handleNoClipboardTool()
+	first := strings.Count(m.fullHistoryContent, "OSC 52")
+	require.Equal(t, 1, first, "the note should be written")
+	assert.True(t, m.saidNoClipboardTool)
+
+	m, _ = m.handleNoClipboardTool()
+	m, _ = m.handleNoClipboardTool()
+	assert.Equal(t, first, strings.Count(m.fullHistoryContent, "OSC 52"),
+		"and not written again")
+}
+
+// TestTheNoteSaysWhatToInstall, for the desktop it is running on.
+func TestTheNoteSaysWhatToInstall(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the advice is about the Linux desktop's clipboard tools")
+	}
+
+	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
+	t.Setenv("DISPLAY", "")
+	assert.Contains(t, clipboardToolAdvice(), "wl-clipboard")
+
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":0")
+	assert.Contains(t, clipboardToolAdvice(), "xclip")
+
+	// Neither says which, so it names both rather than guessing.
+	t.Setenv("DISPLAY", "")
+	assert.Contains(t, clipboardToolAdvice(), "wl-clipboard")
+	assert.Contains(t, clipboardToolAdvice(), "xclip")
+}
+
+// TestTheNoteDoesNotCarryTheCopiedText: it is the clipboard.
+func TestTheNoteDoesNotCarryTheCopiedText(t *testing.T) {
+	original := writeToMachineClipboard
+	t.Cleanup(func() { writeToMachineClipboard = original })
+	writeToMachineClipboard = func(string) bool { return false }
+
+	secret := "hunter2-from-the-password-manager"
+	msg := writeSystemClipboard(secret)()
+
+	m := selectionModel(5, "first line")
+	m, _ = m.handleNoClipboardTool()
+
+	require.Equal(t, noClipboardToolMsg{}, msg, "the message carries nothing at all")
+	assert.NotContains(t, m.fullHistoryContent, secret)
 }

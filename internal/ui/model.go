@@ -158,6 +158,11 @@ type MainModel struct {
 	// rather than always the query output.
 	resultTab string
 
+	// saidNoClipboardTool is whether the note about copying having only the
+	// terminal to go through has been written this session. It is guidance,
+	// and guidance repeated on every drag-release is noise.
+	saidNoClipboardTool bool
+
 	columnTypes        []string // Store column data types
 	tableRowBoundaries []int    // Line numbers where table rows start
 
@@ -617,6 +622,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case systemClipboardMsg:
 		updatedModel, cmd := m.handleSystemClipboard(msg)
+		return updatedModel, cmd
+
+	case noClipboardToolMsg:
+		updatedModel, cmd := m.handleNoClipboardTool()
 		return updatedModel, cmd
 
 	case pasteFallbackMsg:

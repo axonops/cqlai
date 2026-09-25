@@ -203,7 +203,7 @@ https://github.com/axonops/cqlai/releases/latest/download/cqlai-windows-amd64.ex
 ## Building from Source
 
 ### Prerequisites
-- Go 1.21 or later
+- Go 1.26 or later (`go.mod` requires it; 1.21 will not build this module)
 - Git
 
 ### Build Steps
@@ -227,6 +227,28 @@ sudo cp cqlai /usr/local/bin/
 # Set version during build
 go build -ldflags "-X main.Version=0.0.5" -o cqlai cmd/cqlai/main.go
 ```
+
+## Runtime Requirements
+
+CQLAI needs nothing beyond the binary to run — with one exception.
+
+### Copying to the clipboard on Linux
+
+Selecting text with the mouse copies it to the system clipboard. On Linux that
+needs a clipboard tool, and no desktop installs one by default:
+
+```bash
+sudo apt install wl-clipboard          # Wayland, which is the Ubuntu default
+sudo apt install xclip                 # X11 - echo $XDG_SESSION_TYPE to check
+```
+
+Without one, copying reaches no further than CQLAI itself. The other route a
+terminal program has — the OSC 52 escape sequence — is not supported by any
+VTE-based terminal, which includes GNOME Terminal and Ptyxis. Terminals that do
+support it, Ghostty and kitty among them, work without the tool; it is still
+worth installing, because it is what works over both.
+
+macOS and Windows need nothing: `pbcopy` and PowerShell ship with the system.
 
 ## Verifying Installation
 
