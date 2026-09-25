@@ -290,6 +290,7 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Tab` | Autocompletar comandos y nombres de tablas/keyspaces | Igual |
 | `Ctrl+C` | Limpiar entrada / Cancelar paginación / Cancelar operación (dos veces para salir) | `⌘+C` o `Ctrl+C` |
 | `Ctrl+D` | Salir de la aplicación | `⌘+D` o `Ctrl+D` |
+| `Ctrl+Q` | Salir, preguntando antes - igual que `FILE > QUIT` | `Ctrl+Q` (no `⌘+Q`, que cierra el propio terminal) |
 | `Ctrl+R` | Buscar en historial de comandos | `⌘+R` o `Ctrl+R` |
 | `Esc` | Activar/desactivar modo de navegación / Cancelar paginación / Cerrar modales | Igual |
 | `Enter` | Ejecutar comando / Cargar siguiente página (durante paginación) | Igual |

@@ -201,16 +201,18 @@ func (m *MainModel) handleAIConversationInput(msg tea.KeyPressMsg) (*MainModel, 
 		// Scroll conversation down by multiple lines
 		m.aiConversationViewport.ScrollDown(3)
 		return m, nil
-	case "f2", "f3", "f4", "f5", "f6":
-		// Don't handle function keys here - let them fall through to main handler
-		// by not returning anything in this case
 	default:
-		// Pass other keys to the AI input field
+		// The shell's own keys are not typed into the conversation: the views,
+		// the help and the FILE menu answer from in here the same as anywhere
+		// else. Returning a nil model is how this handler says a key was not
+		// its to take.
+		if isShellKey(msg.String()) {
+			return nil, nil
+		}
+
+		// Everything else is what you are saying to the model.
 		var cmd tea.Cmd
 		m.aiConversationInput, cmd = m.aiConversationInput.Update(msg)
 		return m, cmd
 	}
-
-	// If we get here, the key wasn't handled, so return nil to let it fall through
-	return nil, nil
 }
