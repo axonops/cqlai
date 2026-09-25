@@ -123,6 +123,11 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	case "ctrl+d":
 		return m.handleCtrlD()
 
+	// The quit shortcut, doing exactly what FILE > QUIT does because that is
+	// where it is written down.
+	case "ctrl+q":
+		return m.askToQuit()
+
 	case "ctrl+r":
 		return m.handleCtrlR()
 

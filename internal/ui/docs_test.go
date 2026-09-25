@@ -228,6 +228,48 @@ func TestTheDocsListTheConfigurationFiles(t *testing.T) {
 	}
 }
 
+// TestEveryReadmeNamesTheQuitKey, and the help in the app does too.
+//
+// A shortcut only exists as far as someone can find it. The menu shows it
+// beside QUIT, which is where you look while you are in there; these are where
+// you look before you have opened it.
+func TestEveryReadmeNamesTheQuitKey(t *testing.T) {
+	for _, name := range []string{"README.md", "README_jp.md", "README_es.md", "README_gl.md"} {
+		assert.Contains(t, readDoc(t, name), "`"+quitKeyLabel+"`",
+			"%s should say which key quits", name)
+	}
+
+	var help strings.Builder
+	for _, row := range router.HelpRows() {
+		help.WriteString(strings.Join(row, " ") + "\n")
+	}
+	assert.Contains(t, help.String(), quitKeyLabel, "the help in the app should name it too")
+}
+
+// TestTheDocsDoNotPromiseAKeyTheTerminalTakes.
+//
+// Command+Q never reaches a terminal application - the terminal quits itself -
+// so naming it beside the quit row would send a Mac user to a key that closes
+// the wrong thing.
+func TestTheDocsDoNotPromiseAKeyTheTerminalTakes(t *testing.T) {
+	for _, name := range []string{"README.md", "README_jp.md", "README_es.md", "README_gl.md"} {
+		found := false
+		for _, line := range strings.Split(readDoc(t, name), "\n") {
+			cells := strings.Split(line, "|")
+			if len(cells) < 4 || strings.TrimSpace(cells[1]) != "`"+quitKeyLabel+"`" {
+				continue
+			}
+			found = true
+
+			// The last column is what macOS is told to press. It may go on to
+			// explain why Command+Q is not it; what it must not do is offer it.
+			assert.True(t, strings.HasPrefix(strings.TrimSpace(cells[3]), "`"+quitKeyLabel+"`"),
+				"%s tells macOS to press %q", name, strings.TrimSpace(cells[3]))
+		}
+		assert.True(t, found, "%s has no row for %s", name, quitKeyLabel)
+	}
+}
+
 // TestTheDocsNameEveryClipboardToolCqlaiLooksFor.
 //
 // Copying on a stock Linux desktop reaches no further than cqlai itself: no
