@@ -287,6 +287,7 @@ cqlai -e "SELECT * FROM large_table;" --page-size 50
 | `Tab` | Autocompletar comandos e nomes de táboas/keyspaces | Igual |
 | `Ctrl+C` | Limpar entrada / Cancelar paxinación / Cancelar operación (dúas veces para saír) | `⌘+C` ou `Ctrl+C` |
 | `Ctrl+D` | Saír da aplicación | `⌘+D` ou `Ctrl+D` |
+| `Ctrl+Q` | Saír, preguntando antes - igual que `FILE > QUIT` | `Ctrl+Q` (non `⌘+Q`, que pecha o propio terminal) |
 | `Ctrl+R` | Buscar en historial de comandos | `⌘+R` ou `Ctrl+R` |
 | `Esc` | Activar/desactivar modo de navegación / Cancelar paxinación / Pechar modais | Igual |
 | `Enter` | Executar comando / Cargar seguinte páxina (durante paxinación) | Igual |

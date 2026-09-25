@@ -37,6 +37,12 @@ type fileMenuItem struct {
 	conn  bool       // true for CONNECT, which asks for a cluster
 	quits bool       // true for QUIT, which is the end of it
 
+	// shortcut is the key that does the same thing without the menu, drawn
+	// down the right-hand side. A menu that offers a key has to be the place
+	// the key is written down: nobody opens the README to find out how to
+	// leave.
+	shortcut string
+
 	// rule is a line across the menu rather than an entry. It cannot be
 	// selected, the arrow keys step over it, and a click on it does nothing.
 	rule bool
@@ -74,7 +80,7 @@ func fileMenuItems() []fileMenuItem {
 		{rule: true},
 		// And last, on its own, because leaving is not like either group above
 		// it and is the one entry here you cannot undo.
-		{label: "QUIT", quits: true},
+		{label: "QUIT", quits: true, shortcut: quitKeyLabel},
 	}
 }
 
@@ -160,12 +166,7 @@ func (m *MainModel) chooseFileMenuItem() (*MainModel, tea.Cmd) {
 	case item.conn:
 		return m.openConnect()
 	case item.quits:
-		// Asked rather than done. The other three ways out have their own
-		// answer to this: Ctrl+C and Ctrl+D want the key twice, and typing EXIT
-		// is typing. A menu entry is one press away from the entry above it and
-		// sits under a button on the tab line, so it asks.
-		m.modal = NewQuitModal()
-		return m, nil
+		return m.askToQuit()
 	case item.prefs:
 		return m.openPreferences()
 	case item.asks:
@@ -194,7 +195,12 @@ func (m *MainModel) fileMenuGeometry(screenWidth, screenHeight int) (fileMenuGeo
 	items := fileMenuItems()
 	inner := 0
 	for _, item := range items {
-		inner = max(inner, lipgloss.Width(item.label))
+		width := lipgloss.Width(item.label)
+		if item.shortcut != "" {
+			// The label, a gap wide enough to read across, and the key.
+			width += fileShortcutGap + lipgloss.Width(item.shortcut)
+		}
+		inner = max(inner, width)
 	}
 	inner += 2 // a column of padding either side of the widest label
 
@@ -260,6 +266,12 @@ func (m *MainModel) viewFileMenu(screenWidth, screenHeight int) (Layer, bool) {
 		}
 
 		text := pad(" "+item.label, g.innerWidth)
+		if item.shortcut != "" {
+			// The key down the right-hand side, against the same edge the
+			// padding leaves on every other row.
+			room := g.innerWidth - lipgloss.Width(item.shortcut) - 1
+			text = pad(" "+item.label, room) + item.shortcut + " "
+		}
 		switch {
 		case !m.fileItemAvailable(item):
 			rows = append(rows, dimStyle.Render(text))
@@ -283,4 +295,29 @@ func (m *MainModel) viewFileMenu(screenWidth, screenHeight int) (Layer, bool) {
 		Height:  g.height,
 		ZIndex:  300, // over everything; it was just asked for
 	}, true
+}
+
+// fileShortcutGap is the room left between an entry and the key beside it.
+const fileShortcutGap = 3
+
+// quitKeyLabel is the quit shortcut as the menu writes it.
+//
+// Ctrl+Q on all three platforms, macOS included. Command+Q is what a Mac user
+// reaches for and it never arrives: the terminal takes it and quits itself,
+// the same way it takes Command+C. A shortcut cqlai cannot receive is not one
+// it can offer.
+const quitKeyLabel = "Ctrl+Q"
+
+// askToQuit puts the question up rather than leaving.
+//
+// Asked rather than done. The other ways out have their own answer to this:
+// Ctrl+C and Ctrl+D want the key twice, and typing EXIT is typing. A menu entry
+// is one press away from the entry above it and sits under a button on the tab
+// line, so it asks - and Ctrl+Q is written beside that entry, so it has to do
+// what the entry does. A key that quits where the menu asks would make the
+// menu a liar.
+func (m *MainModel) askToQuit() (*MainModel, tea.Cmd) {
+	m.closeFileMenu()
+	m.modal = NewQuitModal()
+	return m, nil
 }
