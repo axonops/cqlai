@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-25
+
+Three things that were silently not working: a copy that went nowhere and said
+nothing, a view that ate the keys for getting out of it, and no shortcut for
+quitting at all.
+
+### Added
+
+- **`Ctrl+Q` quits**, and the FILE menu shows it beside `QUIT`. It asks first,
+  the same as picking `QUIT` does — a shortcut printed next to an entry has to
+  do what that entry does. `Ctrl+Q` on all three platforms, macOS included:
+  `⌘+Q` never reaches a terminal application, because the terminal takes it and
+  quits itself.
+
+### Fixed
+
+- **The shell's keys are no longer typed into the AI conversation.** In CHAT,
+  `Alt+F` opened no FILE menu, `Alt+H` and `F1` opened no help, and the letters
+  went into the message instead. The view handed every key it did not recognise
+  to its input field, and the list of keys it let past named `F2` to `F6` and
+  nothing else — a second copy of the main handler's list, which stopped being
+  updated when `Alt+F` and `Alt+A` were added. There is one list now, and the
+  view keys come from the tabs themselves.
+- **Copying says when it had nowhere to go.** On a stock Linux desktop a
+  drag-select copied nothing and said nothing: no VTE-based terminal supports
+  OSC 52 — GNOME Terminal and Ptyxis are built on it — and `wl-clipboard`,
+  `xclip` and `xsel` are none of them installed by default. Pasting back inside
+  CQLAI went on working, because that falls back to what CQLAI itself last
+  copied, so it looked as though the copy had worked. The first copy in a
+  session that finds no clipboard tool now says so, and names the one to
+  install.
+
+  Nothing in a build can make that copy work — what is missing is the tool:
+  `sudo apt install wl-clipboard`, or `xclip` on X11.
+
+### Documentation
+
+- The README gave a package name where it should have given a command, and said
+  a selection "lands on the system clipboard when you let go" without saying
+  what Linux needs first. `docs/INSTALLATION.md` gains a **Runtime
+  Requirements** section, which is where someone looks before hitting this
+  rather than after.
+- Its prerequisites said Go 1.21, which cannot build a module declaring
+  `go 1.26.6`.
+- The README said "There is no right-click paste" two paragraphs after another
+  section describing right-click paste in detail. There is one.
+- Tests now fail when the README does not name a clipboard tool CQLAI tries,
+  when a README or the in-app help does not name the quit key, and when the
+  macOS column offers a key the terminal takes.
+
+### Known limitation
+
+The note about a copy having nowhere to go is written to the CONSOLE view,
+which the RESULTS view does not draw — so copying query output, which is the
+likeliest place to do it, will not show it. It belongs on the row above the
+prompt, which every view draws.
+
 ## [0.2.1] - 2026-09-23
 
 Copying with the mouse did not reach the system clipboard. On macOS nothing was
