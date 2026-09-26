@@ -79,13 +79,12 @@
 - ユーザー定義型(UDT)と複雑なデータ型
 - スクリプトと自動化のためのバッチモード
 - 効率的なデータ交換のためのApache Parquet形式サポート
-- CQLキーワード、テーブル、カラム、キースペースのタブ補完
-- **オプション**: AI駆動のクエリ生成([OpenAI](https://openai.com/)、[Anthropic](https://www.anthropic.com/)、[Google Gemini](https://ai.google.dev/)、[Synthetic](https://synthetic.new/))
-
-### 近日公開予定
-- AI コンテキスト認識の強化
-- Cassandra MCPサービス
-- 追加のパフォーマンス最適化
+- 文全体を組み立てるタブ補完 - テーブルプロパティ、すべての `CREATE`、DML - および補完できない名前には何を入力するかを提示
+- スキーマブラウザ(`F3`): クラスタのキースペースとテーブルを定義とともに表示し、他のウィンドウで加えられた変更も検知
+- 保存された接続: クラスタなしで起動し、`FILE` メニューから名前付きの接続に接続
+- シェル内から `cqlai.json` を編集する `PREFERENCES` ウィンドウ
+- 全面的なマウス対応: クリックできるタブと設定、ドラッグで選択してコピー、`FILE` メニュー
+- **オプション**: 平易な言葉からCQLを書き、クエリトレースを読み、テーブル定義をレビューするAI([OpenAI](https://openai.com/)、[Anthropic](https://www.anthropic.com/)、[Google Gemini](https://ai.google.dev/)、[Ollama](https://ollama.ai/)、[OpenRouter](https://openrouter.ai/))
 
 **今すぐCQLAIをお試しください**。開発にご協力いただければ幸いです！フィードバックと貢献は、CassandraコミュニティにとってベストなCQLシェルを作るために非常に貴重です。[問題を報告](https://github.com/axonops/cqlai/issues)するか、[貢献](https://github.com/axonops/cqlai/pulls)してください。
 
