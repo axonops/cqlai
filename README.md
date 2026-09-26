@@ -95,13 +95,12 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - User-Defined Types (UDTs) and complex data types
 - Batch mode for scripting and automation
 - Apache Parquet format support for efficient data interchange
-- Tab completion for CQL keywords, tables, columns, and keyspaces
-- **Optional**: AI-powered query generation ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/))
-
-### Coming Soon
-- Enhanced AI context awareness
-- Cassandra MCP service
-- Additional performance optimizations
+- Tab completion that builds a whole statement - table properties, every `CREATE`, and DML - and says what to type where a name cannot be looked up
+- A schema browser (`F3`) showing the cluster's keyspaces and tables with their definitions, which notices a change made in another window
+- Saved connections, so CQLAI starts without a cluster and connects to a named one from the `FILE` menu
+- A `PREFERENCES` window that edits `cqlai.json` from inside the shell
+- Mouse throughout: clickable tabs and settings, drag to select and copy, and a `FILE` menu
+- **Optional**: AI that writes CQL from plain English, reads a query trace, and reviews a table's definition ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Ollama](https://ollama.ai/), [OpenRouter](https://openrouter.ai/))
 
 We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls).
 
@@ -117,6 +116,17 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Full mouse support: clickable tabs and settings, click-and-drag text selection with no modifier key, and wheel scrolling.
     - Sticky footer/status bar showing connection details, query latency, and session status (consistency, tracing).
     - Modal overlays for history, help, and command completion.
+- **Schema Browser (`F3`):**
+    - The cluster's keyspaces and tables in a tree, with each object's definition beside it.
+    - Notices a schema change wherever it was made, including from another window, and forgets a definition a DDL statement has changed rather than showing a stale one.
+- **Saved Connections:**
+    - CQLAI starts without a cluster. `FILE > CONNECT` holds a list of named connections, one marked as the default, with the one in use shown.
+    - Each connection carries its own host, port, keyspace, credentials, timeouts and SSL settings.
+- **The FILE Menu (`Alt+F`):**
+    - `SOURCE`, `COPY TO`/`COPY FROM`, `SAVE RESULTS`, `AUTOSAVE`, `CONNECT`, `PREFERENCES` and `QUIT`, each with a form.
+    - Path fields complete as you type and open a file browser you can walk with the keyboard or the mouse.
+- **PREFERENCES:**
+    - Every setting in `cqlai.json`, edited in the shell and written back to the file it came from.
 - **Apache Parquet Support:**
     - High-performance columnar data format for analytics and machine learning workflows.
     - Export Cassandra tables to Parquet files with `COPY TO` command.
@@ -124,8 +134,10 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Partitioned datasets with Hive-style directory structures.
     - TimeUUID / timestamp virtual columns for intelligent time-based partitioning.
     - Support for all Cassandra data types including UDTs, collections, and vectors.
-- **Optional AI-Powered Query Generation:**
-    - Natural language to CQL conversion using AI providers ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/)).
+- **Optional AI:**
+    - Natural language to CQL conversion using AI providers ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Ollama](https://ollama.ai/), [OpenRouter](https://openrouter.ai/)).
+    - Reads a query trace and says where the time went, what the trace shows that the timings do not, and what to change (`Alt+A` in the `TRACE` tab).
+    - Reviews a table's definition - what it is, what will go wrong with it, and what to change (`Alt+A` in the `SCHEMA` view).
     - Schema-aware query generation with automatic context.
     - Safe preview and confirmation before execution.
     - Support for complex operations including DDL and DML.
@@ -1430,7 +1442,11 @@ If you're migrating from `cqlsh`, CQLAI will automatically read your existing `~
 
 ## AI-Powered Query Generation
 
-CQLAI includes built-in AI capabilities to convert natural language into CQL queries. Simply prefix your request with `.ai`:
+CQLAI can write CQL from plain English, and it can read what is already on
+screen: a query trace, or a table's definition.
+
+Prefix a request with `.ai`, or use the `CHAT` tab (`F6`) for a conversation
+that remembers what was said before it.
 
 ### Examples
 
@@ -1450,6 +1466,22 @@ CQLAI includes built-in AI capabilities to convert natural language into CQL que
 .ai describe the structure of the users table
 ```
 
+### Reading What Is On Screen
+
+Writing CQL is one half. The other is asking about something you are already
+looking at, with `Alt+A`:
+
+- **In the `TRACE` tab** - where the time went, longest first; what the trace
+  shows that the timings do not, such as tombstones read, a read repair, or a
+  range scan where a partition lookup was possible; and what to change. The
+  answer opens under the trace it is about, in a pane you can resize by dragging
+  the line between them, and copy out of.
+- **In the `SCHEMA` view** - what a table is, what will go wrong with it
+  months later, and what to change. It says when a change means writing the data
+  again somewhere else, because in Cassandra it usually does.
+
+Neither sends any rows. The trace and the definition are what go out.
+
 ### How It Works
 
 1. **Natural Language Input**: Type `.ai` followed by your request in plain English
@@ -1463,19 +1495,22 @@ CQLAI includes built-in AI capabilities to convert natural language into CQL que
 Configure your preferred AI provider in `cqlai.json`:
 
 - **[OpenAI](https://openai.com/)** (GPT-4, GPT-3.5)
-- **[Anthropic](https://www.anthropic.com/)** (Claude 3)
+- **[Anthropic](https://www.anthropic.com/)** (Claude)
 - **[Google Gemini](https://ai.google.dev/)**
-- **[Synthetic](https://synthetic.new/)** (Multiple open-source models)
-- **[Ollama](https://ollama.ai/)** (Local models or OpenAI-compatible APIs)
+- **[Ollama](https://ollama.ai/)** (local models, over its OpenAI-compatible endpoint)
 - **[OpenRouter](https://openrouter.ai/)** (Access to multiple models)
 - **Mock** (default, for testing without API keys)
 
+Anything else that speaks the OpenAI API is reached by setting `provider` to
+`openai` and pointing `url` at it - [Synthetic](https://synthetic.new/) is
+configured that way [below](#synthetic-multiple-open-source-models).
+
 ### Safety Features
 
-- **Read-only by default**: AI prefers SELECT queries unless explicitly asked to modify
-- **Dangerous operation warnings**: DROP, DELETE, TRUNCATE operations show warnings
-- **Confirmation required**: Destructive operations require additional confirmation
-- **Schema validation**: Queries are validated against your current schema
+- **Read-only by default**: the AI prefers SELECT queries unless explicitly asked to modify
+- **Dangerous operation warnings**: `DROP`, `DELETE`, `TRUNCATE` and `ALTER` show a warning above the CQL, whether or not the model thought to add one
+- **Confirmation required**: nothing runs until you press Enter on the query in front of you
+- **Preview before execution**: the CQL is shown as it will be run, and can be edited first
 
 ### Disabling Confirmation Prompts
 
