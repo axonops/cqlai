@@ -9,6 +9,7 @@ CQLAIは、さまざまなパッケージマネージャー、Docker、または
 - [Dockerインストール](#dockerインストール)
 - [バイナリインストール](#バイナリインストール)
 - [ソースからビルド](#ソースからビルド)
+- [実行時の要件](#実行時の要件)
 - [インストールの確認](#インストールの確認)
 - [設定](#設定)
 
@@ -203,7 +204,7 @@ https://github.com/axonops/cqlai/releases/latest/download/cqlai-windows-amd64.ex
 ## ソースからビルド
 
 ### 前提条件
-- Go 1.21以降
+- Go 1.26以降(`go.mod` が要求します。1.21ではこのモジュールはビルドできません)
 - Git
 
 ### ビルド手順
@@ -227,6 +228,30 @@ sudo cp cqlai /usr/local/bin/
 # ビルド中にバージョンを設定
 go build -ldflags "-X main.Version=0.0.5" -o cqlai cmd/cqlai/main.go
 ```
+
+## 実行時の要件
+
+CQLAIの実行にバイナリ以外は不要です。ただし一つだけ例外があります。
+
+### Linuxでのクリップボードへのコピー
+
+マウスで選択したテキストはシステムのクリップボードにコピーされます。Linuxでは
+そのためにクリップボードツールが必要で、デフォルトでインストールしている
+デスクトップはありません:
+
+```bash
+sudo apt install wl-clipboard          # Wayland。Ubuntuのデフォルトです
+sudo apt install xclip                 # X11 - echo $XDG_SESSION_TYPE で確認できます
+```
+
+どちらもない場合、コピーはCQLAIの中までしか届きません。ターミナルプログラムの
+もう一つの経路であるOSC 52エスケープシーケンスは、GNOME TerminalやPtyxisを含む
+VTEベースのターミナルではサポートされていません。Ghosttyやkittyなど対応している
+ターミナルではツールなしでも動作しますが、どちらでも動く方法なのでインストール
+しておく価値はあります。
+
+macOSとWindowsでは何も必要ありません。`pbcopy` とPowerShellがシステムに付属
+しています。
 
 ## インストールの確認
 

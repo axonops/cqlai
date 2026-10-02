@@ -92,13 +92,12 @@ Está construído con [Bubble Tea](https://github.com/charmbracelet/bubbletea), 
 - Tipos Definidos polo Usuario (UDTs) e tipos de datos complexos
 - Modo batch para scripting e automatización
 - Soporte de formato Apache Parquet para intercambio eficiente de datos
-- Autocompletado con tabulador para palabras clave CQL, táboas, columnas e keyspaces
-- **Opcional**: Xeración de consultas potenciada por IA ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/))
-
-### Próximamente
-- Conciencia de contexto de IA mellorada
-- Servizo MCP de Cassandra
-- Optimizacións de rendemento adicionais
+- Autocompletado que constrúe a sentenza enteira - propiedades de táboa, todos os `CREATE` e DML - e indica que escribir onde un nome non se pode consultar
+- Navegador de esquema (`F3`): os keyspaces e as táboas do clúster coas súas definicións, que detecta un cambio feito noutra ventá
+- Conexións gardadas: CQLAI arranca sen clúster e conéctase a unha con nome desde o menú `FILE`
+- Unha ventá `PREFERENCES` que edita `cqlai.json` desde o propio shell
+- Rato en todas partes: lapelas e axustes clicables, arrastrar para seleccionar e copiar, e un menú `FILE`
+- **Opcional**: IA que escribe CQL en linguaxe natural, le unha traza de consulta e revisa a definición dunha táboa ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Ollama](https://ollama.ai/), [OpenRouter](https://openrouter.ai/))
 
 Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento. A túa retroalimentación e contribucións son valiosas para facer deste o mellor shell CQL para a comunidade de Cassandra. Por favor [reporta problemas](https://github.com/axonops/cqlai/issues) ou [contribúe](https://github.com/axonops/cqlai/pulls).
 
