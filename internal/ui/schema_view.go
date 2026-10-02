@@ -344,3 +344,18 @@ func (m *MainModel) inSchemaDetail(col, row int) bool {
 func (m *MainModel) schemaHeight() int {
 	return m.historyViewport.Height()
 }
+
+// selectionPane is the columns a selection beginning at this one is confined
+// to: the tree, or the definition beside it.
+//
+// The divider belongs to neither. A drag that starts on it is treated as the
+// definition, which is the side someone reaching for the text is aiming at.
+func (m *MainModel) selectionPane(col int) (left, right int) {
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+
+	// The last tree column is its scrollbar, which is not text to copy.
+	if col < g.treeWidth-1 {
+		return 0, g.treeWidth - 1
+	}
+	return g.treeWidth + lipgloss.Width(schemaDivider), g.width
+}

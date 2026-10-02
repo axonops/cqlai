@@ -54,6 +54,16 @@ type textSelection struct {
 	anchorLine, anchorCol int
 	headLine, headCol     int
 
+	// left and right bound the selection to one pane, for a view that draws
+	// two of them side by side. right is exclusive; both zero means the whole
+	// line, which is every view but the schema browser.
+	//
+	// Without it, dragging down the definition took the tree with it: the rule
+	// for a flowing selection gives the first line from its start column, the
+	// last line up to its end column, and every line between whole - and in
+	// this view a whole line is "tree │ definition".
+	left, right int
+
 	// Press tracking, for double and triple clicks.
 	lastPress time.Time
 	lastLine  int
@@ -200,6 +210,13 @@ func (m *MainModel) beginSelection(col, row int) (*MainModel, tea.Cmd) {
 	source, _ := m.selectionTarget()
 	view := source.view
 
+	// A view drawn as two panes side by side bounds the selection to the one
+	// the drag began in. Everywhere else a line is a line.
+	left, right := 0, 0
+	if view == "schema" {
+		left, right = m.selectionPane(col)
+	}
+
 	// A press soon after one on the same cell counts up: two for a word, three
 	// for a line, and a fourth starts over.
 	presses := 1
@@ -220,6 +237,8 @@ func (m *MainModel) beginSelection(col, row int) (*MainModel, tea.Cmd) {
 		lastLine:   line,
 		lastCol:    column,
 		presses:    presses,
+		left:       left,
+		right:      right,
 	}
 
 	switch presses {
@@ -396,6 +415,31 @@ func lineCells(s string) []rune {
 // selectedText is the selection as plain text, the way a terminal hands it
 // over: styling removed and trailing spaces dropped, so a selection dragged
 // across a padded table does not paste as a field of blanks.
+// columnsOn is the part of a line the selection covers.
+//
+// A flowing selection, clamped to the pane it began in: the first line from
+// where the drag started, the last line to where it ended, and the lines
+// between from edge to edge of that pane. The copy and the highlight both ask
+// here, so what is painted is what is copied.
+func (s textSelection) columnsOn(line, width int) (from, to int) {
+	startLine, startCol, endLine, endCol := s.span()
+
+	left, right := s.left, s.right
+	if right == 0 {
+		right = width
+	}
+	right = min(right, width)
+
+	from, to = left, right
+	if line == startLine {
+		from = max(startCol, left)
+	}
+	if line == endLine {
+		to = min(endCol, right)
+	}
+	return from, to
+}
+
 func (m *MainModel) selectedText() string {
 	if !m.selection.active || m.selection.empty() {
 		return ""
@@ -405,7 +449,7 @@ func (m *MainModel) selectedText() string {
 		return ""
 	}
 
-	startLine, startCol, endLine, endCol := m.selection.span()
+	startLine, _, endLine, _ := m.selection.span()
 	if startLine < 0 {
 		startLine = 0
 	}
@@ -419,13 +463,7 @@ func (m *MainModel) selectedText() string {
 	out := make([]string, 0, endLine-startLine+1)
 	for line := startLine; line <= endLine; line++ {
 		text := ansi.Strip(lines[line])
-		from, to := 0, ansi.StringWidth(text)
-		if line == startLine {
-			from = startCol
-		}
-		if line == endLine && endCol < to {
-			to = endCol
-		}
+		from, to := m.selection.columnsOn(line, ansi.StringWidth(text))
 		if to <= from {
 			out = append(out, "")
 			continue
@@ -449,7 +487,7 @@ func (m *MainModel) highlightSelection(section string) string {
 		return section
 	}
 
-	startLine, startCol, endLine, endCol := m.selection.span()
+	startLine, _, endLine, _ := m.selection.span()
 	offset := source.offset
 	sticky := m.stickyHeaderRows()
 
@@ -463,13 +501,7 @@ func (m *MainModel) highlightSelection(section string) string {
 			continue
 		}
 
-		from, to := 0, ansi.StringWidth(rows[i])
-		if line == startLine {
-			from = startCol
-		}
-		if line == endLine && endCol < to {
-			to = endCol
-		}
+		from, to := m.selection.columnsOn(line, ansi.StringWidth(rows[i]))
 		rows[i] = highlightColumns(rows[i], from, to)
 	}
 	return strings.Join(rows, "\n")
