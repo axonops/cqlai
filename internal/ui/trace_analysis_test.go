@@ -124,13 +124,16 @@ func TestThereIsNothingToAnalyseWithoutATrace(t *testing.T) {
 	m, cmd := m.startTraceAnalysis()
 	assert.Nil(t, cmd)
 	assert.False(t, m.trace.open)
-	assert.Contains(t, m.fullHistoryContent, "no trace to analyse")
+	assert.Equal(t, ModalMessage, m.modal.Type)
+	assert.Contains(t, m.modal.Title, "Nothing to analyse")
 
 	m = traceModel(t)
 	m.aiConfig = nil
 	m, cmd = m.startTraceAnalysis()
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.fullHistoryContent, "No AI provider is configured")
+	assert.Equal(t, ModalMessage, m.modal.Type, "it says so over the view, not in the console")
+	assert.Contains(t, m.modal.Title, "No AI provider is configured")
+	assert.Equal(t, "trace", m.viewMode, "and stays in the trace view")
 }
 
 // TestTheLineBetweenThePanesIsDragged.

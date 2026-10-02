@@ -36,7 +36,11 @@ const (
 
 // reviewButton is what the button says, and what it says while it waits.
 const (
-	reviewButton  = "[ Review Schema ]"
+	// The key is on the button. It was bound and nowhere written down: the
+	// trace view has a line of text beside its button saying so, and the
+	// definition pane has no room for one, so there was nothing on screen to
+	// say the button had a key at all.
+	reviewButton  = "[ Review Schema " + aiKeyLabel + " ]"
 	reviewingNow  = "[ Reviewing... ]"
 	reviewHeading = " Review "
 )
@@ -88,9 +92,14 @@ func (m *MainModel) startSchemaReview() (*MainModel, tea.Cmd) {
 
 	switch {
 	case !ok || len(m.schema.detail) == 0:
-		return m.report("There is no definition to review. Pick a keyspace or a table on the left.")
-	case m.aiConfig == nil || m.aiConfig.Provider == "":
-		return m.report("No AI provider is configured. FILE > PREFERENCES has the settings, under CHAT.")
+		m.modal = NewMessageModal("Nothing to review",
+			"Pick a keyspace or a table on the left, and this reviews its definition.")
+		return m, nil
+	case !m.aiAvailable():
+		m.modal = NewMessageModal("No AI provider is configured",
+			"FILE > PREFERENCES has the settings, under CHAT. "+
+				"Set a provider and its key, and this reviews the definition beside it.")
+		return m, nil
 	case m.schema.review.running:
 		return m, nil
 	}

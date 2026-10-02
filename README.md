@@ -136,8 +136,8 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Support for all Cassandra data types including UDTs, collections, and vectors.
 - **Optional AI:**
     - Natural language to CQL conversion using AI providers ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Ollama](https://ollama.ai/), [OpenRouter](https://openrouter.ai/)).
-    - Reads a query trace and says where the time went, what the trace shows that the timings do not, and what to change (`Alt+A` in the `TRACE` tab).
-    - Reviews a table's definition - what it is, what will go wrong with it, and what to change (`Alt+A` in the `SCHEMA` view).
+    - Reads a query trace and says where the time went, what the trace shows that the timings do not, and what to change (`[ Analyse Trace Alt+A ]` in the `TRACE` tab).
+    - Reviews a table's definition - what it is, what will go wrong with it, and what to change (`[ Review Schema Alt+A ]` in the `SCHEMA` view).
     - Schema-aware query generation with automatic context.
     - Safe preview and confirmation before execution.
     - Support for complex operations including DDL and DML.
@@ -403,12 +403,15 @@ strategy matches how the data is written. Cassandra punishes those months
 later, by which time the table has data in it and the answer is to write it all
 again somewhere else.
 
-`[ Review Schema ]` at the top right of the definition pane - or `Alt+A` -
-sends the definition to the configured AI provider. The answer appears under
-it, in the pane it is about:
+`[ Review Schema Alt+A ]` at the top right of the definition pane sends the
+definition to the configured AI provider. The answer appears under it, in the
+pane it is about:
+
+With no AI provider configured, either button says so in a window over the view
+rather than sending you to the console to read it.
 
 ```
- KEYSPACES          │ TABLE  shop.events_by_user              [ Review Schema ]
+ KEYSPACES          │ TABLE  shop.events_by_user       [ Review Schema Alt+A ]
  ─────────────────  │ ────────────────────────────────────────────────────────
  ▾ shop             │ CREATE TABLE shop.events_by_user (
      events_by_user │     user_id uuid,
@@ -437,12 +440,12 @@ another's.
 of microsecond timings and node names, and what you usually want from it is
 which step was slow and what to do about it.
 
-`[ Analyse Trace ]` at the top right of the view - or `Alt+A` - sends the
-trace to the configured AI provider and asks. The answer appears under the
-trace, in the same view:
+`[ Analyse Trace Alt+A ]` at the top right of the view sends the trace to the
+configured AI provider and asks. The answer appears under the trace, in the
+same view:
 
 ```
-  Alt+A reads this trace with the AI                      [ Analyse Trace ]
+                                                   [ Analyse Trace Alt+A ]
  activity                      source     source_elapsed
  Parsing SELECT * FROM users   10.0.0.1   120
  Read 3 sstables               10.0.0.2   9100

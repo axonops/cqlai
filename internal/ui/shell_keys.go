@@ -28,7 +28,7 @@ func shellKeys() []string {
 
 		// Reading what is on screen with the AI. It does nothing in CHAT,
 		// which is already a conversation, but a key that is global is global.
-		"alt+a",
+		aiKey,
 
 		// Leaving. A view that takes the quit key is a view you are stuck in.
 		"ctrl+q",
@@ -53,3 +53,13 @@ func isShellKey(key string) bool {
 	}
 	return false
 }
+
+// The key that reads what is on screen with the AI, and how it is written.
+//
+// One pair: the binding and the label on the buttons that answer it. A button
+// naming a key nothing is bound to, or a key no button mentions, are the same
+// defect from either end.
+const (
+	aiKey      = "alt+a"
+	aiKeyLabel = "Alt+A"
+)

@@ -184,11 +184,15 @@ func TestThereIsNothingToReviewWithoutADefinitionOrAProvider(t *testing.T) {
 
 	m, cmd := m.startSchemaReview()
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.fullHistoryContent, "no definition to review")
+	assert.Equal(t, ModalMessage, m.modal.Type, "it says so over the view, not in the console")
+	assert.Contains(t, m.modal.Title, "Nothing to review")
+	assert.Equal(t, "schema", m.viewMode, "and stays where you were")
 
 	m = reviewModel(t)
 	m.aiConfig = nil
 	m, cmd = m.startSchemaReview()
 	assert.Nil(t, cmd)
-	assert.Contains(t, m.fullHistoryContent, "No AI provider is configured")
+	assert.Equal(t, ModalMessage, m.modal.Type)
+	assert.Contains(t, m.modal.Title, "No AI provider is configured")
+	assert.Equal(t, "schema", m.viewMode, "and stays in the schema view")
 }

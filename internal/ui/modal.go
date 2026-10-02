@@ -22,6 +22,10 @@ const (
 	ModalNone ModalType = iota
 	ModalConfirmDangerous
 	ModalConfirmQuit
+
+	// ModalMessage says something and waits to be dismissed. It asks nothing,
+	// so it has one button and either key closes it.
+	ModalMessage
 )
 
 // Modal represents a modal dialog
@@ -62,6 +66,22 @@ func NewQuitModal() Modal {
 		Choices:  []string{"Cancel", "Quit"},
 		Selected: 0, // Default to Cancel: the question is asked to be answered, not waved past
 		Width:    50,
+	}
+}
+
+// NewMessageModal says something over the view it was raised from.
+//
+// Over it, rather than instead of it: the alternative was m.report, which
+// writes into the console and switches to it - so being told why a button did
+// nothing cost you the view you were working in and the place you were in it.
+func NewMessageModal(title, message string) Modal {
+	return Modal{
+		Type:     ModalMessage,
+		Title:    title,
+		Message:  message,
+		Choices:  []string{"OK"},
+		Selected: 0,
+		Width:    60,
 	}
 }
 
