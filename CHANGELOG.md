@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-02
+
+    [ Review Schema Alt+A ]        [ Analyse Trace Alt+A ]
+
+### Added
+
+- **The AI buttons name the key that works them.** `Alt+A` had been bound since
+  the feature shipped and was nowhere written down in the schema browser: the
+  trace view had a line of text beside its button saying so, and the definition
+  pane has no room for one, so nothing on screen said the button had a key at
+  all - which is indistinguishable from not having one. Both buttons carry it
+  now, and the trace's separate hint is gone, since with the key on the button
+  it said it twice on one row.
+- **`Alt+A` in the help inside the app**, which did not list it.
+
+### Changed
+
+- **A button that cannot run says so over the view, not in the console.**
+  Picking `Review Schema` with no AI provider configured wrote a line into the
+  console and switched to it, so being told why the button did nothing cost you
+  the schema view and your place in it. It is a window over the view now, with
+  one button, dismissed by Enter or Esc. The same for `Analyse Trace`, and for
+  either button with nothing to work on.
+
+### Documentation
+
+- The README prose, both diagrams and the feature list show the buttons as they
+  are drawn, key and all. A test asserts it, so the key cannot be taken off one
+  button and left on the other.
+
 ## [0.2.3] - 2026-10-02
 
 Selecting a definition out of the schema browser: it took the tree with it, it
