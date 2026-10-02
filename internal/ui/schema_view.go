@@ -362,9 +362,17 @@ func (m *MainModel) selectionInDefinition() bool {
 func (m *MainModel) selectionPane(col int) (left, right int) {
 	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
 
-	// The last tree column is its scrollbar, which is not text to copy.
+	// The last tree column is its scrollbar, which is not text to copy. The
+	// tree is bounded on both sides: the divider and the definition are to its
+	// right and neither belongs in a selection of it.
 	if col < g.treeWidth-1 {
 		return 0, g.treeWidth - 1
 	}
-	return g.treeWidth + lipgloss.Width(schemaDivider), g.width
+
+	// The definition is bounded on the left only. Nothing is to its right but
+	// the edge of the screen, and a definition line is often wider than the
+	// pane - a long PRIMARY KEY, a compaction map - so clamping there copied
+	// as much of the line as happened to fit. Zero is no bound at all, and the
+	// line's own width is what it gets.
+	return g.treeWidth + lipgloss.Width(schemaDivider), 0
 }

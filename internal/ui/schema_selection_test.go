@@ -130,7 +130,9 @@ func TestTheHighlightCoversWhatIsCopied(t *testing.T) {
 		col         int
 		left, right int
 	}{
-		{"the definition", definitionColumn(m), g.treeWidth + 3, g.width},
+		// Unbounded to the right: a definition line is often wider than the
+		// pane, and there is nothing on that side to exclude.
+		{"the definition", definitionColumn(m), g.treeWidth + 3, 0},
 		{"the tree", 0, 0, g.treeWidth - 1},
 	} {
 		m, _ = m.beginSelection(where.col, m.viewTop()+schemaHeaderRows)
@@ -138,6 +140,10 @@ func TestTheHighlightCoversWhatIsCopied(t *testing.T) {
 
 		assert.Equal(t, where.left, m.selection.left, "%s starts at", where.name)
 		assert.Equal(t, where.right, m.selection.right, "%s ends at", where.name)
+
+		if where.right == 0 {
+			continue // no bound to read back
+		}
 
 		// A line in the middle of the drag: whole, within the pane. The
 		// definition's lines are its own, starting at column zero, so the
@@ -273,4 +279,84 @@ func TestTheTreeDoesNotScrollUnderADrag(t *testing.T) {
 	}
 
 	assert.Equal(t, before, m.schema.scroll)
+}
+
+// TestALineWiderThanThePaneIsCopiedWhole.
+//
+// A definition line can be wider than the pane - a long PRIMARY KEY, a
+// compaction map - and the pane truncates it on screen. Selecting it copied
+// only as much as was showing.
+//
+// The pane bound exists to keep a selection out of the tree, which is to the
+// left of it. Nothing is to the right but the edge of the screen, so the right
+// edge is not something to clamp to.
+func TestALineWiderThanThePaneIsCopiedWhole(t *testing.T) {
+	m := selectableSchema(t)
+
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	long := "    PRIMARY KEY ((user_id, bucket), event_time, event_id, " +
+		strings.Repeat("padding_column_name, ", 6) + "last_one)"
+	require.Greater(t, len(long), g.detailWidth, "the line has to be wider than the pane")
+
+	m.schema.detail = []string{long}
+	m.viewSchema(m.windowWidth, m.schemaHeight())
+
+	row := m.viewTop() + schemaHeaderRows
+	m, _ = m.beginSelection(definitionColumn(m), row)
+	m, _ = m.extendSelection(m.windowWidth-1, row)
+
+	assert.Equal(t, long, m.selectedText(),
+		"the whole line, not the part of it that fitted")
+}
+
+// TestTheTreeIsStillBoundedOnBothSides: the definition has nothing to its
+// right, but the tree has the divider and the definition, so its bound stays.
+func TestTheTreeIsStillBoundedOnBothSides(t *testing.T) {
+	m := selectableSchema(t)
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+
+	left, right := m.selectionPane(0)
+	assert.Zero(t, left)
+	assert.Equal(t, g.treeWidth-1, right, "stopping short of the scrollbar and the divider")
+
+	left, right = m.selectionPane(definitionColumn(m))
+	assert.Equal(t, g.treeWidth+3, left, "clear of the tree")
+	assert.Zero(t, right, "and unbounded to the right, where there is nothing to exclude")
+}
+
+// TestTripleClickTakesAWholeWideLine, not the part of it that fitted.
+func TestTripleClickTakesAWholeWideLine(t *testing.T) {
+	m := selectableSchema(t)
+
+	long := "    compaction = {'class': 'TimeWindowCompactionStrategy', " +
+		"'compaction_window_unit': 'DAYS', 'compaction_window_size': 7}"
+	m.schema.detail = []string{long}
+	m.viewSchema(m.windowWidth, m.schemaHeight())
+
+	row := m.viewTop() + schemaHeaderRows
+	for range 3 {
+		m, _ = m.beginSelection(definitionColumn(m), row)
+	}
+
+	assert.Equal(t, long, m.selectedText())
+}
+
+// TestDrawingSurvivesASelectionWiderThanTheScreen: the span runs past the last
+// column drawn, and the highlight is painted onto rows only as wide as the
+// screen.
+func TestDrawingSurvivesASelectionWiderThanTheScreen(t *testing.T) {
+	m := selectableSchema(t)
+
+	m.schema.detail = []string{strings.Repeat("wide_column_name, ", 20)}
+	m.viewSchema(m.windowWidth, m.schemaHeight())
+
+	row := m.viewTop() + schemaHeaderRows
+	m, _ = m.beginSelection(definitionColumn(m), row)
+	m, _ = m.extendSelection(m.windowWidth-1, row)
+
+	require.NotEmpty(t, m.selectedText())
+	assert.NotPanics(t, func() {
+		drawn := m.viewSchema(m.windowWidth, m.schemaHeight())
+		m.highlightSelection(drawn)
+	}, "painting a span that runs past the screen")
 }

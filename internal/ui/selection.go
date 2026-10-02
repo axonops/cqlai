@@ -319,6 +319,16 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+
+	// A line wider than the pane is truncated on screen, so its end cannot be
+	// pointed at. A drag held against the right-hand edge runs to the end of
+	// the line instead of stopping at the last column that happened to fit.
+	if col >= m.windowWidth-1 {
+		if cells, cellsOk := m.documentCells(line); cellsOk {
+			column = len(cells)
+		}
+	}
+
 	m.selection.headLine, m.selection.headCol = line, column
 	return m, nil
 }
