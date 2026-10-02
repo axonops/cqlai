@@ -107,6 +107,7 @@ func HelpRows() [][]string {
 		{"", "Ctrl+C", "Cancel current command"},
 		{"", "Ctrl+D", "Exit (EOF)"},
 		{"", "Ctrl+Q", "Quit, asking first - the same as FILE > QUIT"},
+		{"", "Alt+A", "Read what is on screen with the AI: a trace, or a definition"},
 
 		// Text Editing
 		{"", "Ctrl+A/E", "Jump to start/end of line"},

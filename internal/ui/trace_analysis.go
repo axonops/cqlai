@@ -79,11 +79,19 @@ func analyseTrace(providerConfig *config.AIConfig, trace string) tea.Cmd {
 // startTraceAnalysis sends the trace off to be read, and opens the pane it
 // will come back into.
 func (m *MainModel) startTraceAnalysis() (*MainModel, tea.Cmd) {
+	// Said over this view rather than written into the console: m.report
+	// switches to the console to show its message, so being told why a button
+	// did nothing cost you the view you were working in.
 	switch {
 	case !m.hasTrace:
-		return m.report("There is no trace to analyse. Turn tracing on with TRACING ON and run a query.")
-	case m.aiConfig == nil || m.aiConfig.Provider == "":
-		return m.report("No AI provider is configured. FILE > PREFERENCES has the settings, under CHAT.")
+		m.modal = NewMessageModal("Nothing to analyse",
+			"Turn tracing on with TRACING ON and run a query, and this reads the trace of it.")
+		return m, nil
+	case !m.aiAvailable():
+		m.modal = NewMessageModal("No AI provider is configured",
+			"FILE > PREFERENCES has the settings, under CHAT. "+
+				"Set a provider and its key, and this reads the trace above it.")
+		return m, nil
 	case m.trace.running:
 		return m, nil
 	}

@@ -18,6 +18,13 @@ func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
 // or clicked. Both go through here, so the button that was chosen is the one
 // that acts.
 func (m *MainModel) answerModal(choice int) (*MainModel, tea.Cmd) {
+	// Nothing to carry out: it was telling you something. Esc closes it too,
+	// through the handler every modal shares.
+	if m.modal.Type == ModalMessage {
+		m.modal = Modal{Type: ModalNone}
+		return m, nil
+	}
+
 	if m.modal.Type == ModalConfirmQuit {
 		leaving := choice == 1
 		m.modal = Modal{Type: ModalNone}

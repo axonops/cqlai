@@ -196,7 +196,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	// Alt+A reads the trace with the AI, matching Alt+F and Alt+H. A letter on
 	// its own would be typed into the command line, which is where every key
 	// in this view goes unless it is asked for.
-	case "alt+a":
+	case aiKey:
 		// The same key wherever there is something on screen to ask about.
 		switch m.viewMode {
 		case "trace":

@@ -299,3 +299,24 @@ func TestTheDocsSayHowToInstallAClipboardTool(t *testing.T) {
 		assert.Contains(t, doc, "XDG_SESSION_TYPE", "%s should say how to tell which", name)
 	}
 }
+
+// TestTheDocsNameTheKeyOnTheAIButtons.
+//
+// Alt+A was bound and nowhere written down in the schema browser: the button
+// said what it did and not how to reach it, and the only place the key
+// appeared was a line of text in the other view. The buttons carry it now, and
+// so do the docs someone reads before they have found the button.
+func TestTheDocsNameTheKeyOnTheAIButtons(t *testing.T) {
+	readme := readDoc(t, "README.md")
+
+	for _, button := range []string{reviewButton, analyseButton} {
+		assert.Contains(t, readme, button,
+			"the README should show the button as it is drawn, key and all")
+	}
+
+	var help strings.Builder
+	for _, row := range router.HelpRows() {
+		help.WriteString(strings.Join(row, " ") + "\n")
+	}
+	assert.Contains(t, help.String(), aiKeyLabel, "the help in the app should name it")
+}

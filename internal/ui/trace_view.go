@@ -17,7 +17,7 @@ import (
 // analyseButton is what the button says, and what the rule says once the pane
 // is open.
 const (
-	analyseButton  = "[ Analyse Trace ]"
+	analyseButton  = "[ Analyse Trace " + aiKeyLabel + " ]"
 	analysingLabel = "[ Analysing... ]"
 	analysisLabel  = " Analysis "
 	dragHint       = " drag to resize "
@@ -130,13 +130,12 @@ func (m *MainModel) traceHeaderRow(g traceGeometry, width int) string {
 		style = lipgloss.NewStyle().Foreground(lipgloss.Color(formPlaceholderColour))
 	}
 
-	hint := ""
-	if m.hasTrace && !m.trace.running {
-		hint = m.styles.MutedText.Render("  Alt+A reads this trace with the AI")
-	}
-
-	gap := max(g.buttonFrom-lipgloss.Width(stripAnsi(hint)), 0)
-	return hint + strings.Repeat(" ", gap) + style.Render(button)
+	// There was a line of text beside the button saying Alt+A reads the trace
+	// with the AI. The button names its own key now, in this view and in the
+	// schema browser, so the row says it once instead of twice - and the
+	// definition pane, which had no room for such a line, stops being the one
+	// view where the key is unwritten.
+	return strings.Repeat(" ", max(g.buttonFrom, 0)) + style.Render(button)
 }
 
 // traceRule is the line between the panes, which is what is dragged to move
