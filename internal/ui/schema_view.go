@@ -345,6 +345,15 @@ func (m *MainModel) schemaHeight() int {
 	return m.historyViewport.Height()
 }
 
+// selectionInDefinition reports whether the span belongs to the definition
+// pane rather than the tree.
+//
+// The bound is set when the drag begins, from the column it began in, and it
+// is what tells the two panes apart afterwards.
+func (m *MainModel) selectionInDefinition() bool {
+	return m.selection.left > 0
+}
+
 // selectionPane is the columns a selection beginning at this one is confined
 // to: the tree, or the definition beside it.
 //

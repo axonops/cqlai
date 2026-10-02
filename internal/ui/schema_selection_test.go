@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -138,10 +139,13 @@ func TestTheHighlightCoversWhatIsCopied(t *testing.T) {
 		assert.Equal(t, where.left, m.selection.left, "%s starts at", where.name)
 		assert.Equal(t, where.right, m.selection.right, "%s ends at", where.name)
 
-		// A line in the middle of the drag: whole, within the pane.
-		from, to := m.selection.columnsOn(1, m.windowWidth)
-		assert.Equal(t, where.left, from, "%s", where.name)
-		assert.Equal(t, where.right, to, "%s", where.name)
+		// A line in the middle of the drag: whole, within the pane. The
+		// definition's lines are its own, starting at column zero, so the
+		// span is read back against the indent the source carries.
+		source, _ := m.selectionTarget()
+		from, to := m.selection.columnsOn(1, m.windowWidth-source.indent, source.indent)
+		assert.Equal(t, max(where.left-source.indent, 0), from, "%s", where.name)
+		assert.Equal(t, where.right-source.indent, to, "%s", where.name)
 	}
 }
 
@@ -216,4 +220,57 @@ func TestDraggingOffTheBottomOfTheConsoleStillScrolls(t *testing.T) {
 
 	assert.Greater(t, m.historyViewport.YOffset(), before,
 		"dragging past the bottom should still scroll a viewport")
+}
+
+// TestADefinitionTallerThanThePaneCanBeSelectedWhole.
+//
+// What the bug report was actually about: dragging to the bottom of the pane
+// and expecting it to keep going. It stopped, so you could only ever copy what
+// happened to be on screen.
+//
+// The span is over the definition now, with the pane's scroll offset, the way
+// a viewport-backed view already works - so the drag can scroll it and the
+// span stays on the text it was over.
+func TestADefinitionTallerThanThePaneCanBeSelectedWhole(t *testing.T) {
+	m := selectableSchema(t)
+
+	// A definition with more lines than the pane has rows.
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	var lines []string
+	for i := range g.detailRows * 3 {
+		lines = append(lines, fmt.Sprintf("line_%02d int,", i))
+	}
+	m.schema.detail = lines
+	m.schema.detailScroll = 0
+	m.viewSchema(m.windowWidth, m.schemaHeight())
+
+	top := m.viewTop() + schemaHeaderRows
+	m, _ = m.beginSelection(definitionColumn(m), top)
+
+	// Drag to the bottom and hold there, as a hand does.
+	for range len(lines) {
+		m, _ = m.extendSelection(m.windowWidth-1, m.windowHeight+10)
+	}
+
+	assert.Positive(t, m.schema.detailScroll, "the pane should have scrolled under the drag")
+
+	copied := m.selectedText()
+	assert.Contains(t, copied, "line_00", "the line the drag started on")
+	assert.Contains(t, copied, lines[len(lines)-1], "and the last one, which was never on screen at the start")
+	assert.NotContains(t, copied, "│", "still one pane only")
+}
+
+// TestTheTreeDoesNotScrollUnderADrag: it is a list of rows picked with the
+// keyboard, not a document to drag through, and scrolling it would move the
+// text out from under a span that is over what was drawn.
+func TestTheTreeDoesNotScrollUnderADrag(t *testing.T) {
+	m := selectableSchema(t)
+	before := m.schema.scroll
+
+	m, _ = m.beginSelection(0, m.viewTop()+schemaHeaderRows)
+	for range 5 {
+		m, _ = m.extendSelection(2, m.windowHeight+10)
+	}
+
+	assert.Equal(t, before, m.schema.scroll)
 }

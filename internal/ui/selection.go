@@ -102,6 +102,17 @@ type selectionSource struct {
 	lines  []string
 	offset int // content line drawn on the first row
 	height int // rows on screen
+
+	// Where the lines sit within the view, for a pane that is not the whole
+	// of it: rows of chrome above them, and columns to their left. Both zero
+	// for a view whose content starts where the view does, which is every one
+	// but the schema browser's definition pane.
+	//
+	// That pane is backed by the definition rather than by what was drawn, so
+	// that dragging off the bottom can scroll it: a span over the screen can
+	// only ever reach as far as the screen does.
+	top    int
+	indent int
 }
 
 // selectionTarget returns what a selection applies to, matching what View
@@ -124,12 +135,27 @@ func (m *MainModel) selectionTarget() (selectionSource, bool) {
 
 	switch {
 	case m.viewMode == "schema":
-		// What it drew last, which is what is on screen: both panes, the
-		// headings and the divider between them. A definition is text like any
-		// other view's, and copying it out of here is the point of having it.
 		if len(m.schema.drawn) == 0 {
 			return selectionSource{}, false
 		}
+
+		// The definition, rather than the rows of it that happen to be on
+		// screen. A definition is usually taller than its pane, and a span
+		// over the screen can only ever reach as far as the screen does.
+		if m.selectionInDefinition() && len(m.schema.detail) > 0 {
+			g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+			return selectionSource{
+				view:   "schema",
+				lines:  m.schema.detail,
+				offset: g.detailFirst,
+				height: g.detailRows,
+				top:    schemaHeaderRows,
+				indent: g.treeWidth + lipgloss.Width(schemaDivider),
+			}, true
+		}
+
+		// The tree, which is what it drew last: both panes, the headings and
+		// the divider. The span is bounded to the tree's columns.
 		return selectionSource{
 			view:   "schema",
 			lines:  m.schema.drawn,
@@ -182,6 +208,19 @@ func (m *MainModel) stickyHeaderRows() int {
 	return 0
 }
 
+// paneRows is the first and last screen row the source's lines occupy, the
+// last exclusive.
+//
+// Both the drag and the position lookup ask here. They worked it out
+// separately, and only one of them learned that a source can start below the
+// top of the view - so a drag off the bottom of the definition pane stopped
+// two rows short of where the lookup thought the bottom was, and the selection
+// trailed the scroll by the height of the heading.
+func (m *MainModel) paneRows(source selectionSource) (top, bottom int) {
+	first := m.viewTop() + source.top
+	return first + m.stickyHeaderRows(), first + source.height
+}
+
 // docPosition converts a screen position into a line and column of the active
 // viewport's content.
 func (m *MainModel) docPosition(col, row int) (line, column int, ok bool) {
@@ -190,18 +229,27 @@ func (m *MainModel) docPosition(col, row int) (line, column int, ok bool) {
 		return 0, 0, false
 	}
 
-	top := m.viewTop() + m.stickyHeaderRows()
-	bottom := m.viewTop() + source.height
+	top, bottom := m.paneRows(source)
 	if row < top || row >= bottom {
 		return 0, 0, false
 	}
 
-	return source.offset + row - m.viewTop(), col, true
+	return source.offset + row - m.viewTop() - source.top, col - source.indent, true
 }
 
 // beginSelection starts a drag, or picks out a word or a line if this press
 // follows others on the same spot.
 func (m *MainModel) beginSelection(col, row int) (*MainModel, tea.Cmd) {
+	// Which pane first: a view drawn as two panes side by side bounds the
+	// selection to the one the drag began in, and in the schema browser that
+	// also decides what the span is over - the definition, or what was drawn.
+	// Everywhere else a line is a line.
+	left, right := 0, 0
+	if m.viewMode == "schema" {
+		left, right = m.selectionPane(col)
+	}
+	m.selection.left, m.selection.right = left, right
+
 	line, column, ok := m.docPosition(col, row)
 	if !ok {
 		m.clearSelection()
@@ -209,13 +257,6 @@ func (m *MainModel) beginSelection(col, row int) (*MainModel, tea.Cmd) {
 	}
 	source, _ := m.selectionTarget()
 	view := source.view
-
-	// A view drawn as two panes side by side bounds the selection to the one
-	// the drag began in. Everywhere else a line is a line.
-	left, right := 0, 0
-	if view == "schema" {
-		left, right = m.selectionPane(col)
-	}
 
 	// A press soon after one on the same cell counts up: two for a word, three
 	// for a line, and a fourth starts over.
@@ -264,8 +305,7 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	top := m.viewTop() + m.stickyHeaderRows()
-	bottom := m.viewTop() + source.height
+	top, bottom := m.paneRows(source)
 	switch {
 	case row < top:
 		m.scrollUnderDrag(source, -1)
@@ -297,12 +337,19 @@ func (m *MainModel) scrollUnderDrag(source selectionSource, by int) {
 		return
 	}
 
-	// Nothing else scrolls under a drag. The schema browser and the trace draw
-	// as blocks, and their selection is over what was drawn rather than over a
-	// document with a scroll offset - so scrolling would move the text out from
-	// under the span and copy whatever happened to land there instead. The drag
-	// stops at the edge, which means a definition longer than the pane cannot
-	// yet be selected whole.
+	// The schema browser draws as a block rather than through a viewport, but
+	// its definition pane is backed by the definition itself with an offset,
+	// so the span survives the text moving the same way a viewport's does.
+	if m.viewMode == "schema" && m.selectionInDefinition() {
+		g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+		m.scrollSchemaDetail(by, g.detailRows)
+		return
+	}
+
+	// Anything else stops at the edge. The tree is a list of rows picked with
+	// the keyboard rather than a document to drag through, and the trace is
+	// over what was drawn - scrolling it would move the text out from under
+	// the span and copy whatever landed there.
 }
 
 // endSelection finishes a drag and puts the text on the system clipboard.
@@ -436,11 +483,13 @@ func lineCells(s string) []rune {
 // where the drag started, the last line to where it ended, and the lines
 // between from edge to edge of that pane. The copy and the highlight both ask
 // here, so what is painted is what is copied.
-func (s textSelection) columnsOn(line, width int) (from, to int) {
+func (s textSelection) columnsOn(line, width, indent int) (from, to int) {
 	startLine, startCol, endLine, endCol := s.span()
 
-	left, right := s.left, s.right
-	if right == 0 {
+	// The bound is in screen columns, from the press that began the drag; the
+	// lines may be a pane's own, starting at column zero.
+	left, right := max(s.left-indent, 0), s.right-indent
+	if s.right == 0 {
 		right = width
 	}
 	right = min(right, width)
@@ -459,10 +508,11 @@ func (m *MainModel) selectedText() string {
 	if !m.selection.active || m.selection.empty() {
 		return ""
 	}
-	lines, ok := m.documentLines()
-	if !ok {
+	source, found := m.selectionTarget()
+	if !found || source.view != m.selection.view {
 		return ""
 	}
+	lines := source.lines
 
 	startLine, _, endLine, _ := m.selection.span()
 	if startLine < 0 {
@@ -478,7 +528,7 @@ func (m *MainModel) selectedText() string {
 	out := make([]string, 0, endLine-startLine+1)
 	for line := startLine; line <= endLine; line++ {
 		text := ansi.Strip(lines[line])
-		from, to := m.selection.columnsOn(line, ansi.StringWidth(text))
+		from, to := m.selection.columnsOn(line, ansi.StringWidth(text), source.indent)
 		if to <= from {
 			out = append(out, "")
 			continue
@@ -511,13 +561,16 @@ func (m *MainModel) highlightSelection(section string) string {
 		if i < sticky {
 			continue
 		}
-		line := offset + i
+		line := offset + i - source.top
 		if line < startLine || line > endLine {
 			continue
 		}
 
-		from, to := m.selection.columnsOn(line, ansi.StringWidth(rows[i]))
-		rows[i] = highlightColumns(rows[i], from, to)
+		// The span is in the pane's columns; the row drawn is the whole
+		// screen line, so the indent goes back on to paint it.
+		width := ansi.StringWidth(rows[i]) - source.indent
+		from, to := m.selection.columnsOn(line, width, source.indent)
+		rows[i] = highlightColumns(rows[i], from+source.indent, to+source.indent)
 	}
 	return strings.Join(rows, "\n")
 }
