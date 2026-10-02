@@ -266,19 +266,12 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 
 	top := m.viewTop() + m.stickyHeaderRows()
 	bottom := m.viewTop() + source.height
-	vp := source.vp
 	switch {
 	case row < top:
-		if vp == nil {
-			// Nothing to scroll: the schema panes move on their own, and a drag
-			// that runs off the top stops there.
-			row = top
-			break
-		}
-		vp.SetYOffset(max(0, vp.YOffset()-1))
+		m.scrollUnderDrag(source, -1)
 		row = top
 	case row >= bottom:
-		vp.SetYOffset(min(max(0, vp.TotalLineCount()-vp.Height()), vp.YOffset()+1))
+		m.scrollUnderDrag(source, 1)
 		row = bottom - 1
 	}
 
@@ -288,6 +281,28 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 	}
 	m.selection.headLine, m.selection.headCol = line, column
 	return m, nil
+}
+
+// scrollUnderDrag moves the content along when a drag has run off an edge, so
+// a selection can be longer than the screen.
+//
+// One function for both edges. The guard against a view with no viewport was
+// on the top edge only, so dragging off the bottom of the schema browser - the
+// view most likely to hold more than fits, and the one someone is most likely
+// to be copying out of - dereferenced nil and took cqlai down with it.
+func (m *MainModel) scrollUnderDrag(source selectionSource, by int) {
+	if source.vp != nil {
+		furthest := max(0, source.vp.TotalLineCount()-source.vp.Height())
+		source.vp.SetYOffset(min(furthest, max(0, source.vp.YOffset()+by)))
+		return
+	}
+
+	// Nothing else scrolls under a drag. The schema browser and the trace draw
+	// as blocks, and their selection is over what was drawn rather than over a
+	// document with a scroll offset - so scrolling would move the text out from
+	// under the span and copy whatever happened to land there instead. The drag
+	// stops at the edge, which means a definition longer than the pane cannot
+	// yet be selected whole.
 }
 
 // endSelection finishes a drag and puts the text on the system clipboard.

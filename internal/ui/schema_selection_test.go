@@ -159,3 +159,61 @@ func TestEveryOtherViewStillTakesWholeLines(t *testing.T) {
 	// The middle line whole, which is what a flowing selection does.
 	assert.Contains(t, strings.Split(m.selectedText(), "\n"), "second line")
 }
+
+// TestDraggingOffTheBottomDoesNotCrash.
+//
+// The guard against a view with no viewport was on the top edge only:
+//
+//	case row < top:
+//	    if vp == nil { ... break }
+//	case row >= bottom:
+//	    vp.SetYOffset(...)        // nil here
+//
+// So dragging off the bottom of the schema browser - the view most likely to
+// hold more than fits, and the one someone is most likely to be copying out of
+// - dereferenced nil and took cqlai down with it. One rule, two edges, written
+// once.
+func TestDraggingOffTheBottomDoesNotCrash(t *testing.T) {
+	m := selectableSchema(t)
+
+	m, _ = m.beginSelection(definitionColumn(m), m.viewTop()+schemaHeaderRows)
+
+	assert.NotPanics(t, func() {
+		m, _ = m.extendSelection(m.windowWidth-1, m.windowHeight+50)
+	}, "dragging past the bottom of a view with no viewport")
+
+	assert.NotPanics(t, func() {
+		m, _ = m.extendSelection(0, -20)
+	}, "and past the top, which was already guarded")
+}
+
+// TestDraggingOffEitherEdgeOfTheTraceDoesNotCrash: the trace draws as a block
+// too, so it had the same nil waiting on the bottom edge.
+func TestDraggingOffEitherEdgeOfTheTraceDoesNotCrash(t *testing.T) {
+	m := traceModel(t)
+	m.viewTrace(m.windowWidth, m.viewHeight())
+	require.NotEmpty(t, m.trace.drawn)
+
+	m, _ = m.beginSelection(2, m.viewTop()+1)
+
+	assert.NotPanics(t, func() {
+		m, _ = m.extendSelection(10, m.windowHeight+50)
+	})
+	assert.NotPanics(t, func() {
+		m, _ = m.extendSelection(10, -20)
+	})
+}
+
+// TestDraggingOffTheBottomOfTheConsoleStillScrolls: the fix must not cost the
+// views that do have a viewport the scrolling they had.
+func TestDraggingOffTheBottomOfTheConsoleStillScrolls(t *testing.T) {
+	m := selectionModel(3, "one", "two", "three", "four", "five", "six")
+
+	m, _ = m.beginSelection(0, 1)
+	before := m.historyViewport.YOffset()
+
+	m, _ = m.extendSelection(2, 99)
+
+	assert.Greater(t, m.historyViewport.YOffset(), before,
+		"dragging past the bottom should still scroll a viewport")
+}
