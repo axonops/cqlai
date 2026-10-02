@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-02
+
+Selecting a definition out of the schema browser: it took the tree with it, it
+crashed if you dragged off the bottom, and it could not reach past the screen.
+All three were the same defect - a figure or a rule written in two places, with
+only one copy maintained.
+
+### Fixed
+
+- **A selection stays in the pane it started in.** The view is two panes side
+  by side, so a line of it is `tree │ definition`, and the rule every flowing
+  selection uses takes the lines between its ends whole. Dragging over a
+  definition to copy it copied the keyspace and table names beside it. The copy
+  and the highlight each worked the span out separately, so that is one
+  function now and what is painted is what is copied.
+- **Dragging a selection off the bottom no longer crashes.** Dragging past an
+  edge scrolls the content, and the guard against a view with no viewport to
+  scroll was written on the top edge only - so the bottom edge dereferenced nil
+  in the two views that draw as blocks rather than through a viewport, the
+  schema browser and the trace. One rule for both edges.
+
+  ```
+  panic: runtime error: invalid memory address or nil pointer dereference
+  ui.(*MainModel).extendSelection(...) selection.go:281
+  ```
+- **A definition taller than its pane can be selected whole.** The drag stopped
+  at the bottom of the screen, so a long `CREATE TABLE` could only be copied a
+  screenful at a time. The span is over the definition now rather than over the
+  rows that happened to be painted, with the pane's scroll offset - the shape a
+  viewport-backed view already has, where the scroll moves the text and the
+  span together. So the drag scrolls, and the whole definition comes back
+  ([#219](https://github.com/axonops/cqlai/issues/219)).
+
+The tree deliberately does not scroll under a drag: it is a list of rows picked
+with the keyboard, not a document to drag through.
+
+### Documentation
+
+- The README described 0.1.x. It now mentions the schema browser, saved
+  connections, `PREFERENCES`, the `FILE` menu, statement-wide tab completion,
+  and that the AI reads a trace and reviews a table rather than only writing
+  CQL. `Coming Soon` is gone - what was on it has shipped.
+- Three things in the AI section were wrong rather than missing: Anthropic was
+  described as Claude 3, which is retired; "Queries are validated against your
+  current schema" named a validator that carried `Schema: nil` and was deleted
+  in 0.2.0; and nothing said the AI can be pointed at a trace or a definition.
+- `docs/INSTALLATION_jp.md` gained the Runtime Requirements section its English
+  counterpart has, and the Go 1.21 prerequisite that cannot build a module
+  declaring `go 1.26.6`.
+
 ## [0.2.2] - 2026-09-25
 
 Three things that were silently not working: a copy that went nowhere and said
