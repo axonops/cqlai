@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-03
+
+### Fixed
+
+- **A definition line wider than the pane is copied whole.** Selecting a line
+  that spills past the right edge - a long `PRIMARY KEY`, a compaction map -
+  copied only the part of it that was showing.
+
+  Two causes. The pane bound clamped the right edge, and that bound is there to
+  keep a selection out of the tree, which is to the *left*: nothing is to the
+  right but the edge of the screen, so the definition is unbounded on that side
+  now. And that alone changed nothing, because for a drag along one line the
+  end column is wherever the pointer was - and the end of a line truncated on
+  screen cannot be pointed at. A drag held against the right-hand edge runs to
+  the end of the line.
+
+  The tree keeps its bound on both sides: the divider and the definition are to
+  its right and neither belongs in a selection of it.
+
+### Known limitation
+
+The definition pane has no horizontal scrolling, so the rest of a wide line can
+be copied but not read.
+
 ## [0.2.4] - 2026-10-02
 
     [ Review Schema Alt+A ]        [ Analyse Trace Alt+A ]
