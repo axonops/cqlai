@@ -386,6 +386,13 @@ keyspace's tables when it is first opened, and a definition when it is first
 shown. The definitions are the ones `DESCRIBE` produces, so the two cannot
 disagree.
 
+On Cassandra 4.0 and later the tree includes the **virtual keyspaces** -
+`system_views` and `system_virtual_schema` - whose tables the node computes when
+they are read rather than storing: connected clients, settings, thread pools,
+caches and forty-odd more. Their definitions are the structure the server
+describes, commented out under a warning that a virtual table cannot be
+recreated with CQL, the way cqlsh shows them.
+
 A schema change is noticed wherever it was made - here, in cqlsh, in another
 CQLAI, in an application. Cassandra keeps a schema version that changes whenever
 the schema does, whoever changed it; it is the value `nodetool describe cluster`
@@ -875,7 +882,7 @@ Meta-commands provide additional functionality beyond standard CQL:
 #### Schema Description
 - **DESCRIBE** - Show schema information
   ```sql
-  DESCRIBE KEYSPACES                    -- List all keyspaces
+  DESCRIBE KEYSPACES                    -- List all keyspaces, virtual ones included
   DESCRIBE KEYSPACE <name>              -- Show keyspace definition
   DESCRIBE TABLES                       -- List tables in current keyspace
   DESCRIBE TABLE <name>                 -- Show table structure
@@ -891,6 +898,12 @@ Meta-commands provide additional functionality beyond standard CQL:
   DESCRIBE CLUSTER                      -- Show cluster information
   DESC <keyspace>.<table>               -- Shorthand for table description
   ```
+
+  Virtual keyspaces (Cassandra 4.0+) are listed, described, completed and can be
+  `USE`d like any other. `DESCRIBE TABLES` shows their keys - which is what a
+  virtual table can be filtered on - and `virtual` where a stored table shows
+  its compaction. `DESCRIBE SCHEMA` leaves them out: it is meant to be replayed
+  on another cluster, and a virtual table cannot be created with CQL.
 
 #### Data Export/Import
 - **COPY TO** - Export table data to CSV or Parquet file

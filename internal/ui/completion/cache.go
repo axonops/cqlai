@@ -119,6 +119,11 @@ func (ce *CompletionEngine) refreshKeyspaceCache() {
 		ce.cache.keyspaces = append(ce.cache.keyspaces, keyspaceName)
 	}
 	_ = iter.Close()
+
+	// system_views and system_virtual_schema, which system_schema does not
+	// list: SELECT * FROM system_views.<Tab> is the most natural thing to type
+	// at a shell, and offered nothing.
+	ce.cache.keyspaces = append(ce.cache.keyspaces, ce.session.VirtualKeyspaces()...)
 }
 
 // refreshTableCache updates the table cache for a specific keyspace
@@ -139,6 +144,9 @@ func (ce *CompletionEngine) refreshTableCache(keyspace string) {
 		ce.cache.tables[keyspace] = append(ce.cache.tables[keyspace], tableName)
 	}
 	_ = iter.Close()
+
+	// A virtual keyspace has none in system_schema; its tables are here.
+	ce.cache.tables[keyspace] = append(ce.cache.tables[keyspace], ce.session.VirtualTables(keyspace)...)
 }
 
 // refreshColumnCache updates the column cache for a specific table
@@ -160,6 +168,10 @@ func (ce *CompletionEngine) refreshColumnCache(keyspace, table string) {
 		ce.cache.columns[cacheKey] = append(ce.cache.columns[cacheKey], columnName)
 	}
 	_ = iter.Close()
+
+	// The columns of a virtual table, which is where WHERE and the SELECT list
+	// want them.
+	ce.cache.columns[cacheKey] = append(ce.cache.columns[cacheKey], ce.session.VirtualColumns(keyspace, table)...)
 }
 
 // getColumnNamesForCurrentTable returns column names for the table in FROM clause

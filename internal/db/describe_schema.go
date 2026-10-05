@@ -11,6 +11,14 @@ import (
 // DBDescribeFullSchema returns all CREATE statements for a keyspace and its objects
 // If keyspace is empty, returns schema for all keyspaces
 func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace string) (interface{}, error) {
+	// A virtual keyspace has nothing in system_schema to build a description
+	// from, so the manual construction below described it as nothing at all.
+	// The server knows it, and says so in the form cqlsh shows: the structure,
+	// commented out, under a warning that it cannot be recreated with CQL.
+	if keyspace != "" && s.IsVirtualKeyspace(keyspace) {
+		return s.describeOnServer("DESCRIBE KEYSPACE " + keyspace)
+	}
+
 	// For Cassandra 4.0+, DESCRIBE commands are handled server-side
 	// Try server-side first, fall back to manual construction for older versions
 
