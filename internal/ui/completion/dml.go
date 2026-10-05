@@ -1,6 +1,9 @@
 package completion
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Completing the statements that read and write rows.
 //
@@ -399,4 +402,63 @@ func statementInABatch(input string) (string, bool) {
 		return "", false
 	}
 	return typed, true
+}
+
+// withTheColumns puts the table's own columns where the walk could only say
+// that a column goes.
+//
+// The walk is a function of what has been typed and nothing else, so at a
+// column - after WHERE, after SET, inside INSERT's brackets - all it could
+// offer was the note "<column name>". The table is named in the statement and
+// its columns are a question the engine can ask, so for every table, stored
+// or virtual, WHERE <Tab> offered a note where it could have offered the
+// columns. The note stays where there is no table to ask about, or the table
+// has no columns anyone could find.
+func (ce *CompletionEngine) withTheColumns(input string, shape []string) []string {
+	if !slices.Contains(shape, columnHint) {
+		return shape
+	}
+
+	table := tableOfTheStatement(input)
+	if table == "" {
+		return shape
+	}
+	columns := ce.getColumnNamesForTable(table)
+	if len(columns) == 0 {
+		return shape
+	}
+
+	out := make([]string, 0, len(shape)+len(columns))
+	for _, offer := range shape {
+		if offer == columnHint {
+			out = append(out, columns...)
+			continue
+		}
+		out = append(out, offer)
+	}
+	return out
+}
+
+// tableOfTheStatement is the table a row statement reads or writes, as it was
+// typed - qualified or not - or "" before it has been named.
+//
+// The word after FROM for a query or a DELETE, after UPDATE for an update,
+// after INTO for an insert. A name is only taken once it is finished, so the
+// table being typed is not mistaken for the one being asked about.
+func tableOfTheStatement(input string) string {
+	words := strings.Fields(input)
+	for i, word := range words {
+		switch strings.ToUpper(word) {
+		case "FROM", "UPDATE", "INTO":
+			if i+1 >= len(words) {
+				return ""
+			}
+			// Still being typed: nothing after it, and no space after it.
+			if i+1 == len(words)-1 && !strings.HasSuffix(input, " ") {
+				return ""
+			}
+			return strings.TrimSuffix(strings.TrimRight(words[i+1], "("), ";")
+		}
+	}
+	return ""
 }
