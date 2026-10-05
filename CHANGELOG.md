@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-10-05
+
+### Fixed
+
+- **Virtual keyspaces and tables are visible everywhere.** Cassandra 4.0 added
+  tables the node computes rather than stores - `system_views.clients`,
+  `.settings`, `.thread_pools` and forty-odd more. They are listed in
+  `system_virtual_schema`, not `system_schema`, and every question CQLAI asked
+  about what exists was asked of `system_schema`: a `SELECT` from
+  `system_views.clients` worked, and `USE system_views` said the keyspace did
+  not exist. They now appear in `USE`, `DESCRIBE KEYSPACES`, `DESCRIBE KEYSPACE`,
+  `DESCRIBE TABLES`, the schema browser, the keyspace chooser and completion.
+  `DESCRIBE TABLES` shows each one's key - the one thing a virtual table can be
+  filtered on - and `virtual` where a stored table shows its compaction.
+  `DESCRIBE SCHEMA` still leaves them out: it is meant to be replayed on another
+  cluster, and a virtual table cannot be created with CQL.
+
+  Before 4.0 there is no `system_virtual_schema`, and nothing changes.
+- **`WHERE` completes the table's columns.** At a column after `WHERE`, `AND` or
+  `SET`, completion offered the note `<column name>` rather than the columns -
+  for every table, stored or virtual - because the walk over the statement had
+  no way to ask what the columns were. It asks now.
+
 ## [0.2.5] - 2026-10-03
 
 ### Fixed
