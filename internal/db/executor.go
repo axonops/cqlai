@@ -345,11 +345,15 @@ func (s *Session) ExecuteCQLQuery(query string) interface{} {
 				iter = s.Query("SELECT keyspace_name FROM system.schema_keyspaces WHERE keyspace_name = ?", keyspace).Iter()
 			}
 
-			if !iter.Scan(&exists) {
-				_ = iter.Close()
+			found := iter.Scan(&exists)
+			_ = iter.Close()
+
+			// system_views is not in system_schema - nothing virtual is - and
+			// USE refused it as a keyspace that did not exist, while a SELECT
+			// from one of its tables worked.
+			if !found && !s.IsVirtualKeyspace(keyspace) {
 				return fmt.Errorf("keyspace '%s' does not exist", keyspace)
 			}
-			_ = iter.Close()
 
 			// Return success - the router/UI will handle updating the current keyspace
 			return fmt.Sprintf("Now using keyspace %s", keyspace)

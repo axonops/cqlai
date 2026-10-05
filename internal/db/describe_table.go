@@ -28,7 +28,16 @@ type ColumnInfo struct {
 
 // TableListInfo holds table list information for manual describe
 type TableListInfo struct {
-	Name           string
+	Name string
+
+	// Virtual is a table the node computes rather than stores. It has no
+	// compaction, compression or gc_grace_seconds: there is nothing on disk
+	// for any of them to apply to.
+	Virtual bool
+
+	// Keyspace is set where a list spans keyspaces.
+	Keyspace string
+
 	GcGrace        int
 	Compaction     map[string]string
 	Compression    map[string]string
@@ -227,6 +236,15 @@ func (s *Session) DescribeAllTablesQuery() ([]TableListInfo, error) {
 		tables = append(tables, *tableInfo)
 	}
 
+	// And the virtual tables, named the same way, which system_schema does not
+	// hold.
+	for _, keyspace := range s.VirtualKeyspaces() {
+		for _, t := range s.virtualTableList(keyspace) {
+			t.Name = keyspace + "." + t.Name
+			tables = append(tables, t)
+		}
+	}
+
 	// Sort by keyspace and table name
 	sort.Slice(tables, func(i, j int) bool {
 		return tables[i].Name < tables[j].Name
@@ -237,6 +255,12 @@ func (s *Session) DescribeAllTablesQuery() ([]TableListInfo, error) {
 
 // DescribeTablesQuery executes queries to list all tables (for pre-4.0)
 func (s *Session) DescribeTablesQuery(keyspace string) ([]TableListInfo, error) {
+	// A virtual keyspace's tables are in system_virtual_schema, and asking
+	// system_schema for them answers that there are none.
+	if s.IsVirtualKeyspace(keyspace) {
+		return s.virtualTableList(keyspace), nil
+	}
+
 	// Query table details
 	tableQuery := `SELECT table_name, gc_grace_seconds, compaction, compression 
 	               FROM system_schema.tables 

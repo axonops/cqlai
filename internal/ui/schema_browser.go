@@ -260,6 +260,17 @@ func (m *MainModel) describeSchemaRow(row schemaRow) string {
 		return fmt.Sprint(schema)
 	}
 
+	// A virtual table is not in system_schema, which is where the definition
+	// below is built from - only the server can describe it.
+	if m.session.IsVirtualKeyspace(row.keyspace) {
+		text, err := m.session.DescribeVirtualTable(row.keyspace, row.table)
+		if err != nil {
+			logger.DebugfToFile("Schema", "Describing virtual table %s: %v", row.key(), err)
+			return fmt.Sprintf("Cannot describe %s: %v", row.key(), err)
+		}
+		return text
+	}
+
 	info, err := m.session.DescribeTableQuery(row.keyspace, row.table)
 	if err != nil {
 		logger.DebugfToFile("Schema", "Describing table %s: %v", row.key(), err)

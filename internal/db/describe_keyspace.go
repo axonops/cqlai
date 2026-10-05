@@ -16,6 +16,10 @@ type KeyspaceInfo struct {
 type KeyspaceListInfo struct {
 	Name        string
 	Replication map[string]string
+
+	// Virtual is a keyspace the node computes rather than stores. It has no
+	// replication: each node answers for itself.
+	Virtual bool
 }
 
 // DescribeKeyspaceQuery executes the query to get keyspace information (for pre-4.0)
@@ -60,6 +64,13 @@ func (s *Session) DescribeKeyspacesQuery() ([]KeyspaceListInfo, error) {
 	}
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("error listing keyspaces: %v", err)
+	}
+
+	// And the virtual ones, which system_schema does not hold. This list is
+	// what DESCRIBE KEYSPACES prints, what the schema browser shows and what
+	// the keyspace chooser offers, so one addition here is all three.
+	for _, name := range s.VirtualKeyspaces() {
+		keyspaces = append(keyspaces, KeyspaceListInfo{Name: name, Virtual: true})
 	}
 
 	// Sort by name

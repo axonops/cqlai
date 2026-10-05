@@ -84,29 +84,7 @@ func (p *CommandParser) describeTables() interface{} {
 	}
 
 	// Build results table - this format MUST be maintained for UI
-	results := [][]string{{"Table", "Primary Key", "Compaction", "Compression", "GC Grace"}}
-
-	for _, t := range tables {
-		// Format primary key
-		pkStr := p.formatPrimaryKey(t.PartitionKeys, t.ClusteringKeys)
-
-		// Format compaction strategy
-		compactionStr := p.formatCompaction(t.Compaction)
-
-		// Format compression
-		compressionStr := p.formatCompression(t.Compression)
-
-		// Format GC grace
-		gcGraceStr := p.formatGCGrace(t.GcGrace)
-
-		results = append(results, []string{
-			t.Name,
-			pkStr,
-			compactionStr,
-			compressionStr,
-			gcGraceStr,
-		})
-	}
+	results := p.tableListRows(tables)
 
 	return results
 }
@@ -170,22 +148,7 @@ func (p *CommandParser) describeTablesPattern(pattern string) interface{} {
 	}
 
 	// Build results table
-	results := [][]string{{"Table", "Primary Key", "Compaction", "Compression", "GC Grace"}}
-
-	for _, t := range filteredTables {
-		pkStr := p.formatPrimaryKey(t.PartitionKeys, t.ClusteringKeys)
-		compactionStr := p.formatCompaction(t.Compaction)
-		compressionStr := p.formatCompression(t.Compression)
-		gcGraceStr := p.formatGCGrace(t.GcGrace)
-
-		results = append(results, []string{
-			t.Name,
-			pkStr,
-			compactionStr,
-			compressionStr,
-			gcGraceStr,
-		})
-	}
+	results := p.tableListRows(filteredTables)
 
 	return results
 }
@@ -513,4 +476,33 @@ func (p *CommandParser) describeIdentifier(identifier string) interface{} {
 	}
 
 	return fmt.Sprintf("'%s' not found", identifier)
+}
+
+// tableListRows is DESCRIBE TABLES as rows: a header, then a table a row.
+//
+// It was written out twice, once for each way of asking, and a virtual table
+// listed through either said its compaction was "Unknown" and its gc_grace_seconds
+// 0. Neither is unknown or zero: a virtual table is computed when it is asked,
+// so there is nothing on disk for compaction, compression or a grace period to
+// apply to. It says so, the same way in both.
+func (p *CommandParser) tableListRows(tables []db.TableListInfo) [][]string {
+	rows := [][]string{{"Table", "Primary Key", "Compaction", "Compression", "GC Grace"}}
+
+	for _, t := range tables {
+		key := p.formatPrimaryKey(t.PartitionKeys, t.ClusteringKeys)
+
+		if t.Virtual {
+			rows = append(rows, []string{t.Name, key, "virtual", "-", "-"})
+			continue
+		}
+
+		rows = append(rows, []string{
+			t.Name,
+			key,
+			p.formatCompaction(t.Compaction),
+			p.formatCompression(t.Compression),
+			p.formatGCGrace(t.GcGrace),
+		})
+	}
+	return rows
 }

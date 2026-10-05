@@ -174,7 +174,7 @@ func (ce *CompletionEngine) CompleteNative(input string) []string {
 	// The statements that read and write rows are walked the same way.
 	if shape, handled := ce.dmlCompletions(input); handled {
 		logger.DebugfToFile("Completion", "Row statement: %d suggestions", len(shape))
-		return filterByWord(input, shape)
+		return filterByWord(input, ce.withTheColumns(input, shape))
 	}
 
 	// Use the simple completion engine
