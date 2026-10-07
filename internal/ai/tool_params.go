@@ -240,6 +240,34 @@ func ParseToolParams(toolName ToolName, rawParams json.RawMessage) (ToolParams, 
 		}
 		return params, nil
 
+	case ToolProposeChange:
+		var params ProposeChangeParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid propose_change parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolNodeStatus:
+		var params NodeStatusParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid node_status parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolTableSize:
+		var params TableSizeParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid table_size parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolListRoles:
+		var params ListRolesParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid list_roles parameters: %w", err)
+		}
+		return params, nil
+
 	case ToolQuery, ToolTraceQuery:
 		var params QueryParams
 		if err := json.Unmarshal(rawParams, &params); err != nil {

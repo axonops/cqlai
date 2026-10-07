@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/policy"
 	"github.com/axonops/cqlai/internal/validation"
@@ -61,8 +60,9 @@ func savedMCP(t *testing.T, m *MainModel) map[string]any {
 	return block
 }
 
-// TestTheCommandRowsAreTheGatesTable: the window offers exactly the commands
-// the statement gate knows, in its order.
+// TestTheCommandRowsAreTheGatesTable: the window offers exactly the read
+// commands the statement gate knows, in its order. A change is never run by
+// the MCP server, so there is no row to permit one.
 func TestTheCommandRowsAreTheGatesTable(t *testing.T) {
 	m := prefModel(t, &config.Config{})
 
@@ -74,12 +74,15 @@ func TestTheCommandRowsAreTheGatesTable(t *testing.T) {
 	}
 	var table []string
 	for _, c := range validation.Commands {
-		table = append(table, c.Name)
+		if c.Kind == validation.KindRead {
+			table = append(table, c.Name)
+		}
 	}
 	assert.Equal(t, table, rows)
+	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, rows)
 
 	for _, path := range []string{"MCP.Keyspaces", "MCP.Deny", "MCP.Redact", "MCP.AllowScans",
-		"MCP.MaxRows", "MCP.Connections", "MCP.AuditLog", "MCP.Port"} {
+		"MCP.MaxRows", "MCP.AuditLog", "MCP.Port"} {
 		prefIndex(t, m, path)
 	}
 }
@@ -124,35 +127,22 @@ func TestUntickingACommandIsSaved(t *testing.T) {
 	assert.Equal(t, []any{"SELECT", "DESCRIBE"}, block["permit"])
 }
 
-// TestChangesCannotBePermittedUntilTheServerCanMakeThem: with no tool that
-// changes anything, ticking INSERT would do nothing, so it cannot be ticked.
-func TestChangesCannotBePermittedUntilTheServerCanMakeThem(t *testing.T) {
-	if ai.MCPCanChange() {
-		t.Skip("the server can make changes now")
-	}
-	m := prefModel(t, &config.Config{})
-	for _, command := range []string{"INSERT", "UPDATE", "DELETE", "BATCH", "CREATE", "ALTER", "DROP", "TRUNCATE"} {
-		assert.Equal(t, "not yet: the MCP server only reads", m.preferences.fields[commandRow(t, m, command)].disabled, command)
-		m = toggleCommand(t, m, command)
-	}
-	assert.Equal(t, validation.DefaultCommands(), ticked(m))
-	for _, f := range m.preferences.fields {
-		assert.NotEqual(t, "MCP.SkipConfirm", f.spec.path, "nothing to confirm yet")
-	}
-}
-
-// TestACommandTheWindowCannotChangeIsKept: saving does not drop a command
-// written into the file by hand that the window shows as disabled.
-func TestACommandTheWindowCannotChangeIsKept(t *testing.T) {
-	if ai.MCPCanChange() {
-		t.Skip("the server can make changes now, so INSERT is not disabled")
-	}
+// TestNothingAboutChangesIsOffered: no row for a write or schema command,
+// nothing to confirm, and no connection switching. A command of that kind
+// written into the file by hand is dropped on saving: the server refuses to
+// start with it there.
+func TestNothingAboutChangesIsOffered(t *testing.T) {
 	permit := []string{"SELECT", "INSERT"}
 	m := prefModel(t, &config.Config{MCP: &config.MCPConfig{Permit: &permit}})
+	for _, f := range m.preferences.fields {
+		assert.NotContains(t, []string{"INSERT", "DROP", "TRUNCATE"}, f.spec.member)
+		assert.NotEqual(t, "MCP.SkipConfirm", f.spec.path)
+		assert.NotEqual(t, "MCP.Connections", f.spec.path)
+	}
 	m = toggleCommand(t, m, "LIST")
 
 	block := savedMCP(t, m)
-	assert.Equal(t, []any{"SELECT", "LIST", "INSERT"}, block["permit"])
+	assert.Equal(t, []any{"SELECT", "LIST"}, block["permit"])
 }
 
 // TestTheListsRoundTrip through the file.
@@ -178,10 +168,9 @@ func TestTheListsRoundTrip(t *testing.T) {
 // TestAWrongListSaysWhy and the window will not save it.
 func TestAWrongListSaysWhy(t *testing.T) {
 	for path, value := range map[string]string{
-		"MCP.Keyspaces":   "shop.orders",
-		"MCP.Deny":        "a.b.c",
-		"MCP.Redact":      "shop.email",
-		"MCP.Connections": "nowhere",
+		"MCP.Keyspaces": "shop.orders",
+		"MCP.Deny":      "a.b.c",
+		"MCP.Redact":    "shop.email",
 	} {
 		m := prefModel(t, &config.Config{})
 		i := prefIndex(t, m, path)

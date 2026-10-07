@@ -145,6 +145,5 @@ func (m *MCPConfig) Clone() *MCPConfig {
 	c.Keyspaces = append([]string(nil), m.Keyspaces...)
 	c.Deny = append([]string(nil), m.Deny...)
 	c.Redact = append([]string(nil), m.Redact...)
-	c.Connections = append([]string(nil), m.Connections...)
 	return &c
 }

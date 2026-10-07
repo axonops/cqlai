@@ -53,7 +53,31 @@ type Host struct {
 	link       *cluster
 	connection string // what the app is connected to, in words
 	failed     string // why the server is not serving, when it is not
+
+	// The connection being served, so its policy can be read again when the
+	// settings are saved.
+	conn     config.Config
+	connName string
+	serving  bool
+
+	stopWatch context.CancelFunc
+
+	// proposals are changes a model proposed, for the shell to put in front
+	// of the user. The shell reads them; nothing here runs them.
+	proposals chan Proposal
 }
+
+// Proposal is a statement handed to the user: a change a model proposed,
+// with what it will do, or a statement the settings did not let the server
+// run, with why.
+type Proposal struct {
+	Statement    string
+	Implications []string
+	Refused      string
+}
+
+// Proposals is where the shell reads proposed changes from.
+func (h *Host) Proposals() <-chan Proposal { return h.proposals }
 
 // TokenFile is where the token is kept, readable only by its owner. It is
 // kept rather than made afresh each time so the client's configuration does
@@ -70,7 +94,7 @@ func TokenFile() string {
 // what went wrong - a port in use, a policy that cannot be read - is kept, and
 // shown by Status.
 func StartHost(o Options, version string) *Host {
-	h := &Host{opts: o, version: version}
+	h := &Host{opts: o, version: version, proposals: make(chan Proposal, 8)}
 
 	file, err := config.LoadConfig(o.ConfigFile)
 	if err != nil {
@@ -116,6 +140,10 @@ func StartHost(o Options, version string) *Host {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() { _ = h.http.Serve(listener) }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.stopWatch = cancel
+	go h.server.WatchSchema(ctx, 5*time.Second)
 	return h
 }
 
@@ -138,6 +166,7 @@ func (h *Host) Use(conn config.Config, name string) {
 		go h.link.close()
 		h.link = nil
 	}
+	h.conn, h.connName, h.serving = conn, name, true
 	h.connection = describeConnection(conn, name, file.SavePath())
 	if err != nil {
 		// Settings that cannot be read are not served at all.
@@ -151,6 +180,13 @@ func (h *Host) Use(conn config.Config, name string) {
 	}
 	h.link = newCluster(conn, file.Consistency, h.opts, h.connection, pol.Scrub, session.NewManager(file))
 	h.link.start()
+
+	// Another connection is another policy: the tools offered and the
+	// schema to read may both be different now.
+	if h.server != nil {
+		go h.server.Notify("notifications/tools/list_changed")
+		go h.server.Notify("notifications/resources/list_changed")
+	}
 }
 
 // Drop stops serving the connection the app has left.
@@ -162,6 +198,45 @@ func (h *Host) Drop() {
 		h.link = nil
 	}
 	h.connection = ""
+	h.serving = false
+}
+
+// Reload reads the settings again, for the connection being served, and
+// applies them at once: the shell calls it when PREFERENCES or CONNECT is
+// saved. A permission taken away has to be gone from the next call, not from
+// the next connection. The session is kept; only what it may be used for
+// changes. Settings that cannot be read leave nothing permitted.
+func (h *Host) Reload() {
+	file, err := config.LoadConfig(h.opts.ConfigFile)
+	if err != nil {
+		file = &config.Config{}
+	}
+
+	h.mu.Lock()
+	name, password := h.connName, h.conn.Password
+	if !h.serving {
+		name, password = "", ""
+	}
+	if _, saved := file.Connection(name); !saved {
+		name = ""
+	}
+	pol, err := policy.Load(file, name, password, time.Duration(h.opts.RequestTimeout)*time.Second, h.opts.Flags)
+	if err != nil {
+		h.pol = policy.Policy{}
+		h.failed = err.Error()
+	} else {
+		h.pol = pol
+		if h.listener != nil {
+			h.failed = ""
+		}
+	}
+	server := h.server
+	h.mu.Unlock()
+
+	if server != nil {
+		server.Notify("notifications/tools/list_changed")
+		server.Notify("notifications/resources/list_changed")
+	}
 }
 
 // Policy is the policy of the connection being served. Source.
@@ -176,10 +251,30 @@ func (h *Host) Env() ai.ToolEnv {
 	h.mu.Lock()
 	pol, link := h.pol, h.link
 	h.mu.Unlock()
+	var env ai.ToolEnv
 	if link == nil {
-		return ai.ToolEnv{Policy: pol, NotConnected: "cqlai is not connected to a cluster: pick one in FILE > CONNECT"}
+		env = ai.ToolEnv{Policy: pol, NotConnected: "cqlai is not connected to a cluster: pick one in FILE > CONNECT"}
+	} else {
+		env = link.env(pol)
 	}
-	return link.env(pol)
+	env.Propose = func(handed ai.Handover) {
+		select {
+		case h.proposals <- Proposal{Statement: handed.Statement, Implications: handed.Notes, Refused: handed.Refused}:
+		default: // the shell is behind: the client has the proposal anyway
+		}
+	}
+	return env
+}
+
+// SchemaVersion is the served cluster's schema version, or "". Source.
+func (h *Host) SchemaVersion() string {
+	h.mu.Lock()
+	link := h.link
+	h.mu.Unlock()
+	if link == nil {
+		return ""
+	}
+	return link.version()
 }
 
 // Serving reports whether MCP is being served.
@@ -226,6 +321,9 @@ func (h *Host) ClientConfig() string {
 
 // Close stops serving.
 func (h *Host) Close() {
+	if h.stopWatch != nil {
+		h.stopWatch()
+	}
 	if h.http != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -252,11 +350,13 @@ func (h *Host) handler() http.Handler {
 			http.Error(w, "the Authorization header has to carry the token cqlai shows", http.StatusUnauthorized)
 			return
 		}
+		if r.Method == http.MethodGet {
+			h.stream(w, r)
+			return
+		}
 		if r.Method != http.MethodPost {
-			// No stream from the server: it sends nothing it was not asked
-			// for.
-			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
 			return
 		}
 
@@ -274,6 +374,45 @@ func (h *Host) handler() http.Handler {
 		_, _ = w.Write(answer)
 	})
 	return mux
+}
+
+// stream is the server's side of the conversation: notifications that
+// something changed, as server-sent events, for as long as the client keeps
+// the request open.
+func (h *Host) stream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok || !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+		http.Error(w, "GET is for a stream of events: ask for text/event-stream", http.StatusNotAcceptable)
+		return
+	}
+	// Listening before answering: a notification sent the moment the client
+	// sees the stream open must not be lost in between.
+	id, notes := h.server.subscribe()
+	defer h.server.unsubscribe(id)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	keepAlive := time.NewTicker(30 * time.Second)
+	defer keepAlive.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case note, open := <-notes:
+			if !open {
+				return
+			}
+			_, _ = fmt.Fprintf(w, "event: message\ndata: %s\n\n", note)
+			flusher.Flush()
+		case <-keepAlive.C:
+			// A comment, so a proxy or the client does not take a quiet
+			// stream for a dead one.
+			_, _ = fmt.Fprint(w, ": keep-alive\n\n")
+			flusher.Flush()
+		}
+	}
 }
 
 // sameMachine checks that a request was made for this server by name, and not

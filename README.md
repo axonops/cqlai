@@ -147,7 +147,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
 - **MCP Server (`cqlai mcp`):**
     - Lets an AI assistant read one cluster through CQLAI over the Model Context Protocol.
     - What it may do - which commands, keyspaces, tables and columns - is set in `PREFERENCES` and per connection in `CONNECT`, and enforced on every call.
-    - Read-only in this release, with an audit log of every call.
+    - It never changes data or schema: a change is proposed, with what it will do, for you to run. Every call is in an audit log.
 - **Configuration:**
     - Simple configuration via `cqlai.json` in the current directory or `~/.cassandra/cqlai.json`, beside `cqlshrc`.
     - Support for SSL/TLS connections with certificate authentication.
@@ -1579,7 +1579,9 @@ as JSON.
 The assistant is the MCP client. CQLAI does not call an AI provider in this
 mode, and no AI provider needs to be set up.
 
-The server only reads in this release. It cannot change data or schema.
+The server never changes data or schema. When a change is wanted, the model
+proposes it: CQLAI says what it will do, and you decide whether to run it
+yourself. See [Proposed changes](#proposed-changes).
 
 ### Starting it
 
@@ -1647,7 +1649,6 @@ when a tool is first called.
 | `--headless` | No shell: serve MCP on stdin and stdout |
 | `--port N` | The port the shell serves MCP on (default: the setting, or 7845) |
 | `--connection NAME` | Headless: the saved connection to use |
-| `--read-only` | Permit the read commands only, whatever the settings say |
 | `--permit SELECT,DESCRIBE` | Permit only these commands, of those the settings permit |
 | `--keyspaces ks1,ks2` | Only these keyspaces are visible, of those the settings allow |
 | `--max-rows N` | At most this many rows per call, if lower than the settings |
@@ -1664,14 +1665,68 @@ The options can only narrow what the settings allow. They cannot widen it.
 | `list_keyspaces` | The visible keyspaces, the virtual ones included |
 | `list_tables` | A keyspace's tables, each with its partition and clustering key |
 | `get_schema` | A table's keys and columns |
-| `fuzzy_search` | Tables whose names are close to a word |
+| `fuzzy_search` | Keyspaces and tables whose names match a word: spelled like it, or sounding like it, with vowels or letters left out or a letter wrong (`hyto` finds `hayato`). Says why each matched. |
 | `describe` | The CQL definition of a keyspace, table, type, index, view, function or aggregate, exactly as `DESCRIBE` prints it |
 | `query` | Runs one `SELECT` and returns a page of rows, with a token for the next page |
 | `trace_query` | Runs one `SELECT` with tracing on, and returns the trace with the rows |
+| `node_status` | The node's settings, thread pools, connected clients, caches, compactions or disk usage, from its virtual tables (Cassandra 4.0 and later). Settings holding a secret are hidden. |
+| `table_size` | Cassandra's estimate of a table's partition count and mean partition size |
+| `list_roles` | The roles, and one role's permissions; never their passwords |
+| `propose_change` | Proposes a change for you to run. It is never run by CQLAI. See below. |
 
 The first four are the same tools the `CHAT` view's AI uses. A tool is only
 offered if the settings permit what it needs: with `SELECT` not permitted,
-`query` and `trace_query` are not offered at all.
+`query`, `trace_query`, `node_status` and `table_size` are not offered at all.
+
+The server also offers:
+
+- **Resources:** each visible keyspace's definition, and any table's at
+  `cql://schema/{keyspace}/{table}`, for a client to read and attach. The client
+  is told when the schema changes, wherever it was changed.
+- **Prompts:** `review_table`, which reviews a table's definition, and
+  `diagnose_query`, which traces a query and explains where its time goes. They
+  use the same instructions as `Alt+A` in the shell.
+
+### Proposed changes
+
+The MCP server never runs `INSERT`, `UPDATE`, `DELETE`, `BATCH`, `CREATE`,
+`ALTER`, `DROP` or `TRUNCATE`. A model that wants one calls `propose_change`
+with the statement. CQLAI checks it - one statement, tables named in full, none
+of them hidden - and returns, without running it:
+
+- the statement, ready to copy;
+- the connection it would run on;
+- what it will do: warnings written into CQLAI for each kind of statement, not
+  the model's own account. For example, that `DROP TABLE` deletes the data on
+  every node and is snapshotted only if `auto_snapshot` is on; that dropping a
+  column cannot be undone; that changing replication moves no data until you
+  repair; that a `DELETE` without the whole primary key removes a whole
+  partition; that `INSERT` overwrites an existing row.
+
+The model is told to show you the statement and every warning.
+
+In `cqlai mcp`, the proposal also appears in the shell: the warnings in the
+Console, and the statement in the prompt, unrun. Press Enter to run it. The
+shell always asks first, with Cancel selected, whatever the `Confirm changes`
+setting says, because nobody typed it. Edit it, and it is yours, confirmed as
+any statement you type.
+
+### Refused statements are handed back
+
+When your settings refuse something - `SELECT` not permitted, a hidden
+keyspace or table, a redacted column, a scan - the reply is not just "refused".
+It gives the reason and the exact statement, and tells the model to show it to
+you, so you can run it yourself if you choose. A tool your settings do not offer
+does the same with the statement it would have run: `describe` gives back its
+`DESCRIBE`, `list_roles` its `LIST ROLES`.
+
+In `cqlai mcp`, the statement is also put in the prompt, unrun, with the reason
+in the Console, and confirmed before it runs, like a proposed change.
+
+Nothing comes back from the cluster with a refusal: only the statement, which
+is the model's own. `GRANT`, `REVOKE`, role and user changes, `USE`, and
+anything that is not one statement CQLAI can read, are refused without being
+handed back.
 
 ### What the model may do
 
@@ -1680,10 +1735,9 @@ What the server may do is set in the `PREFERENCES` window, in two sections:
 - **MCP SERVER**: the keyspaces the model can see, tables it can never see,
   columns whose values are hidden, whether scans are allowed, the limits, where
   the audit log goes, and the port the shell serves MCP on.
-- **MCP SERVER - PERMITTED COMMANDS**: each CQL command, permitted or not.
-  `SELECT`, `DESCRIBE` and `LIST` are permitted unless you say otherwise.
-  `GRANT`, `REVOKE`, role and user changes and `USE` are never permitted, and
-  are not offered.
+- **MCP SERVER - PERMITTED COMMANDS**: `SELECT`, `DESCRIBE` and `LIST`, each
+  permitted or not. All three are permitted unless you say otherwise. Nothing
+  that changes data or schema can be permitted: it is only ever proposed.
 
 `CONNECT` has the same two sections for each saved connection. A connection's
 settings can only narrow the ones in `PREFERENCES`; a command `PREFERENCES`
@@ -1691,8 +1745,10 @@ does not permit is shown dimmed and cannot be ticked. So production can be
 limited to two keyspaces while a test cluster sees everything.
 
 The settings are kept in `cqlai.json` under `mcp`, at the top of the file and
-on each saved connection. A connection's settings apply when it is connected;
-the port, when `cqlai mcp` next starts.
+on each saved connection. In the shell they apply as soon as `PREFERENCES` or
+`CONNECT` is saved: a command you untick is refused from the next call, without
+reconnecting. The port applies when `cqlai mcp` next starts, and a headless
+server reads its settings when it starts.
 
 ### Security
 
@@ -1701,8 +1757,11 @@ cluster can try to steer it. So every rule is enforced in CQLAI, on every call,
 whatever the model asks for.
 
 - **One statement per call.** `SELECT ...; DROP ...` is refused.
-- **Only permitted commands run.** A statement is classified by CQLAI, not by
+- **Only permitted reads run.** A statement is classified by CQLAI, not by
   what the model says it is. Anything CQLAI does not recognise is refused.
+- **Changes are never run.** They are proposed, with what they will do, for you
+  to run. `GRANT`, `REVOKE`, role and user changes and `USE` are not even
+  proposed.
 - **Tables are named as `keyspace.table`.** An unqualified name would resolve
   to the session's keyspace without being checked, so it is refused.
 - **Hidden keyspaces and tables stay hidden.** They are not listed, described,

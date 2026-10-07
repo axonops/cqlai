@@ -1153,7 +1153,8 @@ la conexión, ejecuta las sentencias y devuelve los resultados en JSON.
 El asistente es el cliente MCP. En este modo CQLAI no llama a ningún proveedor
 de IA, y no hace falta configurar ninguno.
 
-En esta versión el servidor solo lee. No puede cambiar datos ni esquema.
+El servidor nunca cambia datos ni esquema. Cuando hace falta un cambio, el
+modelo lo propone: CQLAI dice qué hará, y tú decides si lo ejecutas.
 
 ### Arrancarlo
 
@@ -1218,7 +1219,6 @@ conexión por defecto. La contraseña es la guardada con la conexión, o
 | `--headless` | Sin shell: MCP por stdin y stdout |
 | `--port N` | El puerto en el que la shell sirve MCP (por defecto: el ajuste, o 7845) |
 | `--connection NOMBRE` | Headless: la conexión guardada que se usa |
-| `--read-only` | Solo las órdenes de lectura, digan lo que digan los ajustes |
 | `--permit SELECT,DESCRIBE` | Solo estas órdenes, de las que permiten los ajustes |
 | `--keyspaces ks1,ks2` | Solo estos keyspaces son visibles, de los que permiten los ajustes |
 | `--max-rows N` | Como mucho estas filas por llamada, si es menos que en los ajustes |
@@ -1235,14 +1235,68 @@ Las opciones solo pueden restringir lo que permiten los ajustes. Nunca lo amplí
 | `list_keyspaces` | Los keyspaces visibles, incluidos los virtuales |
 | `list_tables` | Las tablas de un keyspace, cada una con su clave de partición y de clustering |
 | `get_schema` | Las claves y columnas de una tabla |
-| `fuzzy_search` | Tablas cuyo nombre se parece a una palabra |
+| `fuzzy_search` | Keyspaces y tablas cuyo nombre coincide con una palabra: escrito igual, o que suena igual, sin vocales o letras, o con una letra mal (`hyto` encuentra `hayato`). Dice por qué coincide cada uno. |
 | `describe` | La definición CQL de un keyspace, tabla, tipo, índice, vista, función o agregado, tal como la imprime `DESCRIBE` |
 | `query` | Ejecuta un `SELECT` y devuelve una página de filas, con un token para la siguiente |
 | `trace_query` | Ejecuta un `SELECT` con trazado y devuelve la traza con las filas |
+| `node_status` | La configuración del nodo, sus pools de hilos, clientes conectados, cachés, compactaciones o uso de disco, desde sus tablas virtuales (Cassandra 4.0 y posteriores). Los ajustes con secretos se ocultan. |
+| `table_size` | La estimación de Cassandra del número de particiones de una tabla y su tamaño medio |
+| `list_roles` | Los roles, y los permisos de uno; nunca sus contraseñas |
+| `propose_change` | Propone un cambio para que lo ejecutes tú. CQLAI nunca lo ejecuta. Ver abajo. |
 
 Las cuatro primeras son las mismas herramientas que usa la IA de la vista `CHAT`.
 Una herramienta solo se ofrece si los ajustes permiten lo que necesita: sin
-`SELECT`, `query` y `trace_query` no se ofrecen.
+`SELECT`, no se ofrecen `query`, `trace_query`, `node_status` ni `table_size`.
+
+El servidor también ofrece:
+
+- **Recursos:** la definición de cada keyspace visible, y la de cualquier tabla
+  en `cql://schema/{keyspace}/{table}`, para que el cliente la lea y la adjunte.
+  Se avisa al cliente cuando cambia el esquema, se cambie donde se cambie.
+- **Prompts:** `review_table`, que revisa la definición de una tabla, y
+  `diagnose_query`, que traza una consulta y explica en qué se va su tiempo.
+  Usan las mismas instrucciones que `Alt+A` en la shell.
+
+### Cambios propuestos
+
+El servidor MCP nunca ejecuta `INSERT`, `UPDATE`, `DELETE`, `BATCH`, `CREATE`,
+`ALTER`, `DROP` ni `TRUNCATE`. Un modelo que quiere uno llama a
+`propose_change` con la sentencia. CQLAI la comprueba - una sentencia, tablas
+con su keyspace, ninguna oculta - y devuelve, sin ejecutarla:
+
+- la sentencia, lista para copiar;
+- la conexión en la que se ejecutaría;
+- lo que hará: avisos escritos en CQLAI para cada tipo de sentencia, no la
+  explicación del propio modelo. Por ejemplo, que `DROP TABLE` borra los datos
+  en todos los nodos y solo se hace snapshot si `auto_snapshot` está activo; que
+  borrar una columna no se puede deshacer; que cambiar la replicación no mueve
+  datos hasta que reparas; que un `DELETE` sin la clave primaria completa borra
+  una partición entera; que `INSERT` sobrescribe una fila existente.
+
+Se indica al modelo que te muestre la sentencia y todos los avisos.
+
+En `cqlai mcp`, la propuesta aparece también en la shell: los avisos en la
+Consola y la sentencia en el prompt, sin ejecutar. Pulsa Enter para
+ejecutarla. La shell siempre pregunta antes, con Cancelar seleccionado, diga
+lo que diga el ajuste `Confirm changes`, porque nadie la escribió. Si la
+editas, es tuya, y se confirma como cualquier sentencia que escribas.
+
+### Las sentencias rechazadas se devuelven
+
+Cuando tus ajustes rechazan algo - `SELECT` no permitido, un keyspace o tabla
+ocultos, una columna ocultada, un escaneo - la respuesta no es solo
+"rechazado". Da el motivo y la sentencia exacta, e indica al modelo que te la
+muestre, para que la ejecutes tú si quieres. Una herramienta que tus ajustes
+no ofrecen hace lo mismo con la sentencia que habría ejecutado: `describe`
+devuelve su `DESCRIBE`, `list_roles` su `LIST ROLES`.
+
+En `cqlai mcp`, la sentencia se pone también en el prompt, sin ejecutar, con
+el motivo en la Consola, y se confirma antes de ejecutarse, como un cambio
+propuesto.
+
+Con un rechazo no vuelve nada del clúster: solo la sentencia, que es la del
+propio modelo. `GRANT`, `REVOKE`, los cambios de roles y usuarios, `USE`, y lo
+que no sea una sentencia que CQLAI pueda leer, se rechazan sin devolverse.
 
 ### Qué puede hacer el modelo
 
@@ -1251,16 +1305,19 @@ Se configura en la ventana `PREFERENCES`, en dos secciones:
 - **MCP SERVER**: los keyspaces que ve el modelo, las tablas que nunca ve, las
   columnas cuyos valores se ocultan, si se permiten los escaneos, los límites y
   dónde va el registro de auditoría.
-- **MCP SERVER - PERMITTED COMMANDS**: cada orden CQL, permitida o no.
-  `SELECT`, `DESCRIBE` y `LIST` están permitidas salvo que digas lo contrario.
-  `GRANT`, `REVOKE`, los cambios de roles y usuarios y `USE` nunca se permiten.
+- **MCP SERVER - PERMITTED COMMANDS**: `SELECT`, `DESCRIBE` y `LIST`, cada una
+  permitida o no. Las tres están permitidas salvo que digas lo contrario. Nada
+  que cambie datos o esquema se puede permitir: solo se propone.
 
 `CONNECT` tiene las mismas dos secciones para cada conexión guardada. Lo de una
 conexión solo puede restringir lo de `PREFERENCES`; una orden que
 `PREFERENCES` no permite aparece atenuada y no se puede marcar.
 
-Los ajustes se guardan en `cqlai.json`, bajo `mcp`. Se aplican la próxima vez
-que un cliente MCP arranque `cqlai mcp`.
+Los ajustes se guardan en `cqlai.json`, bajo `mcp`. En la shell se aplican en
+cuanto se guarda `PREFERENCES` o `CONNECT`: una orden que desmarcas se rechaza
+desde la siguiente llamada, sin reconectar. El puerto se aplica cuando
+`cqlai mcp` vuelve a arrancar, y un servidor headless lee sus ajustes al
+arrancar.
 
 ### Seguridad
 
@@ -1269,8 +1326,11 @@ puede intentar dirigirlo. Por eso cada regla se aplica en CQLAI, en cada
 llamada, pida lo que pida el modelo.
 
 - **Una sentencia por llamada.** `SELECT ...; DROP ...` se rechaza.
-- **Solo se ejecutan las órdenes permitidas.** CQLAI clasifica la sentencia;
+- **Solo se ejecutan las lecturas permitidas.** CQLAI clasifica la sentencia;
   lo que no reconoce se rechaza.
+- **Los cambios nunca se ejecutan.** Se proponen, con lo que harán, para que los
+  ejecutes tú. `GRANT`, `REVOKE`, los cambios de roles y usuarios y `USE` ni
+  siquiera se proponen.
 - **Las tablas se nombran como `keyspace.tabla`.** Un nombre sin keyspace se
   rechaza.
 - **Lo oculto sigue oculto.** Los keyspaces y tablas ocultos no se listan, no

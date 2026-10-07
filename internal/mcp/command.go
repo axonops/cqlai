@@ -119,6 +119,7 @@ func RunHeadless(o Options, version string) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go server.WatchSchema(ctx, 5*time.Second)
 	if err := server.Serve(ctx, os.Stdin, os.Stdout); err != nil && ctx.Err() == nil {
 		return fail("%v", err)
 	}

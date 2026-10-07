@@ -84,6 +84,9 @@ type MainModel struct {
 	// connectOnStart opens CONNECT once the window has a size, for `cqlai
 	// mcp` started with no cluster: picking one is what it is for.
 	connectOnStart bool
+	// proposed is the change the MCP client last put in the prompt. Run as
+	// it is, it is always confirmed first: nobody typed it.
+	proposed string
 
 	historyViewport        viewport.Model // For command history
 	tableViewport          viewport.Model // For current table display
@@ -553,7 +556,12 @@ func (m *MainModel) Init() tea.Cmd {
 
 	// Ask the cluster what its schema version is, and keep asking: a change
 	// made in another window is invisible here otherwise.
-	return tea.Batch(textinput.Blink, m.watchSchemaVersion())
+	cmds := []tea.Cmd{textinput.Blink, m.watchSchemaVersion()}
+	if m.mcpHost != nil {
+		// Changes a model proposes come in from the MCP server.
+		cmds = append(cmds, waitForProposal(m.mcpHost))
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update updates the main model.
@@ -577,6 +585,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *MainModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case mcpProposalMsg:
+		return m.showProposal(msg)
 	case tea.WindowSizeMsg:
 		// Store the actual window dimensions
 		m.windowWidth = msg.Width

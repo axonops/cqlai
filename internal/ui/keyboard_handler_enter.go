@@ -171,10 +171,18 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		}
 	}
 
+	// A change the MCP client proposed is confirmed whatever the settings
+	// say: nobody typed it.
+	proposal := m.isProposal(command)
+	m.proposed = ""
+
 	// Check for dangerous commands (skip for AI commands - already checked)
-	if m.sessionManager != nil && m.sessionManager.RequireConfirmation() && router.IsDangerousCommand(command) {
+	if proposal || (m.sessionManager != nil && m.sessionManager.RequireConfirmation() && router.IsDangerousCommand(command)) {
 		// Show confirmation modal for dangerous commands
 		m.modal = NewConfirmationModal(command)
+		if proposal {
+			m.modal = NewProposalModal(command)
+		}
 
 		// Add command to history
 		if !echoed {

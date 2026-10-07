@@ -244,6 +244,12 @@ func calculateFuzzyScore(queryLower string, queryTokens []string, entry *TableSe
 		}
 	}
 
+	// Nothing spelled like it: a name that sounds like it, has its letters in
+	// order, or is a typo away, ranked below any of the above.
+	if score == 0 {
+		score, _ = soundsLike(queryLower, tableLower)
+	}
+
 	// Normalize score
 	if score > 100.0 {
 		score = 100.0

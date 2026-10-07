@@ -48,3 +48,58 @@ func (m *MainModel) CloseMCP() {
 		m.mcpHost.Close()
 	}
 }
+
+// mcpProposalMsg is a change a model proposed through the MCP server.
+type mcpProposalMsg mcp.Proposal
+
+// waitForProposal waits for the next proposed change.
+func waitForProposal(h *mcp.Host) tea.Cmd {
+	return func() tea.Msg {
+		p, ok := <-h.Proposals()
+		if !ok {
+			return nil
+		}
+		return mcpProposalMsg(p)
+	}
+}
+
+// showProposal puts a proposed change in front of the user, unrun: in the
+// Console with what it will do, and in the prompt when nothing is being typed
+// there. Running it is the user's to do, by pressing Enter - and a dangerous
+// statement is still confirmed as any typed one is.
+func (m *MainModel) showProposal(p mcpProposalMsg) (*MainModel, tea.Cmd) {
+	var b strings.Builder
+	if p.Refused != "" {
+		b.WriteString("The MCP client asked for this, and the MCP server was not permitted to run it (" +
+			p.Refused + "). It is yours to run, if you choose.\n\n")
+		b.WriteString(p.Statement)
+	} else {
+		b.WriteString("The MCP client proposes this change. cqlai has not run it.\n\n")
+		b.WriteString(p.Statement)
+		b.WriteString("\n\nWhat it will do:")
+		for _, line := range p.Implications {
+			b.WriteString("\n  - " + line)
+		}
+	}
+
+	if strings.TrimSpace(m.input.Value()) == "" {
+		m.input.SetValue(p.Statement)
+		m.input.CursorEnd()
+		m.proposed = p.Statement
+		b.WriteString("\n\nIt is in the prompt. Read it, and press Enter to run it, or clear it.")
+	} else {
+		b.WriteString("\n\nThe prompt has text in it, so the statement is only here: copy it to run it.")
+	}
+	updated, _ := m.report(b.String())
+	return updated, waitForProposal(m.mcpHost)
+}
+
+// isProposal reports whether a command is the change the MCP client put in
+// the prompt, as it was put there.
+func (m *MainModel) isProposal(command string) bool {
+	if m.proposed == "" {
+		return false
+	}
+	same := func(s string) string { return strings.TrimRight(strings.TrimSpace(s), "; \t\n") }
+	return same(command) == same(m.proposed)
+}

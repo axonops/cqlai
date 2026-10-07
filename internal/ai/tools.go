@@ -143,7 +143,6 @@ const (
 	NeedDescribe                 // DESCRIBE: it shows the schema
 	NeedSelect                   // SELECT: it reads rows
 	NeedList                     // LIST: it lists roles
-	NeedChange                   // any write or schema command
 )
 
 // GetCommonToolDefinitions returns the tools the CHAT view's planner is
@@ -187,8 +186,9 @@ func allToolDefinitions() []ToolDefinition {
 func chatToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
-			Name:        ToolFuzzySearch.String(),
-			Description: "Search for tables or keyspaces matching a search term",
+			Name: ToolFuzzySearch.String(),
+			Description: "Find keyspaces and tables whose names match a word: spelled like it, or sounding like it - " +
+				"vowels or letters left out, or a letter wrong. Says why each one matched.",
 			Parameters: map[string]any{
 				"query": map[string]any{
 					"type":        "string",

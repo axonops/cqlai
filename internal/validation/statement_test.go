@@ -230,3 +230,24 @@ func TestTheTableIsTheOneThePreferencesShow(t *testing.T) {
 	}
 	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, DefaultCommands())
 }
+
+// TestTheShellAsksAboutTheSameStatementsAsBefore, and a few more: a DELETE in
+// a BATCH, and one behind a comment.
+func TestTheShellAsksAboutTheSameStatementsAsBefore(t *testing.T) {
+	for cql, want := range map[string]bool{
+		"DROP TABLE shop.orders":                   true,
+		"drop table orders":                        true,
+		"ALTER TABLE shop.orders ADD x int":        true,
+		"DELETE FROM shop.orders WHERE id = 1":     true,
+		"TRUNCATE shop.orders":                     true,
+		"REVOKE SELECT ON ALL KEYSPACES FROM bob":  true,
+		"SELECT * FROM shop.orders":                false,
+		"INSERT INTO shop.orders (id) VALUES (1)":  false,
+		"CREATE TABLE shop.t (id int PRIMARY KEY)": false,
+		"/* tidy up */ DROP TABLE shop.orders":     true,
+		"BEGIN BATCH INSERT INTO shop.a (id) VALUES (1); DELETE FROM shop.b WHERE id = 1; APPLY BATCH": true,
+		"BEGIN BATCH INSERT INTO shop.a (id) VALUES (1); APPLY BATCH":                                  false,
+	} {
+		assert.Equal(t, want, IsDangerousCommand(cql), cql)
+	}
+}

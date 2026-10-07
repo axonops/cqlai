@@ -25,6 +25,12 @@ import (
 
 // mcpToolDefinitions is the tools only MCP clients are offered.
 func mcpToolDefinitions() []ToolDefinition {
+	defs := append(dataToolDefinitions(), clusterToolDefinitions()...)
+	return append(defs, changeToolDefinitions()...)
+}
+
+// dataToolDefinitions is the tools that read the schema and the data.
+func dataToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
 			Name: ToolConnectionInfo.String(),
@@ -100,8 +106,6 @@ func offered(def ToolDefinition, p policy.Policy) bool {
 		return p.Permits("SELECT")
 	case NeedList:
 		return p.Permits("LIST")
-	case NeedChange:
-		return p.PermitsAnyOf(validation.KindWrite, validation.KindSchema)
 	}
 	return false
 }
@@ -121,6 +125,18 @@ type ToolEnv struct {
 	// NotConnected says why there is no Session, when there is none. The
 	// server starts without a cluster and connects when it can.
 	NotConnected string
+
+	// Propose puts a statement in front of the user in the shell, unrun: a
+	// change proposed, or a statement the policy did not let the server run.
+	// Nil outside the shell.
+	Propose func(Handover)
+}
+
+// Handover is a statement given to the user to run themselves.
+type Handover struct {
+	Statement string
+	Notes     []string // what a proposed change will do
+	Refused   string   // why the server did not run it, when it was refused
 }
 
 // ToolOutcome is what a call came to: what goes back to the client, and what
@@ -130,8 +146,9 @@ type ToolOutcome struct {
 	Structured any    // the same, as JSON, when it has a shape
 	IsError    bool
 
-	Statement string // the CQL run, for the audit log
+	Statement string // the CQL run, or proposed, for the audit log
 	Refused   bool
+	Proposed  bool // a change, proposed for the user and not run
 	Reason    string
 	Rows      int
 }
@@ -143,6 +160,16 @@ type ToolOutcome struct {
 func CallMCPTool(ctx context.Context, env ToolEnv, name string, args map[string]any) ToolOutcome {
 	tool := ParseToolName(name)
 	def, ok := toolDefinition(tool)
+
+	// A tool the settings do not offer still hands back what it would have
+	// run, for the user to run themselves.
+	if ok && def.MCP && !offered(def, env.Policy) {
+		if params, err := ParseToolParamsFromMap(tool, args); err == nil && params.Validate() == nil {
+			if statement := statementOf(tool, params); statement != "" {
+				return handOff(env, statement, fmt.Sprintf("%s is not permitted on this server", neededCommand(def)))
+			}
+		}
+	}
 	if !ok || !def.MCP || !offered(def, env.Policy) {
 		// The same answer for a tool that does not exist and one the policy
 		// does not offer.
@@ -179,6 +206,20 @@ func CallMCPTool(ctx context.Context, env ToolEnv, name string, args map[string]
 		return runQuery(ctx, env, params.(QueryParams), false)
 	case ToolTraceQuery:
 		return runQuery(ctx, env, params.(QueryParams), true)
+	case ToolProposeChange:
+		return proposeChange(env, params.(ProposeChangeParams))
+	case ToolNodeStatus, ToolTableSize, ToolListRoles:
+		if o, ok := needsCluster(env); !ok {
+			return o
+		}
+		switch p := params.(type) {
+		case NodeStatusParams:
+			return nodeStatus(ctx, env, p)
+		case TableSizeParams:
+			return tableSize(ctx, env, p)
+		case ListRolesParams:
+			return listRoles(ctx, env, p)
+		}
 	}
 	return refusedOutcome(fmt.Sprintf("there is no tool called %s", name))
 }
@@ -222,6 +263,12 @@ func errorOutcome(message string) ToolOutcome {
 func gateOutcome(env ToolEnv, statement string, err error) ToolOutcome {
 	var refusal policy.Refusal
 	if errors.As(err, &refusal) {
+		// Refused by the settings, the statement goes back for the user to
+		// run. Not one the classifier cannot read as a single statement, nor
+		// GRANT, REVOKE, roles, users or USE, which are never handed on.
+		if _, err := validation.Classify(statement); err == nil {
+			return handOff(env, statement, refusal.Reason)
+		}
 		o := refusedOutcome(refusal.Reason)
 		o.Statement = statement
 		return o
@@ -248,7 +295,7 @@ func connectionInfo(env ToolEnv) ToolOutcome {
 			"some_tables_hidden":      len(p.Deny()) > 1,
 			"redacted_columns":        p.RedactPatterns(),
 			"scans_allowed":           p.AllowScans(),
-			"changes_need_the_user":   p.ConfirmChanges(),
+			"changes":                 "never run by this server: propose them with propose_change, for the user to run",
 			"max_rows":                p.MaxRows(),
 			"max_value_bytes":         p.MaxValueBytes(),
 			"max_calls_per_minute":    p.CallsPerMinute(),
@@ -592,22 +639,88 @@ func traceOf(s *db.Session) map[string]any {
 	return map[string]any{"note": "Cassandra had not written the trace yet; run trace_query again"}
 }
 
+// jsonOutcome is a result as JSON, with <, > and & written as they are: a
+// statement or a value with them in is read, and copied, as it was.
 func jsonOutcome(v any) ToolOutcome {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
 		return errorOutcome(err.Error())
 	}
-	return ToolOutcome{Text: string(data), Structured: v}
+	return ToolOutcome{Text: strings.TrimRight(b.String(), "\n"), Structured: v}
 }
 
-// MCPCanChange reports whether any MCP tool can change data or schema. Until
-// one can, permitting a write or schema command would do nothing, and the
-// preferences window says so rather than offer it.
-func MCPCanChange() bool {
-	for _, def := range allToolDefinitions() {
-		if def.MCP && def.Needs == NeedChange {
-			return true
-		}
+// handOff is a refusal that gives the statement back: the server was not
+// permitted to run it, and the user may run it themselves.
+func handOff(env ToolEnv, statement, reason string) ToolOutcome {
+	statement = strings.TrimRight(strings.TrimSpace(statement), "; \n\t") + ";"
+	out := map[string]any{
+		"refused":      reason,
+		"statement":    statement,
+		"for_the_user": "This server is not permitted to run it. Show the user the statement: they can run it themselves, in cqlai or cqlsh, if they choose.",
 	}
-	return false
+	if env.Propose != nil {
+		env.Propose(Handover{Statement: statement, Refused: reason})
+		out["in_cqlai"] = "It has also been put in cqlai's prompt, unrun, or in its Console if something was being typed there."
+	}
+	o := jsonOutcome(out)
+	o.IsError, o.Refused, o.Reason, o.Statement = true, true, reason, statement
+	return o
+}
+
+// neededCommand is the command a tool needs the settings to permit.
+func neededCommand(def ToolDefinition) string {
+	switch def.Needs {
+	case NeedSelect:
+		return "SELECT"
+	case NeedDescribe:
+		return "DESCRIBE"
+	case NeedList:
+		return "LIST"
+	}
+	return "it"
+}
+
+// statementOf is the CQL a tool runs for these arguments, for handing to the
+// user when the settings do not let the server run it. Empty for a tool with
+// no single statement to give.
+func statementOf(tool ToolName, params ToolParams) string {
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+	switch p := params.(type) {
+	case QueryParams:
+		return p.CQL
+	case DescribeParams:
+		switch p.Kind {
+		case "cluster":
+			return "DESCRIBE CLUSTER"
+		case "schema":
+			return "DESCRIBE SCHEMA"
+		case "keyspace":
+			return fmt.Sprintf(describeStatements[p.Kind], p.Keyspace)
+		}
+		return fmt.Sprintf(describeStatements[p.Kind], p.Keyspace, p.Name)
+	case GetSchemaParams:
+		return fmt.Sprintf("DESCRIBE TABLE %s.%s", p.Keyspace, p.Table)
+	case ListKeyspacesParams:
+		return "DESCRIBE KEYSPACES"
+	case ListTablesParams:
+		return "SELECT table_name FROM system_schema.tables WHERE keyspace_name = " + quote(p.Keyspace)
+	case NodeStatusParams:
+		for _, s := range nodeSections {
+			if s.name == p.Section {
+				return "SELECT * FROM system_views." + s.table
+			}
+		}
+	case TableSizeParams:
+		return "SELECT partitions_count, mean_partition_size FROM system.size_estimates WHERE keyspace_name = " +
+			quote(p.Keyspace) + " AND table_name = " + quote(p.Table)
+	case ListRolesParams:
+		if p.Role != "" {
+			return "LIST ALL PERMISSIONS OF " + quote(p.Role)
+		}
+		return "LIST ROLES"
+	}
+	return ""
 }

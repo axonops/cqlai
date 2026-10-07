@@ -62,7 +62,7 @@ type Config struct {
 // MCPConfig is what the MCP server may do: the policy as the file holds it.
 //
 // Every zero value is the safe one, because a setting the file leaves out reads
-// as zero: AllowScans and SkipConfirm are off, the limits fall back to their
+// as zero: AllowScans is off, the limits fall back to their
 // defaults, and Permit falls back to the read commands.
 type MCPConfig struct {
 	// Permit is the CQL commands the model may run. Nil - the key left out -
@@ -75,15 +75,13 @@ type MCPConfig struct {
 	Redact    []string `json:"redact,omitempty"`    // keyspace.table.column, with * for any part
 
 	AllowScans        bool `json:"allowScans,omitempty"`
-	SkipConfirm       bool `json:"skipConfirm,omitempty"`
 	MaxRows           int  `json:"maxRows,omitempty"`
 	MaxValueBytes     int  `json:"maxValueBytes,omitempty"`
 	MaxCallsPerMinute int  `json:"maxCallsPerMinute,omitempty"`
 
 	// Server-wide: these are read from the top of the file only.
-	Connections []string `json:"connections,omitempty"` // what use_connection may switch to
-	AuditLog    string   `json:"auditLog,omitempty"`
-	Port        int      `json:"port,omitempty"` // where the terminal app serves MCP, at 127.0.0.1
+	AuditLog string `json:"auditLog,omitempty"`
+	Port     int    `json:"port,omitempty"` // where the terminal app serves MCP, at 127.0.0.1
 }
 
 // AuthProvider holds authentication provider configuration

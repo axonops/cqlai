@@ -94,7 +94,9 @@ func HelpRows() [][]string {
 
 		// The MCP server
 		{"─────────", "─────────", "─────────────"},
-		{"MCP", "cqlai mcp", "This shell, serving MCP for the connection picked in it (read-only)"},
+		{"MCP", "cqlai mcp", "This shell, serving MCP for the connection picked in it"},
+		{"", "  Changes", "Never run by MCP: proposed into the prompt, confirmed before they run"},
+		{"", "  Refusals", "What the settings refuse comes back as the statement, for you to run"},
 		{"", "  Client setup", "FILE > MCP SERVER: the address, and the token to send"},
 		{"", "  Token", "~/.cqlai_mcp_token, readable only by you; delete it for a new one"},
 		{"", "  --headless", "No shell: MCP on stdin and stdout, for a client that starts cqlai"},
