@@ -581,7 +581,15 @@ func (m *MainModel) savePreferences() (*MainModel, tea.Cmd) {
 	}
 
 	m.closePreferences()
-	return m.report("Preferences saved to " + written + prefRestartNote + mcpRestartNote)
+	note := mcpRestartNote
+	if m.mcpHost != nil {
+		// Served from this shell, the MCP settings apply now: a permission
+		// taken away is gone from the next call.
+		m.mcpHost.Reload()
+		m.statusBar.MCP = mcpStatus(m.mcpHost)
+		note = " The MCP server uses its settings from now on."
+	}
+	return m.report("Preferences saved to " + written + prefRestartNote + note)
 }
 
 // prefRestartNote goes after what was saved, because none of it is in use yet.

@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package integration_test
@@ -6,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -24,10 +26,12 @@ func getTestSession(t *testing.T) (*db.Session, *router.MetaCommandHandler, func
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Try to connect to local Cassandra using db.Session
+	// The cluster to test against. These tests create and drop keyspaces, so
+	// on a machine with a cluster of its own on 9042 point them somewhere
+	// else: CQLAI_TEST_HOST and CQLAI_TEST_PORT. CI sets neither.
 	options := db.SessionOptions{
-		Host:     "127.0.0.1",
-		Port:     9042,
+		Host:     testHost(),
+		Port:     testPort(),
 		Keyspace: "system",
 		Username: "cassandra",
 		Password: "cassandra",
@@ -569,4 +573,20 @@ func stringPtr(s string) *string {
 
 func intPtr(i int) *int {
 	return &i
+}
+
+// testHost is the cluster the integration tests use.
+func testHost() string {
+	if host := os.Getenv("CQLAI_TEST_HOST"); host != "" {
+		return host
+	}
+	return "127.0.0.1"
+}
+
+// testPort is its port.
+func testPort() int {
+	if port, err := strconv.Atoi(os.Getenv("CQLAI_TEST_PORT")); err == nil && port > 0 {
+		return port
+	}
+	return 9042
 }

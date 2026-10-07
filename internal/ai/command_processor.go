@@ -197,12 +197,26 @@ func executeCommandFor(p policy.Policy, a *AI, toolName ToolName, arg string) *C
 			}
 			logger.DebugfToFile("CommandProcessor", "Fuzzy search returned %d candidates", len(candidates))
 
-			if len(candidates) > 0 {
+			// Keyspaces as well as tables: a keyspace remembered by its sound
+			// is as likely to be asked for as a table.
+			keyspaces := matchingKeyspaces(p, a, arg)
+
+			if len(candidates) > 0 || len(keyspaces) > 0 {
 				var sb strings.Builder
-				fmt.Fprintf(&sb, "Found %d tables matching '%s':\n", len(candidates), arg)
-				for _, c := range candidates {
-					fmt.Fprintf(&sb, "- %s.%s (score: %.2f, columns: %v)\n",
-						c.Keyspace, c.Table, c.Score, c.Columns)
+				if len(keyspaces) > 0 {
+					fmt.Fprintf(&sb, "Keyspaces matching '%s':\n", arg)
+					for _, k := range keyspaces {
+						fmt.Fprintf(&sb, "- %s (%s)\n", k.name, k.why)
+					}
+				}
+				if len(candidates) > 0 {
+					if len(keyspaces) > 0 {
+						sb.WriteString("\n")
+					}
+					fmt.Fprintf(&sb, "Found %d tables matching '%s':\n", len(candidates), arg)
+					for _, c := range candidates {
+						fmt.Fprintf(&sb, "- %s.%s (%s; columns: %v)\n", c.Keyspace, c.Table, tableMatchReason(arg, c), c.Columns)
+					}
 				}
 				return &CommandResult{Success: true, Data: sb.String()}
 			}
@@ -210,7 +224,7 @@ func executeCommandFor(p policy.Policy, a *AI, toolName ToolName, arg string) *C
 			// No direct matches, show available keyspaces
 			if keyspaces := visibleKeyspaces(p, a); len(keyspaces) > 0 {
 				var sb strings.Builder
-				fmt.Fprintf(&sb, "No tables found matching '%s'. Available keyspaces: %s\n",
+				fmt.Fprintf(&sb, "No keyspaces or tables match '%s'. Available keyspaces: %s\n",
 					arg, strings.Join(keyspaces[:min(10, len(keyspaces))], ", "))
 				sb.WriteString("\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace.")
 				return &CommandResult{Success: true, Data: sb.String()}
@@ -424,4 +438,40 @@ func NewSchemaTools(session *db.Session) (*AI, error) {
 	}
 	a.recordVersion()
 	return a, nil
+}
+
+// keyspaceMatch is a keyspace that matches a search, and why.
+type keyspaceMatch struct {
+	name  string
+	why   string
+	score float64
+}
+
+// matchingKeyspaces is the visible keyspaces that match a search - spelled
+// like it, or sounding like it - best first, at most ten.
+func matchingKeyspaces(p policy.Policy, a *AI, query string) []keyspaceMatch {
+	var matches []keyspaceMatch
+	for _, ks := range visibleKeyspaces(p, a) {
+		if score, why := nameMatch(query, ks); score > 0 {
+			matches = append(matches, keyspaceMatch{name: ks, why: why, score: score})
+		}
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].score != matches[j].score {
+			return matches[i].score > matches[j].score
+		}
+		return matches[i].name < matches[j].name
+	})
+	if len(matches) > 10 {
+		matches = matches[:10]
+	}
+	return matches
+}
+
+// tableMatchReason says why a table matched a search.
+func tableMatchReason(query string, c TableCandidate) string {
+	if _, why := nameMatch(query, c.Table); why != "" {
+		return why
+	}
+	return "a word or a column in it matches"
 }

@@ -42,17 +42,15 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 	flags.SetOutput(stderr)
 
 	var o Options
-	var permit, keyspaces, connections []string
+	var permit, keyspaces []string
 	flags.BoolVar(&o.Headless, "headless", false, "No terminal app: an MCP server on stdin and stdout, for a client that starts it")
 	flags.IntVar(&o.Port, "port", 0, "Terminal app: the port MCP is served on, at 127.0.0.1 (default: the settings', or 7845)")
-	flags.BoolVar(&o.Flags.ReadOnly, "read-only", false, "Permit the read commands only, whatever the config file says")
 	flags.StringSliceVar(&permit, "permit", nil, "Permit only these CQL commands, of those the config file permits")
 	flags.StringSliceVar(&keyspaces, "keyspaces", nil, "Only these keyspaces are visible, of those the config file allows")
 	flags.IntVar(&o.Flags.MaxRows, "max-rows", 0, "At most this many rows per call, if lower than the config file's")
 	flags.StringVar(&o.Flags.AuditLog, "audit-log", "", "Where the audit log goes (\"-\" turns it off)")
 	flags.StringVar(&o.ConfigFile, "config-file", "", "Path to config file (overrides default locations)")
 	flags.StringVar(&o.Connection, "connection", "", "Headless: the saved connection to use (default: the first saved one)")
-	flags.StringSliceVar(&connections, "connections", nil, "Headless: saved connections use_connection may switch to")
 	flags.StringVar(&o.Host, "host", "", "Headless: Cassandra host (overrides the connection)")
 	flags.IntVar(&o.PortOverride, "cassandra-port", 0, "Headless: Cassandra port (overrides the connection)")
 	flags.StringVarP(&o.Username, "username", "u", "", "Headless: username (overrides the connection)")
@@ -85,7 +83,6 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 		}
 	}
 	o.Flags.Keyspaces = keyspaces
-	o.Flags.Connections = connections
 	if o.ConfigFile == "" {
 		o.ConfigFile = os.Getenv("CQLAI_CONFIG_FILE")
 	}

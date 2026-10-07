@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/config"
 )
 
@@ -166,4 +167,60 @@ func TestTheHostFollowsTheConnection(t *testing.T) {
 
 	h.Drop()
 	assert.Contains(t, h.Status(), "pick one in FILE > CONNECT")
+}
+
+// TestTheStreamCarriesNotifications over HTTP, with the token, to a client
+// that asks for events; and is refused one that does not.
+func TestTheStreamCarriesNotifications(t *testing.T) {
+	h := startHost(t)
+
+	r, err := http.NewRequest(http.MethodGet, h.URL(), nil)
+	require.NoError(t, err)
+	r.Header.Set("Authorization", "Bearer "+h.token)
+	assert.Equal(t, http.StatusNotAcceptable, func() int {
+		resp, err := http.DefaultClient.Do(r)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}())
+
+	r.Header.Set("Accept", "text/event-stream")
+	resp, err := http.DefaultClient.Do(r)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	h.Use(config.Config{Host: "127.0.0.1", Port: 1}, "") // another connection: the tools may have changed
+	buf := make([]byte, 4096)
+	n, err := resp.Body.Read(buf)
+	require.NoError(t, err)
+	assert.Contains(t, string(buf[:n]), "notifications/")
+}
+
+// TestSavedSettingsApplyAtOnce: a permission taken away in the settings is
+// gone from the next call, without reconnecting.
+func TestSavedSettingsApplyAtOnce(t *testing.T) {
+	h := startHost(t)
+	file := h.opts.ConfigFile
+	require.NoError(t, os.WriteFile(file, []byte(`{"mcp": {"auditLog": "-"}, "connections": [{"name": "prod", "host": "127.0.0.1", "port": 1}]}`), 0o600))
+	h.Use(config.Config{Name: "prod", Host: "127.0.0.1", Port: 1}, "prod")
+
+	query := map[string]any{"cql": "SELECT * FROM shop.orders"}
+	o := ai.CallMCPTool(context.Background(), h.Env(), "query", query)
+	assert.NotContains(t, o.Text, "no tool called query", "SELECT is permitted: it gets as far as the cluster")
+
+	require.NoError(t, os.WriteFile(file, []byte(`{"mcp": {"auditLog": "-", "permit": ["DESCRIBE"]}, "connections": [{"name": "prod", "host": "127.0.0.1", "port": 1}]}`), 0o600))
+	h.Reload()
+
+	o = ai.CallMCPTool(context.Background(), h.Env(), "query", query)
+	assert.True(t, o.Refused)
+	assert.Contains(t, o.Text, "SELECT is not permitted on this server")
+	assert.Contains(t, o.Text, "SELECT * FROM shop.orders;", "handed back for the user to run")
+	assert.Equal(t, []string{"DESCRIBE"}, h.Policy().Permitted())
+
+	// Settings that cannot be read leave nothing permitted.
+	require.NoError(t, os.WriteFile(file, []byte(`{"mcp": {"auditLog": "-", "permit": ["SELEKT"]}}`), 0o600))
+	h.Reload()
+	assert.Empty(t, h.Policy().Permitted())
+	assert.Contains(t, h.Status(), "SELEKT")
 }

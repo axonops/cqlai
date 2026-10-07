@@ -22,12 +22,10 @@ const (
 // Flags is what the command line says. It can only narrow what the file
 // allows.
 type Flags struct {
-	ReadOnly    bool     // --read-only: the read commands only
-	Permit      []string // --permit: only these, of what the file permits; nil narrows nothing
-	Keyspaces   []string // --keyspaces
-	MaxRows     int      // --max-rows; 0 narrows nothing
-	Connections []string // --connections
-	AuditLog    string   // --audit-log; "-" is off
+	Permit    []string // --permit: only these, of what the file permits; nil narrows nothing
+	Keyspaces []string // --keyspaces
+	MaxRows   int      // --max-rows; 0 narrows nothing
+	AuditLog  string   // --audit-log; "-" is off
 }
 
 // Load builds the policy for one connection from three places: the top of the
@@ -67,9 +65,6 @@ func Load(file *config.Config, connection string, password string, timeout time.
 			return Policy{}, fmt.Errorf("connection %s: %w", connection, err)
 		}
 		permit = intersect(permit, ownSet)
-	}
-	if flags.ReadOnly {
-		permit = intersect(permit, kindSet(validation.KindRead))
 	}
 	if flags.Permit != nil {
 		flagSet, err := namedSet(flags.Permit)
@@ -117,27 +112,13 @@ func Load(file *config.Config, connection string, password string, timeout time.
 	// A yes/no that loosens is on only if the top turns it on, and the
 	// connection's block, when it has one, does too.
 	p.allowScans = top != nil && top.AllowScans && (own == nil || own.AllowScans)
-	p.skipConfirm = top != nil && top.SkipConfirm && (own == nil || own.SkipConfirm)
 
 	// Limits: the lowest that is set, or the default.
 	p.maxRows = lowest(DefaultMaxRows, field(top, own, func(m *config.MCPConfig) int { return m.MaxRows }), flags.MaxRows)
 	p.maxValueBytes = lowest(DefaultMaxValueBytes, field(top, own, func(m *config.MCPConfig) int { return m.MaxValueBytes }))
 	p.callsPerMinute = lowest(DefaultCallsPerMinute, field(top, own, func(m *config.MCPConfig) int { return m.MaxCallsPerMinute }))
 
-	// Server-wide: which connections it may switch to, and the audit log.
-	var allowed []string
-	if top != nil {
-		allowed = trimmed(top.Connections)
-	}
-	if len(flags.Connections) > 0 {
-		if len(allowed) == 0 {
-			allowed = trimmed(flags.Connections)
-		} else {
-			allowed = sortedKeys(intersect(toFoldSet(allowed), toFoldSet(flags.Connections)))
-		}
-	}
-	p.connections = allowed
-
+	// Server-wide: the audit log.
 	p.auditLog = DefaultAuditLog()
 	if top != nil && top.AuditLog != "" {
 		p.auditLog = top.AuditLog
@@ -181,19 +162,13 @@ func namedSet(names []string) (map[string]bool, error) {
 		if !ok {
 			return nil, fmt.Errorf("%q is not a command that can be permitted (%s)", name, validation.NeverPermitted)
 		}
+		if command.Kind != validation.KindRead {
+			return nil, fmt.Errorf("%s changes data or schema, which the MCP server never runs: it proposes the statement for you to run. "+
+				"Take %s out of the permitted commands", command.Name, command.Name)
+		}
 		set[command.Name] = true
 	}
 	return set, nil
-}
-
-func kindSet(kind validation.Kind) map[string]bool {
-	set := map[string]bool{}
-	for _, c := range validation.Commands {
-		if c.Kind == kind {
-			set[c.Name] = true
-		}
-	}
-	return set
 }
 
 func field(top, own *config.MCPConfig, get func(*config.MCPConfig) int) int {
@@ -224,14 +199,6 @@ func toSet(names []string) map[string]bool {
 	set := map[string]bool{}
 	for _, n := range trimmed(names) {
 		set[n] = true
-	}
-	return set
-}
-
-func toFoldSet(names []string) map[string]bool {
-	set := map[string]bool{}
-	for _, n := range trimmed(names) {
-		set[strings.ToLower(n)] = true
 	}
 	return set
 }

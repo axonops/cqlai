@@ -30,7 +30,6 @@ func TestTheZeroValueAllowsNothing(t *testing.T) {
 	var p Policy
 	assert.Empty(t, p.Permitted())
 	assert.False(t, p.Visible("shop"))
-	assert.False(t, p.ConfirmChanges() == false, "and it asks before a change")
 	_, err := p.Check("SELECT * FROM shop.orders")
 	assert.Error(t, err)
 }
@@ -42,7 +41,6 @@ func TestNothingConfiguredIsTheReadCommands(t *testing.T) {
 	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, p.Permitted())
 	assert.True(t, p.Visible("shop"))
 	assert.False(t, p.Visible("system_auth"))
-	assert.True(t, p.ConfirmChanges())
 	assert.False(t, p.AllowScans())
 	assert.Equal(t, DefaultMaxRows, p.MaxRows())
 }
@@ -74,16 +72,16 @@ func TestATypoStopsTheServer(t *testing.T) {
 func TestTheStrictestOfThreeWins(t *testing.T) {
 	file := &config.Config{
 		MCP: &config.MCPConfig{
-			Permit:     permitList("SELECT", "DESCRIBE", "INSERT", "UPDATE"),
+			Permit:     permitList("SELECT", "DESCRIBE", "LIST"),
 			Keyspaces:  []string{"shop", "catalog", "audit"},
 			Deny:       []string{"shop.secrets"},
 			Redact:     []string{"*.*.card_number"},
-			AllowScans: true, SkipConfirm: true,
-			MaxRows: 500,
+			AllowScans: true,
+			MaxRows:    500,
 		},
 		Connections: []config.Config{
 			{Name: "prod", MCP: &config.MCPConfig{
-				Permit:    permitList("SELECT", "DESCRIBE", "INSERT", "DROP"),
+				Permit:    permitList("SELECT", "DESCRIBE"),
 				Keyspaces: []string{"shop", "catalog"},
 				Redact:    []string{"shop.customers.email"},
 				MaxRows:   50,
@@ -93,31 +91,30 @@ func TestTheStrictestOfThreeWins(t *testing.T) {
 	}
 
 	prod := load(t, file, "prod", Flags{})
-	assert.Equal(t, []string{"SELECT", "DESCRIBE", "INSERT"}, prod.Permitted(), "DROP is not in the top, UPDATE is not in prod")
+	assert.Equal(t, []string{"SELECT", "DESCRIBE"}, prod.Permitted(), "LIST is not in prod")
 	assert.True(t, prod.Visible("shop"))
 	assert.False(t, prod.Visible("audit"), "prod narrowed the keyspaces")
 	assert.False(t, prod.VisibleTable("shop", "secrets"), "the top's deny still holds")
 	assert.True(t, prod.Redacted("shop", "customers", "email"))
 	assert.True(t, prod.Redacted("shop", "payments", "card_number"), "the top's redaction still holds")
 	assert.False(t, prod.AllowScans(), "prod's block did not turn scans on")
-	assert.True(t, prod.ConfirmChanges(), "nor turn confirmation off")
 	assert.Equal(t, 50, prod.MaxRows())
 
 	// A connection with no block is what the top says.
 	local := load(t, file, "local", Flags{})
-	assert.Equal(t, []string{"SELECT", "DESCRIBE", "INSERT", "UPDATE"}, local.Permitted())
+	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, local.Permitted())
 	assert.True(t, local.AllowScans())
-	assert.False(t, local.ConfirmChanges())
 	assert.Equal(t, 500, local.MaxRows())
 
 	// The flags narrow both, and never widen.
-	flagged := load(t, file, "local", Flags{ReadOnly: true, Keyspaces: []string{"shop", "elsewhere"}, MaxRows: 1000})
+	flagged := load(t, file, "local", Flags{Permit: []string{"SELECT", "DESCRIBE"}, Keyspaces: []string{"shop", "elsewhere"}, MaxRows: 1000})
 	assert.Equal(t, []string{"SELECT", "DESCRIBE"}, flagged.Permitted())
 	assert.True(t, flagged.Visible("shop"))
 	assert.False(t, flagged.Visible("elsewhere"), "a keyspace the file does not allow stays hidden")
 	assert.Equal(t, 500, flagged.MaxRows(), "a higher limit on the command line does not raise it")
 
-	flagged = load(t, file, "local", Flags{Permit: []string{"SELECT", "TRUNCATE"}})
+	file.Connections[1].MCP = &config.MCPConfig{Permit: permitList("SELECT")}
+	flagged = load(t, file, "local", Flags{Permit: []string{"SELECT", "DESCRIBE"}})
 	assert.Equal(t, []string{"SELECT"}, flagged.Permitted(), "--permit cannot add what the file does not permit")
 }
 
@@ -125,14 +122,13 @@ func TestTheStrictestOfThreeWins(t *testing.T) {
 func TestAConnectionCannotWidenTheTop(t *testing.T) {
 	file := &config.Config{
 		Connections: []config.Config{{Name: "wide", MCP: &config.MCPConfig{
-			Permit:     permitList("SELECT", "DROP", "TRUNCATE"),
-			AllowScans: true, SkipConfirm: true,
+			Permit:     permitList("SELECT", "DESCRIBE"),
+			AllowScans: true,
 		}}},
 	}
 	p := load(t, file, "wide", Flags{})
-	assert.Equal(t, []string{"SELECT"}, p.Permitted(), "the top permits the read commands only")
-	assert.False(t, p.AllowScans())
-	assert.True(t, p.ConfirmChanges())
+	assert.Equal(t, []string{"SELECT", "DESCRIBE"}, p.Permitted())
+	assert.False(t, p.AllowScans(), "the top did not turn scans on")
 }
 
 func gate(t *testing.T, permit ...string) Policy {
@@ -151,11 +147,10 @@ func gate(t *testing.T, permit ...string) Policy {
 
 // TestTheGateRefusesWhatIsNotPermitted.
 func TestTheGateRefusesWhatIsNotPermitted(t *testing.T) {
-	p := gate(t, "SELECT", "INSERT")
+	p := gate(t, "SELECT")
 
 	for _, cql := range []string{
 		"SELECT * FROM shop.orders WHERE customer = 'a'",
-		"INSERT INTO shop.orders (customer, day) VALUES ('a', 'b')",
 	} {
 		_, err := p.Check(cql)
 		assert.NoError(t, err, cql)
@@ -189,19 +184,41 @@ func TestTheGateRefusesWhatIsNotPermitted(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestEveryStatementInABatchHasToBePermitted.
-func TestEveryStatementInABatchHasToBePermitted(t *testing.T) {
-	p := gate(t, "BATCH", "INSERT")
+// TestAChangeCanOnlyBeProposed: no setting permits one to run, and a
+// proposal still cannot reach what the policy hides.
+func TestAChangeCanOnlyBeProposed(t *testing.T) {
+	for _, command := range []string{"INSERT", "UPDATE", "DELETE", "BATCH", "CREATE", "ALTER", "DROP", "TRUNCATE"} {
+		_, err := Load(&config.Config{MCP: &config.MCPConfig{Permit: permitList("SELECT", command)}}, "", "", 0, Flags{})
+		require.Error(t, err, command)
+		assert.Contains(t, err.Error(), "never runs", command)
+	}
 
-	_, err := p.Check("BEGIN BATCH INSERT INTO shop.orders (customer) VALUES ('a'); APPLY BATCH")
-	assert.NoError(t, err)
+	p := gate(t, "SELECT")
+	_, err := p.Check("INSERT INTO shop.orders (customer) VALUES ('a')")
+	assert.Error(t, err, "and the gate refuses to run one")
 
-	_, err = p.Check("BEGIN BATCH INSERT INTO shop.orders (customer) VALUES ('a'); DELETE FROM shop.orders WHERE customer = 'a'; APPLY BATCH")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "DELETE")
-
-	_, err = p.Check("BEGIN BATCH INSERT INTO shop.secrets (id) VALUES (1); APPLY BATCH")
-	assert.Error(t, err, "a hidden table in a batch is still hidden")
+	for _, cql := range []string{
+		"INSERT INTO shop.orders (customer) VALUES ('a')",
+		"DROP TABLE shop.orders",
+		"ALTER TABLE shop.orders ADD note text",
+		"BEGIN BATCH INSERT INTO shop.orders (customer) VALUES ('a'); DELETE FROM shop.orders WHERE customer = 'b'; APPLY BATCH",
+	} {
+		_, err := p.CheckProposal(cql)
+		assert.NoError(t, err, cql)
+	}
+	for cql, why := range map[string]string{
+		"SELECT * FROM shop.orders":         "does not change anything",
+		"DROP TABLE shop.secrets":           "not visible",
+		"DROP TABLE orders":                 "name the keyspace",
+		"DROP KEYSPACE billing":             "not visible",
+		"GRANT ALL ON ALL KEYSPACES TO bob": "never permitted",
+		"BEGIN BATCH INSERT INTO shop.secrets (id) VALUES (1); APPLY BATCH": "not visible",
+		"DROP TABLE shop.orders; DROP TABLE shop.customers":                 "one statement",
+	} {
+		_, err := p.CheckProposal(cql)
+		require.Error(t, err, cql)
+		assert.Contains(t, err.Error(), why, cql)
+	}
 }
 
 // TestScansAreRefusedUnlessAllowed.

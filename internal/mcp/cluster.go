@@ -104,6 +104,22 @@ func (c *cluster) env(pol policy.Policy) ai.ToolEnv {
 	}
 }
 
+// version is the cluster's schema version, or "" with no session. It does
+// not connect.
+func (c *cluster) version() string {
+	c.mu.Lock()
+	sess := c.session
+	c.mu.Unlock()
+	if sess == nil {
+		return ""
+	}
+	v, err := sess.SchemaVersion()
+	if err != nil {
+		return ""
+	}
+	return v
+}
+
 // close closes the session, if there is one.
 func (c *cluster) close() {
 	c.mu.Lock()
@@ -135,3 +151,4 @@ type fixed struct {
 
 func (f fixed) Policy() policy.Policy { return f.pol }
 func (f fixed) Env() ai.ToolEnv       { return f.link.env(f.pol) }
+func (f fixed) SchemaVersion() string { return f.link.version() }

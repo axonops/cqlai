@@ -52,6 +52,16 @@ func NewConfirmationModal(command string) Modal {
 	}
 }
 
+// NewProposalModal asks before running a change the MCP client proposed. It
+// is the confirmation for a dangerous command, worded for where it came from,
+// and asked whatever the settings say.
+func NewProposalModal(command string) Modal {
+	modal := NewConfirmationModal(command)
+	modal.Title = "Run the statement from the MCP client?"
+	modal.Message = "cqlai has not run it. Read it, and what the Console says about it, before you run it:"
+	return modal
+}
+
 // NewQuitModal asks whether to leave.
 //
 // Only the FILE menu raises it. Ctrl+C and Ctrl+D ask their own way - press it

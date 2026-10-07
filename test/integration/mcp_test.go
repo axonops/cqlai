@@ -130,7 +130,11 @@ func TestMCPHidesWhatThePolicyHides(t *testing.T) {
 	} {
 		o := callTool(t, env, "query", map[string]any{"cql": cql})
 		assert.True(t, o.Refused, cql)
-		assert.NotContains(t, o.Text, "ann@example.com")
+		// Nothing from the table comes back: only the statement, the model's
+		// own, handed back for the user to run - a guess written into a WHERE
+		// clause included.
+		assert.NotContains(t, o.Text, `"rows"`, cql)
+		assert.Equal(t, cql+";", o.Statement, cql)
 	}
 
 	// A hidden table is refused, and left out of everything that lists.
@@ -215,4 +219,92 @@ func TestMCPReadsVirtualTables(t *testing.T) {
 	o = callTool(t, env, "describe", map[string]any{"kind": "table", "keyspace": "system_views", "name": "clients"})
 	require.False(t, o.IsError, o.Text)
 	assert.True(t, strings.Contains(o.Text, "VIRTUAL TABLE system_views.clients"), o.Text)
+}
+
+// TestMCPNodeStatus reads the node's virtual tables, and hides a setting that
+// holds a secret.
+func TestMCPNodeStatus(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+	if !env.Session.IsVersion4OrHigher() {
+		o := callTool(t, env, "node_status", map[string]any{"section": "thread_pools"})
+		assert.True(t, o.IsError, "before 4.0 it says there is nothing to read")
+		return
+	}
+
+	r := decode(t, callTool(t, env, "node_status", map[string]any{"section": "thread_pools", "filter": "read"}))
+	require.NotEmpty(t, r.Rows)
+	for _, row := range r.Rows {
+		assert.Contains(t, strings.ToLower(row["name"].(string)), "read")
+	}
+
+	r = decode(t, callTool(t, env, "node_status", map[string]any{"section": "settings", "filter": "password"}))
+	for _, row := range r.Rows {
+		assert.Equal(t, policy.RedactedValue, row["value"], "%v", row["name"])
+	}
+
+	// Without system_views visible, it is refused like any other read.
+	hidden := mcpEnv(t, &config.MCPConfig{Keyspaces: []string{"test_mcp"}})
+	o := callTool(t, hidden, "node_status", map[string]any{"section": "clients"})
+	assert.True(t, o.Refused, o.Text)
+}
+
+// TestMCPTableSizeAndRoles.
+func TestMCPTableSizeAndRoles(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+
+	o := callTool(t, env, "table_size", map[string]any{"keyspace": "test_mcp", "table": "orders"})
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, `"table": "orders"`)
+
+	o = callTool(t, env, "table_size", map[string]any{"keyspace": "test_mcp", "table": "secrets"})
+	assert.True(t, o.Refused)
+
+	o = callTool(t, env, "list_roles", map[string]any{})
+	if o.IsError && (strings.Contains(o.Text, "anonymous") || strings.Contains(o.Text, "logged in")) {
+		t.Skip("the cluster has no authentication, so it has no roles to list")
+	}
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, "cassandra")
+	assert.NotContains(t, o.Text, "salted_hash")
+
+	o = callTool(t, env, "list_roles", map[string]any{"role": "cassandra' OR '1'='1"})
+	assert.NotContains(t, o.Text, "salted_hash", "a quote in the role name stays inside the name")
+}
+
+// TestMCPSchemaResources: a keyspace's definition, without its hidden table.
+func TestMCPSchemaResources(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+
+	assert.Contains(t, ai.SchemaResources(env), "test_mcp")
+	assert.NotContains(t, ai.SchemaResources(env), "system_auth")
+
+	o := ai.ReadSchemaResource(env, "cql://schema/test_mcp")
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, "CREATE TABLE test_mcp.orders")
+	assert.NotContains(t, o.Text, "test_mcp.secrets")
+
+	o = ai.ReadSchemaResource(env, "cql://schema/test_mcp/secrets")
+	assert.True(t, o.IsError)
+}
+
+// TestMCPProposesWithoutRunning: a proposed change says what it will do,
+// from the table's real key, and nothing happens to the table.
+func TestMCPProposesWithoutRunning(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+	var handed string
+	env.Propose = func(h ai.Handover) { handed = h.Statement }
+
+	o := callTool(t, env, "propose_change", map[string]any{"cql": "DELETE FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'"})
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, "the whole partition", "the key came from the table")
+	assert.Equal(t, "DELETE FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1';", handed)
+
+	o = callTool(t, env, "propose_change", map[string]any{"cql": "DROP TABLE test_mcp.orders"})
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, "has not run this")
+
+	still := decode(t, callTool(t, env, "query", map[string]any{
+		"cql": "SELECT COUNT(*) FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'",
+	}))
+	assert.EqualValues(t, 3, still.Rows[0]["count"], "nothing was deleted, and the table is still there")
 }

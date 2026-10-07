@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 type noCluster struct{ pol policy.Policy }
 
 func (n noCluster) Policy() policy.Policy { return n.pol }
+func (n noCluster) SchemaVersion() string { return "" }
 func (n noCluster) Env() ai.ToolEnv {
 	return ai.ToolEnv{Policy: n.pol, NotConnected: "not connected to nowhere:9042"}
 }
@@ -113,6 +115,7 @@ func TestTheToolsFollowThePermittedCommands(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		"fuzzy_search", "get_schema", "list_keyspaces", "list_tables",
 		"connection_info", "describe", "query", "trace_query",
+		"node_status", "table_size", "list_roles", "propose_change",
 	}, toolNames(t, session))
 
 	noSelect := []string{"DESCRIBE"}
@@ -124,8 +127,8 @@ func TestTheToolsFollowThePermittedCommands(t *testing.T) {
 
 	nothing := []string{}
 	session, _ = serve(t, &config.Config{MCP: &config.MCPConfig{Permit: &nothing}}, policy.Flags{})
-	assert.Equal(t, []string{"connection_info"}, toolNames(t, session),
-		"with nothing permitted, only what the server may do can be asked")
+	assert.Equal(t, []string{"connection_info", "propose_change"}, toolNames(t, session),
+		"with nothing permitted, only what the server may do can be asked, and changes proposed")
 
 	// And none of the CHAT view's planner tools, ever.
 	for _, name := range []string{"submit_query_plan", "user_selection", "not_enough_info", "not_relevant", "info"} {
@@ -133,15 +136,17 @@ func TestTheToolsFollowThePermittedCommands(t *testing.T) {
 	}
 }
 
-// TestAToolNotOfferedCannotBeCalled, and says the same as one that does not
-// exist.
-func TestAToolNotOfferedCannotBeCalled(t *testing.T) {
+// TestAToolNotOfferedHandsBackItsStatement: it does not run, and the caller
+// gets the statement to give the user. A tool that does not exist, or one
+// the server never offers, is still just refused.
+func TestAToolNotOfferedHandsBackItsStatement(t *testing.T) {
 	nothing := []string{}
 	session, _ := serve(t, &config.Config{MCP: &config.MCPConfig{Permit: &nothing}}, policy.Flags{})
 
 	text, isError := call(t, session, "query", map[string]any{"cql": "SELECT * FROM a.b"})
 	assert.True(t, isError)
-	assert.Equal(t, "refused: there is no tool called query", text)
+	assert.Contains(t, text, `"refused": "SELECT is not permitted on this server"`)
+	assert.Contains(t, text, `"statement": "SELECT * FROM a.b;"`)
 
 	text, isError = call(t, session, "submit_query_plan", map[string]any{"operation": "DROP"})
 	assert.True(t, isError)
@@ -189,7 +194,7 @@ func TestTheGateAnswersThroughTheProtocol(t *testing.T) {
 func TestConnectionInfoSaysWhatIsAllowedAndNotWhatIsHidden(t *testing.T) {
 	session, _ := serve(t, &config.Config{MCP: &config.MCPConfig{
 		Deny: []string{"shop.secrets"},
-	}}, policy.Flags{ReadOnly: true})
+	}}, policy.Flags{})
 
 	text, isError := call(t, session, "connection_info", nil)
 	require.False(t, isError, text)
@@ -224,4 +229,81 @@ func TestTheServerRunsWithoutACluster(t *testing.T) {
 
 	text, _ = call(t, session, "query", map[string]any{"cql": "DROP TABLE shop.orders"})
 	assert.Contains(t, text, "DROP is not permitted", "the gate answers first")
+}
+
+// TestPromptsAndResourcesThroughTheSDK.
+func TestPromptsAndResourcesThroughTheSDK(t *testing.T) {
+	session, _ := serve(t, &config.Config{}, policy.Flags{})
+	ctx := context.Background()
+
+	prompts, err := session.ListPrompts(ctx, nil)
+	require.NoError(t, err)
+	require.Len(t, prompts.Prompts, 2)
+
+	got, err := session.GetPrompt(ctx, &sdk.GetPromptParams{Name: "diagnose_query", Arguments: map[string]string{"cql": "SELECT * FROM shop.orders"}})
+	require.NoError(t, err)
+	require.Len(t, got.Messages, 1)
+	assert.Contains(t, got.Messages[0].Content.(*sdk.TextContent).Text, "trace_query")
+
+	resources, err := session.ListResources(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, resources.Resources, "no cluster, no keyspaces")
+
+	templates, err := session.ListResourceTemplates(ctx, nil)
+	require.NoError(t, err)
+	require.Len(t, templates.ResourceTemplates, 1)
+	assert.Equal(t, "cql://schema/{keyspace}/{table}", templates.ResourceTemplates[0].URITemplate)
+
+	_, err = session.ReadResource(ctx, &sdk.ReadResourceParams{URI: "cql://schema/shop"})
+	assert.Error(t, err, "no cluster to describe it from")
+}
+
+// changingSource is a source whose schema version changes when told to.
+type changingSource struct {
+	noCluster
+	version func() string
+}
+
+func (c changingSource) SchemaVersion() string { return c.version() }
+
+// TestASchemaChangeIsNotified over stdio, to the SDK's client.
+func TestASchemaChangeIsNotified(t *testing.T) {
+	pol, err := policy.Load(&config.Config{}, "", "", time.Second, policy.Flags{})
+	require.NoError(t, err)
+	version := "a"
+	var mu sync.Mutex
+	source := changingSource{noCluster{pol}, func() string { mu.Lock(); defer mu.Unlock(); return version }}
+
+	audit, _ := policy.OpenAudit(policy.AuditOff)
+	server := NewServer(source, policy.NewLimiter(100), audit, "test")
+	toServer, fromClient := io.Pipe()
+	toClient, fromServer := io.Pipe()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Serve(ctx, toServer, fromServer) }()
+	go server.WatchSchema(ctx, 10*time.Millisecond)
+
+	changed := make(chan struct{}, 1)
+	client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, &sdk.ClientOptions{
+		ResourceListChangedHandler: func(context.Context, *sdk.ResourceListChangedRequest) {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		},
+	})
+	session, err := client.Connect(ctx, &sdk.IOTransport{Reader: toClient, Writer: fromClient}, nil)
+	require.NoError(t, err)
+	defer session.Close()
+
+	time.Sleep(50 * time.Millisecond) // the watcher has seen "a"
+	mu.Lock()
+	version = "b"
+	mu.Unlock()
+
+	select {
+	case <-changed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the client was not told the schema changed")
+	}
 }

@@ -31,6 +31,9 @@ const maxMessageBytes = 4 << 20
 type Source interface {
 	Policy() policy.Policy
 	Env() ai.ToolEnv
+	// SchemaVersion is the cluster's schema version, or "" without a
+	// cluster. It never connects: it is asked every few seconds.
+	SchemaVersion() string
 }
 
 // Server answers MCP messages, from stdin or over HTTP.
@@ -48,6 +51,12 @@ type Server struct {
 	mu          sync.Mutex
 	initialized bool
 	running     map[string]context.CancelFunc // tool calls in flight, by request id
+
+	// Whoever is listening for notifications: stdout over stdio, each open
+	// stream over HTTP.
+	subMu   sync.Mutex
+	subs    map[int]chan []byte
+	nextSub int
 }
 
 // NewServer is a server that offers the tools its source's policy allows,
@@ -60,6 +69,66 @@ func NewServer(source Source, limiter *policy.Limiter, audit *policy.Auditor, ve
 		version:     version,
 		requireInit: true,
 		running:     map[string]context.CancelFunc{},
+		subs:        map[int]chan []byte{},
+	}
+}
+
+// subscribe is a channel of notifications, until unsubscribe.
+func (s *Server) subscribe() (int, <-chan []byte) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	s.nextSub++
+	ch := make(chan []byte, 16)
+	s.subs[s.nextSub] = ch
+	return s.nextSub, ch
+}
+
+func (s *Server) unsubscribe(id int) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	if ch, ok := s.subs[id]; ok {
+		close(ch)
+		delete(s.subs, id)
+	}
+}
+
+// Notify tells every listener something changed. A listener too slow to take
+// it misses it: a notification is a hint to ask again, not data.
+func (s *Server) Notify(method string) {
+	data, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method})
+	if err != nil {
+		return
+	}
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for _, ch := range s.subs {
+		select {
+		case ch <- data:
+		default:
+		}
+	}
+}
+
+// WatchSchema tells listeners when the cluster's schema changes, wherever it
+// was changed, until ctx is done. The version is one row to ask for.
+func (s *Server) WatchSchema(ctx context.Context, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	last := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			version := s.source.SchemaVersion()
+			if version == "" {
+				continue
+			}
+			if last != "" && version != last {
+				s.Notify("notifications/resources/list_changed")
+			}
+			last = version
+		}
 	}
 }
 
@@ -75,6 +144,15 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		defer outMu.Unlock()
 		_, _ = out.Write(append(reply, '\n'))
 	}
+
+	// Notifications go out on the same stream as replies.
+	sub, notes := s.subscribe()
+	defer s.unsubscribe(sub)
+	go func() {
+		for note := range notes {
+			write(note)
+		}
+	}()
 
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), maxMessageBytes)
@@ -185,6 +263,16 @@ func (s *Server) request(ctx context.Context, m message) []byte {
 		return reply(m.ID, s.toolsList(), nil)
 	case "tools/call":
 		return s.toolsCall(ctx, m)
+	case "resources/list":
+		return reply(m.ID, s.resourcesList(), nil)
+	case "resources/templates/list":
+		return reply(m.ID, s.resourceTemplates(), nil)
+	case "resources/read":
+		return s.resourcesRead(m)
+	case "prompts/list":
+		return reply(m.ID, map[string]any{"prompts": ai.MCPPrompts(s.source.Policy())}, nil)
+	case "prompts/get":
+		return s.promptsGet(m)
 	}
 	return reply(m.ID, nil, &rpcError{Code: codeMethodNotFound, Message: "no method " + m.Method})
 }
@@ -211,7 +299,9 @@ func (s *Server) initialize(params json.RawMessage) any {
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities": map[string]any{
-			"tools": map[string]any{"listChanged": false},
+			"tools":     map[string]any{"listChanged": true},
+			"resources": map[string]any{"listChanged": true},
+			"prompts":   map[string]any{"listChanged": false},
 		},
 		"serverInfo": map[string]any{"name": "cqlai", "version": s.version},
 		"instructions": "Tools for one Apache Cassandra cluster. Call connection_info first: it says which " +
@@ -310,6 +400,8 @@ func (s *Server) call(ctx context.Context, name string, args map[string]any) any
 		entry.Decision = "refused"
 	case outcome.IsError:
 		entry.Decision = "failed"
+	case outcome.Proposed:
+		entry.Decision = "proposed"
 	default:
 		entry.Decision = "allowed"
 	}
@@ -332,4 +424,81 @@ func reply(id json.RawMessage, result any, rpcErr *rpcError) []byte {
 		return nil
 	}
 	return data
+}
+
+// resourcesList is the visible keyspaces, each a resource holding its
+// definition.
+func (s *Server) resourcesList() any {
+	resources := []map[string]any{}
+	for _, keyspace := range ai.SchemaResources(s.source.Env()) {
+		resources = append(resources, map[string]any{
+			"uri":         ai.SchemaResourceURI(keyspace, ""),
+			"name":        keyspace,
+			"description": "The CQL definition of keyspace " + keyspace + " and everything in it",
+			"mimeType":    "text/plain",
+		})
+	}
+	return map[string]any{"resources": resources}
+}
+
+// resourceTemplates is any table's definition.
+func (s *Server) resourceTemplates() any {
+	templates := []map[string]any{}
+	if s.source.Policy().Permits("DESCRIBE") {
+		templates = append(templates, map[string]any{
+			"uriTemplate": ai.SchemaResourceTemplate,
+			"name":        "table",
+			"description": "The CQL definition of a table",
+			"mimeType":    "text/plain",
+		})
+	}
+	return map[string]any{"resourceTemplates": templates}
+}
+
+// resourcesRead is one resource's text, under the policy, in the audit log.
+func (s *Server) resourcesRead(m message) []byte {
+	var p struct {
+		URI string `json:"uri"`
+	}
+	if err := json.Unmarshal(m.Params, &p); err != nil || p.URI == "" {
+		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: "resources/read needs a uri"})
+	}
+
+	start := time.Now()
+	env := s.source.Env()
+	outcome := ai.ReadSchemaResource(env, p.URI)
+	entry := policy.Entry{Time: start.UTC(), Connection: env.Policy.Connection(), Tool: "resources/read " + p.URI,
+		Reason: outcome.Reason, DurationMS: time.Since(start).Milliseconds(), Decision: "allowed"}
+	switch {
+	case outcome.Refused:
+		entry.Decision = "refused"
+	case outcome.IsError:
+		entry.Decision = "failed"
+	}
+	s.audit.Log(entry)
+
+	if outcome.IsError {
+		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: outcome.Text})
+	}
+	return reply(m.ID, map[string]any{"contents": []map[string]any{
+		{"uri": p.URI, "mimeType": "text/plain", "text": outcome.Text},
+	}}, nil)
+}
+
+// promptsGet is a prompt with its arguments filled in.
+func (s *Server) promptsGet(m message) []byte {
+	var p struct {
+		Name      string            `json:"name"`
+		Arguments map[string]string `json:"arguments"`
+	}
+	if err := json.Unmarshal(m.Params, &p); err != nil || p.Name == "" {
+		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: "prompts/get needs a name"})
+	}
+	text, err := ai.GetMCPPrompt(s.source.Env(), p.Name, p.Arguments)
+	if err != nil {
+		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: err.Error()})
+	}
+	return reply(m.ID, map[string]any{"messages": []map[string]any{
+		{"role": "user", "content": map[string]any{"type": "text", "text": text}},
+	}}, nil)
 }

@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/validation"
 )
@@ -41,23 +40,22 @@ func mcpSpecs() []prefSpec {
 		{path: "MCP.MaxRows", label: "Max rows", kind: prefNumber, hint: "the most rows one call returns; 100 unless set"},
 		{path: "MCP.MaxValueBytes", label: "Max value bytes", kind: prefNumber, hint: "longer values are cut; 4096 unless set"},
 		{path: "MCP.MaxCallsPerMinute", label: "Calls per minute", kind: prefNumber, hint: "60 unless set"},
-		{path: "MCP.Connections", label: "Switch connections to", kind: prefList, topOnly: true, hint: "the saved connections the model may switch to"},
 		{path: "MCP.AuditLog", label: "Audit log", kind: prefPath, topOnly: true, hint: "~/.cqlai_mcp_audit.log unless set; - turns it off"},
 		{path: "MCP.Port", label: "Port", kind: prefNumber, topOnly: true, hint: "where `cqlai mcp` serves MCP, on 127.0.0.1 only; 7845 unless set"},
 	}
-	// Skipping confirmation means something only once the server can change
-	// anything.
-	if ai.MCPCanChange() {
-		specs = append(specs[:4], append([]prefSpec{
-			{path: "MCP.SkipConfirm", label: "Skip confirmation", kind: prefYesNo, hint: "run changes without asking the user first - for a test cluster"},
-		}, specs[4:]...)...)
-	}
-	for i, c := range validation.Commands {
+	// The read commands only. A change is never run by the MCP server - a
+	// model proposes it, and the user runs it - so there is nothing to permit.
+	first := true
+	for _, c := range validation.Commands {
+		if c.Kind != validation.KindRead {
+			continue
+		}
 		spec := prefSpec{
 			path: "MCP.Permit", label: c.Name, kind: prefMember, member: c.Name,
-			hint: c.Covers + " - " + validation.NeverPermitted,
+			hint: c.Covers + " - changes are only ever proposed, for you to run",
 		}
-		if i == 0 {
+		if first {
+			first = false
 			spec.section = mcpCommandsSection
 		}
 		specs = append(specs, spec)
@@ -102,21 +100,11 @@ func (p *preferences) loadMembers(cfg *config.Config) {
 		f.yes = containsFold(permitted, f.spec.member)
 		f.kept = f.yes && permitOf(cfg) != nil
 		f.disabled = ""
-		switch {
-		case !ai.MCPCanChange() && changes(f.spec.member):
-			f.yes = false
-			f.disabled = "not yet: the MCP server only reads"
-		case p.purpose == connecting && !containsFold(inherited, f.spec.member):
+		if p.purpose == connecting && !containsFold(inherited, f.spec.member) {
 			f.yes = false
 			f.disabled = "not permitted in PREFERENCES"
 		}
 	}
-}
-
-// changes reports whether a command changes data or schema.
-func changes(command string) bool {
-	c, ok := validation.CommandNamed(command)
-	return ok && (c.Kind == validation.KindWrite || c.Kind == validation.KindSchema)
 }
 
 // applyPrefFields writes the window's settings into a configuration.
@@ -213,10 +201,6 @@ func (p preferences) prefListError(spec prefSpec, value string) string {
 					return fmt.Sprintf("%s has to be keyspace.table.column, with * for any part", item)
 				}
 			}
-		case "MCP.Connections":
-			if _, ok := p.cfg.Connection(item); !ok {
-				return fmt.Sprintf("there is no saved connection called %s", item)
-			}
 		}
 	}
 	return ""
@@ -236,12 +220,6 @@ func (m *MainModel) listChoices(spec prefSpec) []string {
 	switch spec.path {
 	case "MCP.Keyspaces", "MCP.Deny":
 		return m.keyspaceChoices()
-	case "MCP.Connections":
-		var names []string
-		for _, conn := range m.preferences.cfg.Connections {
-			names = append(names, config.ConnectionName(conn))
-		}
-		return names
 	}
 	return nil
 }

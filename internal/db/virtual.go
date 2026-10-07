@@ -224,3 +224,29 @@ func (s *Session) TableKey(keyspace, table string) (partitionKey, columns []stri
 	}
 	return partitionKey, columns
 }
+
+// PrimaryKey is a table's partition key and clustering key, stored or
+// virtual, in order. Empty when the table cannot be found.
+func (s *Session) PrimaryKey(keyspace, table string) (partition, clustering []string) {
+	if s == nil || s.Session == nil {
+		return nil, nil
+	}
+	if meta, err := s.GetTableMetadata(keyspace, table); err == nil && meta != nil {
+		for _, c := range meta.PartitionKey {
+			partition = append(partition, c.Name)
+		}
+		for _, c := range meta.ClusteringColumns {
+			clustering = append(clustering, c.Name)
+		}
+		return partition, clustering
+	}
+	for _, c := range s.virtualColumnInfo(keyspace, table) {
+		switch c.Kind {
+		case "partition_key":
+			partition = append(partition, c.Name)
+		case "clustering":
+			clustering = append(clustering, c.Name)
+		}
+	}
+	return partition, clustering
+}

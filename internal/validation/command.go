@@ -55,6 +55,15 @@ func ValidateCommandSyntax(command string) error {
 
 // IsDangerousCommand checks if a command requires confirmation
 func IsDangerousCommand(command string) bool {
+	// The classifier first, which the MCP server's gate uses too: it sees
+	// through comments, and into a BATCH, where a DELETE is as dangerous as
+	// one on its own.
+	if s, err := Classify(command); err == nil {
+		return dangerous(s)
+	}
+
+	// What the classifier cannot read - REVOKE, which it refuses to classify,
+	// or a statement it cannot parse - falls back to the first word.
 	upperCommand := strings.ToUpper(strings.TrimSpace(command))
 
 	// List of dangerous command prefixes
@@ -74,5 +83,20 @@ func IsDangerousCommand(command string) bool {
 		}
 	}
 
+	return false
+}
+
+// dangerous reports whether a statement removes or reshapes what is there:
+// the commands the shell asks about before it runs them.
+func dangerous(s Statement) bool {
+	switch s.Command {
+	case "ALTER", "DROP", "DELETE", "TRUNCATE":
+		return true
+	}
+	for _, inner := range s.Inner {
+		if dangerous(inner) {
+			return true
+		}
+	}
 	return false
 }

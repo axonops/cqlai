@@ -32,17 +32,15 @@ type Policy struct {
 	deny   []string // keyspace, or keyspace.table, never visible
 	redact []string // keyspace.table.column, with * for any part
 
-	allowScans  bool
-	skipConfirm bool
+	allowScans bool
 
 	maxRows        int
 	maxValueBytes  int
 	callsPerMinute int
 	timeout        time.Duration
 
-	connection  string   // the connection this policy is for
-	connections []string // what use_connection may switch to
-	auditLog    string
+	connection string // the connection this policy is for
+	auditLog   string
 
 	// secrets are strings that must never be returned: the connection's
 	// password. Driver errors pass through Scrub before they go out.
@@ -78,7 +76,6 @@ func Shell() Policy {
 		permit:         permit,
 		allKeyspaces:   true,
 		allowScans:     true,
-		skipConfirm:    true,
 		maxRows:        1 << 30,
 		maxValueBytes:  1 << 30,
 		callsPerMinute: 1 << 30,
@@ -194,10 +191,8 @@ func (p Policy) MaxRows() int               { return p.maxRows }
 func (p Policy) MaxValueBytes() int         { return p.maxValueBytes }
 func (p Policy) CallsPerMinute() int        { return p.callsPerMinute }
 func (p Policy) Timeout() time.Duration     { return p.timeout }
-func (p Policy) ConfirmChanges() bool       { return !p.skipConfirm }
 func (p Policy) AllowScans() bool           { return p.allowScans }
 func (p Policy) Connection() string         { return p.connection }
-func (p Policy) Connections() []string      { return append([]string(nil), p.connections...) }
 func (p Policy) AuditLog() string           { return p.auditLog }
 func (p Policy) Deny() []string             { return append(append([]string{}, alwaysDenied...), p.deny...) }
 func (p Policy) RedactPatterns() []string   { return append([]string(nil), p.redact...) }
@@ -343,6 +338,32 @@ func (p Policy) checkScan(s validation.Statement) error {
 		}
 	}
 	return nil
+}
+
+// CheckProposal checks a change a model proposes for the user to run. It is
+// never run here, so the permitted commands do not apply; but it has to be one
+// statement that changes data or schema, with every table named in full and
+// visible, so a proposal cannot be the way to reach what the policy hides.
+func (p Policy) CheckProposal(text string) (validation.Statement, error) {
+	s, err := validation.Classify(text)
+	if err != nil {
+		return s, refused(err.Error())
+	}
+	if s.Kind == validation.KindRead {
+		return s, refused(fmt.Sprintf("%s does not change anything: run it with query or describe", s.Command))
+	}
+	for _, name := range s.Names {
+		if !name.Qualified {
+			return s, refused(fmt.Sprintf("name the keyspace: keyspace.%s, not %s", name.Table, name.Table))
+		}
+		if !p.Visible(name.Keyspace) {
+			return s, refused(fmt.Sprintf("keyspace %s is not visible to this server", name.Keyspace))
+		}
+		if name.Table != "" && !p.VisibleTable(name.Keyspace, name.Table) {
+			return s, refused(fmt.Sprintf("%s.%s is not visible to this server", name.Keyspace, name.Table))
+		}
+	}
+	return s, nil
 }
 
 // Refusal is the gate saying no. It is an error so callers cannot miss it.

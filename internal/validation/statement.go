@@ -126,6 +126,14 @@ type Statement struct {
 
 	// Inner is a BATCH's statements.
 	Inner []Statement
+
+	// What a change does, for saying what it will do before anyone runs it.
+	Conditional bool     // IF: a lightweight transaction
+	TTL         bool     // USING TTL: what is written expires
+	Action      string   // ALTER TABLE: ADD, DROP, ALTER, RENAME or WITH; ALTER KEYSPACE: WITH
+	Options     []string // the options a WITH clause sets: replication, compaction, ...
+	Columns     bool     // DELETE names columns: it deletes values, not rows
+	BatchType   string   // BATCH: LOGGED, UNLOGGED or COUNTER
 }
 
 // Classify reads one CQL statement. The error says why it cannot be: more
@@ -163,27 +171,36 @@ func classifyOne(t []token) (Statement, error) {
 		if !isWord(t, 1, "into") {
 			return Statement{}, fmt.Errorf("INSERT has to be followed by INTO")
 		}
-		name, _, err := readName(t, 2)
+		name, next, err := readName(t, 2)
 		if err != nil {
 			return Statement{}, err
 		}
-		return Statement{Command: "INSERT", Kind: KindWrite, Names: []Name{name}}, nil
+		s := Statement{Command: "INSERT", Kind: KindWrite, Names: []Name{name}}
+		s.Conditional = findWord(t, next, "exists") >= 0 && findWord(t, next, "if") >= 0
+		s.TTL = usesTTL(t[next:])
+		return s, nil
 	case "update":
-		name, _, err := readName(t, 1)
+		name, next, err := readName(t, 1)
 		if err != nil {
 			return Statement{}, err
 		}
-		return Statement{Command: "UPDATE", Kind: KindWrite, Names: []Name{name}}, nil
+		s := Statement{Command: "UPDATE", Kind: KindWrite, Names: []Name{name}}
+		s.TTL = usesTTL(t[next:])
+		addWhere(&s, t, next)
+		return s, nil
 	case "delete":
 		from := findWord(t, 1, "from")
 		if from < 0 {
 			return Statement{}, fmt.Errorf("DELETE has to name a table with FROM")
 		}
-		name, _, err := readName(t, from+1)
+		name, next, err := readName(t, from+1)
 		if err != nil {
 			return Statement{}, err
 		}
-		return Statement{Command: "DELETE", Kind: KindWrite, Names: []Name{name}}, nil
+		s := Statement{Command: "DELETE", Kind: KindWrite, Names: []Name{name}}
+		s.Columns = from > 1
+		addWhere(&s, t, next)
+		return s, nil
 	case "truncate":
 		i := 1
 		if isWord(t, i, "table") || isWord(t, i, "columnfamily") {
@@ -327,7 +344,67 @@ func restrictedColumns(t []token) []string {
 }
 
 // clauseEnds are the words that end a WHERE clause.
-var clauseEnds = map[string]bool{"group": true, "order": true, "limit": true, "allow": true, "per": true}
+var clauseEnds = map[string]bool{"group": true, "order": true, "limit": true, "allow": true, "per": true, "if": true}
+
+// addWhere reads the WHERE clause of an UPDATE or a DELETE, and its IF.
+func addWhere(s *Statement, t []token, from int) {
+	where := findWord(t, from, "where")
+	if where < 0 {
+		return
+	}
+	s.Restricted = restrictedColumns(t[where+1:])
+	s.WhereNames = whereNames(t[where+1:])
+	s.Conditional = topLevelWord(t, where, "if")
+}
+
+// usesTTL reports whether a statement sets a time to live.
+func usesTTL(t []token) bool {
+	for i := range t {
+		if isWord(t, i, "ttl") && (isWord(t, i-1, "using") || isWord(t, i-1, "and")) {
+			return true
+		}
+	}
+	return false
+}
+
+// topLevelWord reports whether a word is in the statement outside
+// parentheses, brackets and braces, at or after from.
+func topLevelWord(t []token, from int, word string) bool {
+	depth := 0
+	for i := from; i < len(t); i++ {
+		switch {
+		case isPunct(t, i, "("), isPunct(t, i, "["), isPunct(t, i, "{"):
+			depth++
+		case isPunct(t, i, ")"), isPunct(t, i, "]"), isPunct(t, i, "}"):
+			depth--
+		case depth == 0 && isWord(t, i, word):
+			return true
+		}
+	}
+	return false
+}
+
+// withOptions is the options a WITH clause sets: the names before = outside
+// any brackets, after the first WITH outside them. A map such as
+// replication = {...} is one option.
+func withOptions(t []token, from int) []string {
+	var options []string
+	depth, with := 0, false
+	for i := from; i < len(t); i++ {
+		switch {
+		case isPunct(t, i, "("), isPunct(t, i, "["), isPunct(t, i, "{"):
+			depth++
+		case isPunct(t, i, ")"), isPunct(t, i, "]"), isPunct(t, i, "}"):
+			depth--
+		case depth != 0:
+		case isWord(t, i, "with"):
+			with = true
+		case with && t[i].kind == tokWord && isPunct(t, i+1, "="):
+			options = append(options, t[i].text)
+		}
+	}
+	return options
+}
 
 // classifyDDL reads CREATE, ALTER and DROP: what kind of object, and its name.
 func classifyDDL(t []token) (Statement, error) {
@@ -376,6 +453,7 @@ func classifyDDL(t []token) (Statement, error) {
 	}
 
 	s := Statement{Command: command, Kind: KindSchema, Object: strings.ToUpper(object)}
+	s.Options = withOptions(t, i)
 
 	switch {
 	case object == "keyspace":
@@ -383,6 +461,9 @@ func classifyDDL(t []token) (Statement, error) {
 			return Statement{}, fmt.Errorf("%s KEYSPACE has to name the keyspace", command)
 		}
 		s.Names = []Name{{Keyspace: t[i].text, Qualified: true}}
+		if command == "ALTER" && isWord(t, i+1, "with") {
+			s.Action = "WITH"
+		}
 
 	case object == "index" && command == "CREATE", object == "trigger":
 		// CREATE INDEX [name] ON keyspace.table, and a trigger is named the
@@ -401,6 +482,9 @@ func classifyDDL(t []token) (Statement, error) {
 		name, next, err := readName(t, i)
 		if err != nil {
 			return Statement{}, err
+		}
+		if command == "ALTER" && next < len(t) && t[next].kind == tokWord {
+			s.Action = strings.ToUpper(t[next].text)
 		}
 		if object == "index" {
 			// DROP INDEX keyspace.index names the keyspace, not a table.
@@ -428,7 +512,9 @@ func classifyDDL(t []token) (Statement, error) {
 // BATCH, and every statement in it.
 func classifyBatch(t []token) (Statement, error) {
 	i := 1
+	batchType := "LOGGED"
 	if isWord(t, i, "unlogged") || isWord(t, i, "counter") || isWord(t, i, "logged") {
+		batchType = strings.ToUpper(t[i].text)
 		i++
 	}
 	if !isWord(t, i, "batch") {
@@ -456,7 +542,7 @@ func classifyBatch(t []token) (Statement, error) {
 		}
 	}
 
-	batch := Statement{Command: "BATCH", Kind: KindWrite}
+	batch := Statement{Command: "BATCH", Kind: KindWrite, BatchType: batchType}
 	for _, inner := range splitTokens(t[i:apply]) {
 		s, err := classifyOne(inner)
 		if err != nil {
