@@ -35,6 +35,13 @@ const (
 	// schemaTreeHeading names the left-hand pane. The tables are inside the
 	// keyspaces rather than beside them, so the keyspaces are what it lists.
 	schemaTreeHeading = "KEYSPACES"
+	// schemaFilterHint follows the heading while there is no filter, to say
+	// there is one to be had.
+	schemaFilterHint = "  / filter"
+	// schemaFilterPrefix starts the heading while there is a filter.
+	schemaFilterPrefix = "/ "
+	// schemaNoMatch is the tree when a filter matches nothing.
+	schemaNoMatch = "Nothing matches."
 )
 
 // schemaGeometry is where the panes are, and which rows they show.
@@ -106,14 +113,61 @@ func (m *MainModel) schemaGeometry(width, height int) schemaGeometry {
 // schemaTreeWidth is how wide the tree wants to be: its widest row, and a
 // column for the scrollbar.
 func (m *MainModel) schemaTreeWidth() int {
-	width := lipgloss.Width(schemaTreeHeading)
-	for _, row := range m.schema.rows() {
+	width := lipgloss.Width(m.schemaTreeHeadingText())
+	for _, row := range m.schemaWidthRows() {
 		width = max(width, lipgloss.Width(m.schemaLine(row)))
 	}
 	if m.schema.message != "" {
 		width = max(width, lipgloss.Width(m.schema.message))
 	}
+	if m.schemaNothingMatches() {
+		width = max(width, lipgloss.Width(schemaNoMatch))
+	}
 	return width + 2
+}
+
+// schemaWidthRows is the rows the tree's width is taken from. While it is
+// filtered that is every keyspace and table there is, not the ones that match:
+// the pane would otherwise change width with each letter typed.
+func (m *MainModel) schemaWidthRows() []schemaRow {
+	if !m.schema.filtering() && m.schema.filter == "" {
+		return m.schema.rows()
+	}
+	var rows []schemaRow
+	for _, keyspace := range m.schema.keyspaces {
+		rows = append(rows, schemaRow{keyspace: keyspace})
+		for _, table := range m.schema.tables[keyspace] {
+			rows = append(rows, schemaRow{keyspace: keyspace, table: table})
+		}
+	}
+	return rows
+}
+
+// schemaTreeHeadingText is the tree's heading row, which is also the filter:
+// what it says depends on whether there is one and whether it has the keys.
+func (m *MainModel) schemaTreeHeadingText() string {
+	switch {
+	case m.schema.filtering():
+		return schemaFilterPrefix + m.schema.filter + " " // and the cursor
+	case m.schema.filter != "":
+		return schemaFilterPrefix + m.schema.filter
+	default:
+		return schemaTreeHeading + schemaFilterHint
+	}
+}
+
+// schemaNothingMatches reports whether a filter has left the tree empty.
+func (m *MainModel) schemaNothingMatches() bool {
+	return m.schema.filter != "" && m.schema.message == "" && len(m.schema.rows()) == 0
+}
+
+// schemaTreeHeadingAt reports whether a press is on the tree's heading, which
+// gives the filter the keys.
+func (m *MainModel) schemaTreeHeadingAt(col, row int) bool {
+	if m.viewMode != "schema" || row != tabBarHeight {
+		return false
+	}
+	return col >= 0 && col < m.schemaGeometry(m.windowWidth, m.schemaHeight()).treeWidth
 }
 
 // schemaDetailHeading names what the right-hand pane is showing: a table's
@@ -252,7 +306,7 @@ func (m *MainModel) viewSchema(width, height int) string {
 
 	lines := make([]string, 0, g.height+schemaHeaderRows)
 	lines = append(lines,
-		headingStyle.Render(pad(schemaTreeHeading, g.treeWidth))+
+		m.schemaTreeHeadingRow(g, headingStyle)+
 			ruleStyle.Render(schemaDivider)+
 			m.schemaDetailHeadingRow(g, headingStyle),
 		ruleStyle.Render(strings.Repeat("─", g.treeWidth)+schemaDivider+strings.Repeat("─", g.detailWidth)),
@@ -264,6 +318,8 @@ func (m *MainModel) viewSchema(width, height int) string {
 		switch {
 		case i == 0 && m.schema.message != "":
 			text = m.schema.message
+		case i == 0 && m.schemaNothingMatches():
+			text = schemaNoMatch
 		case g.treeFirst+i < len(rows):
 			row := rows[g.treeFirst+i]
 			text = m.schemaLine(row)
@@ -285,6 +341,22 @@ func (m *MainModel) viewSchema(width, height int) string {
 	// a viewport this view does not have.
 	m.schema.drawn = lines
 	return strings.Join(lines, "\n")
+}
+
+// schemaTreeHeadingRow draws the tree's heading: the name of the pane with a
+// dim hint while there is no filter, the filter itself while there is one.
+func (m *MainModel) schemaTreeHeadingRow(g schemaGeometry, headingStyle lipgloss.Style) string {
+	text := m.schemaTreeHeadingText()
+	if m.schema.filtering() {
+		field := m.schema.filterInput.View()
+		return field + strings.Repeat(" ", max(g.treeWidth-lipgloss.Width(field), 0))
+	}
+	if m.schema.filter != "" {
+		return headingStyle.Render(pad(text, g.treeWidth))
+	}
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c6c6c"))
+	return headingStyle.Render(schemaTreeHeading) +
+		hintStyle.Render(pad(schemaFilterHint, g.treeWidth-lipgloss.Width(schemaTreeHeading)))
 }
 
 // scrollbarCell is one row of a scrollbar column, or a space where there is no

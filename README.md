@@ -118,6 +118,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Modal overlays for history, help, and command completion.
 - **Schema Browser (`F3`):**
     - The cluster's keyspaces and tables in a tree, with each object's definition beside it.
+    - A filter above the tree (`/`) narrows it to the keyspaces and tables whose names match.
     - Notices a schema change wherever it was made, including from another window, and forgets a definition a DDL statement has changed rather than showing a stale one.
 - **Saved Connections:**
     - CQLAI starts without a cluster. `FILE > CONNECT` holds a list of named connections, one marked as the default, with the one in use shown.
@@ -380,6 +381,15 @@ wheel moves whichever pane it is over. `Alt+Up` and `Alt+Down` scroll the
 definition. Everything else still goes to the prompt, so a query can be typed
 while looking at the table it is about. Pressing `F3` again, or clicking the tab
 you are already on, asks the cluster for the schema afresh.
+
+The heading above the tree is a filter. Press `Up` from the top row of the tree,
+`/` with nothing at the prompt, or click the heading, and type: the tree shows only the keyspaces and tables whose
+names contain what you typed, ignoring case. A table is shown under its
+keyspace, so a keyspace does not have to be opened first to find a table in it.
+The first match is selected and its definition shown. `Down` or `Enter` goes
+back into the tree, gives the keys back to the prompt and keeps the tree
+filtered; `Esc` clears the filter and shows the whole tree again, with what
+you found still selected.
 
 Nothing is fetched until the tab is opened: the keyspaces on first use, a
 keyspace's tables when it is first opened, and a definition when it is first

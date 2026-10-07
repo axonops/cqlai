@@ -535,6 +535,24 @@ func (m *MainModel) Init() tea.Cmd {
 
 // Update updates the main model.
 func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.update(msg)
+
+	// The schema filter is a second field to type into. Its cursor blinks on
+	// the messages the prompt's does, and it hands the keys back to the
+	// prompt when its view is left, however that happened.
+	if m.schema.filtering() {
+		switch msg.(type) {
+		case tea.KeyPressMsg, tea.MouseMsg, tea.PasteMsg:
+		default:
+			var blink tea.Cmd
+			m.schema.filterInput, blink = m.schema.filterInput.Update(msg)
+			cmd = tea.Batch(cmd, blink)
+		}
+	}
+	return model, tea.Batch(cmd, m.settleSchemaFilter())
+}
+
+func (m *MainModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Store the actual window dimensions

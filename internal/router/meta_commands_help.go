@@ -97,6 +97,7 @@ func HelpRows() [][]string {
 		{"Keys", "F1 or Alt+H", "Open this help (F1 is taken by some terminals)"},
 		{"", "F2", "Console: what you typed and what came back"},
 		{"", "F3", "Schema: the keyspaces and tables, with their definitions"},
+		{"", "  / or ↑ at top", "In Schema, filter the tree by name; Esc clears it"},
 		{"", "F4", "Results: the last query, in whatever OUTPUT is set to"},
 		{"", "F5", "Trace: the second tab of that view, when tracing is on"},
 		{"", "F6", "Chat: the AI conversation"},

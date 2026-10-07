@@ -353,6 +353,14 @@ As frechas percorren a árbore (dereita desprega, esquerda prega) e a roda
 despraza o panel que estea baixo o punteiro. O resto segue indo ao prompt, así
 que podes escribir unha consulta mentres miras a táboa da que trata.
 
+A cabeceira sobre a árbore é un filtro. Preme `Arriba` dende a primeira fila da
+árbore, `/` co prompt baleiro, ou fai clic na cabeceira, e escribe: a árbore amosa só os keyspaces e as táboas cuxo
+nome contén o escrito, sen distinguir maiúsculas. Unha táboa amósase baixo o
+seu keyspace, sen ter que despregalo antes. Selecciónase a primeira
+coincidencia. `Abaixo` ou `Enter` volve á árbore, devolve o teclado ao prompt e
+mantén o filtro; `Esc` bórrao e volve amosar a
+árbore enteira, co atopado aínda seleccionado.
+
 #### Desprazamento e Navegación de Táboa
 | Atallo | Acción | Alternativa macOS |
 |----------|--------|-------------------|
