@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 )
 
 // ToolParams is the interface that all tool parameter structs must implement
@@ -228,9 +230,88 @@ func ParseToolParams(toolName ToolName, rawParams json.RawMessage) (ToolParams, 
 		}
 		return &params, nil
 
+	case ToolConnectionInfo:
+		return ConnectionInfoParams{}, nil
+
+	case ToolDescribe:
+		var params DescribeParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid describe parameters: %w", err)
+		}
+		return params, nil
+
+	case ToolQuery, ToolTraceQuery:
+		var params QueryParams
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			return nil, fmt.Errorf("invalid query parameters: %w", err)
+		}
+		return params, nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
+}
+
+// ConnectionInfoParams takes nothing.
+type ConnectionInfoParams struct{}
+
+func (p ConnectionInfoParams) Validate() error { return nil }
+
+// DescribeParams is what to describe.
+type DescribeParams struct {
+	Kind     string `json:"kind"`
+	Keyspace string `json:"keyspace,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+// describeKinds are what describe can describe, and whether each needs a
+// keyspace and a name.
+var describeKinds = map[string]struct{ keyspace, name bool }{
+	"keyspace":          {keyspace: true},
+	"table":             {keyspace: true, name: true},
+	"type":              {keyspace: true, name: true},
+	"index":             {keyspace: true, name: true},
+	"materialized_view": {keyspace: true, name: true},
+	"function":          {keyspace: true, name: true},
+	"aggregate":         {keyspace: true, name: true},
+	"cluster":           {},
+	"schema":            {},
+}
+
+// cqlName is what a keyspace, table, type or other name can be: Cassandra
+// allows letters, digits and underscores, and nothing else.
+var cqlName = regexp.MustCompile(`^[A-Za-z0-9_]{1,222}$`)
+
+func (p DescribeParams) Validate() error {
+	need, ok := describeKinds[p.Kind]
+	if !ok {
+		return fmt.Errorf("kind has to be one of keyspace, table, type, index, materialized_view, function, aggregate, cluster, schema")
+	}
+	if need.keyspace && !cqlName.MatchString(p.Keyspace) {
+		return fmt.Errorf("%s needs a keyspace: letters, digits and underscores", p.Kind)
+	}
+	if need.name && !cqlName.MatchString(p.Name) {
+		return fmt.Errorf("%s needs a name: letters, digits and underscores", p.Kind)
+	}
+	return nil
+}
+
+// QueryParams is a statement to run, for query and trace_query.
+type QueryParams struct {
+	CQL         string `json:"cql"`
+	Consistency string `json:"consistency,omitempty"`
+	PageSize    int    `json:"page_size,omitempty"`
+	PageToken   string `json:"page_token,omitempty"`
+}
+
+func (p QueryParams) Validate() error {
+	if strings.TrimSpace(p.CQL) == "" {
+		return fmt.Errorf("cql is required")
+	}
+	if p.PageSize < 0 {
+		return fmt.Errorf("page_size cannot be negative")
+	}
+	return nil
 }
 
 // ParseToolParamsFromMap parses a map into the appropriate typed struct

@@ -56,7 +56,7 @@ func (p *preferences) blurAll() {
 
 // togglePrefField changes a yes/no setting.
 func (m *MainModel) togglePrefField() (*MainModel, tea.Cmd) {
-	if field := m.preferences.current(); field != nil && field.spec.kind == prefYesNo {
+	if field := m.preferences.current(); field != nil && field.spec.toggles() && field.disabled == "" {
 		m.preferences.fields[m.preferences.focus].yes = !field.yes
 	}
 	return m, nil
@@ -81,6 +81,9 @@ func (m *MainModel) completePrefField() (*MainModel, tea.Cmd) {
 
 	case prefChoice:
 		m.completePrefFrom(field.spec.choices())
+
+	case prefList:
+		m.completePrefList(field)
 	}
 	return m, nil
 }
@@ -269,14 +272,14 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 			return m.movePrefFocus(1)
 		}
 	case "tab":
-		if field := m.preferences.current(); field != nil && field.spec.kind == prefYesNo {
+		if field := m.preferences.current(); field != nil && field.spec.toggles() {
 			return m.togglePrefField()
 		}
 		return m.completePrefField()
 	case "shift+tab":
 		return m.movePrefFocus(-1)
 	case " ", "space":
-		if field := m.preferences.current(); field != nil && field.spec.kind == prefYesNo {
+		if field := m.preferences.current(); field != nil && field.spec.toggles() {
 			return m.togglePrefField()
 		}
 	case "enter":
@@ -292,7 +295,7 @@ func (m *MainModel) handlePreferencesKey(msg tea.KeyPressMsg) (*MainModel, tea.C
 	// Anything else is typing, which is the answer to whatever went wrong.
 	m.preferences.failed = ""
 
-	if field := m.preferences.current(); field != nil && field.spec.kind != prefYesNo {
+	if field := m.preferences.current(); field != nil && !field.spec.toggles() {
 		var cmd tea.Cmd
 		m.preferences.fields[m.preferences.focus].input, cmd = field.input.Update(msg)
 		m.preferences.clearMatches()
@@ -332,7 +335,7 @@ func (m *MainModel) handlePreferencesClick(col, row int) (*MainModel, tea.Cmd) {
 	if i, ok := m.prefFieldAt(m.windowWidth, m.windowHeight, col, row); ok {
 		m.preferences.onList = false
 		m.preferences.focusField(i)
-		if m.preferences.fields[i].spec.kind == prefYesNo {
+		if m.preferences.fields[i].spec.toggles() {
 			return m.togglePrefField()
 		}
 		return m, nil

@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/batch"
+	"github.com/axonops/cqlai/internal/mcp"
 	"github.com/axonops/cqlai/internal/ui"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -17,6 +18,42 @@ import (
 var Version = "dev"
 
 func main() {
+	// `cqlai mcp` is a server on stdin and stdout, with flags of its own. It
+	// goes first: stdin is not a terminal there, which below means batch mode,
+	// and nothing may prompt on it.
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		options, carryOn, code := mcp.ParseOptions(os.Args[2:], os.Stderr)
+		if !carryOn {
+			os.Exit(code)
+		}
+		if options.Headless {
+			os.Exit(mcp.RunHeadless(options, Version))
+		}
+
+		// The terminal app, serving MCP for whichever connection is picked
+		// in it.
+		m, err := ui.NewMainModelWithConnectionOptions(ui.ConnectionOptions{
+			ConfigFile:          options.ConfigFile,
+			ConnectTimeout:      options.ConnectTimeout,
+			RequestTimeout:      options.RequestTimeout,
+			Debug:               options.Debug,
+			RequireConfirmation: true,
+			MCP:                 &options,
+			Version:             Version,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating model: %v\n", err)
+			os.Exit(1)
+		}
+		err = runInteractive(m)
+		m.CloseMCP()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// Parse command-line flags using pflag for POSIX/GNU-style flags
 	var (
 		host                  string
@@ -108,6 +145,7 @@ func main() {
 		fmt.Println("cqlai - A modern Cassandra CQL shell with AI assistance")
 		fmt.Println()
 		fmt.Println("Usage: cqlai [options] [host [port]]")
+		fmt.Println("       cqlai mcp [options]    the shell, serving MCP to an AI client (cqlai mcp --help)")
 		fmt.Println()
 		pflag.PrintDefaults()
 		os.Exit(0)

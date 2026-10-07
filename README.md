@@ -71,6 +71,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
     - [OpenRouter](#openrouter-multiple-models)
     - [Mock Provider](#mock-provider-for-testing)
 - [AI-Powered Query Generation](#ai-powered-query-generation)
+- [MCP Server](#mcp-server)
 - [Apache Parquet Support](#apache-parquet-support)
 - [Known Limitations](#known-limitations)
 - [Development](#development)
@@ -143,6 +144,10 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Safe preview and confirmation before execution.
     - Support for complex operations including DDL and DML.
     - **Requires API key configuration** - not needed for core functionality.
+- **MCP Server (`cqlai mcp`):**
+    - Lets an AI assistant read one cluster through CQLAI over the Model Context Protocol.
+    - What it may do - which commands, keyspaces, tables and columns - is set in `PREFERENCES` and per connection in `CONNECT`, and enforced on every call.
+    - Read-only in this release, with an audit log of every call.
 - **Configuration:**
     - Simple configuration via `cqlai.json` in the current directory or `~/.cassandra/cqlai.json`, beside `cqlshrc`.
     - Support for SSL/TLS connections with certificate authentication.
@@ -212,6 +217,8 @@ cqlai
 ```bash
 cqlai [options] [host [port]]
 ```
+
+`cqlai mcp [options]` opens the shell serving MCP to an AI client, and `cqlai mcp --headless` serves it without the shell. See [MCP Server](#mcp-server).
 
 **Note:** Positional arguments are supported for `cqlsh` compatibility. `cqlai 192.168.1.100 9042` is equivalent to `cqlai --host 192.168.1.100 --port 9042`.
 
@@ -1561,6 +1568,179 @@ For automation and scripting, you can disable the confirmation prompts for destr
    ```
 
 **Note**: Use with caution in production environments. These settings disable safety prompts that help prevent accidental data loss.
+
+## MCP Server
+
+`cqlai mcp` lets an AI assistant work with one Cassandra cluster through CQLAI.
+The assistant connects over the [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP). CQLAI holds the connection, runs the statements, and returns the results
+as JSON.
+
+The assistant is the MCP client. CQLAI does not call an AI provider in this
+mode, and no AI provider needs to be set up.
+
+The server only reads in this release. It cannot change data or schema.
+
+### Starting it
+
+There are two ways to run it.
+
+**`cqlai mcp`** opens the shell as usual and serves MCP from it, at
+`http://127.0.0.1:7845/mcp`. It serves whichever connection you pick in
+`FILE > CONNECT`, under that connection's settings, and follows you when you
+pick another. It starts whether or not a cluster can be reached; with none, it
+opens `CONNECT` so you can pick one. The status bar shows `MCP: :7845` while it
+is serving.
+
+`FILE > MCP SERVER` prints what to add to your client's configuration, ready to
+copy:
+
+```json
+{
+  "mcpServers": {
+    "cqlai": {
+      "type": "http",
+      "url": "http://127.0.0.1:7845/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+**Where the token is.** The token is in `~/.cqlai_mcp_token`, readable only by
+you. The file is made the first time you run `cqlai mcp`, and the token stays the
+same each time the shell starts, so the client's configuration does not change.
+There are two ways to get it:
+
+- In the shell: `FILE > MCP SERVER` prints the client configuration with the
+  token already in the `Authorization` header.
+- In a terminal: `cat ~/.cqlai_mcp_token`
+
+Anyone with the token can use what the server allows, so keep it like a
+password and out of anything you share. To replace it, delete the file: the
+next `cqlai mcp` makes a new one, and the client's configuration needs the new
+token. If the file can be read by anyone but you, CQLAI does not use it and
+says so; `chmod 600 ~/.cqlai_mcp_token` fixes that.
+
+**`cqlai mcp --headless`** has no shell. It is for a client that starts CQLAI
+itself and talks to it over stdin and stdout:
+
+```json
+{
+  "mcpServers": {
+    "cassandra-prod": {
+      "command": "cqlai",
+      "args": ["mcp", "--headless", "--connection", "prod"]
+    }
+  }
+}
+```
+
+`--connection` picks a saved connection by name; without it, the default
+connection is used. The password is the one saved with the connection, or
+`CQLAI_PASSWORD`; the server never asks for one, because stdin carries the
+protocol. It starts whether or not the cluster can be reached, and connects
+when a tool is first called.
+
+| Option | What it does |
+|---|---|
+| `--headless` | No shell: serve MCP on stdin and stdout |
+| `--port N` | The port the shell serves MCP on (default: the setting, or 7845) |
+| `--connection NAME` | Headless: the saved connection to use |
+| `--read-only` | Permit the read commands only, whatever the settings say |
+| `--permit SELECT,DESCRIBE` | Permit only these commands, of those the settings permit |
+| `--keyspaces ks1,ks2` | Only these keyspaces are visible, of those the settings allow |
+| `--max-rows N` | At most this many rows per call, if lower than the settings |
+| `--audit-log PATH` | Where the audit log goes; `-` turns it off |
+| `--config-file PATH` | The configuration file to read |
+
+The options can only narrow what the settings allow. They cannot widen it.
+
+### The tools
+
+| Tool | What it does |
+|---|---|
+| `connection_info` | What the server is connected to, and what it may do there. A model should call it first. |
+| `list_keyspaces` | The visible keyspaces, the virtual ones included |
+| `list_tables` | A keyspace's tables, each with its partition and clustering key |
+| `get_schema` | A table's keys and columns |
+| `fuzzy_search` | Tables whose names are close to a word |
+| `describe` | The CQL definition of a keyspace, table, type, index, view, function or aggregate, exactly as `DESCRIBE` prints it |
+| `query` | Runs one `SELECT` and returns a page of rows, with a token for the next page |
+| `trace_query` | Runs one `SELECT` with tracing on, and returns the trace with the rows |
+
+The first four are the same tools the `CHAT` view's AI uses. A tool is only
+offered if the settings permit what it needs: with `SELECT` not permitted,
+`query` and `trace_query` are not offered at all.
+
+### What the model may do
+
+What the server may do is set in the `PREFERENCES` window, in two sections:
+
+- **MCP SERVER**: the keyspaces the model can see, tables it can never see,
+  columns whose values are hidden, whether scans are allowed, the limits, where
+  the audit log goes, and the port the shell serves MCP on.
+- **MCP SERVER - PERMITTED COMMANDS**: each CQL command, permitted or not.
+  `SELECT`, `DESCRIBE` and `LIST` are permitted unless you say otherwise.
+  `GRANT`, `REVOKE`, role and user changes and `USE` are never permitted, and
+  are not offered.
+
+`CONNECT` has the same two sections for each saved connection. A connection's
+settings can only narrow the ones in `PREFERENCES`; a command `PREFERENCES`
+does not permit is shown dimmed and cannot be ticked. So production can be
+limited to two keyspaces while a test cluster sees everything.
+
+The settings are kept in `cqlai.json` under `mcp`, at the top of the file and
+on each saved connection. A connection's settings apply when it is connected;
+the port, when `cqlai mcp` next starts.
+
+### Security
+
+The model is not trusted. It can make mistakes, and text it reads from the
+cluster can try to steer it. So every rule is enforced in CQLAI, on every call,
+whatever the model asks for.
+
+- **One statement per call.** `SELECT ...; DROP ...` is refused.
+- **Only permitted commands run.** A statement is classified by CQLAI, not by
+  what the model says it is. Anything CQLAI does not recognise is refused.
+- **Tables are named as `keyspace.table`.** An unqualified name would resolve
+  to the session's keyspace without being checked, so it is refused.
+- **Hidden keyspaces and tables stay hidden.** They are not listed, described,
+  found by search, or named in an error. `system_auth`, which holds the password
+  hashes, is always hidden.
+- **Redacted columns.** A redacted column's values come back as `[redacted]`.
+  On a table with redacted columns, a `SELECT` has to use `*` or column names:
+  no `JSON`, alias or function, and no condition on a redacted column.
+- **Scans.** `ALLOW FILTERING`, and `COUNT`, `SUM`, `AVG`, `MIN` or `MAX`
+  across partitions, are refused unless scans are allowed. They can read a whole
+  table to return a few rows.
+- **Limits.** One call runs at a time, up to 60 a minute. Each call has the
+  request timeout. Results are capped at 100 rows a page and long values are
+  cut.
+- **No credentials.** No tool takes or returns a username or password, and the
+  password is removed from any error before it is returned.
+- **Only this machine, with the token.** The shell serves MCP on `127.0.0.1`
+  only. Every request has to carry the token, and a request from a web page in
+  a browser is refused, whatever name it uses for this machine.
+- **Its own session.** The server talks to the cluster on a session of its
+  own, so a model's queries never change your shell's consistency or tracing.
+- **An audit log.** Every call is written to `~/.cqlai_mcp_audit.log`, one JSON
+  line each, refusals included. Statements are logged with their values
+  replaced by `?`, and no row is ever logged. The file is readable only by you.
+
+The strongest control is the Cassandra role CQLAI logs in as. Give the MCP
+server's connection a role of its own that can only read what it needs:
+
+```sql
+CREATE ROLE mcp_reader WITH LOGIN = true AND PASSWORD = '...';
+GRANT SELECT ON KEYSPACE shop TO mcp_reader;
+GRANT SELECT ON KEYSPACE system_traces TO mcp_reader;  -- for trace_query
+GRANT DESCRIBE ON ALL ROLES TO mcp_reader;              -- for LIST ROLES
+```
+
+What CQLAI cannot control: everything a tool returns goes to the model's
+provider. Use the visible keyspaces and redacted columns to keep out what must
+not leave.
 
 ## Apache Parquet Support
 

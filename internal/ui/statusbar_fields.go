@@ -114,6 +114,13 @@ func (m StatusBarModel) segments() []statusSegment {
 		keep:    m.Capturing,
 	})
 
+	// The MCP server, when cqlai was started to serve one: like a capture, it
+	// keeps doing something whether or not you are looking at it, so it is
+	// never dropped.
+	if m.MCP != "" {
+		segs = append(segs, statusSegment{label: "MCP: ", value: m.MCP, keep: true})
+	}
+
 	return segs
 }
 

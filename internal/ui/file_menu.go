@@ -35,6 +35,7 @@ type fileMenuItem struct {
 	asks  bool       // true if this entry opens a form
 	prefs bool       // true for PREFERENCES, which opens its own window
 	conn  bool       // true for CONNECT, which asks for a cluster
+	mcp   bool       // true for MCP SERVER, which says where MCP is served
 	quits bool       // true for QUIT, which is the end of it
 
 	// shortcut is the key that does the same thing without the menu, drawn
@@ -77,6 +78,7 @@ func fileMenuItems() []fileMenuItem {
 		// and PREFERENCES is one about how cqlai starts.
 		{label: "AUTOSAVE", kind: capturing},
 		{label: "PREFERENCES", prefs: true},
+		{label: "MCP SERVER", mcp: true},
 		{rule: true},
 		// And last, on its own, because leaving is not like either group above
 		// it and is the one entry here you cannot undo.
@@ -169,6 +171,8 @@ func (m *MainModel) chooseFileMenuItem() (*MainModel, tea.Cmd) {
 		return m.askToQuit()
 	case item.prefs:
 		return m.openPreferences()
+	case item.mcp:
+		return m.showMCPServer()
 	case item.asks:
 		return m.openFileForm(item.form)
 	case item.kind == saving:

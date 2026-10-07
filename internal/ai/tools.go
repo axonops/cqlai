@@ -93,8 +93,10 @@ func ExecuteToolCallTyped(toolName ToolName, params ToolParams) *CommandResult {
 // Deprecated: Use ExecuteToolCallTyped with proper typed parameters instead.
 func ExecuteToolCall(toolName string, args map[string]any) *CommandResult {
 	// Convert string to ToolName
+	// The CHAT view's planner runs its own tools only; the MCP ones go
+	// through CallMCPTool and its policy.
 	tool := ParseToolName(toolName)
-	if !tool.IsValid() {
+	if def, ok := toolDefinition(tool); !ok || !def.Chat {
 		return &CommandResult{
 			Error: fmt.Errorf("invalid tool name: %s", toolName),
 		}
@@ -117,10 +119,72 @@ type ToolDefinition struct {
 	Description string
 	Parameters  map[string]any
 	Required    []string
+
+	// Who is offered it: the CHAT view's planner, MCP clients, or both. One
+	// registry for both, so a tool cannot be described or run differently for
+	// one than for the other.
+	Chat bool
+	MCP  bool
+
+	// Needs is what the policy has to permit for an MCP client to be offered
+	// the tool.
+	Needs ToolNeed
+	// ReadOnly and Destructive are the hints MCP sends a client, which may use
+	// them to ask the user before a call.
+	ReadOnly    bool
+	Destructive bool
 }
 
-// GetCommonToolDefinitions returns the standard tool definitions used across all AI providers
+// ToolNeed is what a tool needs the policy to permit.
+type ToolNeed int
+
+const (
+	NeedNothing  ToolNeed = iota // it says only what the server is and may do
+	NeedDescribe                 // DESCRIBE: it shows the schema
+	NeedSelect                   // SELECT: it reads rows
+	NeedList                     // LIST: it lists roles
+	NeedChange                   // any write or schema command
+)
+
+// GetCommonToolDefinitions returns the tools the CHAT view's planner is
+// offered, which are what it was offered before there was an MCP server.
 func GetCommonToolDefinitions() []ToolDefinition {
+	var chat []ToolDefinition
+	for _, def := range allToolDefinitions() {
+		if def.Chat {
+			chat = append(chat, def)
+		}
+	}
+	return chat
+}
+
+// toolDefinition is the tool of this name.
+func toolDefinition(name ToolName) (ToolDefinition, bool) {
+	for _, def := range allToolDefinitions() {
+		if def.Name == string(name) {
+			return def, true
+		}
+	}
+	return ToolDefinition{}, false
+}
+
+// allToolDefinitions is every tool, for whoever is offered it.
+func allToolDefinitions() []ToolDefinition {
+	defs := chatToolDefinitions()
+	for i := range defs {
+		defs[i].Chat = true
+		switch ToolName(defs[i].Name) {
+		case ToolFuzzySearch, ToolGetSchema, ToolListKeyspaces, ToolListTables:
+			defs[i].MCP = true
+			defs[i].Needs = NeedDescribe
+			defs[i].ReadOnly = true
+		}
+	}
+	return append(defs, mcpToolDefinitions()...)
+}
+
+// chatToolDefinitions is the tools the CHAT view's planner has always had.
+func chatToolDefinitions() []ToolDefinition {
 	return []ToolDefinition{
 		{
 			Name:        ToolFuzzySearch.String(),

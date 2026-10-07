@@ -92,6 +92,15 @@ func HelpRows() [][]string {
 		{"", "  Saved to", "cqlai.json, or ~/.cassandra/cqlai.json when there is none"},
 		{"", "  This session", "The status line, which the file does not change"},
 
+		// The MCP server
+		{"─────────", "─────────", "─────────────"},
+		{"MCP", "cqlai mcp", "This shell, serving MCP for the connection picked in it (read-only)"},
+		{"", "  Client setup", "FILE > MCP SERVER: the address, and the token to send"},
+		{"", "  Token", "~/.cqlai_mcp_token, readable only by you; delete it for a new one"},
+		{"", "  --headless", "No shell: MCP on stdin and stdout, for a client that starts cqlai"},
+		{"", "  What it may do", "PREFERENCES and CONNECT, under MCP SERVER"},
+		{"", "  Audit log", "~/.cqlai_mcp_audit.log: every call, refusals too"},
+
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},
 		{"Keys", "F1 or Alt+H", "Open this help (F1 is taken by some terminals)"},

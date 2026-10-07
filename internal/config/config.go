@@ -45,13 +45,45 @@ type Config struct {
 
 	AI           *AIConfig     `json:"ai,omitempty"`
 	AuthProvider *AuthProvider `json:"authProvider,omitempty"`
-	LoadWarnings []string      `json:"-"` // Warnings from loading config files (not serialized)
+
+	// MCP is what the MCP server may do. At the top of the file it is the
+	// most any connection may do; on a saved connection it can only narrow
+	// that.
+	MCP          *MCPConfig `json:"mcp,omitempty"`
+	LoadWarnings []string   `json:"-"` // Warnings from loading config files (not serialized)
 
 	// SourcePath is the JSON file this config was read from, empty when none of
 	// the candidate paths existed. The PREFERENCES window writes back to it, so
 	// editing a setting lands in the file the settings came from rather than in
 	// a new one somewhere else.
 	SourcePath string `json:"-"`
+}
+
+// MCPConfig is what the MCP server may do: the policy as the file holds it.
+//
+// Every zero value is the safe one, because a setting the file leaves out reads
+// as zero: AllowScans and SkipConfirm are off, the limits fall back to their
+// defaults, and Permit falls back to the read commands.
+type MCPConfig struct {
+	// Permit is the CQL commands the model may run. Nil - the key left out -
+	// is the default, the read commands. An empty list is nothing at all, which
+	// is why it is a pointer: the two have to stay apart in the file.
+	Permit *[]string `json:"permit,omitempty"`
+
+	Keyspaces []string `json:"keyspaces,omitempty"` // the visible keyspaces; empty is all of them
+	Deny      []string `json:"deny,omitempty"`      // keyspaces or keyspace.table never visible
+	Redact    []string `json:"redact,omitempty"`    // keyspace.table.column, with * for any part
+
+	AllowScans        bool `json:"allowScans,omitempty"`
+	SkipConfirm       bool `json:"skipConfirm,omitempty"`
+	MaxRows           int  `json:"maxRows,omitempty"`
+	MaxValueBytes     int  `json:"maxValueBytes,omitempty"`
+	MaxCallsPerMinute int  `json:"maxCallsPerMinute,omitempty"`
+
+	// Server-wide: these are read from the top of the file only.
+	Connections []string `json:"connections,omitempty"` // what use_connection may switch to
+	AuditLog    string   `json:"auditLog,omitempty"`
+	Port        int      `json:"port,omitempty"` // where the terminal app serves MCP, at 127.0.0.1
 }
 
 // AuthProvider holds authentication provider configuration

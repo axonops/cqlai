@@ -46,6 +46,12 @@ func ConnectionSettings(conn Config) Config {
 		ssl := *conn.SSL
 		kept.SSL = &ssl
 	}
+	// What the MCP server may do on this connection. UseConnection does not
+	// copy it to the top of the file: there it is the limit for every
+	// connection, and making one the default must not change that.
+	if conn.MCP != nil {
+		kept.MCP = conn.MCP.Clone()
+	}
 	return kept
 }
 
@@ -124,4 +130,21 @@ func (c *Config) UseConnection(conn Config) {
 		ssl := *conn.SSL
 		c.SSL = &ssl
 	}
+}
+
+// Clone is a copy that shares nothing with the original.
+func (m *MCPConfig) Clone() *MCPConfig {
+	if m == nil {
+		return nil
+	}
+	c := *m
+	if m.Permit != nil {
+		permit := append([]string{}, *m.Permit...)
+		c.Permit = &permit
+	}
+	c.Keyspaces = append([]string(nil), m.Keyspaces...)
+	c.Deny = append([]string(nil), m.Deny...)
+	c.Redact = append([]string(nil), m.Redact...)
+	c.Connections = append([]string(nil), m.Connections...)
+	return &c
 }

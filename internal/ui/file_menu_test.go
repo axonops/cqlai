@@ -56,7 +56,7 @@ func TestTheMenuIsFourGroups(t *testing.T) {
 	assert.Equal(t, [][]string{
 		{"CONNECT"},
 		{"SAVE RESULTS", "SOURCE", "COPY TO", "COPY FROM"},
-		{"AUTOSAVE", "PREFERENCES"},
+		{"AUTOSAVE", "PREFERENCES", "MCP SERVER"},
 		{"QUIT"},
 	}, groups)
 }

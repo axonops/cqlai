@@ -74,6 +74,9 @@ func TestEverySettingReachesAConfigField(t *testing.T) {
 	cfg := &config.Config{}
 	for _, spec := range prefSpecs() {
 		require.NotEmpty(t, spec.label, "a setting with no label")
+		if spec.kind == prefMember {
+			continue // written together, as one list: see the MCP tests
+		}
 
 		err := setPrefValue(cfg, spec.path, prefTestValue(spec))
 		require.NoError(t, err, "setting %s", spec.path)

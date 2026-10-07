@@ -42,7 +42,7 @@ func (m *MainModel) pasteText(text string) (*MainModel, tea.Cmd) {
 	switch {
 	case m.preferences.active:
 		field := m.preferences.current()
-		if field == nil || field.spec.kind == prefYesNo {
+		if field == nil || field.spec.toggles() {
 			return m, nil
 		}
 		m.preferences.fields[m.preferences.focus].input, cmd = field.input.Update(msg)

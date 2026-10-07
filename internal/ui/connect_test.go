@@ -42,7 +42,9 @@ func TestConnectAsksForAConnectionAndNothingElse(t *testing.T) {
 		paths[field.spec.path] = true
 	}
 
-	assert.Equal(t, map[string]bool{"CONNECTION DETAILS": true, "SSL": true}, sections)
+	// And what the MCP server may do on this connection.
+	assert.Equal(t, map[string]bool{"CONNECTION DETAILS": true, "SSL": true,
+		mcpSection: true, mcpCommandsSection: true}, sections)
 	for _, wanted := range []string{"Host", "Port", "Username", "Password", "SSL.Enabled", "SSL.CAPath"} {
 		assert.True(t, paths[wanted], "%s should be asked for", wanted)
 	}

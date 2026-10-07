@@ -66,22 +66,18 @@ func ParseToolName(s string) ToolName {
 	return ""
 }
 
-// IsValid checks if this is a valid tool name
+// IsValid reports whether a tool of this name is defined. It reads the
+// definitions rather than a list of its own, so a tool cannot be defined and
+// then refused as unknown, or the other way round.
 func (t ToolName) IsValid() bool {
-	switch t {
-	case ToolFuzzySearch, ToolGetSchema, ToolGetTableInfo,
-		ToolListKeyspaces, ToolListTables, ToolSubmitQueryPlan,
-		ToolUserSelection, ToolNotEnoughInfo, ToolNotRelevant, ToolInfo:
-		return true
-	}
-	return false
+	_, ok := toolDefinition(t)
+	return ok
 }
 
 // Tool names for AI function calling
 const (
 	ToolFuzzySearch     ToolName = "fuzzy_search"
 	ToolGetSchema       ToolName = "get_schema"
-	ToolGetTableInfo    ToolName = "get_table_info"
 	ToolListKeyspaces   ToolName = "list_keyspaces"
 	ToolListTables      ToolName = "list_tables"
 	ToolSubmitQueryPlan ToolName = "submit_query_plan"
@@ -89,6 +85,12 @@ const (
 	ToolNotEnoughInfo   ToolName = "not_enough_info"
 	ToolNotRelevant     ToolName = "not_relevant"
 	ToolInfo            ToolName = "info" // For informational responses
+
+	// Offered to MCP clients only.
+	ToolConnectionInfo ToolName = "connection_info"
+	ToolDescribe       ToolName = "describe"
+	ToolQuery          ToolName = "query"
+	ToolTraceQuery     ToolName = "trace_query"
 )
 
 // Environment variable names

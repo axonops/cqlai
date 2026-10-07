@@ -3,9 +3,12 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/policy"
 )
 
 // ToolRequest represents a JSON tool request from the AI
@@ -159,9 +162,20 @@ func (i *InteractionRequest) Error() string {
 	return i.InfoMessage
 }
 
-// ExecuteCommand executes a tool command and returns the result
+// ExecuteCommand executes a tool command for the CHAT view, which sees what
+// the shell sees.
 func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
-	if globalAI == nil || globalAI.cache == nil {
+	return executeCommandFor(policy.Shell(), globalAI, toolName, arg)
+}
+
+// executeCommandFor executes a tool command under a policy: what the policy
+// hides is left out of every answer, and a hidden table is answered for as one
+// that is not there.
+//
+// a is the schema cache to answer from: the CHAT view's, or an MCP server's
+// own, which is on a session of its own.
+func executeCommandFor(p policy.Policy, a *AI, toolName ToolName, arg string) *CommandResult {
+	if a == nil || a.cache == nil {
 		return &CommandResult{
 			Success: false,
 			Error:   fmt.Errorf("AI system not initialized"),
@@ -172,8 +186,15 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 	case ToolFuzzySearch:
 		logger.DebugfToFile("CommandProcessor", "Executing fuzzy search for: %s", arg)
 
-		if globalAI.resolver != nil {
-			candidates := globalAI.resolver.FindTablesWithFuzzy(arg, 10)
+		if a.resolver != nil {
+			// More than ten are asked for, so ten are left once the hidden
+			// ones are taken out.
+			var candidates []TableCandidate
+			for _, c := range a.resolver.FindTablesWithFuzzy(arg, 50) {
+				if p.VisibleTable(c.Keyspace, c.Table) && len(candidates) < 10 {
+					candidates = append(candidates, c)
+				}
+			}
 			logger.DebugfToFile("CommandProcessor", "Fuzzy search returned %d candidates", len(candidates))
 
 			if len(candidates) > 0 {
@@ -187,10 +208,10 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 			}
 
 			// No direct matches, show available keyspaces
-			if len(globalAI.cache.Keyspaces) > 0 {
+			if keyspaces := visibleKeyspaces(p, a); len(keyspaces) > 0 {
 				var sb strings.Builder
 				fmt.Fprintf(&sb, "No tables found matching '%s'. Available keyspaces: %s\n",
-					arg, strings.Join(globalAI.cache.Keyspaces[:min(10, len(globalAI.cache.Keyspaces))], ", "))
+					arg, strings.Join(keyspaces[:min(10, len(keyspaces))], ", "))
 				sb.WriteString("\nTry searching with a different term or use LIST_TABLES:<keyspace> to see tables in a specific keyspace.")
 				return &CommandResult{Success: true, Data: sb.String()}
 			}
@@ -215,7 +236,10 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 		}
 
 		logger.DebugfToFile("CommandProcessor", "Getting schema for: %s", arg)
-		schemaInfo, err := globalAI.cache.GetTableSchema(parts[0], parts[1])
+		if !p.VisibleTable(parts[0], parts[1]) {
+			return &CommandResult{Success: true, Data: "Schema not found"}
+		}
+		schemaInfo, err := a.cache.GetTableSchema(parts[0], parts[1])
 		if err != nil {
 			return &CommandResult{Success: true, Data: "Schema not found"}
 		}
@@ -229,7 +253,7 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 
 	case ToolListKeyspaces:
 		logger.DebugfToFile("CommandProcessor", "Listing keyspaces")
-		keyspaces := globalAI.cache.Keyspaces
+		keyspaces := visibleKeyspaces(p, a)
 		return &CommandResult{
 			Success: true,
 			Data:    fmt.Sprintf("Keyspaces: %s", strings.Join(keyspaces, ", ")),
@@ -237,14 +261,29 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 
 	case ToolListTables:
 		logger.DebugfToFile("CommandProcessor", "Listing tables for keyspace: %s", arg)
-		tables := globalAI.cache.Tables[arg]
-		tableNames := []string{}
-		for _, t := range tables {
-			tableNames = append(tableNames, t.TableName)
+		// Each with its key: a virtual table can only be filtered on its key,
+		// and for a stored one the key is what says how to read it.
+		var lines []string
+		if p.Visible(arg) {
+			for _, t := range a.cache.Tables[arg] {
+				if !p.VisibleTable(arg, t.TableName) {
+					continue
+				}
+				line := "- " + t.TableName
+				if len(t.PartitionKeys) > 0 {
+					line += " (partition key: " + strings.Join(t.PartitionKeys, ", ")
+					if len(t.ClusteringKeys) > 0 {
+						line += "; clustering: " + strings.Join(t.ClusteringKeys, ", ")
+					}
+					line += ")"
+				}
+				lines = append(lines, line)
+			}
 		}
+		sort.Strings(lines)
 		return &CommandResult{
 			Success: true,
-			Data:    fmt.Sprintf("Tables in %s: %s", arg, strings.Join(tableNames, ", ")),
+			Data:    fmt.Sprintf("Tables in %s:\n%s", arg, strings.Join(lines, "\n")),
 		}
 
 	case ToolUserSelection:
@@ -319,4 +358,70 @@ func ExecuteCommand(toolName ToolName, arg string) *CommandResult {
 			Error:   fmt.Errorf("unknown tool: %s", toolName),
 		}
 	}
+}
+
+// visibleKeyspaces is the cached keyspaces a policy lets be seen.
+func visibleKeyspaces(p policy.Policy, a *AI) []string {
+	var keyspaces []string
+	for _, ks := range a.cache.Keyspaces {
+		if p.Visible(ks) {
+			keyspaces = append(keyspaces, ks)
+		}
+	}
+	return keyspaces
+}
+
+// refreshIfChanged fetches the schema again when the cluster's schema version
+// has moved since it was last fetched, which is one row to ask for. A
+// long-running MCP server would otherwise answer from the schema it started
+// with.
+func (a *AI) refreshIfChanged() {
+	if a == nil || a.cache == nil || a.session == nil {
+		return
+	}
+	version, err := a.session.SchemaVersion()
+	if err != nil {
+		return
+	}
+
+	a.versionMu.Lock()
+	defer a.versionMu.Unlock()
+	if version == a.schemaVersion {
+		return
+	}
+	// A different version, or none recorded - a cache built without saying
+	// which schema it was built from - is fetched again.
+	if err := a.cache.Refresh(); err != nil {
+		logger.DebugfToFile("CommandProcessor", "Schema refresh failed: %v", err)
+		return
+	}
+	a.resolver = NewResolver(a.cache)
+	a.schemaVersion = version
+}
+
+// recordVersion notes which schema the cache was just built from, so the
+// first tool call does not fetch it all again.
+func (a *AI) recordVersion() {
+	if a == nil || a.session == nil {
+		return
+	}
+	version, err := a.session.SchemaVersion()
+	if err != nil {
+		return
+	}
+	a.versionMu.Lock()
+	a.schemaVersion = version
+	a.versionMu.Unlock()
+}
+
+// NewSchemaTools is a schema cache of its own on a session, for an MCP
+// server: the CHAT view's is on the shell's session, which the server does not
+// share.
+func NewSchemaTools(session *db.Session) (*AI, error) {
+	a, err := NewAIWithCache(session, &Config{Provider: "local", PrivacyMode: "schema_only"})
+	if err != nil {
+		return nil, err
+	}
+	a.recordVersion()
+	return a, nil
 }

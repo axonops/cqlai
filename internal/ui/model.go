@@ -10,6 +10,7 @@ import (
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/mcp"
 	"github.com/axonops/cqlai/internal/router"
 	"github.com/axonops/cqlai/internal/session"
 	"github.com/axonops/cqlai/internal/ui/completion"
@@ -37,6 +38,11 @@ type ConnectionOptions struct {
 	SSLInsecureSkipVerify *bool  // Override SSL insecure skip verify (nil = use config)
 	Consistency           string // Default consistency level (e.g., "QUORUM")
 	PageSize              int    // Page size for results
+
+	// MCP, when set, serves MCP from the app, for whichever connection is
+	// picked in it: `cqlai mcp`.
+	MCP     *mcp.Options
+	Version string
 }
 
 // AIMessage represents a single message in the AI conversation
@@ -73,6 +79,12 @@ type AIInfoResponseMsg struct {
 
 // MainModel is the main Bubble Tea model for the application.
 type MainModel struct {
+	// mcpHost is the MCP server, when the app was started as `cqlai mcp`.
+	mcpHost *mcp.Host
+	// connectOnStart opens CONNECT once the window has a size, for `cqlai
+	// mcp` started with no cluster: picking one is what it is for.
+	connectOnStart bool
+
 	historyViewport        viewport.Model // For command history
 	tableViewport          viewport.Model // For current table display
 	input                  textinput.Model
@@ -474,7 +486,18 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		statusBar.Consistency = dbSession.Consistency()
 	}
 
+	var mcpHost *mcp.Host
+	if options.MCP != nil {
+		mcpHost = mcp.StartHost(*options.MCP, options.Version)
+		if dbSession != nil {
+			mcpHost.Use(*cfg, cfg.Name)
+		}
+		statusBar.MCP = mcpStatus(mcpHost)
+	}
+
 	return &MainModel{
+		mcpHost:                mcpHost,
+		connectOnStart:         mcpHost != nil && dbSession == nil,
 		connectError:           connectMessage,
 		topBar:                 NewTopBarModel(),
 		statusBar:              statusBar,
@@ -584,6 +607,13 @@ func (m *MainModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			wrapped := m.wrapHistoryContent(consoleWidth(newWidth))
 			m.historyViewport.SetContent(m.consoleContent(wrapped))
 			m.ready = true
+
+			// `cqlai mcp` with no cluster: the window has a size now, so
+			// CONNECT can be drawn, and picking a connection is the point.
+			if m.connectOnStart {
+				m.connectOnStart = false
+				_, _ = m.openConnect()
+			}
 		} else {
 			// Resize viewports
 			m.historyViewport.SetWidth(consoleWidth(newWidth))
