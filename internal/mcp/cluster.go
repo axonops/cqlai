@@ -96,11 +96,25 @@ func (c *cluster) env(pol policy.Policy) ai.ToolEnv {
 				_, columns := sess.TableKey(keyspace, table)
 				return columns
 			}),
-		Session: sess,
-		Schema:  schema,
-		Describe: func(statement string) interface{} {
-			return router.ProcessCommand(statement, sess, c.mgr)
-		},
+		Session:  sess,
+		Schema:   schema,
+		Describe: Describer(sess, c.mgr),
+	}
+}
+
+// Describer runs DESCRIBE statements with cqlai's own parser, on a session,
+// so describe prints what the shell prints.
+//
+// It does not go through router.ProcessCommand. That builds the router's one
+// meta-command handler on the first command it is given, bound to that
+// command's session, for the life of the process. Reached first from here, it
+// bound the shell's TRACING, CONSISTENCY and the rest to the MCP server's
+// session: in the shell, TRACING ON turned on tracing for the model, not for
+// the user. A handler of its own keeps the two apart.
+func Describer(sess *db.Session, mgr *session.Manager) func(string) interface{} {
+	handler := router.NewMetaCommandHandler(sess, mgr)
+	return func(statement string) interface{} {
+		return router.NewCommandParser(sess, handler, mgr).ParseCommand(statement)
 	}
 }
 

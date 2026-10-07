@@ -13,7 +13,6 @@ import (
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/policy"
-	"github.com/axonops/cqlai/internal/router"
 	"github.com/axonops/cqlai/internal/session"
 )
 
@@ -88,7 +87,6 @@ func RunHeadless(o Options, version string) int {
 
 	where := describeConnection(conn, name, cfg.SavePath())
 	mgr := session.NewManager(cfg)
-	router.InitRouter(mgr)
 	link := newCluster(conn, cfg.Consistency, o, where, pol.Scrub, mgr)
 	defer link.close()
 
