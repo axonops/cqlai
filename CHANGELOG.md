@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
+### Added
+
+- **An MCP server.** An AI assistant can work with one cluster through CQLAI,
+  over the Model Context Protocol. There are two ways to run it:
+  - `cqlai mcp` opens the shell and serves MCP at `http://127.0.0.1:7845/mcp`,
+    for whichever connection is picked in `FILE > CONNECT`. Every request has
+    to carry the token kept in `~/.cqlai_mcp_token`, and requests from a web
+    page are refused. `FILE > MCP SERVER` prints a client configuration ready
+    to copy, and the status bar shows `MCP: :7845`.
+  - `cqlai mcp --headless` serves it on stdin and stdout, for a client that
+    starts CQLAI itself.
+
+  Neither needs a cluster to start: a tool called without one says so, and the
+  next call tries again.
+
+  The tools: `connection_info`, `list_keyspaces`, `list_tables`, `get_schema`,
+  `fuzzy_search`, `describe`, `query` (a page at a time), `trace_query`,
+  `node_status`, `table_size`, `list_roles` and `propose_change`. Keyspace and
+  table definitions are offered as resources, and the client is told when the
+  schema changes. Two prompts, `review_table` and `diagnose_query`, use the
+  same instructions as `Alt+A`.
+- **The MCP server never changes anything.** A model that wants an `INSERT`,
+  `UPDATE`, `DELETE`, `BATCH`, `CREATE`, `ALTER`, `DROP` or `TRUNCATE` proposes
+  it with `propose_change`, and gets back the statement and what it will do -
+  warnings written into CQLAI for each kind of statement, not the model's own
+  account. In `cqlai mcp` the statement is also put in the prompt, unrun, and
+  running it is always confirmed.
+- **What the model may do is set in `PREFERENCES` and `CONNECT`**, under
+  `MCP SERVER`: which of `SELECT`, `DESCRIBE` and `LIST` it may run, which
+  keyspaces it can see, tables it can never see, columns whose values are
+  hidden, whether scans are allowed, and the limits. A connection's settings can
+  only narrow the ones in `PREFERENCES`. In the shell they apply as soon as they
+  are saved.
+
+  Every statement passes one gate: one statement per call, a permitted command,
+  tables named as `keyspace.table`, nothing hidden, and no `ALLOW FILTERING` or
+  cross-partition aggregate unless scans are allowed. `system_auth` is always
+  hidden. A redacted column's values cannot come back by alias, `JSON`, a
+  function or a guess in `WHERE`. What is refused comes back as the statement,
+  for the user to run if they choose. Every call is written to
+  `~/.cqlai_mcp_audit.log`, without values. The server keeps a session of its
+  own, apart from the shell's.
+- **The schema tree can be filtered.** The heading above the `SCHEMA` tree is a
+  filter: Up from the top row, `/` with nothing at the prompt, or a click gives
+  it the keys. The tree narrows to the keyspaces and tables whose names contain
+  what is typed, a table shown under its keyspace without opening it. `Esc`
+  clears it, with what was found still selected.
+
+### Changed
+
+- **`fuzzy_search` finds keyspaces, and names by their sound.** It searched
+  table names only, and only as spelled. It now searches keyspaces too, and
+  finds names that sound alike (`hyto` finds `hayato`), have the search's
+  letters in order, or are a typo away, saying why each matched. The `CHAT`
+  view uses the same search.
+- **The `CHAT` view's tools see the virtual keyspaces.**
+- **The shell confirms a `DELETE` inside a `BATCH`, or a `DROP` behind a
+  comment**, as it does one on its own: the check reads the statement rather
+  than its first word.
+
+### Fixed
+
+- **A Console message of several lines is no longer double-spaced** when one of
+  its lines is wider than the Console.
+
+### Known issues
+
+- The shell asks before a dangerous statement only when `requireConfirmation`
+  is in the configuration file, or a connection flag is given. A statement
+  proposed through MCP is always confirmed.
+
 ## [0.2.6] - 2026-10-05
 
 ### Fixed
