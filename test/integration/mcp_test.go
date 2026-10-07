@@ -16,6 +16,7 @@ import (
 	"github.com/axonops/cqlai/internal/ai"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/db"
+	mcpserver "github.com/axonops/cqlai/internal/mcp"
 	"github.com/axonops/cqlai/internal/policy"
 	"github.com/axonops/cqlai/internal/router"
 	"github.com/axonops/cqlai/internal/session"
@@ -64,7 +65,7 @@ func mcpEnv(t *testing.T, mcp *config.MCPConfig) ai.ToolEnv {
 		Policy:   pol,
 		Session:  sess,
 		Schema:   schema,
-		Describe: func(statement string) interface{} { return router.ProcessCommand(statement, sess, mgr) },
+		Describe: mcpserver.Describer(sess, mgr),
 	}
 }
 
@@ -307,4 +308,19 @@ func TestMCPProposesWithoutRunning(t *testing.T) {
 		"cql": "SELECT COUNT(*) FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'",
 	}))
 	assert.EqualValues(t, 3, still.Rows[0]["count"], "nothing was deleted, and the table is still there")
+}
+
+// TestMCPDoesNotTakeOverTheShellsSettings: a describe from the MCP server
+// does not build the router's meta-command handler. Built from here, it bound
+// the shell's TRACING ON to the server's session, and the shell's tracing
+// never came on.
+func TestMCPDoesNotTakeOverTheShellsSettings(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+	before := router.GetMetaHandler()
+
+	o := callTool(t, env, "describe", map[string]any{"kind": "table", "keyspace": "test_mcp", "name": "orders"})
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, "CREATE TABLE test_mcp.orders")
+
+	assert.Same(t, before, router.GetMetaHandler(), "the shell's handler is left as it was")
 }
