@@ -357,6 +357,14 @@ Las flechas recorren el árbol (derecha despliega, izquierda pliega) y la rueda
 desplaza el panel que esté bajo el puntero. Lo demás sigue yendo al prompt, así
 que puedes escribir una consulta mientras miras la tabla de la que trata.
 
+El encabezado sobre el árbol es un filtro. Pulsa `Arriba` desde la primera fila del
+árbol, `/` con el prompt vacío, o haz clic en el encabezado, y escribe: el árbol muestra solo los keyspaces y las
+tablas cuyo nombre contiene lo escrito, sin distinguir mayúsculas. Una tabla se
+muestra bajo su keyspace, sin tener que desplegarlo antes. Se selecciona la
+primera coincidencia. `Abajo` o `Enter` vuelve al árbol, devuelve el teclado al
+prompt y mantiene el filtro; `Esc` lo borra y
+vuelve a mostrar el árbol entero, con lo encontrado aún seleccionado.
+
 #### Desplazamiento y Navegación de Tabla
 | Atajo | Acción | Alternativa macOS |
 |----------|--------|-------------------|

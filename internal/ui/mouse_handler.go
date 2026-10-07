@@ -347,6 +347,9 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// it is text like any other view, and a press there starts a selection, so
 	// what is on screen can still be copied out.
 	if m.viewMode == "schema" {
+		if m.schemaTreeHeadingAt(mouse.X, mouse.Y) {
+			return m.startSchemaFilter()
+		}
 		if _, hit := m.schemaRowAt(mouse.X, mouse.Y); hit {
 			return m.clickSchema(mouse.X, mouse.Y)
 		}

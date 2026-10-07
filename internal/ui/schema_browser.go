@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
@@ -65,6 +67,21 @@ type schemaBrowser struct {
 	// stale says the cluster has changed under what is kept here, so it is
 	// fetched again before it is next looked at.
 	stale bool
+
+	// filter narrows the tree to the keyspaces and tables whose names contain
+	// it, ignoring case. Empty shows everything.
+	filter string
+
+	// filterInput is the field the filter is typed into, while it has the
+	// keys. A text input like the prompt, so its cursor blinks and moves the
+	// way the prompt's does.
+	filterInput textinput.Model
+}
+
+// filtering says the filter has the keys: what is typed goes into it rather
+// than into the prompt.
+func (s schemaBrowser) filtering() bool {
+	return s.filterInput.Focused()
 }
 
 // rows is the tree as it stands: every keyspace, and the tables of the ones
@@ -73,6 +90,10 @@ type schemaBrowser struct {
 // Drawing, clicking and moving the selection all come from this, so a click
 // cannot land on a different row from the one drawn there.
 func (s schemaBrowser) rows() []schemaRow {
+	if s.filter != "" {
+		return s.filteredRows()
+	}
+
 	rows := make([]schemaRow, 0, len(s.keyspaces)*2)
 	for _, keyspace := range s.keyspaces {
 		rows = append(rows, schemaRow{keyspace: keyspace})
@@ -84,6 +105,59 @@ func (s schemaBrowser) rows() []schemaRow {
 		}
 	}
 	return rows
+}
+
+// filteredRows is the tree narrowed to what the filter names.
+//
+// A keyspace whose name matches is listed as it would be anyway, its tables
+// with it when it is open. A keyspace that does not match is listed only for
+// the tables of it that do, and those are shown whether it is open or not:
+// they are what was searched for, and making someone open the keyspace to see
+// them would hide the answer behind a click.
+func (s schemaBrowser) filteredRows() []schemaRow {
+	want := strings.ToLower(s.filter)
+	matches := func(name string) bool { return strings.Contains(strings.ToLower(name), want) }
+
+	var rows []schemaRow
+	for _, keyspace := range s.keyspaces {
+		if matches(keyspace) {
+			rows = append(rows, schemaRow{keyspace: keyspace})
+			if s.expanded[keyspace] {
+				for _, table := range s.tables[keyspace] {
+					rows = append(rows, schemaRow{keyspace: keyspace, table: table})
+				}
+			}
+			continue
+		}
+
+		var found []schemaRow
+		for _, table := range s.tables[keyspace] {
+			if matches(table) {
+				found = append(found, schemaRow{keyspace: keyspace, table: table})
+			}
+		}
+		if len(found) > 0 {
+			rows = append(rows, schemaRow{keyspace: keyspace})
+			rows = append(rows, found...)
+		}
+	}
+	return rows
+}
+
+// firstMatch is the first row whose own name the filter is in - the table or
+// keyspace being looked for, rather than the keyspace listed above it.
+func (s schemaBrowser) firstMatch() int {
+	want := strings.ToLower(s.filter)
+	for i, row := range s.rows() {
+		name := row.keyspace
+		if row.table != "" {
+			name = row.table
+		}
+		if strings.Contains(strings.ToLower(name), want) {
+			return i
+		}
+	}
+	return 0
 }
 
 // current is the selected row.
@@ -418,10 +492,30 @@ func (m *MainModel) schemaOwnsKeys() bool {
 // which still works from here. Typing a query while looking at a table's
 // definition is the whole point of having both on one screen.
 func (m *MainModel) schemaKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd, bool) {
+	// The filter, while it has the keys, takes what is typed. Everything it
+	// does not take - the arrows, the page keys, the shell's own keys - goes on
+	// to the tree and the shell as it would without it.
+	if m.schema.filtering() {
+		if updated, cmd, handled := m.schemaFilterKey(msg); handled {
+			return updated, cmd, true
+		}
+	} else if msg.String() == "/" && strings.TrimSpace(m.input.Value()) == "" {
+		// Only with an empty prompt, the rule Enter follows here too: a
+		// statement being typed keeps its "/".
+		updated, cmd := m.startSchemaFilter()
+		return updated, cmd, true
+	}
+
 	height := m.schemaHeight()
 
 	switch msg.String() {
 	case "up":
+		// The filter is the row above the tree, and up from the top row is
+		// where it is looked for.
+		if m.schema.selected == 0 {
+			updated, cmd := m.startSchemaFilter()
+			return updated, cmd, true
+		}
 		updated, cmd := m.moveSchemaSelection(-1)
 		return updated, cmd, true
 	case "down":
@@ -506,4 +600,136 @@ func (m *MainModel) scrollSchema(col, delta int) (*MainModel, tea.Cmd) {
 // into a nil pointer inside the driver.
 func (m *MainModel) connected() bool {
 	return m.session != nil && m.session.Session != nil
+}
+
+// Filtering the tree.
+//
+// A cluster with a few dozen keyspaces, and forty-odd virtual tables on top
+// since 4.0, is a long thing to walk with the arrows to find one table. The
+// filter is the tree's heading row; "/", up from the top row, or a click there
+// gives it the keys.
+
+// startSchemaFilter gives the filter the keys, and the cursor: the prompt's
+// stops blinking, so there is one place to type into on the screen.
+//
+// The tree fetches a keyspace's tables when it is first opened, which leaves
+// most of them unknown - and a table that has not been fetched cannot be found
+// by its name. So they are all fetched now, once; tablesOf keeps them.
+func (m *MainModel) startSchemaFilter() (*MainModel, tea.Cmd) {
+	for _, keyspace := range m.schema.keyspaces {
+		m.tablesOf(keyspace)
+	}
+
+	in := textinput.New()
+	in.Prompt = schemaFilterPrefix
+	in.CharLimit = 256
+	heading := lipgloss.NewStyle().Foreground(m.styles.Accent).Bold(true)
+	styles := in.Styles()
+	styles.Focused.Prompt = heading
+	styles.Focused.Text = heading
+	in.SetStyles(styles)
+	in.SetValue(m.schema.filter)
+	in.CursorEnd()
+
+	m.input.Blur()
+	cmd := in.Focus()
+	m.schema.filterInput = in
+	return m, cmd
+}
+
+// stopSchemaFilter takes the keys from the filter, keeping what it found, and
+// gives the prompt its cursor back.
+func (m *MainModel) stopSchemaFilter() tea.Cmd {
+	if !m.schema.filtering() {
+		return nil
+	}
+	m.schema.filterInput.Blur()
+	return m.input.Focus()
+}
+
+// settleSchemaFilter gives the prompt the keys back when the view the filter
+// is in has gone, however it went - a tab key, a click on a tab, a command. A
+// filter with the keys in a view that is not on screen would leave typing
+// going nowhere that can be seen.
+func (m *MainModel) settleSchemaFilter() tea.Cmd {
+	if m.viewMode == "schema" {
+		return nil
+	}
+	return m.stopSchemaFilter()
+}
+
+// schemaFilterEditKeys are the keys the filter's field takes besides what is
+// typed: the ones that edit a line, as they do at the prompt.
+var schemaFilterEditKeys = map[string]bool{
+	"backspace": true, "delete": true, "left": true, "right": true,
+	"home": true, "end": true, "ctrl+a": true, "ctrl+e": true,
+	"ctrl+u": true, "ctrl+k": true, "ctrl+w": true, "ctrl+h": true,
+	"alt+backspace": true, "ctrl+left": true, "ctrl+right": true,
+}
+
+// schemaFilterKey is what the filter does with a key, and whether it took it.
+func (m *MainModel) schemaFilterKey(msg tea.KeyPressMsg) (*MainModel, tea.Cmd, bool) {
+	switch msg.String() {
+	case "esc":
+		cmd := m.stopSchemaFilter()
+		updated, selectCmd := m.clearSchemaFilter()
+		return updated, tea.Batch(cmd, selectCmd), true
+	case "enter", "down":
+		// Out of the field, keeping what it found: down into the tree, at the
+		// match already selected, and the prompt has the keys again.
+		return m, m.stopSchemaFilter(), true
+	case "up":
+		// Nothing is above the filter.
+		return m, nil, true
+	}
+
+	// What is typed and the keys that edit it, and nothing else. A shell key -
+	// F2, Alt+F, Ctrl+Q - is not text, and has to reach the shell from here as
+	// it does from anywhere.
+	typed := msg.Text != "" && !isShellKey(msg.String()) && msg.Mod&(tea.ModCtrl|tea.ModAlt) == 0
+	if !typed && !schemaFilterEditKeys[msg.String()] {
+		return m, nil, false
+	}
+
+	var cmd tea.Cmd
+	m.schema.filterInput, cmd = m.schema.filterInput.Update(msg)
+	if m.schema.filterInput.Value() == m.schema.filter {
+		return m, cmd, true // the cursor moved, and nothing else
+	}
+	updated, selectCmd := m.setSchemaFilter(m.schema.filterInput.Value())
+	return updated, tea.Batch(cmd, selectCmd), true
+}
+
+// setSchemaFilter narrows the tree, and moves the selection to the first row
+// that is what was searched for - so the definition beside it is the answer.
+func (m *MainModel) setSchemaFilter(filter string) (*MainModel, tea.Cmd) {
+	m.schema.filter = filter
+	m.schema.scroll = 0
+	if filter == "" {
+		return m.selectSchemaRow(0)
+	}
+	return m.selectSchemaRow(m.schema.firstMatch())
+}
+
+// clearSchemaFilter puts the whole tree back, with what was found still
+// selected: a table found by its name is opened in the full tree rather than
+// lost inside a keyspace that is closed.
+func (m *MainModel) clearSchemaFilter() (*MainModel, tea.Cmd) {
+	found, ok := m.schema.current()
+
+	m.schema.filter = ""
+	m.schema.scroll = 0
+
+	if !ok {
+		return m.selectSchemaRow(0)
+	}
+	if found.table != "" {
+		m.schema.expanded[found.keyspace] = true
+	}
+	for i, row := range m.schema.rows() {
+		if row == found {
+			return m.selectSchemaRow(i)
+		}
+	}
+	return m.selectSchemaRow(0)
 }
