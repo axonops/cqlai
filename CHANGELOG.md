@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-07
+
+### Fixed
+
+- **`TRACING ON` works in the shell while an MCP client is connected.** With
+  `cqlai mcp` running, a client that called `describe` before anything was
+  typed in the shell took over the shell's settings: `TRACING ON`, typed or
+  picked on the status bar, turned on tracing for the model's session, and the
+  status bar stayed `Trace: OFF`. `CONSISTENCY`, `PAGING`, `OUTPUT` and
+  `AUTOFETCH` went the same way. The MCP server now runs its `DESCRIBE`
+  statements apart from the shell's.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added
