@@ -249,8 +249,10 @@ func (m *MainModel) prefKeys() string {
 			keys = "↑↓: Setting   Tab: Complete   Esc: Close"
 		case prefChoice:
 			keys = "↑↓: Setting   Tab: Values   Esc: Close"
-		case prefYesNo:
+		case prefYesNo, prefMember:
 			keys = "↑↓: Setting   Space: Change   Esc: Close"
+		case prefList:
+			keys = "↑↓: Setting   Tab: Complete   Esc: Close"
 		}
 	}
 	return keys

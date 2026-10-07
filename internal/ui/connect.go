@@ -132,4 +132,11 @@ func (m *MainModel) adoptSession(newSession *db.Session, cfg *config.Config) {
 	// next looked at.
 	m.schema = schemaBrowser{}
 	m.schemaVersion = ""
+
+	// The MCP server follows: the connection picked here is the one it
+	// serves, under that connection's policy.
+	if m.mcpHost != nil {
+		m.mcpHost.Use(*cfg, cfg.Name)
+		m.statusBar.MCP = mcpStatus(m.mcpHost)
+	}
 }

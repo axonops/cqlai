@@ -20,6 +20,7 @@ type StatusBarModel struct {
 	Version      string
 	OutputFormat string
 	Capturing    bool
+	MCP          string // where MCP is served, or why not; empty when cqlai was not started to serve it
 }
 
 // NewStatusBarModel creates a new StatusBarModel.

@@ -186,11 +186,10 @@ func (m *MainModel) storeConnection() {
 	}
 
 	conn := p.connections[p.chosen]
-	for _, field := range p.fields {
-		if err := setPrefValue(&conn, field.spec.path, field.value()); err != nil {
-			return // what is wrong with it is said on the window already
-		}
+	if err := applyPrefFields(&conn, p.fields, p.inheritedCommands()); err != nil {
+		return // what is wrong with it is said on the window already
 	}
+	prunePrefs(&conn)
 	p.connections[p.chosen] = conn
 }
 
@@ -207,6 +206,7 @@ func (m *MainModel) loadConnection() {
 		p.fields[i].input = newPrefInput(field.spec, value)
 		p.fields[i].yes = value == "true"
 	}
+	p.loadMembers(&conn)
 	p.focus = 0
 	p.scroll = 0
 	p.clearMatches()

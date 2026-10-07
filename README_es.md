@@ -71,6 +71,7 @@ Está construido con [Bubble Tea](https://github.com/charmbracelet/bubbletea), [
     - [OpenRouter](#openrouter-múltiples-modelos)
     - [Proveedor Mock](#proveedor-mock-para-pruebas)
 - [Generación de Consultas Potenciada por IA](#generación-de-consultas-potenciada-por-ia)
+- [Servidor MCP](#servidor-mcp)
 - [Soporte de Apache Parquet](#soporte-de-apache-parquet)
 - [Limitaciones Conocidas](#limitaciones-conocidas)
 - [Desarrollo](#desarrollo)
@@ -1141,6 +1142,172 @@ Para automatización y scripts, puedes desactivar las confirmaciones para comand
    ```
 
 **Nota**: Usar con precaución en entornos de producción. Estas configuraciones desactivan las confirmaciones de seguridad que ayudan a prevenir pérdida accidental de datos.
+
+## Servidor MCP
+
+`cqlai mcp` permite que un asistente de IA trabaje con un clúster de Cassandra a
+través de CQLAI. El asistente se conecta mediante el
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). CQLAI mantiene
+la conexión, ejecuta las sentencias y devuelve los resultados en JSON.
+
+El asistente es el cliente MCP. En este modo CQLAI no llama a ningún proveedor
+de IA, y no hace falta configurar ninguno.
+
+En esta versión el servidor solo lee. No puede cambiar datos ni esquema.
+
+### Arrancarlo
+
+Hay dos formas de ejecutarlo.
+
+**`cqlai mcp`** abre la shell como siempre y sirve MCP desde ella, en
+`http://127.0.0.1:7845/mcp`. Sirve la conexión que elijas en `FILE > CONNECT`,
+con los ajustes de esa conexión, y la sigue cuando eliges otra. Arranca haya o
+no un clúster disponible; si no lo hay, abre `CONNECT` para que elijas uno. La
+barra de estado muestra `MCP: :7845` mientras sirve.
+
+`FILE > MCP SERVER` imprime lo que hay que añadir a la configuración del
+cliente, listo para copiar:
+
+```json
+{
+  "mcpServers": {
+    "cqlai": {
+      "type": "http",
+      "url": "http://127.0.0.1:7845/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+**Dónde está el token.** El token está en `~/.cqlai_mcp_token`, que solo tú
+puedes leer. El archivo se crea la primera vez que ejecutas `cqlai mcp`, y el
+token es el mismo cada vez que arranca la shell, así que la configuración del
+cliente no cambia. Hay dos formas de obtenerlo:
+
+- En la shell: `FILE > MCP SERVER` imprime la configuración del cliente con el
+  token ya puesto en la cabecera `Authorization`.
+- En una terminal: `cat ~/.cqlai_mcp_token`
+
+Quien tenga el token puede usar lo que el servidor permite: guárdalo como una
+contraseña y no lo incluyas en nada que compartas. Para cambiarlo, borra el
+archivo: el siguiente `cqlai mcp` crea uno nuevo, y la configuración del cliente
+necesita el token nuevo. Si alguien más que tú puede leer el archivo, CQLAI no
+lo usa y lo dice; `chmod 600 ~/.cqlai_mcp_token` lo arregla.
+
+**`cqlai mcp --headless`** no tiene shell. Es para un cliente que arranca CQLAI
+y habla con él por stdin y stdout:
+
+```json
+{
+  "mcpServers": {
+    "cassandra-prod": {
+      "command": "cqlai",
+      "args": ["mcp", "--headless", "--connection", "prod"]
+    }
+  }
+}
+```
+
+`--connection` elige una conexión guardada por su nombre; sin ella se usa la
+conexión por defecto. La contraseña es la guardada con la conexión, o
+`CQLAI_PASSWORD`. Arranca haya o no clúster, y se conecta en la primera llamada.
+
+| Opción | Qué hace |
+|---|---|
+| `--headless` | Sin shell: MCP por stdin y stdout |
+| `--port N` | El puerto en el que la shell sirve MCP (por defecto: el ajuste, o 7845) |
+| `--connection NOMBRE` | Headless: la conexión guardada que se usa |
+| `--read-only` | Solo las órdenes de lectura, digan lo que digan los ajustes |
+| `--permit SELECT,DESCRIBE` | Solo estas órdenes, de las que permiten los ajustes |
+| `--keyspaces ks1,ks2` | Solo estos keyspaces son visibles, de los que permiten los ajustes |
+| `--max-rows N` | Como mucho estas filas por llamada, si es menos que en los ajustes |
+| `--audit-log RUTA` | Dónde va el registro de auditoría; `-` lo desactiva |
+| `--config-file RUTA` | El archivo de configuración que se lee |
+
+Las opciones solo pueden restringir lo que permiten los ajustes. Nunca lo amplían.
+
+### Las herramientas
+
+| Herramienta | Qué hace |
+|---|---|
+| `connection_info` | A qué está conectado el servidor y qué puede hacer allí. El modelo debería llamarla primero. |
+| `list_keyspaces` | Los keyspaces visibles, incluidos los virtuales |
+| `list_tables` | Las tablas de un keyspace, cada una con su clave de partición y de clustering |
+| `get_schema` | Las claves y columnas de una tabla |
+| `fuzzy_search` | Tablas cuyo nombre se parece a una palabra |
+| `describe` | La definición CQL de un keyspace, tabla, tipo, índice, vista, función o agregado, tal como la imprime `DESCRIBE` |
+| `query` | Ejecuta un `SELECT` y devuelve una página de filas, con un token para la siguiente |
+| `trace_query` | Ejecuta un `SELECT` con trazado y devuelve la traza con las filas |
+
+Las cuatro primeras son las mismas herramientas que usa la IA de la vista `CHAT`.
+Una herramienta solo se ofrece si los ajustes permiten lo que necesita: sin
+`SELECT`, `query` y `trace_query` no se ofrecen.
+
+### Qué puede hacer el modelo
+
+Se configura en la ventana `PREFERENCES`, en dos secciones:
+
+- **MCP SERVER**: los keyspaces que ve el modelo, las tablas que nunca ve, las
+  columnas cuyos valores se ocultan, si se permiten los escaneos, los límites y
+  dónde va el registro de auditoría.
+- **MCP SERVER - PERMITTED COMMANDS**: cada orden CQL, permitida o no.
+  `SELECT`, `DESCRIBE` y `LIST` están permitidas salvo que digas lo contrario.
+  `GRANT`, `REVOKE`, los cambios de roles y usuarios y `USE` nunca se permiten.
+
+`CONNECT` tiene las mismas dos secciones para cada conexión guardada. Lo de una
+conexión solo puede restringir lo de `PREFERENCES`; una orden que
+`PREFERENCES` no permite aparece atenuada y no se puede marcar.
+
+Los ajustes se guardan en `cqlai.json`, bajo `mcp`. Se aplican la próxima vez
+que un cliente MCP arranque `cqlai mcp`.
+
+### Seguridad
+
+No se confía en el modelo: puede equivocarse, y el texto que lee del clúster
+puede intentar dirigirlo. Por eso cada regla se aplica en CQLAI, en cada
+llamada, pida lo que pida el modelo.
+
+- **Una sentencia por llamada.** `SELECT ...; DROP ...` se rechaza.
+- **Solo se ejecutan las órdenes permitidas.** CQLAI clasifica la sentencia;
+  lo que no reconoce se rechaza.
+- **Las tablas se nombran como `keyspace.tabla`.** Un nombre sin keyspace se
+  rechaza.
+- **Lo oculto sigue oculto.** Los keyspaces y tablas ocultos no se listan, no
+  se describen, no se encuentran al buscar y no se nombran en un error.
+  `system_auth`, que guarda los hashes de las contraseñas, siempre está oculto.
+- **Columnas ocultadas.** Sus valores vuelven como `[redacted]`. En una tabla
+  con columnas ocultadas, un `SELECT` tiene que usar `*` o nombres de columna,
+  sin `JSON`, alias ni funciones, y sin condiciones sobre esas columnas.
+- **Escaneos.** `ALLOW FILTERING` y los agregados entre particiones se
+  rechazan salvo que se permitan.
+- **Límites.** Una llamada a la vez, hasta 60 por minuto, con el tiempo de
+  espera de la petición, 100 filas por página y los valores largos recortados.
+- **Sin credenciales.** Ninguna herramienta recibe ni devuelve un usuario o una
+  contraseña.
+- **Solo esta máquina, con el token.** La shell sirve MCP solo en
+  `127.0.0.1`. Cada petición tiene que llevar el token, y se rechaza una
+  petición de una página web en un navegador.
+- **Una sesión propia.** El servidor usa una sesión propia con el clúster, así
+  que las consultas del modelo nunca cambian la consistencia ni el trazado de tu
+  shell.
+- **Registro de auditoría.** Cada llamada se escribe en
+  `~/.cqlai_mcp_audit.log`, rechazos incluidos, sin los valores de las
+  sentencias y sin filas. Solo tú puedes leerlo.
+
+El control más fuerte es el rol de Cassandra con el que entra CQLAI. Dale a la
+conexión del servidor MCP un rol propio que solo pueda leer lo necesario:
+
+```sql
+CREATE ROLE mcp_reader WITH LOGIN = true AND PASSWORD = '...';
+GRANT SELECT ON KEYSPACE shop TO mcp_reader;
+GRANT SELECT ON KEYSPACE system_traces TO mcp_reader;  -- para trace_query
+GRANT DESCRIBE ON ALL ROLES TO mcp_reader;              -- para LIST ROLES
+```
+
+Lo que CQLAI no puede controlar: todo lo que devuelve una herramienta llega al
+proveedor del modelo. Usa los keyspaces visibles y las columnas ocultadas para
+dejar fuera lo que no debe salir.
 
 ## Soporte de Apache Parquet
 

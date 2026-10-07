@@ -161,3 +161,66 @@ func (s *Session) describeOnServer(statement string) (string, error) {
 	}
 	return strings.Join(parts, "\n\n"), nil
 }
+
+// virtualColumnInfo is a virtual table's columns with their types and what
+// part of the key each is, keys first, as the schema cache keeps a stored
+// table's.
+func (s *Session) virtualColumnInfo(keyspace, table string) []ColumnInfo {
+	if s == nil || s.Session == nil {
+		return nil
+	}
+	iter := s.Query(`SELECT column_name, type, kind, position
+	                 FROM system_virtual_schema.columns WHERE keyspace_name = ? AND table_name = ?`,
+		keyspace, table).Iter()
+
+	var keys, regular []ColumnInfo
+	var name, dataType, kind string
+	var position int
+	for iter.Scan(&name, &dataType, &kind, &position) {
+		c := ColumnInfo{Name: name, DataType: dataType, Kind: kind, Position: position}
+		if kind == "regular" || kind == "static" {
+			c.Position = -1
+			regular = append(regular, c)
+			continue
+		}
+		keys = append(keys, c)
+	}
+	if err := iter.Close(); err != nil {
+		return nil
+	}
+
+	order := map[string]int{"partition_key": 0, "clustering": 1}
+	sort.SliceStable(keys, func(i, j int) bool {
+		if order[keys[i].Kind] != order[keys[j].Kind] {
+			return order[keys[i].Kind] < order[keys[j].Kind]
+		}
+		return keys[i].Position < keys[j].Position
+	})
+	sort.SliceStable(regular, func(i, j int) bool { return regular[i].Name < regular[j].Name })
+	return append(keys, regular...)
+}
+
+// TableKey is a table's partition key and all its columns, stored or virtual.
+// Empty when the table cannot be found.
+func (s *Session) TableKey(keyspace, table string) (partitionKey, columns []string) {
+	if s == nil || s.Session == nil {
+		return nil, nil
+	}
+	if meta, err := s.GetTableMetadata(keyspace, table); err == nil && meta != nil {
+		for _, c := range meta.PartitionKey {
+			partitionKey = append(partitionKey, c.Name)
+		}
+		for name := range meta.Columns {
+			columns = append(columns, name)
+		}
+		sort.Strings(columns)
+		return partitionKey, columns
+	}
+	for _, c := range s.virtualColumnInfo(keyspace, table) {
+		if c.Kind == "partition_key" {
+			partitionKey = append(partitionKey, c.Name)
+		}
+		columns = append(columns, c.Name)
+	}
+	return partitionKey, columns
+}

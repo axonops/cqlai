@@ -61,7 +61,15 @@ const (
 	prefPath                   // typed, Tab completes it against the filesystem
 	prefYesNo                  // space or a click changes it
 	prefChoice                 // Tab lists what it can be
+	prefList                   // typed as a comma-separated list, kept as a list
+	prefMember                 // a yes/no saying whether a name is in a list
 )
+
+// toggles reports whether space or a click changes the setting, rather than
+// typing.
+func (s prefSpec) toggles() bool {
+	return s.kind == prefYesNo || s.kind == prefMember
+}
 
 // prefSpec describes one setting.
 //
@@ -76,6 +84,12 @@ type prefSpec struct {
 	kind    prefKind
 	hint    string
 	choices func() []string
+
+	// member is the name a prefMember setting puts in its list, or takes out.
+	member string
+	// topOnly is a setting of the whole file that a connection does not have
+	// one of its own: it is in PREFERENCES and not in CONNECT.
+	topOnly bool
 }
 
 // prefSpecs is every setting in the file, in the order the window shows them.
@@ -135,6 +149,8 @@ func prefSpecs() []prefSpec {
 		)
 	}
 
+	specs = append(specs, mcpSpecs()...)
+
 	return append(specs,
 		prefSpec{section: "AUTH PROVIDER", path: "AuthProvider.Module", label: "Module", kind: prefText, hint: "e.g. cassandra.auth"},
 		prefSpec{path: "AuthProvider.ClassName", label: "Class", kind: prefText, hint: "e.g. PlainTextAuthProvider"},
@@ -150,6 +166,16 @@ type prefField struct {
 	spec  prefSpec
 	input textinput.Model
 	yes   bool
+
+	// disabled says why a setting cannot be changed here, or is empty. A
+	// command the top of the file does not permit cannot be permitted for one
+	// connection, and the window says so rather than offer a tick that would
+	// do nothing.
+	disabled string
+	// kept is whether a disabled command row's name was in the list the file
+	// had. Saving puts it back: a setting the window cannot change is not one
+	// it should lose.
+	kept bool
 }
 
 // preferences is the open window.
@@ -236,6 +262,11 @@ func (p preferences) lineOf(field int) int {
 	return 0
 }
 
+// sharedSections are in both windows: in PREFERENCES they are the top of the
+// file, the most any connection may do, and in CONNECT the connection's own,
+// which can only narrow that.
+var sharedSections = map[string]bool{mcpSection: true, mcpCommandsSection: true}
+
 // connectionSections are the settings that belong to a connection rather than
 // to cqlai: where to connect and how.
 //
@@ -259,13 +290,22 @@ func connectionSpecs() []prefSpec {
 		hint: "what to call this connection - the host, left empty",
 	}}
 	section := ""
+	heading := ""
 	for _, spec := range prefSpecs() {
 		if spec.section != "" {
-			section = spec.section
+			section, heading = spec.section, spec.section
 		}
-		if !wanted[section] {
+		if !wanted[section] && !sharedSections[section] {
 			continue
 		}
+		if spec.topOnly {
+			continue
+		}
+		// A section whose first setting was left out keeps its heading.
+		if spec.section == "" && heading != "" && sharedSections[section] {
+			spec.section = heading
+		}
+		heading = ""
 		// The section heading is on the name now.
 		if spec.section == "CONNECTION" {
 			spec.section = ""
@@ -361,6 +401,7 @@ func (m *MainModel) openSettings(purpose prefPurpose, specs []prefSpec) (*MainMo
 		path:    cfg.SavePath(),
 	}
 	m.preferences.button = noButton
+	m.preferences.loadMembers(cfg)
 	m.preferences.rows, m.preferences.matchRows = m.fitPrefHeights(m.windowHeight)
 	m.preferences.focusField(0)
 
@@ -421,6 +462,8 @@ func prefPlaceholder(spec prefSpec) string {
 		return "Tab for the values"
 	case prefNumber:
 		return "a number"
+	case prefList:
+		return "separated by commas"
 	}
 	return ""
 }
@@ -492,7 +535,7 @@ func (p *preferences) current() *prefField {
 
 // value is what a field holds now, as it goes into the file.
 func (f prefField) value() string {
-	if f.spec.kind == prefYesNo {
+	if f.spec.toggles() {
 		return strconv.FormatBool(f.yes)
 	}
 	return strings.TrimSpace(f.input.Value())
@@ -500,6 +543,15 @@ func (f prefField) value() string {
 
 // display is how a field is drawn.
 func (f prefField) display() string {
+	if f.spec.kind == prefMember {
+		switch {
+		case f.disabled != "":
+			return f.disabled
+		case f.yes:
+			return "permitted"
+		}
+		return "not permitted"
+	}
 	if f.spec.kind == prefYesNo {
 		if f.yes {
 			return "yes"
@@ -516,12 +568,10 @@ func (m *MainModel) savePreferences() (*MainModel, tea.Cmd) {
 	}
 
 	cfg := m.preferences.cfg
-	for _, field := range m.preferences.fields {
-		if err := setPrefValue(cfg, field.spec.path, field.value()); err != nil {
-			// Nothing has been written yet, so the window stays open on what
-			// it could not write rather than closing over a half-saved file.
-			return m.report("Preferences not saved: " + err.Error())
-		}
+	if err := applyPrefFields(cfg, m.preferences.fields, m.preferences.inheritedCommands()); err != nil {
+		// Nothing has been written yet, so the window stays open on what it
+		// could not write rather than closing over a half-saved file.
+		return m.report("Preferences not saved: " + err.Error())
 	}
 	prunePrefs(cfg)
 
@@ -531,7 +581,7 @@ func (m *MainModel) savePreferences() (*MainModel, tea.Cmd) {
 	}
 
 	m.closePreferences()
-	return m.report("Preferences saved to " + written + prefRestartNote)
+	return m.report("Preferences saved to " + written + prefRestartNote + mcpRestartNote)
 }
 
 // prefRestartNote goes after what was saved, because none of it is in use yet.
@@ -544,7 +594,13 @@ const prefRestartNote = ". They take effect when cqlai next starts."
 // report writes a line to the Console and shows it.
 func (m *MainModel) report(message string) (*MainModel, tea.Cmd) {
 	m.viewMode = "history"
-	m.fullHistoryContent += "\n" + m.styles.AccentText.Render(message)
+	// A line at a time: styled as one block, every line is padded to the
+	// longest, and a long one makes each of the others wrap onto a blank line.
+	lines := strings.Split(message, "\n")
+	for i, line := range lines {
+		lines[i] = m.styles.AccentText.Render(line)
+	}
+	m.fullHistoryContent += "\n" + strings.Join(lines, "\n")
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()
 	return m, nil
@@ -581,6 +637,11 @@ func (m *MainModel) preferenceErrors() map[int]string {
 		case prefChoice:
 			if !hasChoice(field.spec, value) {
 				errors[i] = value + " is not one of the values for " + field.spec.label
+			}
+
+		case prefList:
+			if wrong := m.preferences.prefListError(field.spec, value); wrong != "" {
+				errors[i] = wrong
 			}
 		}
 	}
@@ -640,6 +701,11 @@ func prefValue(cfg *config.Config, path string) string {
 			return strconv.FormatInt(value.Int(), 10)
 		case reflect.Bool:
 			return strconv.FormatBool(value.Bool())
+		case reflect.Slice:
+			if value.Type().Elem().Kind() == reflect.String {
+				return strings.Join(value.Interface().([]string), ", ")
+			}
+			return ""
 		default:
 			return ""
 		}
@@ -681,6 +747,11 @@ func setPrefValue(cfg *config.Config, path, value string) error {
 			field.SetInt(int64(n))
 		case reflect.Bool:
 			field.SetBool(value == "true")
+		case reflect.Slice:
+			if field.Type().Elem().Kind() != reflect.String {
+				return fmt.Errorf("cannot write %s", path)
+			}
+			field.Set(reflect.ValueOf(splitPrefList(value)))
 		default:
 			return fmt.Errorf("cannot write %s", path)
 		}

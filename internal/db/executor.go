@@ -659,41 +659,14 @@ func (s *Session) ExecuteStreamingQuery(query string) interface{} {
 	columnTypes := make([]string, len(filteredColumns))
 	columnTypeInfos := make([]gocql.TypeInfo, len(filteredColumns))
 
-	// For UDT columns, we need to get the full type definition from system tables
-	queryKeyspace, tableName := extractTableName(query)
-	currentKeyspace := queryKeyspace
-	if currentKeyspace == "" {
-		currentKeyspace = s.Keyspace()
-	}
-
+	types, currentKeyspace := s.columnTypesOf(query, filteredColumns)
 	for i, col := range filteredColumns {
 		columnNames[i] = col.Name // Store original name
-		headers[i] = col.Name     // Start with original name
+		headers[i] = col.Name + keyColumns.Marker(col.Name)
 
 		// Store the TypeInfo for proper type handling (especially UDTs)
 		columnTypeInfos[i] = col.TypeInfo
-
-		// Store the column type - use formatTypeInfo to get full type info including collection element types
-		if col.TypeInfo == nil {
-			columnTypes[i] = "unknown"
-		} else {
-			// Use formatTypeInfo for all columns to get proper type with element types
-			fullType := formatTypeInfo(col.TypeInfo)
-
-			// For UDTs, we might need additional metadata
-			if col.TypeInfo.Type() == gocql.TypeUDT && currentKeyspace != "" && tableName != "" {
-				// Try to get the UDT name from metadata if formatTypeInfo didn't get it
-				if fullType == "udt" || fullType == "" {
-					udtType := s.getColumnTypeUsingMetadata(currentKeyspace, tableName, col.Name)
-					if udtType != "" {
-						fullType = udtType
-					}
-				}
-			}
-			columnTypes[i] = fullType
-		}
-
-		headers[i] += keyColumns.Marker(col.Name)
+		columnTypes[i] = types[i]
 	}
 
 	// Return streaming result with iterator
@@ -764,4 +737,33 @@ func (s *Session) GetKeyColumns(query string) KeyColumns {
 	}
 
 	return keyColumns
+}
+
+// columnTypesOf is the CQL type of each column a query returns, with element
+// types for collections, and the keyspace the query is in.
+//
+// A user-defined type comes back from the driver as "udt" alone; the name is
+// looked up in the table's metadata, which is what decoding it needs.
+func (s *Session) columnTypesOf(query string, columns []gocql.ColumnInfo) ([]string, string) {
+	queryKeyspace, tableName := extractTableName(query)
+	keyspace := queryKeyspace
+	if keyspace == "" {
+		keyspace = s.Keyspace()
+	}
+
+	types := make([]string, len(columns))
+	for i, col := range columns {
+		if col.TypeInfo == nil {
+			types[i] = "unknown"
+			continue
+		}
+		fullType := formatTypeInfo(col.TypeInfo)
+		if col.TypeInfo.Type() == gocql.TypeUDT && keyspace != "" && tableName != "" && (fullType == "udt" || fullType == "") {
+			if udtType := s.getColumnTypeUsingMetadata(keyspace, tableName, col.Name); udtType != "" {
+				fullType = udtType
+			}
+		}
+		types[i] = fullType
+	}
+	return types, keyspace
 }

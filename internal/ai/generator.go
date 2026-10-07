@@ -23,6 +23,7 @@ func Initialize(session *db.Session) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize AI: %w", err)
 	}
+	globalAI.recordVersion()
 
 	// Router's AI handler will be initialized separately
 

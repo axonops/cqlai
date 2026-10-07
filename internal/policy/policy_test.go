@@ -1,0 +1,358 @@
+package policy
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/axonops/cqlai/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func permitList(names ...string) *[]string { return &names }
+
+func load(t *testing.T, file *config.Config, connection string, flags Flags) Policy {
+	t.Helper()
+	p, err := Load(file, connection, "", 10*time.Second, flags)
+	require.NoError(t, err)
+	return p
+}
+
+// TestTheZeroValueAllowsNothing: a code path that forgets the policy fails
+// closed.
+func TestTheZeroValueAllowsNothing(t *testing.T) {
+	var p Policy
+	assert.Empty(t, p.Permitted())
+	assert.False(t, p.Visible("shop"))
+	assert.False(t, p.ConfirmChanges() == false, "and it asks before a change")
+	_, err := p.Check("SELECT * FROM shop.orders")
+	assert.Error(t, err)
+}
+
+// TestNothingConfiguredIsTheReadCommands, with system_auth hidden.
+func TestNothingConfiguredIsTheReadCommands(t *testing.T) {
+	p := load(t, &config.Config{}, "", Flags{})
+
+	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, p.Permitted())
+	assert.True(t, p.Visible("shop"))
+	assert.False(t, p.Visible("system_auth"))
+	assert.True(t, p.ConfirmChanges())
+	assert.False(t, p.AllowScans())
+	assert.Equal(t, DefaultMaxRows, p.MaxRows())
+}
+
+// TestAnEmptyPermitIsNothing, which is not the same as leaving it out.
+func TestAnEmptyPermitIsNothing(t *testing.T) {
+	p := load(t, &config.Config{MCP: &config.MCPConfig{Permit: permitList()}}, "", Flags{})
+	assert.Empty(t, p.Permitted())
+}
+
+// TestATypoStopsTheServer rather than permitting something else.
+func TestATypoStopsTheServer(t *testing.T) {
+	for _, permit := range []*[]string{
+		permitList("SELECT", "INSRET"),
+		permitList("GRANT"),
+		permitList("USE"),
+	} {
+		_, err := Load(&config.Config{MCP: &config.MCPConfig{Permit: permit}}, "", "", 0, Flags{})
+		assert.Error(t, err, "%v", *permit)
+	}
+	_, err := Load(&config.Config{}, "", "", 0, Flags{Permit: []string{"DROPP"}})
+	assert.Error(t, err)
+
+	_, err = Load(&config.Config{MCP: &config.MCPConfig{Redact: []string{"shop.email"}}}, "", "", 0, Flags{})
+	assert.Error(t, err, "a redaction has three parts")
+}
+
+// TestTheStrictestOfThreeWins, part by part, each place narrowing the others.
+func TestTheStrictestOfThreeWins(t *testing.T) {
+	file := &config.Config{
+		MCP: &config.MCPConfig{
+			Permit:     permitList("SELECT", "DESCRIBE", "INSERT", "UPDATE"),
+			Keyspaces:  []string{"shop", "catalog", "audit"},
+			Deny:       []string{"shop.secrets"},
+			Redact:     []string{"*.*.card_number"},
+			AllowScans: true, SkipConfirm: true,
+			MaxRows: 500,
+		},
+		Connections: []config.Config{
+			{Name: "prod", MCP: &config.MCPConfig{
+				Permit:    permitList("SELECT", "DESCRIBE", "INSERT", "DROP"),
+				Keyspaces: []string{"shop", "catalog"},
+				Redact:    []string{"shop.customers.email"},
+				MaxRows:   50,
+			}},
+			{Name: "local"},
+		},
+	}
+
+	prod := load(t, file, "prod", Flags{})
+	assert.Equal(t, []string{"SELECT", "DESCRIBE", "INSERT"}, prod.Permitted(), "DROP is not in the top, UPDATE is not in prod")
+	assert.True(t, prod.Visible("shop"))
+	assert.False(t, prod.Visible("audit"), "prod narrowed the keyspaces")
+	assert.False(t, prod.VisibleTable("shop", "secrets"), "the top's deny still holds")
+	assert.True(t, prod.Redacted("shop", "customers", "email"))
+	assert.True(t, prod.Redacted("shop", "payments", "card_number"), "the top's redaction still holds")
+	assert.False(t, prod.AllowScans(), "prod's block did not turn scans on")
+	assert.True(t, prod.ConfirmChanges(), "nor turn confirmation off")
+	assert.Equal(t, 50, prod.MaxRows())
+
+	// A connection with no block is what the top says.
+	local := load(t, file, "local", Flags{})
+	assert.Equal(t, []string{"SELECT", "DESCRIBE", "INSERT", "UPDATE"}, local.Permitted())
+	assert.True(t, local.AllowScans())
+	assert.False(t, local.ConfirmChanges())
+	assert.Equal(t, 500, local.MaxRows())
+
+	// The flags narrow both, and never widen.
+	flagged := load(t, file, "local", Flags{ReadOnly: true, Keyspaces: []string{"shop", "elsewhere"}, MaxRows: 1000})
+	assert.Equal(t, []string{"SELECT", "DESCRIBE"}, flagged.Permitted())
+	assert.True(t, flagged.Visible("shop"))
+	assert.False(t, flagged.Visible("elsewhere"), "a keyspace the file does not allow stays hidden")
+	assert.Equal(t, 500, flagged.MaxRows(), "a higher limit on the command line does not raise it")
+
+	flagged = load(t, file, "local", Flags{Permit: []string{"SELECT", "TRUNCATE"}})
+	assert.Equal(t, []string{"SELECT"}, flagged.Permitted(), "--permit cannot add what the file does not permit")
+}
+
+// TestAConnectionCannotWidenTheTop.
+func TestAConnectionCannotWidenTheTop(t *testing.T) {
+	file := &config.Config{
+		Connections: []config.Config{{Name: "wide", MCP: &config.MCPConfig{
+			Permit:     permitList("SELECT", "DROP", "TRUNCATE"),
+			AllowScans: true, SkipConfirm: true,
+		}}},
+	}
+	p := load(t, file, "wide", Flags{})
+	assert.Equal(t, []string{"SELECT"}, p.Permitted(), "the top permits the read commands only")
+	assert.False(t, p.AllowScans())
+	assert.True(t, p.ConfirmChanges())
+}
+
+func gate(t *testing.T, permit ...string) Policy {
+	t.Helper()
+	return load(t, &config.Config{MCP: &config.MCPConfig{
+		Permit:    &permit,
+		Keyspaces: []string{"shop", "Shop2", "system_auth", "system_views"},
+		Deny:      []string{"shop.secrets"},
+	}}, "", Flags{}).WithPartitionKey(func(keyspace, table string) []string {
+		if keyspace == "shop" && table == "orders" {
+			return []string{"customer", "day"}
+		}
+		return nil
+	})
+}
+
+// TestTheGateRefusesWhatIsNotPermitted.
+func TestTheGateRefusesWhatIsNotPermitted(t *testing.T) {
+	p := gate(t, "SELECT", "INSERT")
+
+	for _, cql := range []string{
+		"SELECT * FROM shop.orders WHERE customer = 'a'",
+		"INSERT INTO shop.orders (customer, day) VALUES ('a', 'b')",
+	} {
+		_, err := p.Check(cql)
+		assert.NoError(t, err, cql)
+	}
+
+	for cql, why := range map[string]string{
+		"UPDATE shop.orders SET x = 1 WHERE customer = 'a'":                        "UPDATE is not permitted",
+		"DROP TABLE shop.orders":                                                   "DROP is not permitted",
+		"BEGIN BATCH INSERT INTO shop.orders (customer) VALUES ('a'); APPLY BATCH": "BATCH is not permitted",
+		"SELECT * FROM orders":                                                     "name the keyspace",
+		"SELECT * FROM billing.invoices":                                           "keyspace billing is not visible",
+		"SELECT * FROM shop.secrets":                                               "shop.secrets is not visible",
+		"SELECT * FROM SHOP.Secrets":                                               "shop.secrets is not visible",
+		"SELECT * FROM system_auth.roles":                                          "system_auth is not visible",
+		`SELECT * FROM "system_auth".roles`:                                        "system_auth is not visible",
+		`SELECT * FROM "SYSTEM_AUTH".roles`:                                        "not visible",
+		"SELECT * FROM shop2.orders":                                               "keyspace shop2 is not visible",
+		"GRANT ALL ON ALL KEYSPACES TO bob":                                        "GRANT is never permitted",
+		"SELECT * FROM shop.orders; DROP TABLE shop.orders":                        "one statement at a time",
+	} {
+		_, err := p.Check(cql)
+		require.Error(t, err, cql)
+		assert.Contains(t, err.Error(), why, cql)
+		var refusal Refusal
+		assert.True(t, errors.As(err, &refusal), "a refusal is a Refusal: %s", cql)
+	}
+
+	// A quoted keyspace with capitals is a different keyspace from the
+	// unquoted one, and is visible only as it is listed.
+	_, err := p.Check(`SELECT * FROM "Shop2".orders`)
+	assert.NoError(t, err)
+}
+
+// TestEveryStatementInABatchHasToBePermitted.
+func TestEveryStatementInABatchHasToBePermitted(t *testing.T) {
+	p := gate(t, "BATCH", "INSERT")
+
+	_, err := p.Check("BEGIN BATCH INSERT INTO shop.orders (customer) VALUES ('a'); APPLY BATCH")
+	assert.NoError(t, err)
+
+	_, err = p.Check("BEGIN BATCH INSERT INTO shop.orders (customer) VALUES ('a'); DELETE FROM shop.orders WHERE customer = 'a'; APPLY BATCH")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DELETE")
+
+	_, err = p.Check("BEGIN BATCH INSERT INTO shop.secrets (id) VALUES (1); APPLY BATCH")
+	assert.Error(t, err, "a hidden table in a batch is still hidden")
+}
+
+// TestScansAreRefusedUnlessAllowed.
+func TestScansAreRefusedUnlessAllowed(t *testing.T) {
+	p := gate(t, "SELECT")
+
+	for cql, why := range map[string]string{
+		"SELECT * FROM shop.orders WHERE total > 1 ALLOW FILTERING": "ALLOW FILTERING",
+		"SELECT COUNT(*) FROM shop.orders":                          "whole partition key (customer, day)",
+		"SELECT COUNT(*) FROM shop.orders WHERE customer = 'a'":     "whole partition key",
+		"SELECT COUNT(*) FROM shop.items WHERE id = 1":              "could not be found",
+	} {
+		_, err := p.Check(cql)
+		require.Error(t, err, cql)
+		assert.Contains(t, err.Error(), why, cql)
+	}
+
+	for _, cql := range []string{
+		"SELECT * FROM shop.orders", // paged, and stops at max_rows
+		"SELECT * FROM shop.orders LIMIT 10",
+		"SELECT COUNT(*) FROM shop.orders WHERE customer = 'a' AND day IN ('x', 'y')",
+		"SELECT * FROM system_views.clients WHERE address = '1' ALLOW FILTERING", // virtual tables are small
+	} {
+		_, err := p.Check(cql)
+		assert.NoError(t, err, cql)
+	}
+
+	allowed := load(t, &config.Config{MCP: &config.MCPConfig{AllowScans: true}}, "", Flags{})
+	_, err := allowed.Check("SELECT COUNT(*) FROM shop.orders")
+	assert.NoError(t, err)
+}
+
+// TestSecretsDoNotGoBack.
+func TestSecretsDoNotGoBack(t *testing.T) {
+	p, err := Load(&config.Config{}, "", "hunter2", 0, Flags{})
+	require.NoError(t, err)
+	assert.Equal(t, "auth failed for password "+RedactedValue, p.Scrub("auth failed for password hunter2"))
+
+	assert.True(t, MaskedSetting("server_encryption_options_keystore_password"))
+	assert.True(t, MaskedSetting("SomeSecretThing"))
+	assert.False(t, MaskedSetting("concurrent_reads"))
+}
+
+// TestTheLimiterBoundsTheLoad: one call at a time, and so many a minute.
+func TestTheLimiterBoundsTheLoad(t *testing.T) {
+	l := NewLimiter(2)
+	now := time.Unix(1000, 0)
+	l.now = func() time.Time { return now }
+
+	release, err := l.Acquire(context.Background())
+	require.NoError(t, err)
+
+	// The second waits for the first.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err = l.Acquire(ctx)
+	assert.ErrorIs(t, err, context.DeadlineExceeded, "one call at a time")
+	release()
+
+	// That wait counted as a call, so the minute's two are used.
+	_, err = l.Acquire(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "more than 2 calls a minute")
+
+	now = now.Add(61 * time.Second)
+	release, err = l.Acquire(context.Background())
+	require.NoError(t, err, "a minute later there is room again")
+	release()
+}
+
+// TestTheAuditLogHoldsNoValues, and is readable only by its owner.
+func TestTheAuditLogHoldsNoValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	a, err := OpenAudit(path)
+	require.NoError(t, err)
+
+	a.Log(Entry{Tool: "query", Statement: "SELECT * FROM shop.customers WHERE email = 'ann@example.com' AND age = 42", Decision: "allowed", Rows: 1})
+	a.Log(Entry{Tool: "query", Statement: "DROP TABLE shop.customers", Decision: "refused", Reason: "DROP is not permitted"})
+	require.NoError(t, a.Close())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "ann@example.com")
+	assert.NotContains(t, string(data), "42")
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	require.Len(t, lines, 2)
+	var first Entry
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &first))
+	assert.Equal(t, "select * from shop . customers where email = ? and age = ?", first.Statement)
+	assert.Contains(t, lines[1], `"decision":"refused"`)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	off, err := OpenAudit(AuditOff)
+	require.NoError(t, err)
+	off.Log(Entry{Tool: "query"}) // writes nothing, and does not fail
+}
+
+// TestRedactedValuesCannotComeBackAnotherWay: under another name, as JSON,
+// through a function, or by testing guesses in WHERE.
+func TestRedactedValuesCannotComeBackAnotherWay(t *testing.T) {
+	p := load(t, &config.Config{MCP: &config.MCPConfig{
+		Redact: []string{"shop.customers.email"},
+	}}, "", Flags{}).WithColumns(func(keyspace, table string) []string {
+		if table == "customers" {
+			return []string{"id", "name", "email"}
+		}
+		return []string{"id", "total"}
+	})
+
+	for _, cql := range []string{
+		"SELECT * FROM shop.customers WHERE id = 1",
+		"SELECT id, name, email FROM shop.customers",
+		"SELECT DISTINCT id FROM shop.customers",
+		"SELECT JSON * FROM shop.orders", // no hidden columns there
+		"SELECT total AS t FROM shop.orders",
+	} {
+		_, err := p.Check(cql)
+		assert.NoError(t, err, cql)
+	}
+
+	for cql, why := range map[string]string{
+		"SELECT JSON * FROM shop.customers":                             "hidden columns",
+		"SELECT email AS e FROM shop.customers":                         "hidden columns",
+		"SELECT toJson(email) FROM shop.customers":                      "hidden columns",
+		"SELECT writetime(email) FROM shop.customers":                   "hidden columns",
+		"SELECT id FROM shop.customers WHERE email = 'a@b.c'":           "email is hidden",
+		`SELECT id FROM shop.customers WHERE "email" > 'a'`:             "email is hidden",
+		"SELECT id FROM shop.customers WHERE id = 1 AND EMAIL IN ('x')": "is hidden",
+	} {
+		_, err := p.Check(cql)
+		require.Error(t, err, cql)
+		assert.Contains(t, err.Error(), why, cql)
+	}
+
+	// When the table's columns cannot be found, a pattern that could apply
+	// is taken to.
+	unknown := load(t, &config.Config{MCP: &config.MCPConfig{Redact: []string{"*.*.card_number"}}}, "", Flags{})
+	_, err := unknown.Check("SELECT JSON * FROM shop.anything")
+	assert.Error(t, err)
+}
+
+// TestADenyEntryMatchesWhateverItsCase: hiding leans towards hiding, so a
+// denied name written in other capitals still hides the table.
+func TestADenyEntryMatchesWhateverItsCase(t *testing.T) {
+	p := load(t, &config.Config{MCP: &config.MCPConfig{Deny: []string{"SHOP.Secrets", "Billing"}}}, "", Flags{})
+	assert.False(t, p.VisibleTable("shop", "secrets"))
+	assert.False(t, p.Visible("billing"))
+	_, err := p.Check("SELECT * FROM shop.secrets")
+	assert.Error(t, err)
+}

@@ -3,6 +3,7 @@ package ai
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/axonops/cqlai/internal/db"
@@ -14,6 +15,11 @@ type AI struct {
 	resolver *Resolver
 	session  *db.Session
 	config   *Config
+
+	// schemaVersion is the cluster's schema version the cache was built
+	// from, so a change made anywhere is noticed.
+	versionMu     sync.Mutex
+	schemaVersion string
 }
 
 // Config holds AI configuration
