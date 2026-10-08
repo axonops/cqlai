@@ -122,11 +122,17 @@ jobs:
       - name: Package binary
         run: |
           OUTPUT_NAME="cqlai-${{ matrix.platform }}${{ matrix.ext }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${VERSION#v}"
           # Only create tar.gz for Linux (Windows and macOS installers will be created in separate jobs)
+          # The tarball is named for the version and platform; the binary in it is just cqlai.
           if [ "${{ matrix.goos }}" = "linux" ]; then
-            tar czf "cqlai-${{ matrix.platform }}.tar.gz" \
+            mkdir -p tarball
+            cp "${OUTPUT_NAME}" tarball/cqlai
+            cp README.md LICENSE tarball/
+            tar czf "cqlai-${VERSION}-${{ matrix.platform }}.tar.gz" \
               --owner=0 --group=0 \
-              "${OUTPUT_NAME}" README.md LICENSE
+              -C tarball cqlai README.md LICENSE
           fi
 
       - name: Upload artifact
@@ -135,7 +141,7 @@ jobs:
           name: binary-${{ matrix.platform }}
           path: |
             cqlai-${{ matrix.platform }}${{ matrix.ext }}
-            cqlai-${{ matrix.platform }}.tar.gz
+            cqlai-*-${{ matrix.platform }}.tar.gz
           if-no-files-found: ignore
 
   # Build Windows MSI packages
@@ -656,6 +662,9 @@ jobs:
           find . -name "*.deb" -exec mv {} release-assets/ \;
           find . -name "*.rpm" -exec mv {} release-assets/ \;
           find . -name "*.msi" -exec mv {} release-assets/ \;
+          # The Linux binaries on their own, named without the version so that
+          # releases/latest/download/cqlai-linux-amd64 always finds the newest.
+          find . -type f \( -name "cqlai-linux-amd64" -o -name "cqlai-linux-arm64" \) -exec mv {} release-assets/ \;
 
           # Create checksums
           cd release-assets

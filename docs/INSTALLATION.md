@@ -194,6 +194,23 @@ chmod +x cqlai
 sudo mv cqlai /usr/local/bin/
 ```
 
+### Tarballs
+Each release also has a tarball for each platform, with the version in its name:
+`cqlai-<version>-linux-amd64.tar.gz`, `cqlai-<version>-linux-arm64.tar.gz`,
+`cqlai-<version>-darwin-amd64.tar.gz` and `cqlai-<version>-darwin-arm64.tar.gz`.
+Each holds `cqlai`, `README.md` and `LICENSE`.
+
+```bash
+VERSION=0.3.2
+curl -LO https://github.com/axonops/cqlai/releases/download/v${VERSION}/cqlai-${VERSION}-linux-amd64.tar.gz
+tar xzf cqlai-${VERSION}-linux-amd64.tar.gz
+sudo mv cqlai /usr/local/bin/
+```
+
+The binaries on their own are `cqlai-linux-amd64`, `cqlai-linux-arm64`,
+`cqlai-darwin-amd64` and `cqlai-darwin-arm64`. The checksums are in
+`SHA256SUMS.txt` for Linux and Windows, and `SHA256SUMS-macos.txt` for macOS.
+
 ### Windows
 Download the executable from:
 ```
