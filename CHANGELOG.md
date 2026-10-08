@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-08
+
+### Added
+
+- **Release binaries and tarballs for Linux and macOS.** Each release now has
+  `cqlai-<version>-<os>-<arch>.tar.gz` for `linux-amd64`, `linux-arm64`,
+  `darwin-amd64` and `darwin-arm64`. The binary inside is called `cqlai`. The
+  binaries on their own are `cqlai-linux-amd64`, `cqlai-linux-arm64`,
+  `cqlai-darwin-amd64` and `cqlai-darwin-arm64`, so
+  `releases/latest/download/<name>` always gets the newest. The macOS
+  binary is signed and notarized. Its checksums are in `SHA256SUMS-macos.txt`.
+- **Pick a completion with the mouse.** A click on an entry in the
+  completion list uses it, the same as Enter. The wheel moves through the list.
+
+### Changed
+
+- **The Linux tarballs are renamed.** `cqlai-linux-amd64.tar.gz` is now
+  `cqlai-0.3.2-linux-amd64.tar.gz`, and the binary inside is `cqlai` rather
+  than `cqlai-linux-amd64`.
+
+### Fixed
+
+- **Tab in a comma-separated PREFERENCES setting keeps the names before it.**
+  It used to replace the whole list with the name picked.
+- **Esc works in every dialog.** It did nothing in some of them, such as
+  "No AI provider is configured" from the trace analysis.
+- **Ctrl+U deletes all of a line of Japanese or other wide text.** It
+  deleted half of it. Ctrl+K, Ctrl+W, Ctrl+Y, Alt+D and Ctrl+Left/Right had
+  the same problem.
+- **Option+F, Option+H, Option+D and Option+B work on a Mac** without
+  changing the terminal's settings. macOS types `ƒ`, `˙`, `∂` and `∫` for
+  them, and those are now read as the shortcuts. The README gives the
+  setting that makes Option send Alt for the rest.
+- **Esc in the console no longer asks to quit.** It also cleared what was
+  typed.
+- **The completion list no longer covers the prompt,** and its key help no
+  longer wraps onto a second line.
+
 ## [0.3.1] - 2026-10-07
 
 ### Fixed
