@@ -4,126 +4,131 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// The prompt's line-editing keys: Ctrl+K, Ctrl+U, Ctrl+W, Alt+D, Ctrl+Y and
+// the word jumps.
+//
+// The cursor counts characters, and the text is UTF-8, where a character can
+// be one byte or four. Cutting the text at the cursor as if it counted bytes
+// cut in the wrong place for anything outside ASCII: Ctrl+U on a line of
+// Japanese took away a third of what it should, and could leave half a
+// character behind. So every one of these works on characters.
+
+// promptChars is the prompt's text as characters, and the cursor's place in
+// them.
+func (m *MainModel) promptChars() ([]rune, int) {
+	chars := []rune(m.input.Value())
+	return chars, min(max(m.input.Position(), 0), len(chars))
+}
+
+// setPrompt puts text in the prompt with the cursor at a character.
+func (m *MainModel) setPrompt(chars []rune, cursor int) {
+	m.input.SetValue(string(chars))
+	m.input.SetCursor(cursor)
+}
+
 // handleCtrlK handles Ctrl+K - cut from cursor to end of line
 func (m *MainModel) handleCtrlK() (*MainModel, tea.Cmd) {
-	currentValue := m.input.Value()
-	cursorPos := m.input.Position()
-	if cursorPos < len(currentValue) {
-		// Store the cut text in clipboard buffer
-		m.clipboardBuffer = currentValue[cursorPos:]
-		// Remove the text from cursor to end
-		m.input.SetValue(currentValue[:cursorPos])
+	chars, cursor := m.promptChars()
+	if cursor < len(chars) {
+		m.clipboardBuffer = string(chars[cursor:])
+		m.setPrompt(chars[:cursor], cursor)
 	}
 	return m, nil
 }
 
 // handleCtrlU handles Ctrl+U - cut from beginning of line to cursor
 func (m *MainModel) handleCtrlU() (*MainModel, tea.Cmd) {
-	currentValue := m.input.Value()
-	cursorPos := m.input.Position()
-	if cursorPos > 0 {
-		// Store the cut text in clipboard buffer
-		m.clipboardBuffer = currentValue[:cursorPos]
-		// Remove the text from beginning to cursor
-		m.input.SetValue(currentValue[cursorPos:])
-		m.input.SetCursor(0)
+	chars, cursor := m.promptChars()
+	if cursor > 0 {
+		m.clipboardBuffer = string(chars[:cursor])
+		m.setPrompt(chars[cursor:], 0)
 	}
 	return m, nil
 }
 
 // handleCtrlW handles Ctrl+W - delete word backward
 func (m *MainModel) handleCtrlW() (*MainModel, tea.Cmd) {
-	currentValue := m.input.Value()
-	cursorPos := m.input.Position()
-	if cursorPos > 0 {
-		// Find the start of the word to cut
-		start := cursorPos - 1
-
-		// Skip trailing spaces
-		for start >= 0 && currentValue[start] == ' ' {
+	chars, cursor := m.promptChars()
+	if cursor > 0 {
+		start := cursor
+		for start > 0 && chars[start-1] == ' ' { // the spaces before the cursor
 			start--
 		}
-
-		// Find the beginning of the word
-		for start >= 0 && currentValue[start] != ' ' {
+		for start > 0 && chars[start-1] != ' ' { // and the word before them
 			start--
 		}
-		start++ // Move to the first character of the word
-
-		// Store the cut text in clipboard buffer
-		m.clipboardBuffer = currentValue[start:cursorPos]
-
-		// Remove the word from the input
-		newValue := currentValue[:start] + currentValue[cursorPos:]
-		m.input.SetValue(newValue)
-		m.input.SetCursor(start)
+		m.clipboardBuffer = string(chars[start:cursor])
+		m.setPrompt(append(append([]rune{}, chars[:start]...), chars[cursor:]...), start)
 	}
 	return m, nil
 }
 
-// handleCtrlA handles Ctrl+A - move cursor to beginning of line
+// handleAltD handles Alt+D - delete word forward, leaving the cursor where it
+// is.
+func (m *MainModel) handleAltD() (*MainModel, tea.Cmd) {
+	chars, cursor := m.promptChars()
+	if cursor < len(chars) {
+		end := cursor
+		for end < len(chars) && chars[end] == ' ' { // the spaces after the cursor
+			end++
+		}
+		for end < len(chars) && chars[end] != ' ' { // and the word after them
+			end++
+		}
+		m.clipboardBuffer = string(chars[cursor:end])
+		m.setPrompt(append(append([]rune{}, chars[:cursor]...), chars[end:]...), cursor)
+	}
+	return m, nil
+}
+
+// handleCtrlA handles Ctrl+A - move to beginning of line
 func (m *MainModel) handleCtrlA() (*MainModel, tea.Cmd) {
 	m.input.CursorStart()
 	return m, nil
 }
 
-// handleCtrlE handles Ctrl+E - move cursor to end of line
+// handleCtrlE handles Ctrl+E - move to end of line
 func (m *MainModel) handleCtrlE() (*MainModel, tea.Cmd) {
 	m.input.CursorEnd()
 	return m, nil
 }
 
-// handleCtrlLeft handles Ctrl+Left - jump backward by word
+// handleCtrlLeft handles Ctrl+Left - jump back by word, or by 20 characters
+// when the word is short.
 func (m *MainModel) handleCtrlLeft() (*MainModel, tea.Cmd) {
-	currentValue := m.input.Value()
-	cursorPos := m.input.Position()
-	if cursorPos > 0 {
-		// Try to find previous word boundary
-		newPos := cursorPos - 1
-		// Skip spaces
-		for newPos > 0 && currentValue[newPos] == ' ' {
-			newPos--
+	chars, cursor := m.promptChars()
+	if cursor > 0 {
+		pos := cursor
+		for pos > 0 && chars[pos-1] == ' ' {
+			pos--
 		}
-		// Skip word characters
-		for newPos > 0 && currentValue[newPos-1] != ' ' {
-			newPos--
+		for pos > 0 && chars[pos-1] != ' ' {
+			pos--
 		}
-		// If we didn't move much, jump by 20 characters
-		if cursorPos-newPos < 5 {
-			newPos = cursorPos - 20
-			if newPos < 0 {
-				newPos = 0
-			}
+		if cursor-pos < 5 {
+			pos = max(cursor-20, 0)
 		}
-		m.input.SetCursor(newPos)
+		m.input.SetCursor(pos)
 	}
 	return m, nil
 }
 
-// handleCtrlRight handles Ctrl+Right - jump forward by word
+// handleCtrlRight handles Ctrl+Right - jump forward by word, or by 20
+// characters when the word is short.
 func (m *MainModel) handleCtrlRight() (*MainModel, tea.Cmd) {
-	currentValue := m.input.Value()
-	cursorPos := m.input.Position()
-	valueLen := len(currentValue)
-	if cursorPos < valueLen {
-		// Try to find next word boundary
-		newPos := cursorPos + 1
-		// Skip current word
-		for newPos < valueLen && currentValue[newPos-1] != ' ' {
-			newPos++
+	chars, cursor := m.promptChars()
+	if cursor < len(chars) {
+		pos := cursor
+		for pos < len(chars) && chars[pos] != ' ' {
+			pos++
 		}
-		// Skip spaces
-		for newPos < valueLen && currentValue[newPos] == ' ' {
-			newPos++
+		for pos < len(chars) && chars[pos] == ' ' {
+			pos++
 		}
-		// If we didn't move much, jump by 20 characters
-		if newPos-cursorPos < 5 {
-			newPos = cursorPos + 20
-			if newPos > valueLen {
-				newPos = valueLen
-			}
+		if pos-cursor < 5 {
+			pos = min(cursor+20, len(chars))
 		}
-		m.input.SetCursor(newPos)
+		m.input.SetCursor(pos)
 	}
 	return m, nil
 }
@@ -131,13 +136,10 @@ func (m *MainModel) handleCtrlRight() (*MainModel, tea.Cmd) {
 // handleCtrlY handles Ctrl+Y - paste (yank) from clipboard buffer
 func (m *MainModel) handleCtrlY() (*MainModel, tea.Cmd) {
 	if m.clipboardBuffer != "" {
-		currentValue := m.input.Value()
-		cursorPos := m.input.Position()
-		// Insert clipboard content at cursor position
-		newValue := currentValue[:cursorPos] + m.clipboardBuffer + currentValue[cursorPos:]
-		m.input.SetValue(newValue)
-		// Move cursor to end of pasted text
-		m.input.SetCursor(cursorPos + len(m.clipboardBuffer))
+		chars, cursor := m.promptChars()
+		pasted := []rune(m.clipboardBuffer)
+		value := append(append(append([]rune{}, chars[:cursor]...), pasted...), chars[cursor:]...)
+		m.setPrompt(value, cursor+len(pasted))
 	}
 	return m, nil
 }

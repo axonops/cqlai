@@ -99,19 +99,6 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If modal is showing, close it
-	if m.modal.Type != ModalNone {
-		m.modal = Modal{Type: ModalNone}
-		m.input.Placeholder = "Enter CQL command..."
-		m.input.Reset()
-
-		// Add cancellation message to history
-		m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Command cancelled.")
-		m.updateHistoryWrapping()
-		m.historyViewport.GotoBottom()
-		return m, nil
-	}
-
 	// If showing completions, hide them
 	if m.showCompletions {
 		m.showCompletions = false
@@ -139,16 +126,14 @@ func (m *MainModel) handleEscapeKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Cancel any confirmation first
+	// Esc takes back a Ctrl+C or Ctrl+D on the way out.
 	if m.confirmExit {
 		m.confirmExit = false
 		m.input.Placeholder = "Enter CQL command..."
 		return m, nil
 	}
 
-	// Ask for confirmation
-	m.confirmExit = true
-	m.input.SetValue("")
-	m.input.Placeholder = "Really exit? (Ctrl+C/Ctrl+D again to confirm, any other key to cancel)"
+	// With nothing to put away, Esc does nothing. It is not a way out, and
+	// what was typed stays where it is.
 	return m, nil
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -111,9 +112,9 @@ func TestAMessageModalIsDismissedByEitherKey(t *testing.T) {
 
 		switch key {
 		case "enter":
-			m, _ = m.handleModalConfirmation("")
+			m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyEnter})
 		case "esc":
-			m, _ = m.handleEscapeKey()
+			m, _ = m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyEscape})
 		}
 
 		assert.Equal(t, ModalNone, m.modal.Type, "%s should put it away", key)

@@ -115,11 +115,13 @@ func HelpRows() [][]string {
 		{"", "↑/↓ or Ctrl+P/N", "Navigate command history"},
 		{"", "Ctrl+R", "Search history"},
 		{"", "Tab", "Auto-complete"},
+		{"", "  Click", "Use the completion clicked; the wheel moves through the list"},
 		{"", "Ctrl+L", "Clear screen"},
 		{"", "Ctrl+C", "Cancel current command"},
 		{"", "Ctrl+D", "Exit (EOF)"},
 		{"", "Ctrl+Q", "Quit, asking first - the same as FILE > QUIT"},
 		{"", "Alt+A", "Read what is on screen with the AI: a trace, or a definition"},
+		{"", "Option on a Mac", "Option+F/H/D/B work as Alt; for the rest, set Option to Esc+ or Meta"},
 
 		// Text Editing
 		{"", "Ctrl+A/E", "Jump to start/end of line"},

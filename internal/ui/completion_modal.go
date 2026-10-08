@@ -47,18 +47,20 @@ func (cm CompletionModal) RenderContent(styles *Styles) string {
 		}
 	}
 
-	// Add space for arrow and padding
-	boxWidth := maxWidth + 6
-	if boxWidth < 30 {
-		boxWidth = 30
+	instructions := "↑↓/Tab: Navigate • Enter/Click: Accept • Esc: Close"
+	if cm.onlyNotes() {
+		instructions = "Type the name • Esc: Close"
 	}
+
+	// Add space for arrow and padding, and room for the key help on one line.
+	boxWidth := max(maxWidth+6, 30, lipgloss.Width(instructions)+4)
 
 	// Create the modal style with solid background
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Accent).
 		Background(lipgloss.Color("#2D2D2D")).
-		Width(boxWidth - 2)
+		Width(boxWidth) // the border is inside the width, leaving boxWidth-2 for the rows
 
 	// Build the content
 	var content []string
@@ -130,16 +132,12 @@ func (cm CompletionModal) RenderContent(styles *Styles) string {
 	}
 
 	// Instructions
-	content = append(content, strings.Repeat("─", boxWidth))
+	content = append(content, strings.Repeat("─", boxWidth-2))
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(styles.MutedText.GetForeground()).
 		Italic(true).
 		Width(boxWidth - 2).
 		Align(lipgloss.Center)
-	instructions := "↑↓/Tab: Navigate • Enter: Accept • Esc: Close"
-	if cm.onlyNotes() {
-		instructions = "Type the name • Esc: Close"
-	}
 	content = append(content, instructionStyle.Render(instructions))
 
 	// Join all content
