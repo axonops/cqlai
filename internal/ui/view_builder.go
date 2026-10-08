@@ -226,22 +226,9 @@ func (m *MainModel) View() tea.View {
 	// Create a layer manager for overlays
 	layerManager := NewLayerManager(screenWidth, screenHeight)
 
-	// If completions are showing, add as a layer
-	if m.showCompletions && len(m.completions) > 0 {
-		completionModal := NewCompletionModal(m.completions, m.completionIndex)
-		completionModal.scrollOffset = m.completionScrollOffset
-		content := completionModal.RenderContent(m.styles)
-
-		// Position at bottom left, just above the prompt
-		modalHeight := strings.Count(content, "\n") + 1
-		layer := Layer{
-			Content: content,
-			X:       0,
-			Y:       screenHeight - modalHeight - 2,
-			Width:   lipgloss.Width(content),
-			Height:  modalHeight,
-			ZIndex:  100,
-		}
+	// The completion list, placed by the same function the mouse tests clicks
+	// against.
+	if _, layer, ok := m.completionOverlay(screenHeight); ok {
 		layerManager.AddLayer(layer)
 	}
 

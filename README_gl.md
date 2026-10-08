@@ -409,6 +409,14 @@ o terminal só informa dos xiros verticais como pulsacións de tecla.
 **Nota para Usuarios de macOS:**
 - A maioría de atallos `Ctrl` funcionan tal cal en macOS, pero tamén podes usar a tecla `⌘` (Comando) como alternativa
 - A tecla `Alt` está etiquetada como `Option` nos teclados Mac
+- Por defecto macOS usa `Option` para escribir caracteres especiais, así que `Option+F`
+  escribe `ƒ` en lugar de enviar `Alt+F`. CQLAI le `ƒ`, `˙`, `∂` e `∫` como `Alt+F`,
+  `Alt+H`, `Alt+D` e `Alt+B`, así que eses catro funcionan sen ningún axuste. `å` non se
+  toca, porque é unha letra en dinamarqués, noruegués e sueco, así que `Option+A` non abre a IA.
+- Para todos os atallos con `Alt`, faga que `Option` envíe `Alt` (Meta) no seu terminal:
+  - iTerm2: Settings > Profiles > Keys > Left Option key: `Esc+`
+  - Terminal.app: Settings > Profiles > Keyboard > Use Option as Meta key
+  - Ghostty: `macos-option-as-alt = true`
 - As teclas de función (F1-F6) poden requirir manter premida a tecla `Fn` dependendo da túa configuración de Mac
 
 ### Autocompletado con Tabulador
@@ -525,7 +533,7 @@ SELECT * FROM <Tab>
 2. **Escribe caracteres mínimos:** A miúdo 2-3 caracteres son suficientes para obter un autocompletado único
 3. **Usa para descubrir:** Preme Tab en entrada baleira para ver que está dispoñible
 4. **Rutas de arquivo:** Lembra incluír comiñas para autocompletado de rutas de arquivo
-5. **Navega autocompletados:** Usa as teclas de frecha para seleccionar entre múltiples opcións
+5. **Navega autocompletados:** Usa as teclas de frecha para seleccionar entre múltiples opcións, ou fai clic nunha para usala. A roda do rato percorre a lista
 
 ## Comandos Dispoñibles
 

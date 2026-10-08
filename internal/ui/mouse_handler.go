@@ -70,6 +70,18 @@ func (m *MainModel) handleMouseInput(msg tea.MouseMsg) (*MainModel, tea.Cmd) {
 			return m, nil
 		}
 
+		// The completion list has the wheel while it is showing, a row a
+		// notch: it is ten rows high.
+		if m.showCompletions && len(m.completions) > 0 {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				return m.handleUpArrow(tea.KeyPressMsg{Code: tea.KeyUp})
+			case tea.MouseWheelDown:
+				return m.handleDownArrow(tea.KeyPressMsg{Code: tea.KeyDown})
+			}
+			return m, nil
+		}
+
 		// The help window is over everything, so it has the wheel first.
 		if m.help.active {
 			switch mouse.Button {
@@ -265,6 +277,13 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 		if mouse.Y != 0 && mouse.Y < m.windowHeight-2 {
 			m.closeSettingChooser()
 			return m, nil
+		}
+	}
+
+	// A press on a completion puts it in the prompt, the same as Enter on it.
+	if m.showCompletions {
+		if updated, cmd, handled := m.clickCompletion(mouse.X, mouse.Y); handled {
+			return updated, cmd
 		}
 	}
 

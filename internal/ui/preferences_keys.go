@@ -151,6 +151,11 @@ func (m *MainModel) usePrefMatch() (*MainModel, tea.Cmd) {
 	}
 
 	value := p.matches[p.match]
+	if field.spec.kind == prefList {
+		// The item picked replaces the one being typed, not the list.
+		head, _ := splitListTail(field.input.Value())
+		value = head + value
+	}
 	if field.spec.kind == prefPath {
 		// The candidates are names inside a directory, so the directory typed
 		// so far stays in front of the one picked - except the way up, which

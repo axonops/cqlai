@@ -11,18 +11,6 @@ func (m *MainModel) handleCtrlC() (*MainModel, tea.Cmd) {
 		m.closeHistorySearch()
 		return m, nil
 	}
-	// If modal is showing, close it
-	if m.modal.Type != ModalNone {
-		m.modal = Modal{Type: ModalNone}
-		m.input.Placeholder = "Enter CQL command..."
-		m.input.Reset()
-
-		// Add cancellation message to history
-		m.fullHistoryContent += "\n" + m.styles.MutedText.Render("Command cancelled.")
-		m.updateHistoryWrapping()
-		m.historyViewport.GotoBottom()
-		return m, nil
-	}
 	// If there's text in the input, clear it. Otherwise check for pagination.
 	if m.input.Value() != "" {
 		m.input.Reset()

@@ -9,11 +9,6 @@ import (
 	"github.com/axonops/cqlai/internal/logger"
 )
 
-// handleModalConfirmation handles Enter key when a modal is showing
-func (m *MainModel) handleModalConfirmation(_ string) (*MainModel, tea.Cmd) {
-	return m.answerModal(m.modal.Selected)
-}
-
 // answerModal carries out the answer given, whether it was pressed with Enter
 // or clicked. Both go through here, so the button that was chosen is the one
 // that acts.

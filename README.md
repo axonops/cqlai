@@ -723,6 +723,14 @@ only reports vertical wheel spins as key presses.
 **Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative
 - `Alt` key is labeled as `Option` on Mac keyboards
+- By default macOS uses `Option` to type special characters, so `Option+F` types `ƒ`
+  rather than sending `Alt+F`. CQLAI reads `ƒ`, `˙`, `∂` and `∫` as `Alt+F`, `Alt+H`,
+  `Alt+D` and `Alt+B`, so those four work without any setting. `å` is left alone,
+  because it is a letter in Danish, Norwegian and Swedish, so `Option+A` does not open the AI.
+- For every `Alt` shortcut, set `Option` to send `Alt` (Meta) in your terminal:
+  - iTerm2: Settings > Profiles > Keys > Left Option key: `Esc+`
+  - Terminal.app: Settings > Profiles > Keyboard > Use Option as Meta key
+  - Ghostty: `macos-option-as-alt = true`
 - Function keys (F1-F6) may require holding `Fn` key depending on your Mac settings
 
 ### Tab Completion
@@ -839,7 +847,7 @@ SELECT * FROM <Tab>
 2. **Type minimum characters:** Often 2-3 characters are enough to get unique completion
 3. **Use for discovery:** Press Tab on empty input to see what's available
 4. **File paths:** Remember to include quotes for file path completion
-5. **Navigate completions:** Use arrow keys to select from multiple options
+5. **Navigate completions:** Use arrow keys to select from multiple options, or click one to use it. The mouse wheel moves through the list
 
 ## Available Commands
 

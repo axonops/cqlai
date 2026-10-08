@@ -10,6 +10,10 @@ import (
 
 // handleKeyboardInput handles keyboard input events
 func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
+	// Option on a Mac types ƒ for Alt+F, and so on: read those as the
+	// shortcuts they stand for, before anything else looks at the key.
+	msg = macOptionKey(msg)
+
 	// The help window takes the keys while it is open: it is over everything
 	// else, so it is what a keypress is aimed at.
 	if m.help.active {
@@ -83,6 +87,11 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	// click a moment ago, so it is what the next keypress is aimed at.
 	if m.chooser.active {
 		return m.handleSettingChooserKey(msg)
+	}
+
+	// A modal is over the view, and its keys are its own.
+	if m.modal.Type != ModalNone {
+		return m.handleModalKey(msg)
 	}
 
 	// Check for AI CQL modal (high priority)
@@ -162,11 +171,6 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 		return m.handleEscapeKey()
 
 	case "tab":
-		// If modal is showing, navigate choices
-		if m.modal.Type != ModalNone {
-			m.modal.NextChoice()
-			return m, nil
-		}
 		return m.handleTabKey()
 
 	case "f2":
@@ -277,31 +281,7 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 
 		// Handle Alt+D (delete word forward)
 		if msg.String() == "alt+d" {
-			currentValue := m.input.Value()
-			cursorPos := m.input.Position()
-			if cursorPos < len(currentValue) {
-				// Find the end of the word to cut
-				end := cursorPos
-
-				// Skip leading spaces
-				for end < len(currentValue) && currentValue[end] == ' ' {
-					end++
-				}
-
-				// Find the end of the word
-				for end < len(currentValue) && currentValue[end] != ' ' {
-					end++
-				}
-
-				// Store the cut text in clipboard buffer
-				m.clipboardBuffer = currentValue[cursorPos:end]
-
-				// Remove the word from the input
-				newValue := currentValue[:cursorPos] + currentValue[end:]
-				m.input.SetValue(newValue)
-				// Cursor stays at the same position
-			}
-			return m, nil
+			return m.handleAltD()
 		}
 
 		// Handle navigation mode keys (when in table/trace view with navigation mode active)

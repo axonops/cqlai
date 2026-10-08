@@ -224,27 +224,50 @@ func (m *MainModel) listChoices(spec prefSpec) []string {
 	return nil
 }
 
+// splitListTail splits a list setting into what is already in it - up to and
+// including its last comma - and the item being typed after that. Completing
+// the item, by Tab or by picking from the list, keeps the head: replacing the
+// whole value lost every item before the one being typed.
+func splitListTail(value string) (head, last string) {
+	i := strings.LastIndex(value, ",")
+	if i < 0 {
+		return "", strings.TrimSpace(value)
+	}
+	return strings.TrimRight(value[:i+1], " ") + " ", strings.TrimSpace(value[i+1:])
+}
+
 // completePrefList completes the item being typed at the end of a list.
 func (m *MainModel) completePrefList(field *prefField) {
-	value := field.input.Value()
-	head, last := "", value
-	if i := strings.LastIndex(value, ","); i >= 0 {
-		head, last = value[:i+1]+" ", strings.TrimSpace(value[i+1:])
+	value, matches := completeListValue(field.input.Value(), m.listChoices(field.spec))
+	m.preferences.clearMatches()
+	if value != field.input.Value() {
+		m.setPrefField(m.preferences.focus, value)
 	}
+	m.preferences.matches = matches
+}
+
+// completeListValue completes the item being typed at the end of a list from
+// the names given, keeping every item before it. It reports the new value,
+// and the names to choose from when more than one would do. A name already in
+// the list is not offered again.
+func completeListValue(value string, names []string) (string, []string) {
+	head, last := splitListTail(value)
+	already := splitPrefList(head)
 
 	var found []string
-	for _, name := range m.listChoices(field.spec) {
+	for _, name := range names {
+		if containsFold(already, name) {
+			continue
+		}
 		if strings.HasPrefix(strings.ToLower(name), strings.ToLower(last)) {
 			found = append(found, name)
 		}
 	}
-	m.preferences.clearMatches()
 	switch len(found) {
 	case 0:
+		return value, nil
 	case 1:
-		m.setPrefField(m.preferences.focus, head+found[0])
-	default:
-		m.setPrefField(m.preferences.focus, head+commonPrefix(found))
-		m.preferences.matches = found
+		return head + found[0], nil
 	}
+	return head + commonPrefix(found), found
 }

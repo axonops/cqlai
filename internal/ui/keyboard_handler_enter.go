@@ -75,11 +75,6 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		m.clearCompletions()
 	}
 
-	// Check if modal is showing FIRST before processing command
-	if m.modal.Type != ModalNone {
-		return m.handleModalConfirmation(command)
-	}
-
 	// Process the command from input (unless we're executing an AI command)
 	{
 		// Check if this is just a comment line

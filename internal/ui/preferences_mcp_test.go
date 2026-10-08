@@ -244,3 +244,39 @@ func TestAReportOfSeveralLinesIsNotPadded(t *testing.T) {
 		assert.Equal(t, strings.TrimRight(line, " "), line, "no padding after %q", line)
 	}
 }
+
+// TestCompletingAListKeepsWhatIsInIt: Tab completes the item after the last
+// comma, and leaves the ones before it - it used to replace the whole value.
+func TestCompletingAListKeepsWhatIsInIt(t *testing.T) {
+	names := []string{"catalog", "shop", "shop_archive", "system_views"}
+	for _, c := range []struct {
+		value, want string
+		matches     []string
+	}{
+		{"ca", "catalog", nil},
+		{"catalog, sh", "catalog, shop", []string{"shop", "shop_archive"}},
+		{"catalog,sy", "catalog, system_views", nil},
+		{"catalog, shop, sh", "catalog, shop, shop_archive", nil},                     // shop is in the list already
+		{"catalog, ", "catalog, s", []string{"shop", "shop_archive", "system_views"}}, // as far as they agree
+		{"catalog, zz", "catalog, zz", nil},
+	} {
+		value, matches := completeListValue(c.value, names)
+		assert.Equal(t, c.want, value, c.value)
+		assert.Equal(t, c.matches, matches, c.value)
+	}
+}
+
+// TestPickingFromTheListKeepsWhatIsInIt: choosing one of the names offered
+// replaces the item being typed, not the list.
+func TestPickingFromTheListKeepsWhatIsInIt(t *testing.T) {
+	m := prefModel(t, &config.Config{})
+	i := prefIndex(t, m, "MCP.Keyspaces")
+	m.preferences.focusField(i)
+	m.setPrefField(i, "catalog, sh")
+	m.preferences.matches = []string{"shop", "shop_archive"}
+	m.preferences.match = 1
+
+	m.usePrefMatch()
+
+	assert.Equal(t, "catalog, shop_archive", m.preferences.fields[i].input.Value())
+}

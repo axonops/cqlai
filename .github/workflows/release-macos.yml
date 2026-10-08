@@ -121,11 +121,43 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Upload PKG artifact
+      - name: Notarize the binary
+        run: |
+          # The binary is published on its own and in a tarball as well as in
+          # the pkg, so it is notarized itself. A bare binary cannot be
+          # stapled; Gatekeeper finds the ticket online.
+          ditto -c -k --keepParent "cqlai-${{ matrix.platform }}" notarize.zip
+          xcrun notarytool submit notarize.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          rm -f notarize.zip
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Package binary
+        run: |
+          # The tarball is named for the version and platform; the binary in it is just cqlai.
+          VERSION="${{ steps.version.outputs.package_version }}"
+          mkdir -p tarball
+          cp "cqlai-${{ matrix.platform }}" tarball/cqlai
+          cp README.md LICENSE tarball/
+          # No ._ files for extended attributes in the archive.
+          COPYFILE_DISABLE=1 tar czf "cqlai-${VERSION}-${{ matrix.platform }}.tar.gz" \
+            --uid 0 --gid 0 \
+            -C tarball cqlai README.md LICENSE
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-pkg-${{ matrix.platform }}
-          path: "*.pkg"
+          name: macos-${{ matrix.platform }}
+          path: |
+            *.pkg
+            cqlai-${{ matrix.platform }}
+            cqlai-*-${{ matrix.platform }}.tar.gz
 
   # Upload to GitHub Release
   upload-to-release:
@@ -135,11 +167,14 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Download all PKG artifacts
+      - name: Download all macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: macos-pkg-*
+          pattern: macos-*
           merge-multiple: true
+
+      - name: Create checksums
+        run: sha256sum -- *.pkg cqlai-darwin-* cqlai-*-darwin-*.tar.gz > SHA256SUMS-macos.txt
 
       - name: Get version
         id: version
@@ -155,6 +190,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          files: "*.pkg"
+          files: |
+            *.pkg
+            cqlai-darwin-amd64
+            cqlai-darwin-arm64
+            cqlai-*-darwin-*.tar.gz
+            SHA256SUMS-macos.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

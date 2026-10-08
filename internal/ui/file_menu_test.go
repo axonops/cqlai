@@ -124,7 +124,7 @@ func TestChoosingQuitAsksFirst(t *testing.T) {
 	// Answering the other way leaves.
 	m.modal = NewQuitModal()
 	m.modal.NextChoice()
-	left, cmd := m.handleModalConfirmation("")
+	left, cmd := m.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyEnter})
 	require.NotNil(t, cmd, "the dialog did not quit")
 	assert.IsType(t, tea.QuitMsg{}, cmd())
 	assert.Equal(t, ModalNone, left.modal.Type)
@@ -177,7 +177,7 @@ func TestEveryWayOutGivesTheTerminalBack(t *testing.T) {
 	menu.fileMenu.selected = menuEntry(t, "QUIT")
 	menu, _ = menu.chooseFileMenuItem()
 	menu.modal.NextChoice() // on to Quit
-	_, fromMenu := menu.handleModalConfirmation("")
+	_, fromMenu := menu.handleKeyboardInput(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	typed := helpModel()
 	_, fromCommand, handled := typed.handleSpecialCommands("QUIT")

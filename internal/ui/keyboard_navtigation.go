@@ -79,9 +79,8 @@ func (m *MainModel) handlePageUp(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 	// If input has focus and contains text, page right in the input
 	if m.input.Focused() && len(m.input.Value()) > 0 {
-		currentValue := m.input.Value()
 		cursorPos := m.input.Position()
-		valueLen := len(currentValue)
+		valueLen := len([]rune(m.input.Value())) // the cursor counts characters, not bytes
 		// Page right by half the viewport width
 		pageSize := m.windowWidth / 2
 		if pageSize < 20 {
@@ -227,12 +226,6 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 
 // handleLeftArrow handles Left arrow key press
 func (m *MainModel) handleLeftArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
-
-	// If modal is showing, navigate choices
-	if m.modal.Type != ModalNone {
-		m.modal.PrevChoice()
-		return m, nil
-	}
 	// If Alt is held, scroll whichever view is in front of you left
 	if msg.Mod.Contains(tea.ModAlt) {
 		m.scrollHorizontally(-horizontalStep)
@@ -246,12 +239,6 @@ func (m *MainModel) handleLeftArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 
 // handleRightArrow handles Right arrow key press
 func (m *MainModel) handleRightArrow(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
-
-	// If modal is showing, navigate choices
-	if m.modal.Type != ModalNone {
-		m.modal.NextChoice()
-		return m, nil
-	}
 	// If Alt is held, scroll whichever view is in front of you right
 	if msg.Mod.Contains(tea.ModAlt) {
 		m.scrollHorizontally(horizontalStep)

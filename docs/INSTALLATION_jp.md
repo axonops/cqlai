@@ -195,6 +195,23 @@ chmod +x cqlai
 sudo mv cqlai /usr/local/bin/
 ```
 
+### tarball
+各リリースには、プラットフォームごとにバージョンを名前に含むtarballもあります:
+`cqlai-<version>-linux-amd64.tar.gz`、`cqlai-<version>-linux-arm64.tar.gz`、
+`cqlai-<version>-darwin-amd64.tar.gz`、`cqlai-<version>-darwin-arm64.tar.gz`。
+中身は`cqlai`、`README.md`、`LICENSE`です。
+
+```bash
+VERSION=0.3.2
+curl -LO https://github.com/axonops/cqlai/releases/download/v${VERSION}/cqlai-${VERSION}-linux-amd64.tar.gz
+tar xzf cqlai-${VERSION}-linux-amd64.tar.gz
+sudo mv cqlai /usr/local/bin/
+```
+
+バイナリ単体は`cqlai-linux-amd64`、`cqlai-linux-arm64`、`cqlai-darwin-amd64`、
+`cqlai-darwin-arm64`です。チェックサムはLinuxとWindowsが`SHA256SUMS.txt`、
+macOSが`SHA256SUMS-macos.txt`にあります。
+
 ### Windows
 実行可能ファイルを次からダウンロード:
 ```
