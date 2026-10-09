@@ -247,6 +247,34 @@ func TestMCPNodeStatus(t *testing.T) {
 	hidden := mcpEnv(t, &config.MCPConfig{Keyspaces: []string{"test_mcp"}})
 	o := callTool(t, hidden, "node_status", map[string]any{"section": "clients"})
 	assert.True(t, o.Refused, o.Text)
+
+	// With every keyspace allowed but some denied, it still reads them: the
+	// statement is its own and the secrets are hidden.
+	all := mcpEnv(t, &config.MCPConfig{Deny: []string{"test_mcp.secrets"}})
+	r = decode(t, callTool(t, all, "node_status", map[string]any{"section": "thread_pools"}))
+	assert.NotEmpty(t, r.Rows)
+}
+
+// TestMCPDenyIsNotUndoneThroughTheSystemKeyspaces: with every keyspace allowed
+// but some denied, a SELECT on the system keyspaces would list what deny
+// hides, so it is refused.
+func TestMCPDenyIsNotUndoneThroughTheSystemKeyspaces(t *testing.T) {
+	permit := []string{"SELECT", "DESCRIBE"}
+	env := mcpEnv(t, &config.MCPConfig{Permit: &permit, Deny: []string{"test_mcp.secrets"}})
+
+	for _, cql := range []string{
+		"SELECT keyspace_name, table_name FROM system_schema.tables",
+		"SELECT * FROM system_traces.sessions",
+		"SELECT * FROM system.size_estimates WHERE keyspace_name = 'test_mcp' AND table_name = 'secrets'",
+	} {
+		o := callTool(t, env, "query", map[string]any{"cql": cql})
+		assert.True(t, o.Refused, "%s: %s", cql, o.Text)
+		assert.NotContains(t, o.Text, "secrets\"", cql)
+	}
+
+	// The tables deny does not hide are still there.
+	o := callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM test_mcp.orders LIMIT 1"})
+	assert.False(t, o.IsError, o.Text)
 }
 
 // TestMCPTableSizeAndRoles.

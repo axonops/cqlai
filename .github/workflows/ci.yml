@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.26.6'
+  GO_VERSION: '1.27.2'
 
 jobs:
   # Build the binary once and share it across all jobs
@@ -67,8 +67,30 @@ jobs:
 
       - name: Install and run golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /tmp v2.11.4
-          /tmp/golangci-lint run --timeout=5m
+          # Downloaded and checked here rather than with install.sh: from
+          # v2.14.0 each archive has an .sbom.json beside it in the checksums
+          # file, and install.sh picks up that line too and fails.
+          VERSION=2.14.0
+          NAME="golangci-lint-${VERSION}-linux-amd64"
+          URL="https://github.com/golangci/golangci-lint/releases/download/v${VERSION}"
+          cd /tmp
+          curl -sSfLO "${URL}/${NAME}.tar.gz"
+          curl -sSfLO "${URL}/golangci-lint-${VERSION}-checksums.txt"
+          grep " ${NAME}.tar.gz$" "golangci-lint-${VERSION}-checksums.txt" | sha256sum -c -
+          tar xzf "${NAME}.tar.gz"
+          cd "${GITHUB_WORKSPACE}"
+          "/tmp/${NAME}/golangci-lint" run --timeout=5m \
+            --output.text.path=stdout --output.sarif.path=golangci-lint.sarif
+
+      # The findings, gosec's among them, in the Security tab. gosec runs here
+      # rather than on its own: its SARIF stopped passing GitHub's checks, and
+      # the gosec built with Go 1.27 cannot read the standard library yet.
+      - name: Upload golangci-lint results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('golangci-lint.sarif') != ''
+        with:
+          sarif_file: 'golangci-lint.sarif'
+          category: 'golangci-lint'
 
   unit-tests:
     name: Unit Tests
@@ -352,30 +374,12 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy'
-
-      - name: Setup Go for gosec
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Run gosec security scanner
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.23.0
-          gosec -no-fail -fmt sarif -out gosec-results.sarif ./...
-
-      - name: Upload gosec results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: 'gosec-results.sarif'
-          category: 'gosec'
 
   dependency-check:
     name: Dependency Check

@@ -148,7 +148,7 @@ func (s *Session) DBDescribeMaterializedViews(sessionMgr *session.Manager) (inte
 
 	var query string
 	if currentKeyspace != "" {
-		query = fmt.Sprintf("SELECT view_name FROM system_schema.views WHERE keyspace_name = '%s'", currentKeyspace)
+		query = "SELECT view_name FROM system_schema.views WHERE keyspace_name = " + cqlLiteral(currentKeyspace)
 	} else {
 		query = "SELECT keyspace_name, view_name FROM system_schema.views"
 	}

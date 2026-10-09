@@ -19,17 +19,21 @@ CQLAI can be installed through various package managers, Docker, or built from s
 Add the CQLAI repository and install:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl gnupg ca-certificates
+
 # Add the repository key
-curl -fsSL https://packages.axonops.com/apt/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/axonops-archive-keyring.gpg
+curl -L https://packages.axonops.com/apt/repo-signing-key.gpg \
+  | sudo gpg --dearmor -o /usr/share/keyrings/axonops.gpg
 
 # Add the repository
-echo "deb [signed-by=/usr/share/keyrings/axonops-archive-keyring.gpg] https://packages.axonops.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cqlai.list
-
-# Update package list
-sudo apt update
+echo "deb [signed-by=/usr/share/keyrings/axonops.gpg]\
+  https://packages.axonops.com/apt axonops-apt main" \
+  | sudo tee /etc/apt/sources.list.d/axonops-apt.list
+sudo apt-get update
 
 # Install CQLAI
-sudo apt install cqlai
+sudo apt-get install cqlai
 ```
 
 #### Specific Version Installation
@@ -52,14 +56,14 @@ Add the CQLAI repository and install:
 
 ```bash
 # Add the repository
-sudo tee /etc/yum.repos.d/cqlai.repo <<EOF
-[cqlai]
-name=CQLAI Repository
-baseurl=https://packages.axonops.com/rpm/stable/\$basearch
+sudo tee /etc/yum.repos.d/axonops-yum.repo << EOL
+[axonops-yum]
+name=axonops-yum
+baseurl=https://packages.axonops.com/yum/
 enabled=1
-gpgcheck=1
-gpgkey=https://packages.axonops.com/rpm/KEY.gpg
-EOF
+repo_gpgcheck=0
+gpgcheck=0
+EOL
 
 # Install CQLAI
 sudo yum install cqlai
@@ -220,7 +224,7 @@ https://github.com/axonops/cqlai/releases/latest/download/cqlai-windows-amd64.ex
 ## Building from Source
 
 ### Prerequisites
-- Go 1.26 or later (`go.mod` requires it; 1.21 will not build this module)
+- Go 1.27 or later (`go.mod` requires it; 1.21 will not build this module)
 - Git
 
 ### Build Steps

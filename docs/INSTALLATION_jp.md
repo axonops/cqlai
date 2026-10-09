@@ -20,17 +20,21 @@ CQLAIは、さまざまなパッケージマネージャー、Docker、または
 CQLAIリポジトリを追加してインストール:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl gnupg ca-certificates
+
 # リポジトリキーを追加
-curl -fsSL https://packages.axonops.com/apt/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/axonops-archive-keyring.gpg
+curl -L https://packages.axonops.com/apt/repo-signing-key.gpg \
+  | sudo gpg --dearmor -o /usr/share/keyrings/axonops.gpg
 
 # リポジトリを追加
-echo "deb [signed-by=/usr/share/keyrings/axonops-archive-keyring.gpg] https://packages.axonops.com/apt stable main" | sudo tee /etc/apt/sources.list.d/cqlai.list
-
-# パッケージリストを更新
-sudo apt update
+echo "deb [signed-by=/usr/share/keyrings/axonops.gpg]\
+  https://packages.axonops.com/apt axonops-apt main" \
+  | sudo tee /etc/apt/sources.list.d/axonops-apt.list
+sudo apt-get update
 
 # CQLAIをインストール
-sudo apt install cqlai
+sudo apt-get install cqlai
 ```
 
 #### 特定バージョンのインストール
@@ -53,14 +57,14 @@ CQLAIリポジトリを追加してインストール:
 
 ```bash
 # リポジトリを追加
-sudo tee /etc/yum.repos.d/cqlai.repo <<EOF
-[cqlai]
-name=CQLAI Repository
-baseurl=https://packages.axonops.com/rpm/stable/\$basearch
+sudo tee /etc/yum.repos.d/axonops-yum.repo << EOL
+[axonops-yum]
+name=axonops-yum
+baseurl=https://packages.axonops.com/yum/
 enabled=1
-gpgcheck=1
-gpgkey=https://packages.axonops.com/rpm/KEY.gpg
-EOF
+repo_gpgcheck=0
+gpgcheck=0
+EOL
 
 # CQLAIをインストール
 sudo yum install cqlai
@@ -221,7 +225,7 @@ https://github.com/axonops/cqlai/releases/latest/download/cqlai-windows-amd64.ex
 ## ソースからビルド
 
 ### 前提条件
-- Go 1.26以降(`go.mod` が要求します。1.21ではこのモジュールはビルドできません)
+- Go 1.27以降(`go.mod` が要求します。1.21ではこのモジュールはビルドできません)
 - Git
 
 ### ビルド手順

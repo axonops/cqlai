@@ -33,7 +33,7 @@ const mcpRestartNote = " The MCP settings apply when an MCP client next starts c
 // does not know.
 func mcpSpecs() []prefSpec {
 	specs := []prefSpec{
-		{section: mcpSection, path: "MCP.Keyspaces", label: "Keyspaces", kind: prefList, hint: "the keyspaces the model can see, separated by commas; empty is all of them"},
+		{section: mcpSection, path: "MCP.Keyspaces", label: "Keyspaces", kind: prefList, hint: "the keyspaces the model can see, separated by commas; empty is all but the system ones"},
 		{path: "MCP.Deny", label: "Hidden", kind: prefList, hint: "keyspace or keyspace.table never visible; system_auth always is"},
 		{path: "MCP.Redact", label: "Redacted columns", kind: prefList, hint: "keyspace.table.column, with * for any part: the values are replaced"},
 		{path: "MCP.AllowScans", label: "Allow scans", kind: prefYesNo, hint: "ALLOW FILTERING, and aggregates across partitions"},

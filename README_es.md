@@ -1344,6 +1344,13 @@ llamada, pida lo que pida el modelo.
 - **Lo oculto sigue oculto.** Los keyspaces y tablas ocultos no se listan, no
   se describen, no se encuentran al buscar y no se nombran en un error.
   `system_auth`, que guarda los hashes de las contraseñas, siempre está oculto.
+- **Los keyspaces del sistema se ocultan cuando se permiten todos.** Sin lista
+  de keyspaces, `system`, `system_schema`, `system_traces` y los demás
+  keyspaces `system_` no se pueden leer con `query`. Listan los demás
+  keyspaces, tablas y columnas, y guardan las sentencias trazadas contra ellos,
+  así que leerlos mostraría lo que oculta deny. Para permitir uno, inclúyalo en
+  la lista de keyspaces permitidos. `node_status` sigue leyendo `system_views`,
+  salvo que esté en deny o falte en una lista de keyspaces.
 - **Columnas ocultadas.** Sus valores vuelven como `[redacted]`. En una tabla
   con columnas ocultadas, un `SELECT` tiene que usar `*` o nombres de columna,
   sin `JSON`, alias ni funciones, y sin condiciones sobre esas columnas.

@@ -373,3 +373,82 @@ func TestADenyEntryMatchesWhateverItsCase(t *testing.T) {
 	_, err := p.Check("SELECT * FROM shop.secrets")
 	assert.Error(t, err)
 }
+
+// denyOnly allows every keyspace but billing and shop.secrets: the settings
+// with a deny list and no keyspace list.
+func denyOnly(t *testing.T) Policy {
+	t.Helper()
+	permit := []string{"SELECT", "DESCRIBE"}
+	return load(t, &config.Config{MCP: &config.MCPConfig{
+		Permit: &permit,
+		Deny:   []string{"billing", "shop.secrets"},
+	}}, "", Flags{})
+}
+
+// TestTheSystemKeyspacesDoNotShowWhatDenyHides: with every keyspace allowed,
+// the system ones are not. They list the hidden keyspaces, tables and
+// columns, size them, and hold the statements traced against them.
+func TestTheSystemKeyspacesDoNotShowWhatDenyHides(t *testing.T) {
+	p := denyOnly(t)
+	require.True(t, p.AllKeyspacesVisible())
+
+	for _, q := range []string{
+		"SELECT keyspace_name, table_name FROM system_schema.tables",
+		"SELECT * FROM system_schema.columns WHERE keyspace_name = 'billing'",
+		"SELECT * FROM system_schema.keyspaces",
+		"SELECT * FROM system_traces.sessions",
+		"SELECT * FROM system_traces.events",
+		"SELECT * FROM system.size_estimates WHERE keyspace_name = 'billing' AND table_name = 'invoices'",
+		"SELECT * FROM system_views.settings",
+		"SELECT * FROM system_distributed.repair_history",
+		"SELECT * FROM System_Schema.tables",
+	} {
+		_, err := p.Check(q)
+		assert.Error(t, err, q)
+	}
+
+	// What deny does not hide is still there.
+	_, err := p.Check("SELECT * FROM shop.orders WHERE customer = 1")
+	assert.NoError(t, err)
+	assert.True(t, p.Visible("shop"))
+}
+
+// TestAKeyspaceListCanStillNameASystemKeyspace: listing one is asking for it.
+func TestAKeyspaceListCanStillNameASystemKeyspace(t *testing.T) {
+	permit := []string{"SELECT"}
+	p := load(t, &config.Config{MCP: &config.MCPConfig{
+		Permit:    &permit,
+		Keyspaces: []string{"shop", "system_schema"},
+	}}, "", Flags{})
+
+	_, err := p.Check("SELECT keyspace_name FROM system_schema.keyspaces")
+	assert.NoError(t, err)
+	assert.False(t, p.Visible("system_traces"), "only the one named")
+}
+
+// TestTheChatViewStillSeesTheSystemKeyspaces: it shows what the shell shows.
+func TestTheChatViewStillSeesTheSystemKeyspaces(t *testing.T) {
+	assert.True(t, Shell().Visible("system_schema"))
+	assert.True(t, Shell().Visible("system_traces"))
+	assert.False(t, Shell().Visible("system_auth"), "the password hashes, never")
+}
+
+// TestNodeStatusReadsTheVirtualTablesUnlessDenied: its statement is its own
+// and it hides the secrets, so it reads system_views when every keyspace is
+// allowed. A deny entry or a keyspace list without it still refuses it.
+func TestNodeStatusReadsTheVirtualTablesUnlessDenied(t *testing.T) {
+	_, err := denyOnly(t).WithSystemKeyspaces().Check("SELECT * FROM system_views.thread_pools")
+	assert.NoError(t, err)
+
+	permit := []string{"SELECT"}
+	denied := load(t, &config.Config{MCP: &config.MCPConfig{Permit: &permit, Deny: []string{"system_views"}}}, "", Flags{})
+	_, err = denied.WithSystemKeyspaces().Check("SELECT * FROM system_views.thread_pools")
+	assert.Error(t, err)
+
+	listed := load(t, &config.Config{MCP: &config.MCPConfig{Permit: &permit, Keyspaces: []string{"shop"}}}, "", Flags{})
+	_, err = listed.WithSystemKeyspaces().Check("SELECT * FROM system_views.thread_pools")
+	assert.Error(t, err)
+
+	assert.False(t, IsSystemKeyspace("systems"), "a keyspace merely starting with the word is not one")
+	assert.True(t, IsSystemKeyspace("system"))
+}

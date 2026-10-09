@@ -1337,6 +1337,13 @@ que pida o modelo.
 - **O agochado segue agochado.** Os keyspaces e táboas agochados non se listan,
   non se describen, non se atopan ao buscar e non se nomean nun erro.
   `system_auth`, que garda os hashes dos contrasinais, sempre está agochado.
+- **Os keyspaces do sistema agóchanse cando se permiten todos.** Sen lista de
+  keyspaces, `system`, `system_schema`, `system_traces` e os demais keyspaces
+  `system_` non se poden ler con `query`. Listan os demais keyspaces, táboas e
+  columnas, e gardan as sentenzas trazadas contra eles, así que lelos amosaría
+  o que agocha deny. Para permitir un, inclúao na lista de keyspaces
+  permitidos. `node_status` segue lendo `system_views`, agás que estea en deny
+  ou falte nunha lista de keyspaces.
 - **Columnas agochadas.** Os seus valores volven como `[redacted]`. Nunha táboa
   con columnas agochadas, un `SELECT` ten que usar `*` ou nomes de columna, sen
   `JSON`, alias nin funcións, e sen condicións sobre esas columnas.
