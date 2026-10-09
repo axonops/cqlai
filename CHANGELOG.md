@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-09
+
+### Security
+
+- **Built with Go 1.27.2 and `golang.org/x/net` v0.60.0.** v0.3.2 had 12
+  known vulnerabilities. They are in Go's `net/http`, `net/textproto`,
+  `crypto/tls` and `html/template`, and in the HTTP/2 code in `x/net`. The
+  `net/http` server ones apply while `cqlai mcp` is serving. govulncheck
+  finds none in this release.
+- **Hidden keyspaces stay hidden from an MCP client when every keyspace is
+  allowed.** With a deny list and no keyspace list, the `query` tool could
+  read the system keyspaces. Through them it could see the names of hidden
+  keyspaces, tables and columns, their sizes, and the statements traced
+  against them. Now, when every keyspace is allowed, `system` and every
+  `system_` keyspace are hidden as well. A keyspace list can still name one.
+  `node_status` still reads `system_views`, unless it is denied or left out
+  of a keyspace list. The CHAT view is unchanged.
+
+### Changed
+
+- **Every dependency is at its latest version.** Among them are
+  `anthropic-sdk-go` v1.79.1, `bubbletea` v2.1.0 and `arrow-go` v18.8.0.
+- **Building from source needs Go 1.27.**
+
+### Fixed
+
+- **`DESCRIBE FUNCTION` with a quote in the name.** The name is now written
+  into the lookup as a quoted CQL string.
+- **The APT and YUM install instructions.** The repository key, suite and
+  YUM address they gave did not exist. They now match the repositories.
+
 ## [0.3.2] - 2026-10-08
 
 ### Added
