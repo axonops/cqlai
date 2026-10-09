@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -40,8 +41,13 @@ func mcpSpecs() []prefSpec {
 		{path: "MCP.MaxRows", label: "Max rows", kind: prefNumber, hint: "the most rows one call returns; 100 unless set"},
 		{path: "MCP.MaxValueBytes", label: "Max value bytes", kind: prefNumber, hint: "longer values are cut; 4096 unless set"},
 		{path: "MCP.MaxCallsPerMinute", label: "Calls per minute", kind: prefNumber, hint: "60 unless set"},
-		{path: "MCP.AuditLog", label: "Audit log", kind: prefPath, topOnly: true, hint: "~/.cqlai_mcp_audit.log unless set; - turns it off"},
-		{path: "MCP.Port", label: "Port", kind: prefNumber, topOnly: true, hint: "where `cqlai mcp` serves MCP, on 127.0.0.1 only; 7845 unless set"},
+		{path: "MCP.AuditLog", label: "Audit log", kind: prefPath, topOnly: true, hint: "~/.cassandra/cqlai_mcp_audit.log unless set; - turns it off"},
+		{path: "MCP.Listen", label: "Listen on", kind: prefText, topOnly: true, hint: "the address `cqlai mcp` serves MCP on; 127.0.0.1 unless set. Any other needs TLS, and the token or a client CA"},
+		{path: "MCP.Port", label: "Port", kind: prefNumber, topOnly: true, hint: "where `cqlai mcp` serves MCP; 7845 unless set"},
+		{path: "MCP.Token", label: "Require token", kind: prefYesNo, topOnly: true, hint: "every request has to carry the token in ~/.cassandra/cqlai_mcp_token"},
+		{path: "MCP.TLSCert", label: "TLS certificate", kind: prefPath, topOnly: true, hint: "serve HTTPS with this certificate (PEM); needs the key too"},
+		{path: "MCP.TLSKey", label: "TLS key", kind: prefPath, topOnly: true, hint: "the private key for the TLS certificate (PEM)"},
+		{path: "MCP.TLSClientCA", label: "TLS client CA", kind: prefPath, topOnly: true, hint: "ask each client for a certificate this CA signed (PEM)"},
 	}
 	// The read commands only. A change is never run by the MCP server - a
 	// model proposes it, and the user runs it - so there is nothing to permit.
@@ -174,6 +180,21 @@ func sameNames(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// hostNamePattern is what a host name can be: letters, digits, hyphens and
+// dots.
+var hostNamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+
+// prefTextError is what is wrong with a typed setting, or "".
+func prefTextError(spec prefSpec, value string) string {
+	if spec.path == "MCP.Listen" {
+		host := strings.Trim(value, "[]")
+		if net.ParseIP(host) == nil && !hostNamePattern.MatchString(host) {
+			return value + " is not an address or a host name"
+		}
+	}
+	return ""
 }
 
 // cqlNamePattern is what a keyspace or table name can be.

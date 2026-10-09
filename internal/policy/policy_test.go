@@ -452,3 +452,26 @@ func TestNodeStatusReadsTheVirtualTablesUnlessDenied(t *testing.T) {
 	assert.False(t, IsSystemKeyspace("systems"), "a keyspace merely starting with the word is not one")
 	assert.True(t, IsSystemKeyspace("system"))
 }
+
+// TestTheAuditLogIsKeptInCassandra, and one an older cqlai wrote in the home
+// directory is moved there with what it holds.
+func TestTheAuditLogIsKeptInCassandra(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	old := filepath.Join(home, ".cqlai_mcp_audit.log")
+	require.NoError(t, os.WriteFile(old, []byte("{\"tool\":\"query\"}\n"), 0o600))
+
+	path := filepath.Join(home, ".cassandra", "cqlai_mcp_audit.log")
+	require.Equal(t, path, DefaultAuditLog())
+
+	a, err := OpenAudit(DefaultAuditLog())
+	require.NoError(t, err)
+	a.Log(Entry{Tool: "describe", Decision: "allowed"})
+	require.NoError(t, a.Close())
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(got), `"tool":"query"`, "the old entries came with it")
+	assert.Contains(t, string(got), `"tool":"describe"`)
+	assert.NoFileExists(t, old)
+}

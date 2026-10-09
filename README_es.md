@@ -1169,7 +1169,7 @@ modelo lo propone: CQLAI dice qué hará, y tú decides si lo ejecutas.
 Hay dos formas de ejecutarlo.
 
 **`cqlai mcp`** abre la shell como siempre y sirve MCP desde ella, en
-`http://127.0.0.1:7845/mcp`. Sirve la conexión que elijas en `FILE > CONNECT`,
+`http://127.0.0.1:7845/mcp` salvo que se configure otra dirección. Sirve la conexión que elijas en `FILE > CONNECT`,
 con los ajustes de esa conexión, y la sigue cuando eliges otra. Arranca haya o
 no un clúster disponible; si no lo hay, abre `CONNECT` para que elijas uno. La
 barra de estado muestra `MCP: :7845` mientras sirve.
@@ -1182,27 +1182,70 @@ cliente, listo para copiar:
   "mcpServers": {
     "cqlai": {
       "type": "http",
-      "url": "http://127.0.0.1:7845/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
+      "url": "http://127.0.0.1:7845/mcp"
     }
   }
 }
 ```
 
-**Dónde está el token.** El token está en `~/.cqlai_mcp_token`, que solo tú
-puedes leer. El archivo se crea la primera vez que ejecutas `cqlai mcp`, y el
+**El token.** Está desactivado salvo que lo actives: marca `Require token` en
+MCP SERVER de PREFERENCES, pon `"token": true` en el bloque `mcp` de
+`cqlai.json`, o arranca con `cqlai mcp --token`. Entonces cada petición tiene
+que llevarlo, y la configuración del cliente de arriba lleva una entrada
+`headers` con él:
+
+```json
+"headers": { "Authorization": "Bearer <token>" }
+```
+
+El token está en `~/.cassandra/cqlai_mcp_token`, que solo tú
+puedes leer. El archivo se crea la primera vez que `cqlai mcp` arranca con el token activado, y el
 token es el mismo cada vez que arranca la shell, así que la configuración del
 cliente no cambia. Hay dos formas de obtenerlo:
 
 - En la shell: `FILE > MCP SERVER` imprime la configuración del cliente con el
   token ya puesto en la cabecera `Authorization`.
-- En una terminal: `cat ~/.cqlai_mcp_token`
+- En una terminal: `cat ~/.cassandra/cqlai_mcp_token`
+
+CQLAI 0.3.3 y anteriores guardaban el token en `~/.cqlai_mcp_token`, y el
+registro de auditoría en `~/.cqlai_mcp_audit.log`. Los dos se mueven a
+`~/.cassandra` la próxima vez que se usan, así que un cliente configurado con
+el token antiguo sigue funcionando.
 
 Quien tenga el token puede usar lo que el servidor permite: guárdalo como una
 contraseña y no lo incluyas en nada que compartas. Para cambiarlo, borra el
 archivo: el siguiente `cqlai mcp` crea uno nuevo, y la configuración del cliente
 necesita el token nuevo. Si alguien más que tú puede leer el archivo, CQLAI no
-lo usa y lo dice; `chmod 600 ~/.cqlai_mcp_token` lo arregla.
+lo usa y lo dice; `chmod 600 ~/.cassandra/cqlai_mcp_token` lo arregla.
+
+**Servirlo en otra dirección, con TLS.** Estos ajustes están en MCP SERVER de
+PREFERENCES, en el bloque `mcp` de `cqlai.json`, y como opciones de
+`cqlai mcp`. Se aplican al arrancar `cqlai mcp`.
+
+| PREFERENCES | `cqlai.json` | Opción | Qué hace |
+|---|---|---|---|
+| Listen on | `listen` | `--listen` | La dirección en la que sirve. `127.0.0.1` si no se configura |
+| Port | `port` | `--port` | El puerto. `7845` si no se configura |
+| Require token | `token` | `--token` | Cada petición tiene que llevar el token. Desactivado si no se configura |
+| TLS certificate | `tlsCert` | `--tls-cert` | Sirve HTTPS con este certificado (PEM) |
+| TLS key | `tlsKey` | `--tls-key` | La clave privada del certificado (PEM) |
+| TLS client CA | `tlsClientCA` | `--tls-client-ca` | Pide a cada cliente un certificado firmado por esta CA (PEM) |
+
+En cualquier dirección que no sea la de esta máquina (`127.0.0.1`, `::1` o
+`localhost`), la red puede llegar al servidor. Entonces tiene que usar TLS, y el
+token o una CA de cliente. Sin ellos no arranca: la barra de estado muestra
+`MCP: OFF`, y `FILE > MCP SERVER` dice por qué. Por ejemplo:
+
+```json
+{
+  "mcp": {
+    "listen": "0.0.0.0",
+    "token": true,
+    "tlsCert": "/etc/cqlai/server.pem",
+    "tlsKey": "/etc/cqlai/server.key"
+  }
+}
+```
 
 **`cqlai mcp --headless`** no tiene shell. Es para un cliente que arranca CQLAI
 y habla con él por stdin y stdout:
@@ -1226,6 +1269,10 @@ conexión por defecto. La contraseña es la guardada con la conexión, o
 |---|---|
 | `--headless` | Sin shell: MCP por stdin y stdout |
 | `--port N` | El puerto en el que la shell sirve MCP (por defecto: el ajuste, o 7845) |
+| `--listen DIRECCIÓN` | La dirección en la que la shell sirve MCP (por defecto: el ajuste, o 127.0.0.1) |
+| `--token` | Cada petición tiene que llevar el token (por defecto: el ajuste, o desactivado) |
+| `--tls-cert ARCHIVO`, `--tls-key ARCHIVO` | Sirve HTTPS con este certificado y esta clave (PEM) |
+| `--tls-client-ca ARCHIVO` | Pide a cada cliente un certificado firmado por esta CA (PEM) |
 | `--connection NOMBRE` | Headless: la conexión guardada que se usa |
 | `--permit SELECT,DESCRIBE` | Solo estas órdenes, de las que permiten los ajustes |
 | `--keyspaces ks1,ks2` | Solo estos keyspaces son visibles, de los que permiten los ajustes |
@@ -1233,7 +1280,9 @@ conexión por defecto. La contraseña es la guardada con la conexión, o
 | `--audit-log RUTA` | Dónde va el registro de auditoría; `-` lo desactiva |
 | `--config-file RUTA` | El archivo de configuración que se lee |
 
-Las opciones solo pueden restringir lo que permiten los ajustes. Nunca lo amplían.
+Las opciones que dicen qué puede hacer el servidor solo pueden restringir lo
+que permiten los ajustes. Nunca lo amplían. `--port`, `--listen`, `--token` y
+las opciones TLS dicen cómo se sirve, y sustituyen a los ajustes.
 
 ### Las herramientas
 
@@ -1360,14 +1409,17 @@ llamada, pida lo que pida el modelo.
   espera de la petición, 100 filas por página y los valores largos recortados.
 - **Sin credenciales.** Ninguna herramienta recibe ni devuelve un usuario o una
   contraseña.
-- **Solo esta máquina, con el token.** La shell sirve MCP solo en
-  `127.0.0.1`. Cada petición tiene que llevar el token, y se rechaza una
-  petición de una página web en un navegador.
+- **Esta máquina salvo que se configure otra, y nunca una página web.** La
+  shell sirve MCP en `127.0.0.1` salvo que `Listen on` diga otra cosa. Se
+  rechaza una petición de una página web en un navegador. El token está
+  desactivado salvo que se active, y sin él cualquier cosa en esta máquina
+  puede usar lo que el servidor permite. En cualquier otra dirección, se
+  exigen TLS y el token o un certificado de cliente.
 - **Una sesión propia.** El servidor usa una sesión propia con el clúster, así
   que las consultas del modelo nunca cambian la consistencia ni el trazado de tu
   shell.
 - **Registro de auditoría.** Cada llamada se escribe en
-  `~/.cqlai_mcp_audit.log`, rechazos incluidos, sin los valores de las
+  `~/.cassandra/cqlai_mcp_audit.log`, rechazos incluidos, sin los valores de las
   sentencias y sin filas. Solo tú puedes leerlo.
 
 El control más fuerte es el rol de Cassandra con el que entra CQLAI. Dale a la

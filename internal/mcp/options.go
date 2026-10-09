@@ -21,6 +21,14 @@ type Options struct {
 	Port       int // HTTP, for the terminal app; 0 is the settings', or 7845
 	ConfigFile string
 
+	// The terminal app's HTTP, over the settings: where it listens, whether
+	// the token is required (nil is the settings'), and TLS.
+	Listen      string
+	Token       *bool
+	TLSCert     string
+	TLSKey      string
+	TLSClientCA string
+
 	// Headless only: which connection, and overrides for it.
 	Connection     string
 	Host           string
@@ -44,7 +52,12 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 	var o Options
 	var permit, keyspaces []string
 	flags.BoolVar(&o.Headless, "headless", false, "No terminal app: an MCP server on stdin and stdout, for a client that starts it")
-	flags.IntVar(&o.Port, "port", 0, "Terminal app: the port MCP is served on, at 127.0.0.1 (default: the settings', or 7845)")
+	flags.IntVar(&o.Port, "port", 0, "Terminal app: the port MCP is served on (default: the settings', or 7845)")
+	flags.StringVar(&o.Listen, "listen", "", "Terminal app: the address MCP is served on (default: the settings', or 127.0.0.1)")
+	token := flags.Bool("token", false, "Terminal app: every request has to carry the token in ~/.cassandra/cqlai_mcp_token (default: the settings', or off)")
+	flags.StringVar(&o.TLSCert, "tls-cert", "", "Terminal app: serve HTTPS with this certificate (PEM)")
+	flags.StringVar(&o.TLSKey, "tls-key", "", "Terminal app: the private key for --tls-cert (PEM)")
+	flags.StringVar(&o.TLSClientCA, "tls-client-ca", "", "Terminal app: ask each client for a certificate this CA signed (PEM)")
 	flags.StringSliceVar(&permit, "permit", nil, "Permit only these CQL commands, of those the config file permits")
 	flags.StringSliceVar(&keyspaces, "keyspaces", nil, "Only these keyspaces are visible, of those the config file allows")
 	flags.IntVar(&o.Flags.MaxRows, "max-rows", 0, "At most this many rows per call, if lower than the config file's")
@@ -66,7 +79,7 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 	if *help {
 		fmt.Fprintln(stderr, "cqlai mcp - Cassandra for an AI client, over the Model Context Protocol")
 		fmt.Fprintln(stderr)
-		fmt.Fprintln(stderr, "Usage: cqlai mcp [options]              the terminal app, serving MCP at http://127.0.0.1:7845/mcp")
+		fmt.Fprintln(stderr, "Usage: cqlai mcp [options]              the terminal app, serving MCP at http://127.0.0.1:7845/mcp unless set")
 		fmt.Fprintln(stderr, "       cqlai mcp --headless [options]   an MCP server on stdin and stdout, for a client that starts it")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "What the server may do is set in PREFERENCES and CONNECT, under MCP SERVER.")
@@ -83,6 +96,9 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 		}
 	}
 	o.Flags.Keyspaces = keyspaces
+	if flags.Changed("token") {
+		o.Token = token
+	}
 	if o.ConfigFile == "" {
 		o.ConfigFile = os.Getenv("CQLAI_CONFIG_FILE")
 	}
