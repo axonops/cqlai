@@ -33,9 +33,18 @@ func (m *MainModel) showMCPServer() (*MainModel, tea.Cmd) {
 	var b strings.Builder
 	b.WriteString(m.mcpHost.Status())
 	if m.mcpHost.Serving() {
-		b.WriteString("\n\nAdd this to your MCP client's configuration. The token is kept in ")
-		b.WriteString(mcp.TokenFile())
-		b.WriteString(", readable only by you; anyone with it can use what this server allows.\n\n")
+		b.WriteString("\n\nAdd this to your MCP client's configuration.")
+		if m.mcpHost.TokenRequired() {
+			b.WriteString(" The token is kept in ")
+			b.WriteString(mcp.TokenFile())
+			b.WriteString(", readable only by you; anyone with it can use what this server allows.")
+		} else if !m.mcpHost.ClientCertRequired() {
+			b.WriteString(" No token is asked for: anything on this machine that can reach the address can use what this server allows. Require token, in PREFERENCES, asks for one.")
+		}
+		if m.mcpHost.ClientCertRequired() {
+			b.WriteString(" The client also has to show a certificate the TLS client CA signed.")
+		}
+		b.WriteString("\n\n")
 		b.WriteString(m.mcpHost.ClientConfig())
 	}
 	b.WriteString("\n\nWhat the model may do is set in PREFERENCES and CONNECT, under MCP SERVER.")

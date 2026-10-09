@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -27,10 +28,11 @@ import (
 // Host is the MCP server inside the terminal app.
 //
 // The app owns the terminal, so the protocol cannot run over stdin and
-// stdout. It runs over HTTP instead, on 127.0.0.1 only, and every request has
-// to carry the token: something else on the machine - a web page in a
-// browser, another user's process - must not be able to use the cluster
-// through it.
+// stdout. It runs over HTTP instead, on 127.0.0.1 unless the settings say
+// otherwise. A web page in a browser is never let in. The settings can also
+// ask every request for the token, serve HTTPS, and ask each client for a
+// certificate; served anywhere the network can reach, HTTPS and one of the
+// other two are required.
 //
 // It serves whichever connection the app is using, under that connection's
 // policy, and follows the app when another one is picked. It keeps a session
@@ -39,8 +41,8 @@ import (
 type Host struct {
 	opts    Options
 	version string
-	port    int
-	token   string
+	serve   serving
+	token   string // "" when the settings do not ask for it
 
 	listener net.Listener
 	http     *http.Server
@@ -112,12 +114,10 @@ func StartHost(o Options, version string) *Host {
 	if err != nil {
 		file = &config.Config{}
 	}
-	h.port = o.Port
-	if h.port == 0 && file.MCP != nil {
-		h.port = file.MCP.Port
-	}
-	if h.port == 0 {
-		h.port = DefaultPort
+	h.serve = servingFrom(file, o)
+	if err := h.serve.check(); err != nil {
+		h.failed = err.Error()
+		return h
 	}
 
 	// Until the app is connected, the policy is the top of the file's.
@@ -128,9 +128,11 @@ func StartHost(o Options, version string) *Host {
 	}
 	h.pol = pol
 
-	if h.token, err = readToken(); err != nil {
-		h.failed = err.Error()
-		return h
+	if h.serve.token {
+		if h.token, err = readToken(); err != nil {
+			h.failed = err.Error()
+			return h
+		}
 	}
 	if h.audit, err = policy.OpenAudit(pol.AuditLog()); err != nil {
 		h.failed = err.Error()
@@ -141,10 +143,19 @@ func StartHost(o Options, version string) *Host {
 	h.server = NewServer(h, h.limiter, h.audit, version)
 	h.server.requireInit = false // each HTTP request stands alone
 
-	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(h.port)))
+	listener, err := net.Listen("tcp", h.serve.address())
 	if err != nil {
-		h.failed = fmt.Sprintf("cannot serve MCP on 127.0.0.1:%d: %v", h.port, err)
+		h.failed = fmt.Sprintf("cannot serve MCP on %s: %v", h.serve.address(), err)
 		return h
+	}
+	if h.serve.tls() {
+		cfg, err := h.serve.tlsConfig()
+		if err != nil {
+			_ = listener.Close()
+			h.failed = err.Error()
+			return h
+		}
+		listener = tls.NewListener(listener, cfg)
 	}
 	h.listener = listener
 	h.http = &http.Server{
@@ -297,10 +308,16 @@ func (h *Host) Serving() bool {
 }
 
 // Port is where MCP is served.
-func (h *Host) Port() int { return h.port }
+func (h *Host) Port() int { return h.serve.port }
 
 // URL is the address a client connects to.
-func (h *Host) URL() string { return fmt.Sprintf("http://127.0.0.1:%d/mcp", h.port) }
+func (h *Host) URL() string { return h.serve.url() }
+
+// TokenRequired reports whether every request has to carry the token.
+func (h *Host) TokenRequired() bool { return h.serve.token }
+
+// ClientCertRequired reports whether every client has to show a certificate.
+func (h *Host) ClientCertRequired() bool { return h.serve.clientCA != "" }
 
 // Status says what the server is doing, in words, for the app to show.
 func (h *Host) Status() string {
@@ -318,15 +335,11 @@ func (h *Host) Status() string {
 
 // ClientConfig is what to put in a client's MCP configuration.
 func (h *Host) ClientConfig() string {
-	cfg := map[string]any{
-		"mcpServers": map[string]any{
-			"cqlai": map[string]any{
-				"type":    "http",
-				"url":     h.URL(),
-				"headers": map[string]string{"Authorization": "Bearer " + h.token},
-			},
-		},
+	server := map[string]any{"type": "http", "url": h.URL()}
+	if h.serve.token {
+		server["headers"] = map[string]string{"Authorization": "Bearer " + h.token}
 	}
+	cfg := map[string]any{"mcpServers": map[string]any{"cqlai": server}}
 	data, _ := json.MarshalIndent(cfg, "", "  ")
 	return string(data)
 }
@@ -429,22 +442,39 @@ func (h *Host) stream(w http.ResponseWriter, r *http.Request) {
 
 // sameMachine checks that a request was made for this server by name, and not
 // from a web page of another origin.
+//
+// Served on this machine only, the request has to name it: a web page can
+// reach 127.0.0.1 under a name of its own (DNS rebinding). Served where the
+// network can reach it, the name is whatever the client used, and the token
+// or the client's certificate is what lets it in.
 func (h *Host) sameMachine(r *http.Request) bool {
-	port := strconv.Itoa(h.port)
-	allowedHost := map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true, "[::1]:" + port: true}
-	if !allowedHost[r.Host] {
-		return false
+	scheme := "http"
+	if h.serve.tls() {
+		scheme = "https"
 	}
 	origin := r.Header.Get("Origin")
+
+	if !h.serve.local() {
+		return origin == "" || origin == scheme+"://"+r.Host
+	}
+	port := strconv.Itoa(h.serve.port)
+	names := map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true, "[::1]:" + port: true}
+	if !names[r.Host] {
+		return false
+	}
 	if origin == "" {
 		return true // not a browser
 	}
-	return origin == "http://127.0.0.1:"+port || origin == "http://localhost:"+port
+	_, name, _ := strings.Cut(origin, scheme+"://")
+	return strings.HasPrefix(origin, scheme+"://") && names[name]
 }
 
-// authorized checks the token, in time that does not depend on how much of
-// it was right.
+// authorized checks the token when the settings ask for it, in time that does
+// not depend on how much of it was right.
 func (h *Host) authorized(r *http.Request) bool {
+	if !h.serve.token {
+		return true
+	}
 	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || h.token == "" {
 		return false

@@ -82,7 +82,8 @@ func TestTheCommandRowsAreTheGatesTable(t *testing.T) {
 	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, rows)
 
 	for _, path := range []string{"MCP.Keyspaces", "MCP.Deny", "MCP.Redact", "MCP.AllowScans",
-		"MCP.MaxRows", "MCP.AuditLog", "MCP.Port"} {
+		"MCP.MaxRows", "MCP.AuditLog", "MCP.Listen", "MCP.Port", "MCP.Token",
+		"MCP.TLSCert", "MCP.TLSKey", "MCP.TLSClientCA"} {
 		prefIndex(t, m, path)
 	}
 }
@@ -211,8 +212,10 @@ func TestAConnectionCanOnlyNarrow(t *testing.T) {
 	// What is the whole server's is not offered per connection.
 	for _, f := range m.preferences.fields {
 		assert.NotEqual(t, "MCP.Connections", f.spec.path)
-		assert.NotEqual(t, "MCP.AuditLog", f.spec.path)
-		assert.NotEqual(t, "MCP.Port", f.spec.path)
+		for _, serverWide := range []string{"MCP.AuditLog", "MCP.Listen", "MCP.Port", "MCP.Token",
+			"MCP.TLSCert", "MCP.TLSKey", "MCP.TLSClientCA"} {
+			assert.NotEqual(t, serverWide, f.spec.path)
+		}
 	}
 }
 
@@ -279,4 +282,47 @@ func TestPickingFromTheListKeepsWhatIsInIt(t *testing.T) {
 	m.usePrefMatch()
 
 	assert.Equal(t, "catalog, shop_archive", m.preferences.fields[i].input.Value())
+}
+
+// TestTheListenAddressIsAnAddressOrAHostName, and the window will not save
+// anything else.
+func TestTheListenAddressIsAnAddressOrAHostName(t *testing.T) {
+	for value, wrong := range map[string]bool{
+		"127.0.0.1": false, "0.0.0.0": false, "::1": false, "[::1]": false,
+		"localhost": false, "cqlai.example.com": false,
+		"http://127.0.0.1": true, "a b": true, "-bad": true, "127.0.0.1:7845": true,
+	} {
+		m := prefModel(t, &config.Config{})
+		i := prefIndex(t, m, "MCP.Listen")
+		m.setPrefField(i, value)
+		_, got := m.preferenceErrors()[i]
+		assert.Equal(t, wrong, got, "%q", value)
+	}
+}
+
+// TestTheServingSettingsAreSaved under the keys cqlai mcp reads.
+func TestTheServingSettingsAreSaved(t *testing.T) {
+	m := prefModel(t, &config.Config{})
+	m.setPrefField(prefIndex(t, m, "MCP.Listen"), "0.0.0.0")
+	m.setPrefField(prefIndex(t, m, "MCP.TLSCert"), "/etc/cqlai/server.pem")
+	m.setPrefField(prefIndex(t, m, "MCP.TLSKey"), "/etc/cqlai/server.key")
+	m.setPrefField(prefIndex(t, m, "MCP.TLSClientCA"), "/etc/cqlai/ca.pem")
+	m.preferences.focusField(prefIndex(t, m, "MCP.Token"))
+	m.togglePrefField()
+
+	block := savedMCP(t, m)
+	require.NotNil(t, block)
+	assert.Equal(t, "0.0.0.0", block["listen"])
+	assert.Equal(t, true, block["token"])
+	assert.Equal(t, "/etc/cqlai/server.pem", block["tlsCert"])
+	assert.Equal(t, "/etc/cqlai/server.key", block["tlsKey"])
+	assert.Equal(t, "/etc/cqlai/ca.pem", block["tlsClientCA"])
+}
+
+// TestTheTokenIsNotWrittenWhenLeftOff: off is the default, so an untouched
+// window does not write it.
+func TestTheTokenIsNotWrittenWhenLeftOff(t *testing.T) {
+	m := prefModel(t, &config.Config{})
+	assert.False(t, m.preferences.fields[prefIndex(t, m, "MCP.Token")].yes)
+	assert.Nil(t, savedMCP(t, m))
 }

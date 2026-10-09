@@ -651,6 +651,11 @@ func (m *MainModel) preferenceErrors() map[int]string {
 			if wrong := m.preferences.prefListError(field.spec, value); wrong != "" {
 				errors[i] = wrong
 			}
+
+		case prefText:
+			if wrong := prefTextError(field.spec, value); wrong != "" {
+				errors[i] = wrong
+			}
 		}
 	}
 	return errors

@@ -81,7 +81,18 @@ type MCPConfig struct {
 
 	// Server-wide: these are read from the top of the file only.
 	AuditLog string `json:"auditLog,omitempty"`
-	Port     int    `json:"port,omitempty"` // where the terminal app serves MCP, at 127.0.0.1
+	Port     int    `json:"port,omitempty"` // where the terminal app serves MCP
+
+	// How the terminal app serves MCP over HTTP. Listen is the address, and
+	// 127.0.0.1 unless set. Token makes every request carry the token kept in
+	// ~/.cassandra/cqlai_mcp_token. TLSCert and TLSKey serve HTTPS, and
+	// TLSClientCA asks each client for a certificate that CA signed. Another
+	// address than this machine's own needs TLS, and the token or a client CA.
+	Listen      string `json:"listen,omitempty"`
+	Token       bool   `json:"token,omitempty"`
+	TLSCert     string `json:"tlsCert,omitempty"`
+	TLSKey      string `json:"tlsKey,omitempty"`
+	TLSClientCA string `json:"tlsClientCA,omitempty"`
 }
 
 // AuthProvider holds authentication provider configuration

@@ -30,15 +30,26 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// startHost starts a host with a configuration file of its own and a token
-// in a home directory of its own.
+// startHost starts a host that asks for the token, with a configuration file
+// of its own and a token in a home directory of its own.
 func startHost(t *testing.T) *Host {
+	t.Helper()
+	return startHostWith(t, `"token": true`)
+}
+
+// startHostWith starts a host with these MCP settings, besides the audit log
+// turned off.
+func startHostWith(t *testing.T, settings string) *Host {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
+	mcp := `"auditLog": "-"`
+	if settings != "" {
+		mcp += ", " + settings
+	}
 	file := filepath.Join(home, "cqlai.json")
-	require.NoError(t, os.WriteFile(file, []byte(`{"mcp": {"auditLog": "-"}}`), 0o600))
+	require.NoError(t, os.WriteFile(file, []byte(`{"mcp": {`+mcp+`}}`), 0o600))
 
 	h := StartHost(Options{ConfigFile: file, Port: freePort(t), RequestTimeout: 5}, "test")
 	t.Cleanup(h.Close)

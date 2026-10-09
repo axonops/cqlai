@@ -1596,7 +1596,7 @@ yourself. See [Proposed changes](#proposed-changes).
 There are two ways to run it.
 
 **`cqlai mcp`** opens the shell as usual and serves MCP from it, at
-`http://127.0.0.1:7845/mcp`. It serves whichever connection you pick in
+`http://127.0.0.1:7845/mcp` unless set otherwise. It serves whichever connection you pick in
 `FILE > CONNECT`, under that connection's settings, and follows you when you
 pick another. It starts whether or not a cluster can be reached; with none, it
 opens `CONNECT` so you can pick one. The status bar shows `MCP: :7845` while it
@@ -1610,15 +1610,23 @@ copy:
   "mcpServers": {
     "cqlai": {
       "type": "http",
-      "url": "http://127.0.0.1:7845/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
+      "url": "http://127.0.0.1:7845/mcp"
     }
   }
 }
 ```
 
-**Where the token is.** The token is in `~/.cassandra/cqlai_mcp_token`, readable only by
-you. The file is made the first time you run `cqlai mcp`, and the token stays the
+**The token.** It is off unless you turn it on: tick `Require token` under
+MCP SERVER in PREFERENCES, set `"token": true` in the `mcp` block of
+`cqlai.json`, or start with `cqlai mcp --token`. Then every request has to
+carry it, and the client configuration above has a `headers` entry with it:
+
+```json
+"headers": { "Authorization": "Bearer <token>" }
+```
+
+The token is in `~/.cassandra/cqlai_mcp_token`, readable only by
+you. The file is made the first time `cqlai mcp` runs with the token on, and the token stays the
 same each time the shell starts, so the client's configuration does not change.
 There are two ways to get it:
 
@@ -1635,6 +1643,35 @@ password and out of anything you share. To replace it, delete the file: the
 next `cqlai mcp` makes a new one, and the client's configuration needs the new
 token. If the file can be read by anyone but you, CQLAI does not use it and
 says so; `chmod 600 ~/.cassandra/cqlai_mcp_token` fixes that.
+
+**Serving it elsewhere, with TLS.** These settings are under MCP SERVER in
+PREFERENCES, in the `mcp` block of `cqlai.json`, and flags of `cqlai mcp`.
+They apply when `cqlai mcp` starts.
+
+| PREFERENCES | `cqlai.json` | Flag | What it does |
+|---|---|---|---|
+| Listen on | `listen` | `--listen` | The address to serve on. `127.0.0.1` unless set |
+| Port | `port` | `--port` | The port. `7845` unless set |
+| Require token | `token` | `--token` | Every request has to carry the token. Off unless set |
+| TLS certificate | `tlsCert` | `--tls-cert` | Serve HTTPS with this certificate (PEM) |
+| TLS key | `tlsKey` | `--tls-key` | The certificate's private key (PEM) |
+| TLS client CA | `tlsClientCA` | `--tls-client-ca` | Ask each client for a certificate this CA signed (PEM) |
+
+On any address but this machine's own (`127.0.0.1`, `::1` or `localhost`),
+the network can reach the server. It then has to use TLS, and the token or a
+client CA. Without them it does not start: the status bar shows `MCP: OFF`, and
+`FILE > MCP SERVER` says why. For example:
+
+```json
+{
+  "mcp": {
+    "listen": "0.0.0.0",
+    "token": true,
+    "tlsCert": "/etc/cqlai/server.pem",
+    "tlsKey": "/etc/cqlai/server.key"
+  }
+}
+```
 
 **`cqlai mcp --headless`** has no shell. It is for a client that starts CQLAI
 itself and talks to it over stdin and stdout:
@@ -1660,6 +1697,10 @@ when a tool is first called.
 |---|---|
 | `--headless` | No shell: serve MCP on stdin and stdout |
 | `--port N` | The port the shell serves MCP on (default: the setting, or 7845) |
+| `--listen ADDRESS` | The address the shell serves MCP on (default: the setting, or 127.0.0.1) |
+| `--token` | Every request has to carry the token (default: the setting, or off) |
+| `--tls-cert FILE`, `--tls-key FILE` | Serve HTTPS with this certificate and key (PEM) |
+| `--tls-client-ca FILE` | Ask each client for a certificate this CA signed (PEM) |
 | `--connection NAME` | Headless: the saved connection to use |
 | `--permit SELECT,DESCRIBE` | Permit only these commands, of those the settings permit |
 | `--keyspaces ks1,ks2` | Only these keyspaces are visible, of those the settings allow |
@@ -1667,7 +1708,9 @@ when a tool is first called.
 | `--audit-log PATH` | Where the audit log goes; `-` turns it off |
 | `--config-file PATH` | The configuration file to read |
 
-The options can only narrow what the settings allow. They cannot widen it.
+The options that say what the server may do can only narrow what the settings
+allow. They cannot widen it. `--port`, `--listen`, `--token` and the TLS
+options say how it is served, and replace the settings.
 
 ### The tools
 
@@ -1797,9 +1840,12 @@ whatever the model asks for.
   cut.
 - **No credentials.** No tool takes or returns a username or password, and the
   password is removed from any error before it is returned.
-- **Only this machine, with the token.** The shell serves MCP on `127.0.0.1`
-  only. Every request has to carry the token, and a request from a web page in
-  a browser is refused, whatever name it uses for this machine.
+- **This machine unless set, and never a web page.** The shell serves MCP on
+  `127.0.0.1` unless `Listen on` says otherwise. A request from a web page in a
+  browser is refused, whatever name it uses for this machine. The token is off
+  unless turned on, and without it anything on this machine can use what the
+  server allows. On any other address, TLS and the token or a client
+  certificate are required.
 - **Its own session.** The server talks to the cluster on a session of its
   own, so a model's queries never change your shell's consistency or tracing.
 - **An audit log.** Every call is written to `~/.cassandra/cqlai_mcp_audit.log`, one JSON
