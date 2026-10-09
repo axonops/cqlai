@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/validation"
 )
 
@@ -29,6 +30,13 @@ const AuditOff = "-"
 func OpenAudit(path string) (*Auditor, error) {
 	if path == AuditOff {
 		return &Auditor{}, nil
+	}
+	// The default log is in ~/.cassandra, which may not be there yet, and
+	// may still be where an older cqlai wrote it.
+	if path == DefaultAuditLog() {
+		if err := config.MoveIn(path, oldAuditLog()); err != nil {
+			return nil, fmt.Errorf("cannot open the audit log %s: %w", path, err)
+		}
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 - the path the user gave for the log
 	if err != nil {

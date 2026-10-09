@@ -98,10 +98,10 @@ func HelpRows() [][]string {
 		{"", "  Changes", "Never run by MCP: proposed into the prompt, confirmed before they run"},
 		{"", "  Refusals", "What the settings refuse comes back as the statement, for you to run"},
 		{"", "  Client setup", "FILE > MCP SERVER: the address, and the token to send"},
-		{"", "  Token", "~/.cqlai_mcp_token, readable only by you; delete it for a new one"},
+		{"", "  Token", "~/.cassandra/cqlai_mcp_token, readable only by you; delete it for a new one"},
 		{"", "  --headless", "No shell: MCP on stdin and stdout, for a client that starts cqlai"},
 		{"", "  What it may do", "PREFERENCES and CONNECT, under MCP SERVER"},
-		{"", "  Audit log", "~/.cqlai_mcp_audit.log: every call, refusals too"},
+		{"", "  Audit log", "~/.cassandra/cqlai_mcp_audit.log: every call, refusals too"},
 
 		// Keyboard Shortcuts
 		{"─────────", "─────────", "─────────────"},

@@ -2,7 +2,6 @@ package policy
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -130,13 +129,15 @@ func Load(file *config.Config, connection string, password string, timeout time.
 }
 
 // DefaultAuditLog is where the audit log goes unless the file or the flags say
-// otherwise: beside cqlai's other files in the home directory.
+// otherwise: in ~/.cassandra, beside cqlai.json.
 func DefaultAuditLog() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".cqlai_mcp_audit.log"
-	}
-	return filepath.Join(home, ".cqlai_mcp_audit.log")
+	return filepath.Join(config.Dir(), "cqlai_mcp_audit.log")
+}
+
+// oldAuditLog is where cqlai 0.3.3 and earlier wrote the audit log. One found
+// there is moved to DefaultAuditLog, with what it holds.
+func oldAuditLog() string {
+	return config.HomeFile(".cqlai_mcp_audit.log")
 }
 
 // commandSet is the commands a block permits: the defaults when it does not

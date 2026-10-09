@@ -1189,20 +1189,25 @@ cliente, listo para copiar:
 }
 ```
 
-**Dónde está el token.** El token está en `~/.cqlai_mcp_token`, que solo tú
+**Dónde está el token.** El token está en `~/.cassandra/cqlai_mcp_token`, que solo tú
 puedes leer. El archivo se crea la primera vez que ejecutas `cqlai mcp`, y el
 token es el mismo cada vez que arranca la shell, así que la configuración del
 cliente no cambia. Hay dos formas de obtenerlo:
 
 - En la shell: `FILE > MCP SERVER` imprime la configuración del cliente con el
   token ya puesto en la cabecera `Authorization`.
-- En una terminal: `cat ~/.cqlai_mcp_token`
+- En una terminal: `cat ~/.cassandra/cqlai_mcp_token`
+
+CQLAI 0.3.3 y anteriores guardaban el token en `~/.cqlai_mcp_token`, y el
+registro de auditoría en `~/.cqlai_mcp_audit.log`. Los dos se mueven a
+`~/.cassandra` la próxima vez que se usan, así que un cliente configurado con
+el token antiguo sigue funcionando.
 
 Quien tenga el token puede usar lo que el servidor permite: guárdalo como una
 contraseña y no lo incluyas en nada que compartas. Para cambiarlo, borra el
 archivo: el siguiente `cqlai mcp` crea uno nuevo, y la configuración del cliente
 necesita el token nuevo. Si alguien más que tú puede leer el archivo, CQLAI no
-lo usa y lo dice; `chmod 600 ~/.cqlai_mcp_token` lo arregla.
+lo usa y lo dice; `chmod 600 ~/.cassandra/cqlai_mcp_token` lo arregla.
 
 **`cqlai mcp --headless`** no tiene shell. Es para un cliente que arranca CQLAI
 y habla con él por stdin y stdout:
@@ -1367,7 +1372,7 @@ llamada, pida lo que pida el modelo.
   que las consultas del modelo nunca cambian la consistencia ni el trazado de tu
   shell.
 - **Registro de auditoría.** Cada llamada se escribe en
-  `~/.cqlai_mcp_audit.log`, rechazos incluidos, sin los valores de las
+  `~/.cassandra/cqlai_mcp_audit.log`, rechazos incluidos, sin los valores de las
   sentencias y sin filas. Solo tú puedes leerlo.
 
 El control más fuerte es el rol de Cassandra con el que entra CQLAI. Dale a la

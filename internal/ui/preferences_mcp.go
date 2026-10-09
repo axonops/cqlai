@@ -40,7 +40,7 @@ func mcpSpecs() []prefSpec {
 		{path: "MCP.MaxRows", label: "Max rows", kind: prefNumber, hint: "the most rows one call returns; 100 unless set"},
 		{path: "MCP.MaxValueBytes", label: "Max value bytes", kind: prefNumber, hint: "longer values are cut; 4096 unless set"},
 		{path: "MCP.MaxCallsPerMinute", label: "Calls per minute", kind: prefNumber, hint: "60 unless set"},
-		{path: "MCP.AuditLog", label: "Audit log", kind: prefPath, topOnly: true, hint: "~/.cqlai_mcp_audit.log unless set; - turns it off"},
+		{path: "MCP.AuditLog", label: "Audit log", kind: prefPath, topOnly: true, hint: "~/.cassandra/cqlai_mcp_audit.log unless set; - turns it off"},
 		{path: "MCP.Port", label: "Port", kind: prefNumber, topOnly: true, hint: "where `cqlai mcp` serves MCP, on 127.0.0.1 only; 7845 unless set"},
 	}
 	// The read commands only. A change is never run by the MCP server - a

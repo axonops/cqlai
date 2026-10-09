@@ -79,15 +79,27 @@ type Proposal struct {
 // Proposals is where the shell reads proposed changes from.
 func (h *Host) Proposals() <-chan Proposal { return h.proposals }
 
-// TokenFile is where the token is kept, readable only by its owner. It is
-// kept rather than made afresh each time so the client's configuration does
-// not have to change every time the app starts.
+// TokenFile is where the token is kept, readable only by its owner, in
+// ~/.cassandra beside cqlai.json. It is kept rather than made afresh each time
+// so the client's configuration does not have to change every time the app
+// starts.
 func TokenFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".cqlai_mcp_token"
+	return filepath.Join(config.Dir(), "cqlai_mcp_token")
+}
+
+// oldTokenFile is where cqlai 0.3.3 and earlier kept the token. One found
+// there is moved to TokenFile, so a client set up with it keeps working.
+func oldTokenFile() string {
+	return config.HomeFile(".cqlai_mcp_token")
+}
+
+// readToken is the token, from TokenFile: moved there from where it used to
+// be, or made the first time.
+func readToken() (string, error) {
+	if err := config.MoveIn(TokenFile(), oldTokenFile()); err != nil {
+		return "", err
 	}
-	return filepath.Join(home, ".cqlai_mcp_token")
+	return loadToken(TokenFile())
 }
 
 // StartHost starts serving MCP for the terminal app. It never fails the app:
@@ -116,7 +128,7 @@ func StartHost(o Options, version string) *Host {
 	}
 	h.pol = pol
 
-	if h.token, err = loadToken(TokenFile()); err != nil {
+	if h.token, err = readToken(); err != nil {
 		h.failed = err.Error()
 		return h
 	}

@@ -1617,20 +1617,24 @@ copy:
 }
 ```
 
-**Where the token is.** The token is in `~/.cqlai_mcp_token`, readable only by
+**Where the token is.** The token is in `~/.cassandra/cqlai_mcp_token`, readable only by
 you. The file is made the first time you run `cqlai mcp`, and the token stays the
 same each time the shell starts, so the client's configuration does not change.
 There are two ways to get it:
 
 - In the shell: `FILE > MCP SERVER` prints the client configuration with the
   token already in the `Authorization` header.
-- In a terminal: `cat ~/.cqlai_mcp_token`
+- In a terminal: `cat ~/.cassandra/cqlai_mcp_token`
+
+CQLAI 0.3.3 and earlier kept the token in `~/.cqlai_mcp_token`, and the
+audit log in `~/.cqlai_mcp_audit.log`. Both are moved to `~/.cassandra` the
+next time they are used, so a client set up with the old token keeps working.
 
 Anyone with the token can use what the server allows, so keep it like a
 password and out of anything you share. To replace it, delete the file: the
 next `cqlai mcp` makes a new one, and the client's configuration needs the new
 token. If the file can be read by anyone but you, CQLAI does not use it and
-says so; `chmod 600 ~/.cqlai_mcp_token` fixes that.
+says so; `chmod 600 ~/.cassandra/cqlai_mcp_token` fixes that.
 
 **`cqlai mcp --headless`** has no shell. It is for a client that starts CQLAI
 itself and talks to it over stdin and stdout:
@@ -1798,7 +1802,7 @@ whatever the model asks for.
   a browser is refused, whatever name it uses for this machine.
 - **Its own session.** The server talks to the cluster on a session of its
   own, so a model's queries never change your shell's consistency or tracing.
-- **An audit log.** Every call is written to `~/.cqlai_mcp_audit.log`, one JSON
+- **An audit log.** Every call is written to `~/.cassandra/cqlai_mcp_audit.log`, one JSON
   line each, refusals included. Statements are logged with their values
   replaced by `?`, and no row is ever logged. The file is readable only by you.
 
