@@ -80,29 +80,3 @@ func (s *Session) ListPermissions() ([]PermissionInfo, error) {
 
 	return permissions, nil
 }
-
-// ListPermissionsForRole queries system_auth.role_permissions for a specific role
-func (s *Session) ListPermissionsForRole(roleName string) ([]PermissionInfo, error) {
-	query := fmt.Sprintf("SELECT role, resource, permissions FROM system_auth.role_permissions WHERE role = '%s'", roleName)
-
-	iter := s.Query(query).Iter()
-	defer iter.Close()
-
-	var permissions []PermissionInfo
-	var role, resource string
-	var perms []string
-
-	for iter.Scan(&role, &resource, &perms) {
-		permissions = append(permissions, PermissionInfo{
-			Role:        role,
-			Resource:    resource,
-			Permissions: perms,
-		})
-	}
-
-	if err := iter.Close(); err != nil {
-		return nil, fmt.Errorf("failed to list permissions for role %s: %v", roleName, err)
-	}
-
-	return permissions, nil
-}

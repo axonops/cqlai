@@ -1775,6 +1775,13 @@ whatever the model asks for.
 - **Hidden keyspaces and tables stay hidden.** They are not listed, described,
   found by search, or named in an error. `system_auth`, which holds the password
   hashes, is always hidden.
+- **The system keyspaces are hidden when every keyspace is allowed.** With no
+  keyspace list, `system`, `system_schema`, `system_traces` and the other
+  `system_` keyspaces cannot be read with `query`. They list the other
+  keyspaces, tables and columns, and hold the statements traced against them,
+  so reading them would show what deny hides. To allow one, list it with the
+  keyspaces you allow. `node_status` still reads `system_views`, unless it is
+  denied or left out of a keyspace list.
 - **Redacted columns.** A redacted column's values come back as `[redacted]`.
   On a table with redacted columns, a `SELECT` has to use `*` or column names:
   no `JSON`, alias or function, and no condition on a redacted column.

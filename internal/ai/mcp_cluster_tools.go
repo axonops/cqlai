@@ -118,7 +118,9 @@ func (p ListRolesParams) Validate() error {
 }
 
 // nodeStatus reads one of the node's virtual tables, through the same gate
-// as any SELECT a model writes, so system_views has to be visible to it.
+// as any SELECT a model writes. The statement is its own and the secrets in
+// what comes back are hidden, so system_views counts as visible when every
+// keyspace is; a deny entry or a keyspace list without it still refuses it.
 func nodeStatus(ctx context.Context, env ToolEnv, p NodeStatusParams) ToolOutcome {
 	var table string
 	var since int
@@ -132,7 +134,7 @@ func nodeStatus(ctx context.Context, env ToolEnv, p NodeStatusParams) ToolOutcom
 	}
 
 	statement := "SELECT * FROM system_views." + table
-	if _, err := env.Policy.Check(statement); err != nil {
+	if _, err := env.Policy.WithSystemKeyspaces().Check(statement); err != nil {
 		return gateOutcome(env, statement, err)
 	}
 

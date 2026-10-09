@@ -152,16 +152,21 @@ func (s *Session) DBDescribeFunction(sessionMgr *session.Manager, functionName s
 
 // DBDescribeFunctionByName returns raw query results for a function with optional keyspace
 func (s *Session) DBDescribeFunctionByName(functionName string, keyspaceName string) (interface{}, error) {
-	var query string
+	return s.ExecuteCQLQuery(functionLookup(functionName, keyspaceName)), nil
+}
 
+// functionLookup is the query for a function by name, in one keyspace or, with
+// none given, in all of them. The names are typed by the user, so they are
+// written in as CQL strings: a quote in one ends nothing.
+func functionLookup(functionName, keyspaceName string) string {
 	if keyspaceName != "" {
-		// Specific keyspace provided
-		query = fmt.Sprintf("SELECT * FROM system_schema.functions WHERE keyspace_name = '%s' AND function_name = '%s'",
-			keyspaceName, functionName)
-	} else {
-		// No keyspace - search all keyspaces
-		query = fmt.Sprintf("SELECT * FROM system_schema.functions WHERE function_name = '%s'", functionName)
+		return "SELECT * FROM system_schema.functions WHERE keyspace_name = " + cqlLiteral(keyspaceName) +
+			" AND function_name = " + cqlLiteral(functionName)
 	}
+	return "SELECT * FROM system_schema.functions WHERE function_name = " + cqlLiteral(functionName)
+}
 
-	return s.ExecuteCQLQuery(query), nil
+// cqlLiteral writes a value as a CQL string, with each quote in it doubled.
+func cqlLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }

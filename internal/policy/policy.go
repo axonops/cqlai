@@ -26,8 +26,14 @@ import (
 type Policy struct {
 	permit map[string]bool // the commands that may run
 
-	allKeyspaces bool            // every keyspace is visible, but for deny
-	keyspaces    map[string]bool // the visible ones, when not all of them
+	allKeyspaces bool // every keyspace is visible, but for deny
+	// systemVisible lets every keyspace include the system ones. Without it,
+	// a policy that allows every keyspace does not allow these. They describe
+	// the other keyspaces: their names, their tables and columns, their sizes,
+	// and the statements traced against them. Reading them would show what
+	// deny hides. A keyspace list that names one still shows it.
+	systemVisible bool
+	keyspaces     map[string]bool // the visible ones, when not all of them
 
 	deny   []string // keyspace, or keyspace.table, never visible
 	redact []string // keyspace.table.column, with * for any part
@@ -75,6 +81,7 @@ func Shell() Policy {
 	return Policy{
 		permit:         permit,
 		allKeyspaces:   true,
+		systemVisible:  true,
 		allowScans:     true,
 		maxRows:        1 << 30,
 		maxValueBytes:  1 << 30,
@@ -119,7 +126,27 @@ func (p Policy) Visible(keyspace string) bool {
 	if keyspace == "" || p.denied(keyspace, "") {
 		return false
 	}
-	return p.allKeyspaces || p.keyspaces[keyspace]
+	if p.allKeyspaces {
+		return p.systemVisible || !IsSystemKeyspace(keyspace)
+	}
+	return p.keyspaces[keyspace]
+}
+
+// IsSystemKeyspace reports whether a keyspace is one of Cassandra's own:
+// system, or any whose name starts system_. Taking every system_ name, not
+// a list, hides one a newer Cassandra adds as well.
+func IsSystemKeyspace(keyspace string) bool {
+	k := strings.ToLower(keyspace)
+	return k == "system" || strings.HasPrefix(k, "system_")
+}
+
+// WithSystemKeyspaces is the policy for a tool that writes its own statement
+// against a system keyspace and filters what comes back, such as
+// node_status. With every keyspace allowed, the system ones are allowed too.
+// A deny entry, or a keyspace list that leaves one out, still holds.
+func (p Policy) WithSystemKeyspaces() Policy {
+	p.systemVisible = true
+	return p
 }
 
 // VisibleTable reports whether a table can be seen.
