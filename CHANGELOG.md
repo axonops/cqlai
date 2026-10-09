@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-09
+
+### Added
+
+- **TLS for the MCP server.** `cqlai mcp` serves HTTPS, at TLS 1.2 or
+  later, when given a certificate and key. With a client CA, every client
+  has to show a certificate that CA signed. They are set in PREFERENCES under
+  MCP SERVER (`TLS certificate`, `TLS key`, `TLS client CA`), in the `mcp`
+  block of `cqlai.json` (`tlsCert`, `tlsKey`, `tlsClientCA`), or with
+  `--tls-cert`, `--tls-key` and `--tls-client-ca`.
+- **The address the MCP server listens on.** `Listen on` in PREFERENCES,
+  `listen` in `cqlai.json`, or `--listen`. It is `127.0.0.1` unless set. On
+  any other address the network can reach the server, so it then needs TLS,
+  and the token or a client CA. Without them it does not start, and
+  `FILE > MCP SERVER` says why.
+
+### Changed
+
+- **The MCP token is off unless turned on.** Turn it on with `Require token`
+  in PREFERENCES, `"token": true` in `cqlai.json`, or `cqlai mcp --token`.
+  With it off, the client configuration has no `Authorization` header. A
+  request from a web page is still refused, with the token on or off.
+- **The MCP token and audit log are in `~/.cassandra`,** beside `cqlai.json`:
+  `~/.cassandra/cqlai_mcp_token` and `~/.cassandra/cqlai_mcp_audit.log`. They
+  were hidden files in the home directory. An old file is moved the first time
+  it is needed, so a client set up with the old token keeps working.
+
 ## [0.3.3] - 2026-10-09
 
 ### Security
