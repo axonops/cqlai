@@ -12,7 +12,7 @@ on:
         default: 'v0.1.0'
 
 env:
-  GO_VERSION: '1.26.6'
+  GO_VERSION: '1.27.2'
   GCP_PROJECT: axonops-public
   GCP_REGION: europe
   APT_REPO: axonops-apt
@@ -30,16 +30,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Run gosec security scanner
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.23.0
-          gosec -no-fail -fmt sarif -out gosec-results.sarif ./...
-
+      # gosec's rules run in CI's lint, which fails on any finding.
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
@@ -428,7 +419,7 @@ jobs:
         run: |
           if [ ! -f Dockerfile ]; then
             cat > Dockerfile << 'EOF'
-          FROM golang:1.26-alpine AS builder
+          FROM golang:1.27-alpine AS builder
           
           WORKDIR /app
           COPY go.mod go.sum ./

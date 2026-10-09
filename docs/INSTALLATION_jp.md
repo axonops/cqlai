@@ -221,7 +221,7 @@ https://github.com/axonops/cqlai/releases/latest/download/cqlai-windows-amd64.ex
 ## ソースからビルド
 
 ### 前提条件
-- Go 1.26以降(`go.mod` が要求します。1.21ではこのモジュールはビルドできません)
+- Go 1.27以降(`go.mod` が要求します。1.21ではこのモジュールはビルドできません)
 - Git
 
 ### ビルド手順

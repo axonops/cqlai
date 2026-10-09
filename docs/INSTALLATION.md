@@ -220,7 +220,7 @@ https://github.com/axonops/cqlai/releases/latest/download/cqlai-windows-amd64.ex
 ## Building from Source
 
 ### Prerequisites
-- Go 1.26 or later (`go.mod` requires it; 1.21 will not build this module)
+- Go 1.27 or later (`go.mod` requires it; 1.21 will not build this module)
 - Git
 
 ### Build Steps
