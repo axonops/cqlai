@@ -134,6 +134,9 @@ func (m *MainModel) selectionTarget() (selectionSource, bool) {
 	}
 
 	switch {
+	case m.help.active:
+		// The help window is over everything, so it is what a drag is over.
+		return m.helpSource()
 	case m.viewMode == "schema":
 		if len(m.schema.drawn) == 0 {
 			return selectionSource{}, false
@@ -218,6 +221,10 @@ func (m *MainModel) stickyHeaderRows() int {
 // trailed the scroll by the height of the heading.
 func (m *MainModel) paneRows(source selectionSource) (top, bottom int) {
 	first := m.viewTop() + source.top
+	if source.view == "help" {
+		// The window is over the table's frozen header, not under it.
+		return first, first + source.height
+	}
 	return first + m.stickyHeaderRows(), first + source.height
 }
 
@@ -245,7 +252,7 @@ func (m *MainModel) beginSelection(col, row int) (*MainModel, tea.Cmd) {
 	// also decides what the span is over - the definition, or what was drawn.
 	// Everywhere else a line is a line.
 	left, right := 0, 0
-	if m.viewMode == "schema" {
+	if m.viewMode == "schema" && !m.help.active {
 		left, right = m.selectionPane(col)
 	}
 	m.selection.left, m.selection.right = left, right
@@ -341,6 +348,10 @@ func (m *MainModel) extendSelection(col, row int) (*MainModel, tea.Cmd) {
 // view most likely to hold more than fits, and the one someone is most likely
 // to be copying out of - dereferenced nil and took cqlai down with it.
 func (m *MainModel) scrollUnderDrag(source selectionSource, by int) {
+	if source.view == "help" {
+		m.scrollHelp(by)
+		return
+	}
 	if source.vp != nil {
 		furthest := max(0, source.vp.TotalLineCount()-source.vp.Height())
 		source.vp.SetYOffset(min(furthest, max(0, source.vp.YOffset()+by)))
@@ -558,7 +569,8 @@ func (m *MainModel) highlightSelection(section string) string {
 		return section
 	}
 	source, found := m.selectionTarget()
-	if !found || source.view != m.selection.view {
+	if !found || source.view != m.selection.view || source.view == "help" {
+		// The help window paints its own, in highlightHelpLine.
 		return section
 	}
 

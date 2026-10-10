@@ -163,3 +163,49 @@ func NamingColumnsRefusal(keyspace, table string, missing []string) Refusal {
 	return Refusal{Reason: fmt.Sprintf("%s.%s describes other keyspaces, and its rows are filtered by what they are about: select %s too",
 		keyspace, table, strings.Join(missing, " and "))}
 }
+
+// ResourceVisible reports whether a permission's resource, as LIST
+// PERMISSIONS shows it, is about something this policy lets be seen:
+// <keyspace ks>, <table ks.t>, <all tables in ks>, <function ks.f(int)> and
+// <all functions in ks> name a keyspace, and a table. Anything else - <all
+// keyspaces>, a role, an MBean - names neither, and is seen.
+func (p Policy) ResourceVisible(resource string) bool {
+	r := strings.TrimSpace(resource)
+	r = strings.TrimSuffix(strings.TrimPrefix(r, "<"), ">")
+	unquote := func(name string) string { return strings.ReplaceAll(strings.Trim(name, `"`), `""`, `"`) }
+
+	kind, rest, _ := strings.Cut(r, " ")
+	switch strings.ToLower(kind) {
+	case "keyspace":
+		return p.Visible(unquote(rest))
+	case "table":
+		ks, table, ok := cutName(rest)
+		if !ok {
+			return false // not read: hide it rather than guess
+		}
+		return p.VisibleTable(unquote(ks), unquote(table))
+	case "function":
+		ks, _, ok := cutName(rest)
+		return ok && p.Visible(unquote(ks))
+	case "all":
+		// all tables in ks, all functions in ks, all keyspaces, all roles...
+		if i := strings.Index(strings.ToLower(rest), " in "); i >= 0 {
+			return p.Visible(unquote(strings.TrimSpace(rest[i+4:])))
+		}
+	}
+	return true
+}
+
+// cutName splits keyspace.name at the first dot outside double quotes.
+func cutName(s string) (string, string, bool) {
+	quoted := false
+	for i, c := range s {
+		switch {
+		case c == '"':
+			quoted = !quoted
+		case c == '.' && !quoted:
+			return s[:i], s[i+1:], true
+		}
+	}
+	return "", "", false
+}

@@ -45,17 +45,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
+	// The prompt is emptied after each line of a statement, so a line the
+	// same as the one before it was typed again. It used to be taken for a
+	// second press of Enter and dropped, writing different data from what
+	// was typed.
 	command := strings.TrimSpace(m.input.Value())
-
-	// In multi-line mode, check if this is a repeat Enter press (user pressed Enter without changing input)
-	if m.multiLineMode && len(m.multiLineBuffer) > 0 {
-		lastEntry := m.multiLineBuffer[len(m.multiLineBuffer)-1]
-		if command == lastEntry && command != "" {
-			// User pressed Enter again without changing the input - treat as empty line
-			// User pressed Enter again without changing the input - treat as empty line
-			command = ""
-		}
-	}
 
 	// Note: We removed the follow-up mode check here since we're now handling
 	// follow-up questions within the modal itself
@@ -128,10 +122,16 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	// writing the whole thing again when it runs would be two of it.
 	echoed := false
 
-	// For CQL statements, check for semicolon (skip for AI-generated commands)
+	// For CQL statements, check the statement is whole. Not at the first line
+	// that ends with a semicolon: a BATCH goes on to its APPLY BATCH, and a
+	// semicolon in a string or a function's $$ body ends nothing.
 	if isCQLStatement {
+		pending := command
+		if m.multiLineMode {
+			pending = strings.Join(append(append([]string{}, m.multiLineBuffer...), command), "\n")
+		}
 		switch {
-		case !strings.HasSuffix(strings.TrimSpace(command), ";"):
+		case !router.StatementComplete(pending):
 			// Enter multi-line mode
 			if !m.multiLineMode {
 				m.multiLineMode = true
@@ -157,10 +157,11 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 
 			return m, nil
 		case m.multiLineMode:
-			// We have a semicolon and we're in multi-line mode
+			// The lines as they were typed, so a comment ends at the end of
+			// its own line rather than taking the lines after it.
 			m.multiLineBuffer = append(m.multiLineBuffer, command)
 			m.echoInput(command)
-			command = strings.Join(m.multiLineBuffer, " ")
+			command = strings.Join(m.multiLineBuffer, "\n")
 			echoed = true
 			m.endStatement()
 		}
@@ -190,14 +191,17 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Add to history
-	m.commandHistory = append(m.commandHistory, command)
+	// Add to history, as one line: the file holds one statement a line, and
+	// the comments are left out, since on one line a comment would take what
+	// followed it.
+	remembered := historyLine(command)
+	m.commandHistory = append(m.commandHistory, remembered)
 	m.historyIndex = -1
-	m.lastCommand = command
+	m.lastCommand = remembered
 
 	// Save to persistent history
 	if m.historyManager != nil {
-		if err := m.historyManager.SaveCommand(command); err != nil {
+		if err := m.historyManager.SaveCommand(remembered); err != nil {
 			// Log error but don't fail command execution
 			fmt.Fprintf(os.Stderr, "Warning: could not save command to history: %v\n", err)
 		}
@@ -226,4 +230,13 @@ func (m *MainModel) handleEnterKey() (*MainModel, tea.Cmd) {
 	// Handle different result types
 	logger.DebugfToFile("HandleEnterKey", "Result type (2nd location): %T", result)
 	return m.processCommandResult(command, result, start)
+}
+
+// historyLine is a statement as history keeps it: without its comments, on
+// one line.
+func historyLine(command string) string {
+	if !strings.ContainsAny(command, "\n\r") {
+		return command
+	}
+	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(router.StripComments(command))
 }

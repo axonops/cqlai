@@ -1,6 +1,7 @@
 package router
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -33,83 +34,50 @@ func GetMetaHandler() *MetaCommandHandler {
 	return metaHandler
 }
 
-// stripComments removes SQL-style comments from a command while respecting quoted strings.
-// It handles single-quoted strings, escaped quotes (”), and both line (--) and block (/* */) comments.
-func stripComments(input string) string {
-	var result strings.Builder
-	result.Grow(len(input))
-
-	inSingleQuote := false
-
-	for i := 0; i < len(input); i++ {
-		ch := input[i]
-
-		// Handle single quotes
-		if ch == '\'' {
-			if inSingleQuote {
-				// Check for escaped quote ''
-				if i+1 < len(input) && input[i+1] == '\'' {
-					result.WriteString("''")
-					i++
-					continue
-				}
-				// End of quoted string
-				inSingleQuote = false
-			} else {
-				// Start of quoted string
-				inSingleQuote = true
-			}
-			result.WriteByte(ch)
-			continue
-		}
-
-		// If inside quotes, just copy the character
-		if inSingleQuote {
-			result.WriteByte(ch)
-			continue
-		}
-
-		// Not in quotes - check for comments
-
-		// Check for -- line comment
-		if ch == '-' && i+1 < len(input) && input[i+1] == '-' {
-			// Skip rest of input (single-line command context)
-			break
-		}
-
-		// Check for // line comment
-		if ch == '/' && i+1 < len(input) && input[i+1] == '/' {
-			// Skip rest of input
-			break
-		}
-
-		// Check for /* block comment */
-		if ch == '/' && i+1 < len(input) && input[i+1] == '*' {
-			i += 2 // Skip /*
-			// Find closing */
-			for i < len(input) {
-				if input[i] == '*' && i+1 < len(input) && input[i+1] == '/' {
-					i++ // Will be incremented again by loop
-					break
-				}
-				i++
-			}
-			continue
-		}
-
-		// Regular character
-		result.WriteByte(ch)
-	}
-
-	return strings.TrimSpace(result.String())
-}
+// stripComments removes a command's comments. See StripComments.
+func stripComments(input string) string { return StripComments(input) }
 
 // ProcessCommand processes a user command.
 func ProcessCommand(command string, session *db.Session, sessionMgr *session.Manager) interface{} {
-	// Initialize meta handler if needed
+	return AsFailure(processCommand(command, session, sessionMgr))
+}
+
+// failurePrefixes begin the messages the shell's own commands return when
+// they fail. They come back as text, the way the commands have always
+// reported; AsFailure makes them errors, so batch mode exits non-zero, SOURCE
+// counts them as failures, and the TUI shows them as errors.
+var failurePrefixes = []string{
+	"Error", "Invalid", "Unknown", "Too many", "Failed", "Query error", "Unexpected result type", "Usage:",
+	"Not connected", "Session manager not initialized",
+}
+
+// AsFailure is result, with a failure message made an error.
+func AsFailure(result interface{}) interface{} {
+	text, ok := result.(string)
+	if !ok {
+		return result
+	}
+	for _, prefix := range failurePrefixes {
+		if strings.HasPrefix(text, prefix) {
+			// The TUI and batch mode say "Error:" themselves.
+			text = strings.TrimPrefix(strings.TrimPrefix(text, "Error: "), "Error ")
+			return errors.New(text)
+		}
+	}
+	return result
+}
+
+// processCommand runs one command and returns what it gave back.
+func processCommand(command string, session *db.Session, sessionMgr *session.Manager) interface{} {
+	// Initialize meta handler if needed. It keeps its own state - what is being
+	// autosaved - for the life of the process, but the session is whichever one
+	// the shell is using now: FILE > CONNECT replaces it, and a handler left on
+	// the old one set TRACING and CONSISTENCY on a connection that was closed,
+	// or, started before any connection, on none at all.
 	if metaHandler == nil {
 		metaHandler = NewMetaCommandHandler(session, sessionMgr)
 	}
+	metaHandler.session = session
 
 	// Strip comments and trim the command
 	command = stripComments(command)
@@ -120,7 +88,7 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 
 	// Validate command syntax before processing
 	if err := validation.ValidateCommandSyntax(command); err != nil {
-		return err.Error()
+		return err
 	}
 
 	// Handle AI command - now handled in UI layer
@@ -202,7 +170,7 @@ func ProcessCommand(command string, session *db.Session, sessionMgr *session.Man
 				// Fetch rows from iterator
 				for {
 					row := make(map[string]interface{})
-					if !v.Iterator.MapScan(row) {
+					if !db.ScanRow(v.Iterator, row) {
 						break
 					}
 

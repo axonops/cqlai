@@ -14,9 +14,12 @@ type AICQLModal struct {
 // NewAICQLModal creates a new CQL execution modal
 func NewAICQLModal(cql string) *AICQLModal {
 	return &AICQLModal{
-		Active:   true,
-		CQL:      cql,
-		Selected: 0,
+		Active: true,
+		CQL:    cql,
+		// Edit, not Execute: the statement goes into the prompt to be read
+		// first. On Execute, an Enter pressed a moment too late - still
+		// typing the question - ran CQL nobody had looked at.
+		Selected: 1,
 	}
 }
 

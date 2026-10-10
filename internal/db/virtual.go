@@ -225,6 +225,28 @@ func (s *Session) TableKey(keyspace, table string) (partitionKey, columns []stri
 	return partitionKey, columns
 }
 
+// ViewBase is the table a materialized view is of, or "" for a name that is
+// not a view. It asks system_schema.views rather than the driver's metadata,
+// which lags a schema change: a view made a moment ago would read as a table.
+func (s *Session) ViewBase(keyspace, name string) string {
+	if s == nil || s.Session == nil || keyspace == "" || name == "" {
+		return ""
+	}
+	// An unquoted name is stored in lower case.
+	for _, n := range []string{name, strings.ToLower(name)} {
+		var base string
+		err := s.Query(`SELECT base_table_name FROM system_schema.views WHERE keyspace_name = ? AND view_name = ?`,
+			keyspace, n).Scan(&base)
+		if err == nil && base != "" {
+			return base
+		}
+		if n == strings.ToLower(name) {
+			break
+		}
+	}
+	return ""
+}
+
 // PrimaryKey is a table's partition key and clustering key, stored or
 // virtual, in order. Empty when the table cannot be found.
 func (s *Session) PrimaryKey(keyspace, table string) (partition, clustering []string) {

@@ -65,9 +65,10 @@ func (sp *StreamingProcessor) LoadResults(ctx context.Context, maxRows int) (Pag
 		case <-ctx.Done():
 			return page, ctx.Err()
 		default:
-			// Use MapScan to handle NULLs properly
+			// ScanRow, not MapScan: a NULL is nil rather than 0 or "", and a
+			// tuple is one value.
 			rowMap := make(map[string]interface{})
-			if !sp.iterator.MapScan(rowMap) {
+			if !ScanRow(sp.iterator, rowMap) {
 				// No more rows or error occurred
 				if err := sp.iterator.Close(); err != nil {
 					return page, fmt.Errorf("iterator error: %w", err)

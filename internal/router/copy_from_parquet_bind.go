@@ -1,9 +1,13 @@
 package router
 
 import (
+	"math/big"
 	"strings"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"gopkg.in/inf.v0"
+
+	"github.com/axonops/cqlai/internal/db"
 )
 
 // buildInsertTemplate returns an INSERT whose values are placeholders.
@@ -109,6 +113,25 @@ func bindValue(val interface{}, cqlType string) interface{} {
 			return val
 		}
 		return parsed
+	case "decimal":
+		// gocql binds only an inf.Dec to a decimal. Written as a string, a
+		// decimal keeps every digit.
+		if dec, ok := new(inf.Dec).SetString(strings.TrimSpace(s)); ok {
+			return *dec
+		}
+		return val
+	case "varint":
+		// gocql reads a string as an int64, which a varint can outgrow.
+		if n, ok := new(big.Int).SetString(strings.TrimSpace(s), 10); ok {
+			return n
+		}
+		return val
+	case "duration":
+		// gocql reads a string as a Go duration, which has no months or days.
+		if d, err := db.ParseCQLDuration(s); err == nil {
+			return d
+		}
+		return val
 	}
 
 	return val

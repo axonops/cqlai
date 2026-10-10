@@ -184,6 +184,10 @@ func LoadConfig(customConfigPath ...string) (*Config, error) {
 		Host:        "localhost",
 		Port:        9042,
 		MaxMemoryMB: 10, // Default to 10MB if not specified
+		// Asked before DROP, TRUNCATE and DELETE unless the file says
+		// "requireConfirmation": false. A file without the key - most of
+		// them - left it off, though it is documented as on.
+		RequireConfirmation: true,
 	}
 
 	logger.DebugfToFile("Config", "Default config initialized: host=%s, port=%d", config.Host, config.Port)

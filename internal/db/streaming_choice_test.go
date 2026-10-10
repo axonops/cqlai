@@ -59,3 +59,16 @@ func TestAQueryWithNoLimitStreams(t *testing.T) {
 	assert.True(t, s.shouldUseStreaming("SELECT * FROM t"))
 	assert.True(t, s.shouldUseStreaming("SELECT * FROM t WHERE id = 1"))
 }
+
+// TestAPerPartitionLimitIsStillPaged: PER PARTITION LIMIT 1 matched the
+// pattern for LIMIT 1, which fits in a page, so the whole result - one row of
+// every partition in the table - was read in one go.
+func TestAPerPartitionLimitIsStillPaged(t *testing.T) {
+	s := &Session{}
+	s.SetPageSize(100)
+	assert.True(t, s.shouldUseStreaming("SELECT * FROM ks.t PER PARTITION LIMIT 1"))
+	assert.True(t, s.shouldUseStreaming("SELECT * FROM ks.t WHERE s = 'LIMIT 5'"))
+	assert.True(t, s.shouldUseStreaming("SELECT * FROM ks.t LIMIT 500"))
+	assert.False(t, s.shouldUseStreaming("SELECT * FROM ks.t PER PARTITION LIMIT 1 LIMIT 50"))
+	assert.False(t, s.shouldUseStreaming("SELECT * FROM ks.t LIMIT 10"))
+}

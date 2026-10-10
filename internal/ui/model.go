@@ -113,6 +113,7 @@ type MainModel struct {
 	showCompletions        bool
 	completionScrollOffset int // Track scroll position in completion list
 	confirmExit            bool
+	noConfirm              bool // --no-confirm: kept over a CONNECT, which reads the file again
 	modal                  Modal
 	aiConversationID       string            // Current AI conversation ID for stateful interactions
 	aiSelectionModal       *AISelectionModal // AI selection modal for user choices
@@ -384,11 +385,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	if options.Password != "" {
 		cfg.Password = options.Password
 	}
-	// RequireConfirmation handled specially since false is a valid override
-	if options.Host != "" || options.Port != 0 || options.Keyspace != "" ||
-		options.Username != "" || options.Password != "" {
-		cfg.RequireConfirmation = options.RequireConfirmation
-	}
+	applyConfirmation(cfg, options)
 	// Override consistency from CLI flag
 	if options.Consistency != "" {
 		cfg.Consistency = options.Consistency
@@ -499,6 +496,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	}
 
 	return &MainModel{
+		noConfirm:              !options.RequireConfirmation,
 		mcpHost:                mcpHost,
 		connectOnStart:         mcpHost != nil && dbSession == nil,
 		connectError:           connectMessage,
@@ -680,6 +678,10 @@ func (m *MainModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case systemClipboardMsg:
 		updatedModel, cmd := m.handleSystemClipboard(msg)
+		return updatedModel, cmd
+
+	case linkNotOpenedMsg:
+		updatedModel, cmd := m.linkNotOpened(msg)
 		return updatedModel, cmd
 
 	case noClipboardToolMsg:
@@ -961,5 +963,14 @@ func (m *MainModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var inputCmd tea.Cmd
 		m.input, inputCmd = m.input.Update(msg)
 		return m, inputCmd
+	}
+}
+
+// applyConfirmation is --no-confirm over the file: it turns the confirmation
+// off whatever the file says. It used to count only beside a connection
+// flag - and only then did the confirmation go on at all.
+func applyConfirmation(cfg *config.Config, options ConnectionOptions) {
+	if !options.RequireConfirmation {
+		cfg.RequireConfirmation = false
 	}
 }

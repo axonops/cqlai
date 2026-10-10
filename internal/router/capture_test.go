@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -334,4 +335,37 @@ func TestTheConvertedResultCarriesWhatTheInfoBarReads(t *testing.T) {
 	assert.Equal(t, headers, converted.Headers, "the info bar needs the columns")
 	assert.Equal(t, 2, converted.RowCount, "and the row count")
 	assert.Positive(t, converted.Duration, "and how long it took")
+}
+
+// TestAutoSaveJSONParses: each file is a JSON array that reads back. A comma
+// went before the first record as well, so none did.
+func TestAutoSaveJSONParses(t *testing.T) {
+	h, dir := autoSaveHandler(t)
+	require.Contains(t, h.handleCapture("AUTOSAVE JSON '"+dir+"'"), "Saving each query")
+
+	require.NoError(t, h.WriteCaptureResult("SELECT * FROM users",
+		[]string{"id", "name"}, [][]string{{"1", "alice"}, {"2", "bob"}}))
+
+	files := saved(t, dir)
+	require.Len(t, files, 1)
+	body, err := os.ReadFile(filepath.Join(dir, files[0])) //nolint:gosec // a path this test wrote
+	require.NoError(t, err)
+	var records []map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &records), "%s", body)
+	require.Len(t, records, 1)
+	assert.Equal(t, "SELECT * FROM users", records[0]["query"])
+	assert.Len(t, records[0]["rows"], 2)
+}
+
+// TestAutoSaveNeverWritesOverAFile: started again, the count starts again,
+// and in the same second the first name is one an earlier run wrote.
+func TestAutoSaveNeverWritesOverAFile(t *testing.T) {
+	h, dir := autoSaveHandler(t)
+	for run := 0; run < 3; run++ {
+		require.Contains(t, h.handleCapture("AUTOSAVE CSV '"+dir+"'"), "Saving each query")
+		require.NoError(t, h.WriteCaptureResult("SELECT * FROM users",
+			[]string{"id"}, [][]string{{"1"}}))
+		h.stopCapture()
+	}
+	assert.Len(t, saved(t, dir), 3, "each run keeps its own file")
 }

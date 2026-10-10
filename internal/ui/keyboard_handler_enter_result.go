@@ -83,12 +83,13 @@ func (m *MainModel) processCommandResult(command string, result interface{}, sta
 // page size to take it from.
 const rowsWithoutPaging = 100
 
-// initialRowsToLoad is how many rows to fetch before drawing anything: one
-// page, which is what PAGING sets.
+// rowsPerLoad is how many rows to fetch at a time - before drawing anything,
+// and each time more are asked for: one page, which is what PAGING sets, and
+// rowsWithoutPaging with PAGING OFF.
 //
 // It was a hardcoded 100, so PAGING 500 still showed 100 first and PAGING 50
 // still showed 100. It matching the default was a coincidence.
-func (m *MainModel) initialRowsToLoad() int {
+func (m *MainModel) rowsPerLoad() int {
 	if m.session != nil {
 		if pageSize := m.session.PageSize(); pageSize > 0 {
 			return pageSize
@@ -118,7 +119,7 @@ func (m *MainModel) processStreamingQueryResult(command string, v db.StreamingQu
 
 	// Load initial batch of rows using the streaming processor
 	ctx := context.Background()
-	maxInitialRows := m.initialRowsToLoad()
+	maxInitialRows := m.rowsPerLoad()
 
 	// Load initial rows from the streaming processor
 	page, err := streamingResult.LoadMore(ctx, maxInitialRows)
@@ -360,11 +361,7 @@ func (m *MainModel) fetchAllPages(format string) {
 
 	totalFetched := 0
 	for m.slidingWindow.hasMoreData {
-		pageSize := m.session.PageSize()
-		if pageSize == 0 {
-			pageSize = 100 // Default page size
-		}
-		loadedRows := m.slidingWindow.LoadMoreRows(pageSize)
+		loadedRows := m.slidingWindow.LoadMoreRows(m.rowsPerLoad())
 		if loadedRows == 0 {
 			break
 		}

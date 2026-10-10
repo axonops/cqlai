@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -45,7 +44,7 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 	cleanPath := filepath.Clean(outputDir)
 
 	// Create output directory if it doesn't exist
-	if err := os.MkdirAll(cleanPath, 0750); err != nil {
+	if err := os.MkdirAll(cleanPath, 0750); err != nil { // #nosec G703 - the directory the user named for their own export
 		return fmt.Sprintf("Error creating output directory: %v", err)
 	}
 
@@ -110,23 +109,13 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 		batch := make([]map[string]interface{}, 0, batchSize)
 
 		// Prepare scan destinations - use cleanHeaders since that's what we'll iterate with
+		// ScanRow: nil is a real NULL, and a tuple is one value.
 		cols := v.Iterator.Columns()
-		scanDest := make([]interface{}, len(cleanHeaders))
-		for i := range scanDest {
-			var info gocql.TypeInfo
-			if i < len(cols) {
-				info = cols[i].TypeInfo
-			}
-			scanDest[i] = db.NewScanDest(info)
-		}
-
-		for v.Iterator.Scan(scanDest...) {
-			// Convert scanned values to map
+		for scanned := map[string]interface{}{}; db.ScanRow(v.Iterator, scanned); scanned = map[string]interface{}{} {
 			rowData := make(map[string]interface{})
 			for i, colName := range cleanHeaders {
-				if i < len(scanDest) {
-					// nil here is a real NULL, not a zero value standing in for one.
-					rowData[colName] = db.ScanValue(scanDest[i])
+				if i < len(cols) {
+					rowData[colName] = scanned[cols[i].Name]
 				}
 			}
 
@@ -150,16 +139,17 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 			rowCount += len(batch)
 		}
 
-		// Flush writer
-		if err := writer.Flush(); err != nil {
-			return fmt.Sprintf("Error flushing writer: %v", err)
+		// The rows stop at the end of the table or at an error, and only
+		// Close tells which. A partial export is not reported as a whole one.
+		if err := v.Iterator.Close(); err != nil {
+			return fmt.Sprintf("Error reading rows after %d were exported: %v", rowCount, err)
 		}
-
-		// Get partition info for summary
-		partitionInfo := writer.GetPartitionInfo()
-		partitionCount := len(partitionInfo)
-
-		return fmt.Sprintf("Exported %d rows to %d partitions in %s", rowCount, partitionCount, cleanPath)
+		// Each file's footer is written as it closes: until then it cannot
+		// be read.
+		if err := writer.Close(); err != nil {
+			return fmt.Sprintf("Error writing the partition files: %v", err)
+		}
+		return fmt.Sprintf("Exported %d rows to %d partitions in %s", rowCount, writer.PartitionCount(), cleanPath)
 
 	case db.QueryResult:
 		// Handle non-streaming result
@@ -213,16 +203,10 @@ func (h *MetaCommandHandler) executeCopyToParquetPartitioned(table string, colum
 			return fmt.Sprintf("Error writing data: %v", err)
 		}
 
-		// Flush writer
-		if err := writer.Flush(); err != nil {
-			return fmt.Sprintf("Error flushing writer: %v", err)
+		if err := writer.Close(); err != nil {
+			return fmt.Sprintf("Error writing the partition files: %v", err)
 		}
-
-		// Get partition info for summary
-		partitionInfo := writer.GetPartitionInfo()
-		partitionCount := len(partitionInfo)
-
-		return fmt.Sprintf("Exported %d rows to %d partitions in %s", len(v.Data), partitionCount, cleanPath)
+		return fmt.Sprintf("Exported %d rows to %d partitions in %s", len(v.Data), writer.PartitionCount(), cleanPath)
 
 	case error:
 		return fmt.Sprintf("Query error: %v", v)

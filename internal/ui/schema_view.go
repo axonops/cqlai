@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -26,6 +27,9 @@ const (
 	// schemaIndent is how far a table sits inside its keyspace: under the name
 	// above it, clear of the marker.
 	schemaIndent = "    "
+	// schemaGroupIndent is how far a group is in from its keyspace, and what
+	// is in a group further in again.
+	schemaGroupIndent = "  "
 
 	// schemaHeaderRows is the heading over each pane and the rule under it.
 	// Two rows of a screen, so that neither column is a list of names with
@@ -136,8 +140,11 @@ func (m *MainModel) schemaWidthRows() []schemaRow {
 	var rows []schemaRow
 	for _, keyspace := range m.schema.keyspaces {
 		rows = append(rows, schemaRow{keyspace: keyspace})
-		for _, table := range m.schema.tables[keyspace] {
-			rows = append(rows, schemaRow{keyspace: keyspace, table: table})
+		for _, kind := range m.schema.kindsOf(keyspace) {
+			rows = append(rows, schemaRow{keyspace: keyspace, kind: kind})
+			for _, name := range m.schema.names(keyspace, kind) {
+				rows = append(rows, schemaRow{keyspace: keyspace, kind: kind, table: name})
+			}
 		}
 	}
 	return rows
@@ -177,10 +184,20 @@ func (m *MainModel) schemaDetailHeading() string {
 	if !ok {
 		return "DEFINITION"
 	}
-	if row.table != "" {
-		return "TABLE  " + row.key()
+	switch {
+	case row.isGroup():
+		return strings.ToUpper(schemaKindLabels[row.kind][0]) + "  " + row.keyspace
+	case row.table != "":
+		return schemaKindLabels[row.kind][1] + "  " + row.keyspace + "." + row.table
 	}
 	return "KEYSPACE  " + row.keyspace
+}
+
+// schemaOnGroup reports whether a group is selected: its pane is the names in
+// it, with no definition to review.
+func (m *MainModel) schemaOnGroup() bool {
+	row, ok := m.schema.current()
+	return ok && row.isGroup()
 }
 
 // schemaDetailHeadingRow is the heading over the definition, with the button
@@ -193,7 +210,7 @@ func (m *MainModel) schemaDetailHeadingRow(g schemaGeometry, headingStyle lipglo
 	switch {
 	case m.schema.review.running:
 		button, style = reviewingNow, lipgloss.NewStyle().Foreground(m.styles.MutedText.GetForeground())
-	case len(m.schema.detail) == 0:
+	case len(m.schema.detail) == 0 || m.schemaOnGroup():
 		style = lipgloss.NewStyle().Foreground(lipgloss.Color(formPlaceholderColour))
 	}
 
@@ -273,10 +290,16 @@ func (m *MainModel) schemaReviewRow(g schemaGeometry, row int) string {
 // Drawing and measuring both come from here, so the pane cannot be sized for
 // one thing and drawn with another.
 func (m *MainModel) schemaLine(row schemaRow) string {
-	if row.table != "" {
-		return schemaIndent + row.table
-	}
-	if m.schema.expanded[row.keyspace] {
+	switch {
+	case row.table != "":
+		return schemaGroupIndent + schemaIndent + row.table
+	case row.isGroup():
+		marker := "▸ "
+		if m.schema.groupOpen(row.keyspace, row.kind) || m.schema.filter != "" {
+			marker = "▾ "
+		}
+		return schemaGroupIndent + marker + fmt.Sprintf("%s (%d)", schemaKindLabels[row.kind][0], len(m.schema.names(row.keyspace, row.kind)))
+	case m.schema.expanded[row.keyspace]:
 		return "▾ " + row.keyspace
 	}
 	return "▸ " + row.keyspace
@@ -327,7 +350,7 @@ func (m *MainModel) viewSchema(width, height int) string {
 			case g.treeFirst+i == m.schema.selected:
 				style = selectedStyle
 			case row.table == "":
-				style = keyspaceStyle
+				style = keyspaceStyle // a keyspace, or a group in one
 			}
 		}
 

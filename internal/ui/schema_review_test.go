@@ -31,7 +31,7 @@ func reviewModel(t *testing.T) *MainModel {
 
 	// On the table rather than the keyspace: a definition is what is reviewed.
 	m.schema.expanded["my_keyspace"] = true
-	m.schema.selected = 2 // my_keyspace, events, users
+	m.schema.selected = rowOfTable(t, m, "users")
 	m.showSchemaDetail()
 	return m
 }

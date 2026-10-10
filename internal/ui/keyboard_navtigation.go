@@ -3,7 +3,6 @@ package ui
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/axonops/cqlai/internal/router"
 )
 
 // handlePageUp handles PageUp key press
@@ -117,6 +116,15 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 			scrollAmount = 1
 		}
 
+		// Where a page down goes, as a row of the result: loading more can
+		// drop rows from the top of the window, which moves every line, and
+		// the row stays the same where a line number does not.
+		targetRow, targetLine := m.rowAtLine(m.tableViewport.YOffset() + scrollAmount)
+		var firstBefore int64
+		if m.slidingWindow != nil {
+			firstBefore = m.slidingWindow.FirstRowIndex
+		}
+
 		// First, check if we need to load more data BEFORE calculating limits
 		if m.slidingWindow != nil && m.slidingWindow.hasMoreData {
 			totalLines := m.tableViewport.TotalLineCount()
@@ -129,28 +137,7 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 
 			// Load more data if we're getting close to the bottom
 			if remainingRows < 20 {
-				newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
-				logger.DebugfToFile("PageDown", "Pre-loading more rows: requested=%d, got=%d, total=%d",
-					m.session.PageSize(), newRows, len(m.slidingWindow.Rows))
-
-				if newRows > 0 {
-					// Write uncaptured rows to capture file if capturing
-					metaHandler := router.GetMetaHandler()
-					if metaHandler != nil && metaHandler.IsCapturing() {
-						uncapturedRows := m.slidingWindow.GetUncapturedRows()
-						if len(uncapturedRows) > 0 {
-							_ = metaHandler.AppendCaptureRows(uncapturedRows)
-							m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
-						}
-					}
-
-					// Clear cache to force rebuild
-					m.cachedTableLines = nil
-					m.renderResults(m.resultRows())
-
-					// Update row count
-					m.rowCount = int(m.slidingWindow.TotalRowsSeen)
-				}
+				m.loadMoreTableDataHelper()
 			}
 		}
 
@@ -162,6 +149,9 @@ func (m *MainModel) handlePageDown(msg tea.KeyPressMsg) (*MainModel, tea.Cmd) {
 			maxOffset = 0
 		}
 		newOffset := m.tableViewport.YOffset() + scrollAmount
+		if m.slidingWindow != nil && m.slidingWindow.FirstRowIndex != firstBefore && targetRow >= 0 {
+			newOffset = m.lineOfRow(targetRow, targetLine)
+		}
 		if newOffset > maxOffset {
 			newOffset = maxOffset
 		}

@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 )
@@ -52,7 +53,7 @@ func DebugToFile(context string, message string) {
 	_ = isNewFile
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-	fmt.Fprintf(logFile, "[%s] Context: %s | %s\n", timestamp, context, message)
+	fmt.Fprintf(logFile, "[%s] Context: %s | %s\n", timestamp, context, maskPasswords(message))
 	_ = logFile.Sync()
 }
 
@@ -63,4 +64,22 @@ func DebugfToFile(context string, format string, args ...interface{}) {
 	}
 	message := fmt.Sprintf(format, args...)
 	DebugToFile(context, message)
+}
+
+// Passwords in what is logged. Statements are logged as typed, and a cqlshrc
+// line by line, so a CREATE ROLE or a [authentication] section would put a
+// password in the debug log for anyone who can read the file.
+var (
+	// PASSWORD = 'x', PASSWORD 'x' and HASHED PASSWORD = $$x$$ in CQL.
+	cqlPassword = regexp.MustCompile(`(?i)(\bpassword\s*=?\s*)('(?:[^']|'')*'|\$\$[\s\S]*?\$\$)`)
+	// password = x in a cqlshrc or credentials file, and "password": "x".
+	keyPassword  = regexp.MustCompile(`(?i)(\bpassword\s*[=:]\s*)([^\s'"$][^\r\n]*)`)
+	jsonPassword = regexp.MustCompile(`(?i)("password"\s*:\s*)"(?:[^"\\]|\\.)*"`)
+)
+
+// maskPasswords is a message with every password in it replaced by ***.
+func maskPasswords(message string) string {
+	message = cqlPassword.ReplaceAllString(message, "${1}'***'")
+	message = jsonPassword.ReplaceAllString(message, `${1}"***"`)
+	return keyPassword.ReplaceAllString(message, "${1}***")
 }

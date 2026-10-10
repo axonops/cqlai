@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
@@ -28,29 +26,6 @@ type nopCloser struct {
 }
 
 func (nopCloser) Close() error { return nil }
-
-// formatCSVValue formats a value for CSV export, handling complex types like UDTs
-func formatCSVValue(val interface{}) string {
-	switch v := val.(type) {
-	case []byte:
-		// Format as hex string with 0x prefix (standard for BLOBs)
-		return fmt.Sprintf("0x%x", v)
-	case time.Time:
-		// Use RFC3339 format for timestamps
-		return v.Format(time.RFC3339)
-	case gocql.UUID:
-		return v.String()
-	case map[string]interface{}, []interface{}, map[interface{}]interface{}:
-		// For UDTs, collections, and other complex types, use JSON encoding
-		jsonBytes, err := json.Marshal(v)
-		if err != nil {
-			return fmt.Sprintf("%v", v)
-		}
-		return string(jsonBytes)
-	default:
-		return fmt.Sprintf("%v", val)
-	}
-}
 
 // handleCopy handles COPY TO/FROM commands
 func (h *MetaCommandHandler) handleCopy(command string) interface{} {
@@ -213,13 +188,34 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 		return h.executeCopyToParquet(table, columns, filename, options)
 	}
 
-	// Default to CSV format
-	// Build SELECT query
-	var query string
-	if len(columns) > 0 {
+	// Default to CSV format. The columns are named in the SELECT, so a
+	// file without a header is in the order COPY FROM reads it in.
+	tableColumns, err := h.tableColumnsInOrder(table)
+	if err != nil {
+		return fmt.Sprintf("Error reading the columns of %s: %v", table, err)
+	}
+	types := map[string]gocql.TypeInfo{}
+	for _, c := range tableColumns {
+		types[c.name] = c.info
+	}
+	if len(columns) == 0 {
+		for _, c := range tableColumns {
+			columns = append(columns, db.QuoteName(c.name))
+		}
+	}
+	if len(columns) == 0 {
+		return fmt.Sprintf("Error: table %s was not found", table)
+	}
+	columnTypes := make([]gocql.TypeInfo, len(columns))
+	for i, c := range columns {
+		columnTypes[i] = types[storedName(c)]
+	}
+	// Cassandra writes each value from 2.2, which reads JSON. Before it, the
+	// rows are read and each value written here.
+	withJSON := h.session.HasJSON()
+	query := fmt.Sprintf("SELECT JSON %s FROM %s", strings.Join(columns, ", "), table)
+	if !withJSON {
 		query = fmt.Sprintf("SELECT %s FROM %s", strings.Join(columns, ", "), table)
-	} else {
-		query = fmt.Sprintf("SELECT * FROM %s", table)
 	}
 
 	// Check if output is STDOUT
@@ -227,8 +223,6 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 
 	// Open file for writing (unless STDOUT)
 	var writer io.WriteCloser
-	var err error
-
 	if isStdout {
 		writer = nopCloser{os.Stdout}
 	} else {
@@ -237,8 +231,15 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 		if err != nil {
 			return fmt.Sprintf("Error creating file: %v", err)
 		}
-		defer writer.Close()
 	}
+	// Closed once: at the end, so a failure to write the file out is
+	// reported; or here, on the way out after an error.
+	closed := false
+	defer func() {
+		if !closed {
+			_ = writer.Close()
+		}
+	}()
 
 	// Create CSV writer
 	csvWriter := csv.NewWriter(writer)
@@ -248,123 +249,81 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 		csvWriter.Comma = rune(delimiter[0])
 	}
 
-	// Execute query
-	result := h.session.ExecuteCQLQuery(query)
-
-	// Handle different result types
-	switch v := result.(type) {
-	case db.QueryResult:
-		// Write header if requested
-		if strings.ToLower(options["HEADER"]) == "true" && len(v.Headers) > 0 {
-			if err := csvWriter.Write(v.Headers); err != nil {
-				return fmt.Sprintf("Error writing header: %v", err)
-			}
+	if strings.ToLower(options["HEADER"]) == "true" {
+		header := make([]string, len(columns))
+		for i, c := range columns {
+			header[i] = strings.TrimSpace(c)
 		}
-
-		// Write data rows - skip first row since v.Data[0] contains headers
-		rowCount := 0
-		dataRows := v.Data
-		if len(dataRows) > 0 {
-			dataRows = dataRows[1:] // Skip header row in Data
+		if err := csvWriter.Write(header); err != nil {
+			return fmt.Sprintf("Error writing header: %v", err)
 		}
-		for _, row := range dataRows {
-			// Replace nulls with NULLVAL option if specified
-			processedRow := make([]string, len(row))
-			nullVal := options["NULLVAL"]
-			for i, cell := range row {
-				// Check if this is a null value and we have a NULLVAL option
-				if nullVal != "" && (cell == "null" || cell == "<null>") {
-					processedRow[i] = nullVal
-				} else {
-					processedRow[i] = cell
-				}
-			}
+	}
 
-			if err := csvWriter.Write(processedRow); err != nil {
-				return fmt.Sprintf("Error writing row: %v", err)
-			}
-			rowCount++
-		}
+	pageSize, _ := strconv.Atoi(options["PAGESIZE"])
+	if pageSize <= 0 {
+		pageSize = 1000
+	}
+	nullVal := options["NULLVAL"]
 
-		csvWriter.Flush()
-		if err := csvWriter.Error(); err != nil {
-			return fmt.Sprintf("Error flushing CSV: %v", err)
-		}
-
-		if isStdout {
-			return nil // Don't print message when outputting to STDOUT
-		}
-		return fmt.Sprintf("Exported %d rows to %s", rowCount, filename)
-
-	case db.StreamingQueryResult:
-		// For streaming results, we need to iterate through the data
-		defer v.Iterator.Close()
-
-		// Get headers
-		headers := v.Headers
-
-		// Write header if requested
-		if strings.ToLower(options["HEADER"]) == "true" && len(headers) > 0 {
-			if err := csvWriter.Write(headers); err != nil {
-				return fmt.Sprintf("Error writing header: %v", err)
-			}
-		}
-
-		// Process rows
-		rowCount := 0
-		pageSize, _ := strconv.Atoi(options["PAGESIZE"])
-		if pageSize <= 0 {
-			pageSize = 1000
-		}
-
-		for {
-			rowMap := make(map[string]interface{})
-			if !v.Iterator.MapScan(rowMap) {
+	iter := h.session.Query(query).PageSize(pageSize).Iter()
+	rowCount := 0
+	var doc string
+	for {
+		row := make([]string, len(columns))
+		if withJSON {
+			if !iter.Scan(&doc) {
 				break
 			}
-
-			// Convert to string array
-			row := make([]string, len(v.ColumnNames))
-			for i, colName := range v.ColumnNames {
-				if val, ok := rowMap[colName]; ok {
-					if val == nil {
-						row[i] = options["NULLVAL"]
-					} else {
-						// Handle different data types specially
-						row[i] = formatCSVValue(val)
-					}
-				} else {
-					row[i] = options["NULLVAL"]
+			fields, err := jsonFields(doc)
+			if err == nil && len(fields) != len(columns) {
+				err = fmt.Errorf("%d values for %d columns", len(fields), len(columns))
+			}
+			if err != nil {
+				_ = iter.Close()
+				return fmt.Sprintf("Error reading row %d: %v", rowCount+1, err)
+			}
+			for i, raw := range fields {
+				row[i] = csvField(raw, columnTypes[i], nullVal)
+			}
+		} else {
+			values := map[string]interface{}{}
+			if !db.ScanRow(iter, values) {
+				break
+			}
+			for i, c := range iter.Columns() {
+				if i < len(row) {
+					row[i] = csvValue(values[c.Name], nullVal)
 				}
 			}
-
-			if err := csvWriter.Write(row); err != nil {
-				return fmt.Sprintf("Error writing row: %v", err)
-			}
-			rowCount++
-
-			// Flush periodically
-			if rowCount%pageSize == 0 {
-				csvWriter.Flush()
-			}
 		}
-
-		csvWriter.Flush()
-		if err := csvWriter.Error(); err != nil {
-			return fmt.Sprintf("Error flushing CSV: %v", err)
+		if err := csvWriter.Write(row); err != nil {
+			_ = iter.Close()
+			return fmt.Sprintf("Error writing row: %v", err)
 		}
-
-		if isStdout {
-			return nil
+		rowCount++
+		if rowCount%pageSize == 0 {
+			csvWriter.Flush()
 		}
-		return fmt.Sprintf("Exported %d rows to %s", rowCount, filename)
-
-	case error:
-		return fmt.Sprintf("Query error: %v", v)
-
-	default:
-		return fmt.Sprintf("Unexpected result type: %T", result)
 	}
+	// The rows stop at the end of the table or at an error - a timeout on a
+	// later page - and only Close tells which. A partial export is not
+	// reported as a whole one.
+	if err := iter.Close(); err != nil {
+		return fmt.Sprintf("Error reading rows after %d were exported to %s: %v", rowCount, filename, err)
+	}
+
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		return fmt.Sprintf("Error flushing CSV: %v", err)
+	}
+	closed = true
+	if err := writer.Close(); err != nil {
+		return fmt.Sprintf("Error writing %s: %v", filename, err)
+	}
+	if isStdout {
+		return nil // Don't print message when outputting to STDOUT
+	}
+	return fmt.Sprintf("Exported %d rows to %s", rowCount, filename)
 }
 
 // handleCopyFrom handles COPY FROM command for importing data from CSV
@@ -451,7 +410,7 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 	} else {
 		// Clean the filename to prevent path traversal
 		cleanPath := filepath.Clean(filename)
-		file, err = os.Open(cleanPath) // #nosec G304 - file path is user input but cleaned
+		file, err = os.Open(cleanPath) // #nosec G304 G703 - file path is user input but cleaned
 		if err != nil {
 			return fmt.Sprintf("Error opening file: %v", err)
 		}
@@ -502,9 +461,6 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		}
 	}
 
-	// Prepare for building INSERT statements
-	columnList := strings.Join(columns, ", ")
-
 	// Process rows - use atomic counters for thread safety with concurrent workers
 	var rowCount int64
 	var insertErrorCount int64
@@ -536,13 +492,29 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		skippedRows++
 	}
 
-	// Create prepared statement template with placeholders
-	placeholders := make([]string, len(columns))
-	for i := range placeholders {
-		placeholders[i] = "?"
+	// Each field given to fromJson as a JSON string, which Cassandra reads as
+	// its column's type. Only the columns named are written, so those the
+	// file does not have are left as they are. Before 2.2 there is no
+	// fromJson, and each field is made its column's Go value here.
+	withJSON := h.session.HasJSON()
+	insertTemplate := fromJSONInsert(table, columns)
+	var columnTypes []gocql.TypeInfo
+	if !withJSON {
+		placeholders := make([]string, len(columns))
+		for i := range placeholders {
+			placeholders[i] = "?"
+		}
+		insertTemplate = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
+		types := map[string]gocql.TypeInfo{}
+		if found, err := h.tableColumnsInOrder(table); err == nil {
+			for _, c := range found {
+				types[c.name] = c.info
+			}
+		}
+		for _, c := range columns {
+			columnTypes = append(columnTypes, types[storedName(c)])
+		}
 	}
-	insertTemplate := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		table, columnList, strings.Join(placeholders, ", "))
 
 	// Create batch channel and wait group for concurrent execution
 	batchChan := make(chan []batchEntry, maxRequests*2)
@@ -597,15 +569,15 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 			continue
 		}
 
-		// Convert values for prepared statement binding
-		values := make([]interface{}, len(record))
-		for i, val := range record {
-			// Handle NULL values
-			if val == nullVal {
-				values[i] = nil
-			} else {
-				values[i] = h.parseValueForBinding(val, columns[i], table)
-			}
+		var values []interface{}
+		if withJSON {
+			values, err = fromJSONValues(record, nullVal)
+		} else {
+			values, err = typedValues(record, columnTypes, nullVal)
+		}
+		if err != nil {
+			parseErrorCount++
+			continue
 		}
 
 		// Add to batch with prepared statement template

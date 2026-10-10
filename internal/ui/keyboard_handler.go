@@ -17,6 +17,8 @@ func (m *MainModel) handleKeyboardInput(msg tea.KeyPressMsg) (*MainModel, tea.Cm
 	// The help window takes the keys while it is open: it is over everything
 	// else, so it is what a keypress is aimed at.
 	if m.help.active {
+		m.clearSelection()
+		m.help.notice = ""
 		switch msg.String() {
 		case "esc", "f1", "alt+h", "q":
 			return m.toggleHelp()

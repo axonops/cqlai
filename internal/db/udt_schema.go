@@ -36,7 +36,7 @@ func NewUDTRegistry(session *gocql.Session) *UDTRegistry {
 
 // GetUDTDefinition retrieves a UDT definition from gocql's cached metadata
 func (r *UDTRegistry) GetUDTDefinition(keyspace, udtName string) (*UDTDefinition, error) {
-	if r.session == nil {
+	if r == nil || r.session == nil {
 		return nil, fmt.Errorf("no session available")
 	}
 

@@ -18,7 +18,7 @@ func FormatASCIITableHeader(headers [][]string) string {
 	// Calculate column widths (using rune count for proper Unicode handling)
 	columnWidths := make([]int, len(header))
 	for i, h := range header {
-		columnWidths[i] = len([]rune(h)) // Count runes, not bytes
+		columnWidths[i] = cellWidth(h) // screen columns, not runes or bytes
 	}
 
 	var buf bytes.Buffer
@@ -34,7 +34,7 @@ func FormatASCIITableHeader(headers [][]string) string {
 	// Header row
 	buf.WriteString("|")
 	for i, h := range header {
-		fmt.Fprintf(&buf, " %-*s |", columnWidths[i], h)
+		fmt.Fprintf(&buf, " %s |", padCell(h, columnWidths[i]))
 	}
 	buf.WriteString("\n")
 
@@ -78,11 +78,11 @@ func FormatASCIITableWithTypes(data [][]string, columnTypes []string) string {
 	// from - the marker has moved down - so the widths are worked out again
 	// from what will actually be drawn.
 	for i, detail := range details {
-		columnWidths[i] = max(len([]rune(db.StripKeyMarker(data[0][i]))), len([]rune(detail)))
+		columnWidths[i] = max(cellWidth(db.StripKeyMarker(data[0][i])), cellWidth(detail))
 		for _, row := range data[1:] {
 			if i < len(row) {
 				for _, line := range strings.Split(row[i], "\n") {
-					columnWidths[i] = max(columnWidths[i], len([]rune(line)))
+					columnWidths[i] = max(columnWidths[i], cellWidth(line))
 				}
 			}
 		}
@@ -114,7 +114,7 @@ func FormatASCIITableWithTypes(data [][]string, columnTypes []string) string {
 		for i, cell := range cells {
 			buf.WriteString(" ")
 			buf.WriteString(cell)
-			for j := len([]rune(cell)); j < columnWidths[i]; j++ {
+			for j := cellWidth(cell); j < columnWidths[i]; j++ {
 				buf.WriteString(" ")
 			}
 			buf.WriteString(" |")
@@ -141,9 +141,9 @@ func FormatASCIITableWithTypes(data [][]string, columnTypes []string) string {
 			lines := strings.Split(cell, "\n")
 			firstLine := lines[0]
 			buf.WriteString(firstLine)
-			// Add padding (using rune count)
-			cellWidth := len([]rune(firstLine))
-			for j := cellWidth; j < columnWidths[i]; j++ {
+			// Pad to the column's width in screen columns
+			w := cellWidth(firstLine)
+			for j := w; j < columnWidths[i]; j++ {
 				buf.WriteString(" ")
 			}
 			buf.WriteString(" |")
@@ -162,8 +162,8 @@ func FormatASCIITableWithTypes(data [][]string, columnTypes []string) string {
 					hasMoreLines = true
 					extraLine += " "
 					extraLine += lines[lineIndex]
-					cellWidth := len([]rune(lines[lineIndex]))
-					for j := cellWidth; j < columnWidths[i]; j++ {
+					w := cellWidth(lines[lineIndex])
+					for j := w; j < columnWidths[i]; j++ {
 						extraLine += " "
 					}
 					extraLine += " |"
@@ -229,7 +229,7 @@ func FormatASCIITableRowsOnlyWithWidths(data [][]string, columnWidths []int) str
 				// For multi-line cells, format each line separately
 				maxLineWidth := 0
 				for _, line := range lines {
-					lineWidth := len([]rune(line))
+					lineWidth := cellWidth(line)
 					if lineWidth > maxLineWidth {
 						maxLineWidth = lineWidth
 					}
@@ -238,17 +238,15 @@ func FormatASCIITableRowsOnlyWithWidths(data [][]string, columnWidths []int) str
 				// Use the first line for this row, pad to column width
 				firstLine := lines[0]
 				buf.WriteString(firstLine)
-				cellWidth := len([]rune(firstLine))
-				for j := cellWidth; j < columnWidths[i]; j++ {
+				w := cellWidth(firstLine)
+				for j := w; j < columnWidths[i]; j++ {
 					buf.WriteString(" ")
 				}
 			} else {
 				// Single line cell
-				cellRunes := []rune(cell)
 				buf.WriteString(cell)
-				// Add padding (using rune count)
-				cellWidth := len(cellRunes)
-				for j := cellWidth; j < columnWidths[i]; j++ {
+				// Pad to the column's width in screen columns
+				for j := cellWidth(cell); j < columnWidths[i]; j++ {
 					buf.WriteString(" ")
 				}
 			}
@@ -268,8 +266,8 @@ func FormatASCIITableRowsOnlyWithWidths(data [][]string, columnWidths []int) str
 					hasMoreLines = true
 					extraLine += " "
 					extraLine += lines[lineIndex]
-					cellWidth := len([]rune(lines[lineIndex]))
-					for j := cellWidth; j < columnWidths[i]; j++ {
+					w := cellWidth(lines[lineIndex])
+					for j := w; j < columnWidths[i]; j++ {
 						extraLine += " "
 					}
 					extraLine += " |"
@@ -305,9 +303,9 @@ func CalculateColumnWidths(data [][]string) []int {
 			// For multi-line cells, check each line's width
 			lines := strings.Split(cell, "\n")
 			for _, line := range lines {
-				cellWidth := len([]rune(line))
-				if cellWidth > columnWidths[i] {
-					columnWidths[i] = cellWidth
+				w := cellWidth(line)
+				if w > columnWidths[i] {
+					columnWidths[i] = w
 				}
 			}
 		}

@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/validation"
 )
 
 // formatUDTMap formats a UDT map for display
@@ -57,7 +56,7 @@ func formatValueInUDT(val interface{}) string {
 	case []byte:
 		return fmt.Sprintf("0x%x", v)
 	case time.Time:
-		return v.Format(time.RFC3339)
+		return v.Format(TimestampLayout)
 	case time.Duration:
 		return v.String()
 	case net.IP:
@@ -159,7 +158,7 @@ func FormatValue(val interface{}) string {
 	case []byte:
 		return fmt.Sprintf("0x%x", v)
 	case time.Time:
-		return v.Format(time.RFC3339)
+		return v.Format(TimestampLayout)
 	case time.Duration:
 		return v.String()
 	case net.IP:
@@ -178,37 +177,24 @@ func FormatValue(val interface{}) string {
 	}
 }
 
-// extractTableName extracts the keyspace and table name from a SELECT query
+// extractTableName is the keyspace and table a SELECT reads, as Cassandra
+// stores the names, with the keyspace empty when the query does not name one.
+//
+// Read by the statement gate's lexer, which knows strings, quoted names and
+// comments. A search for "FROM " found it in the upper-cased, trimmed text and
+// then cut the query itself at that place: leading spaces moved the cut onto
+// the wrong word, and a letter whose upper case is a different length moved
+// it past the end of the query.
 func extractTableName(query string) (keyspace, table string) {
-	// Simple extraction - look for FROM tablename pattern
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	fromIndex := strings.Index(upperQuery, "FROM ")
-	if fromIndex == -1 {
+	s, err := validation.Classify(query)
+	if err != nil || s.Command != "SELECT" || len(s.Names) == 0 {
 		return "", ""
 	}
-
-	// Get the part after FROM
-	afterFrom := strings.TrimSpace(query[fromIndex+5:])
-
-	// Split by whitespace or special characters to get the table name
-	parts := strings.FieldsFunc(afterFrom, func(r rune) bool {
-		return r == ' ' || r == '\t' || r == '\n' || r == ';' || r == '('
-	})
-
-	if len(parts) > 0 {
-		fullName := parts[0]
-		if strings.Contains(fullName, ".") {
-			// Has keyspace prefix
-			tableParts := strings.Split(fullName, ".")
-			if len(tableParts) == 2 {
-				return tableParts[0], tableParts[1]
-			}
-			return "", tableParts[len(tableParts)-1]
-		}
-		return "", fullName
+	name := s.Names[0]
+	if !name.Qualified {
+		return "", name.Table
 	}
-
-	return "", ""
+	return name.Keyspace, name.Table
 }
 
 // getColumnTypeFromSystemTable gets the full type definition for a column from system tables
@@ -516,7 +502,7 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 	scanned := make([][]string, 0)
 	for {
 		rowMap := make(map[string]interface{})
-		if !iter.MapScan(rowMap) {
+		if !ScanRow(iter, rowMap) {
 			break
 		}
 
@@ -572,8 +558,6 @@ func (s *Session) ExecuteSelectQuery(query string) interface{} {
 // shouldUseStreaming determines if a query should use streaming based on heuristics
 func (s *Session) shouldUseStreaming(query string) bool {
 	// Always use streaming unless there's a small LIMIT
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-
 	// A LIMIT small enough to fit in one page has nothing to page through, so
 	// fetch it in one go.
 	//
@@ -581,15 +565,14 @@ func (s *Session) shouldUseStreaming(query string) bool {
 	// relationship to the page size: PAGING 100 with LIMIT 300 fetched all 300
 	// at once and PAGING was ignored. Measuring against the page size is what
 	// makes PAGING mean something.
-	if pageSize := s.PageSize(); pageSize > 0 && strings.Contains(upperQuery, " LIMIT ") {
-		re := regexp.MustCompile(`LIMIT\s+(\d+)`)
-		matches := re.FindStringSubmatch(upperQuery)
-		if len(matches) > 1 {
-			limit, err := strconv.Atoi(matches[1])
-			if err == nil && limit <= pageSize {
-				logger.DebugfToFile("shouldUseStreaming", "LIMIT %d fits in a page of %d, not using streaming", limit, pageSize)
-				return false
-			}
+	//
+	// The LIMIT is read by the statement gate's lexer. A pattern for LIMIT n
+	// also matched PER PARTITION LIMIT 1, which bounds each partition, not
+	// the result: the whole table was then read into memory in one go.
+	if pageSize := s.PageSize(); pageSize > 0 {
+		if limit, ok := validation.Limit(query); ok && limit <= pageSize {
+			logger.DebugfToFile("shouldUseStreaming", "LIMIT %d fits in a page of %d, not using streaming", limit, pageSize)
+			return false
 		}
 	}
 

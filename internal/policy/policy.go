@@ -62,6 +62,11 @@ type Policy struct {
 	// pattern applies to it. Nil, or an empty answer, means it cannot be told,
 	// and any pattern that could apply is taken to.
 	columns func(keyspace, table string) []string
+
+	// viewBase says which table a materialized view is of, and "" for a name
+	// that is not a view. A view holds its base table's rows, so it is hidden
+	// and redacted as that table is.
+	viewBase func(keyspace, name string) string
 }
 
 // alwaysDenied is never visible, whatever the settings say. system_auth holds
@@ -150,9 +155,40 @@ func (p Policy) WithSystemKeyspaces() Policy {
 	return p
 }
 
-// VisibleTable reports whether a table can be seen.
+// VisibleTable reports whether a table can be seen. A materialized view is
+// seen only if its base table is: it holds the same rows.
 func (p Policy) VisibleTable(keyspace, table string) bool {
-	return p.Visible(keyspace) && !p.denied(keyspace, table)
+	if !p.Visible(keyspace) || p.denied(keyspace, table) {
+		return false
+	}
+	base := p.baseOf(keyspace, table)
+	return base == "" || !p.denied(keyspace, base)
+}
+
+// WithViewBase is the policy, told how to find a materialized view's base
+// table.
+func (p Policy) WithViewBase(lookup func(keyspace, name string) string) Policy {
+	p.viewBase = lookup
+	return p
+}
+
+// baseOf is the base table of a materialized view, or "" for a table, or
+// when it cannot be told.
+func (p Policy) baseOf(keyspace, table string) string {
+	if p.viewBase == nil || table == "" {
+		return ""
+	}
+	return p.viewBase(keyspace, table)
+}
+
+// matchTable reports whether a pattern's table part takes in a table: the
+// table itself, or the base table of a view.
+func (p Policy) matchTable(pattern, keyspace, table string) bool {
+	if matchPart(pattern, table) {
+		return true
+	}
+	base := p.baseOf(keyspace, table)
+	return base != "" && matchPart(pattern, base)
 }
 
 func (p Policy) denied(keyspace, table string) bool {
@@ -180,7 +216,7 @@ func (p Policy) Redacted(keyspace, table, column string) bool {
 		if len(parts) != 3 {
 			continue
 		}
-		if matchPart(parts[0], keyspace) && matchPart(parts[1], table) && matchPart(parts[2], column) {
+		if matchPart(parts[0], keyspace) && p.matchTable(parts[1], keyspace, table) && matchPart(parts[2], column) {
 			return true
 		}
 	}
@@ -205,6 +241,40 @@ func MaskedSetting(name string) bool {
 		}
 	}
 	return false
+}
+
+// SettingHidden reports whether a value of system_views.settings is hidden:
+// every column but the name, in a row for a setting that holds a secret. A
+// row whose name was not selected cannot be told apart, so it is hidden too.
+func SettingHidden(keyspace, table, column string, row map[string]any) bool {
+	if !isSettings(keyspace, table) || strings.EqualFold(column, "name") {
+		return false
+	}
+	name, ok := row["name"].(string)
+	return !ok || MaskedSetting(name)
+}
+
+// isSettings reports whether keyspace.table is system_views.settings, the
+// node's configuration.
+func isSettings(keyspace, table string) bool {
+	return strings.EqualFold(keyspace, "system_views") && strings.EqualFold(table, "settings")
+}
+
+// checkSettings keeps a secret setting's value from coming back by another
+// route: as JSON, under an alias, or as the answer to a guess in WHERE.
+func (p Policy) checkSettings(s validation.Statement) error {
+	if s.Command != "SELECT" || len(s.Names) == 0 || !isSettings(s.Names[0].Keyspace, s.Names[0].Table) {
+		return nil
+	}
+	if !s.PlainSelection {
+		return refused("system_views.settings has hidden values: select with * or by column name, with no JSON, alias or function")
+	}
+	for _, column := range s.WhereNames {
+		if !strings.EqualFold(column, "name") {
+			return refused(fmt.Sprintf("%s of system_views.settings cannot be used in WHERE on this server: filter by name", column))
+		}
+	}
+	return nil
 }
 
 // Scrub removes anything secret from text going back to the model: a driver
@@ -252,7 +322,7 @@ func (p Policy) HasRedactedColumns(keyspace, table string) bool {
 	}
 	for _, pattern := range p.redact {
 		parts := strings.Split(pattern, ".")
-		if len(parts) != 3 || !matchPart(parts[0], keyspace) || !matchPart(parts[1], table) {
+		if len(parts) != 3 || !matchPart(parts[0], keyspace) || !p.matchTable(parts[1], keyspace, table) {
 			continue
 		}
 		if parts[2] == "*" || len(columns) == 0 {
@@ -306,6 +376,9 @@ func (p Policy) Check(text string) (validation.Statement, error) {
 	}
 
 	if err := p.checkRedaction(s); err != nil {
+		return s, err
+	}
+	if err := p.checkSettings(s); err != nil {
 		return s, err
 	}
 	if s.Command == "SELECT" && len(s.Names) > 0 {

@@ -307,3 +307,30 @@ func TestASchemaChangeIsNotified(t *testing.T) {
 		t.Fatal("the client was not told the schema changed")
 	}
 }
+
+// TestEveryReadIsWithinTheRate: a resource read and a prompt each reach the
+// cluster, so each counts as a call; and the rate is the settings' own, not
+// the one the limiter was made with.
+func TestEveryReadIsWithinTheRate(t *testing.T) {
+	session, _ := serve(t, &config.Config{MCP: &config.MCPConfig{MaxCallsPerMinute: 2}}, policy.Flags{})
+	ctx := context.Background()
+
+	_, err := session.ReadResource(ctx, &sdk.ReadResourceParams{URI: "cql://schema/shop"})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "calls a minute", "the first is within the rate")
+
+	_, err = session.GetPrompt(ctx, &sdk.GetPromptParams{Name: "diagnose_query", Arguments: map[string]string{"cql": "SELECT * FROM shop.orders"}})
+	require.NoError(t, err, "the second is within the rate")
+
+	_, err = session.GetPrompt(ctx, &sdk.GetPromptParams{Name: "diagnose_query", Arguments: map[string]string{"cql": "SELECT * FROM shop.orders"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "more than 2 calls a minute")
+
+	_, err = session.ReadResource(ctx, &sdk.ReadResourceParams{URI: "cql://schema/shop"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "more than 2 calls a minute")
+
+	text, isError := call(t, session, "list_keyspaces", map[string]any{})
+	assert.True(t, isError)
+	assert.Contains(t, text, "more than 2 calls a minute")
+}

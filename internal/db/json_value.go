@@ -45,7 +45,7 @@ func JSONValue(value interface{}) interface{} {
 	case time.Duration:
 		return v.String()
 	case gocql.Duration:
-		return fmt.Sprintf("%dmo%dd%dns", v.Months, v.Days, v.Nanoseconds)
+		return FormatCQLDuration(v)
 	case net.IP:
 		return v.String()
 	case *big.Int:

@@ -24,6 +24,9 @@ type ColumnInfo struct {
 	DataType string
 	Kind     string
 	Position int
+	// ClusteringOrder is asc or desc for a clustering column, and none for
+	// any other.
+	ClusteringOrder string
 }
 
 // TableListInfo holds table list information for manual describe
@@ -84,7 +87,7 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 	_ = iter.Close()
 
 	// Get columns
-	colQuery := `SELECT column_name, type, kind, position 
+	colQuery := `SELECT column_name, type, kind, position, clustering_order
 	            FROM system_schema.columns 
 	            WHERE keyspace_name = ? AND table_name = ?`
 
@@ -92,24 +95,28 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 
 	var columns []ColumnInfo
 
-	var colName, colType, colKind string
+	var colName, colType, colKind, colOrder string
 	var colPosition int
 
-	for colIter.Scan(&colName, &colType, &colKind, &colPosition) {
+	for colIter.Scan(&colName, &colType, &colKind, &colPosition, &colOrder) {
 		columns = append(columns, ColumnInfo{
-			Name:     colName,
-			DataType: colType,
-			Kind:     colKind,
-			Position: colPosition,
+			Name:            colName,
+			DataType:        colType,
+			Kind:            colKind,
+			Position:        colPosition,
+			ClusteringOrder: colOrder,
 		})
 	}
 	_ = colIter.Close()
 
 	// Sort columns: partition keys first, then clustering keys, then regular columns
 	sort.Slice(columns, func(i, j int) bool {
+		// Static columns with the regular ones: unlisted, a static column
+		// sorted with the partition key.
 		kindPriority := map[string]int{
 			"partition_key": 0,
 			"clustering":    1,
+			"static":        2,
 			"regular":       2,
 		}
 
@@ -120,8 +127,12 @@ func (s *Session) DescribeTableQuery(keyspace string, tableName string) (*TableI
 			return iPriority < jPriority
 		}
 
-		// Within same kind, sort by position
-		return columns[i].Position < columns[j].Position
+		// Within same kind, sort by position, and the rest - all at -1 - by
+		// name, as Cassandra lists them
+		if columns[i].Position != columns[j].Position {
+			return columns[i].Position < columns[j].Position
+		}
+		return columns[i].Name < columns[j].Name
 	})
 
 	// Collect the key columns only after sorting. system_schema.columns is

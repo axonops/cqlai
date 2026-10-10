@@ -297,15 +297,22 @@ func TestTheAuditLogHoldsNoValues(t *testing.T) {
 
 	a.Log(Entry{Tool: "query", Statement: "SELECT * FROM shop.customers WHERE email = 'ann@example.com' AND age = 42", Decision: "allowed", Rows: 1})
 	a.Log(Entry{Tool: "query", Statement: "DROP TABLE shop.customers", Decision: "refused", Reason: "DROP is not permitted"})
+	// A uuid, a boolean, and a driver error that repeats the value.
+	a.Log(Entry{Tool: "query", Statement: "SELECT * FROM shop.customers WHERE id = 123e4567-e89b-12d3-a456-426614174000 AND vip = true",
+		Decision: "failed", Reason: "Invalid UUID constant (123e4567-e89b-12d3-a456-426614174000)"})
+	a.Log(Entry{Tool: "query", Statement: "SELECT * FROM shop.customers WHERE age = 'hunter2'",
+		Decision: "failed", Reason: "Invalid STRING constant (hunter2) for \"age\" of type int"})
 	require.NoError(t, a.Close())
 
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.NotContains(t, string(data), "ann@example.com")
-	assert.NotContains(t, string(data), "42")
+	for _, value := range []string{"ann@example.com", "42", "e89b", "a456", "true", "hunter2"} {
+		assert.NotContains(t, string(data), value)
+	}
+	assert.Contains(t, string(data), `for \"age\" of type int`, "the rest of the error stays")
 
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	require.Len(t, lines, 2)
+	require.Len(t, lines, 4)
 	var first Entry
 	require.NoError(t, json.Unmarshal([]byte(lines[0]), &first))
 	assert.Equal(t, "select * from shop . customers where email = ? and age = ?", first.Statement)
@@ -474,4 +481,69 @@ func TestTheAuditLogIsKeptInCassandra(t *testing.T) {
 	assert.Contains(t, string(got), `"tool":"query"`, "the old entries came with it")
 	assert.Contains(t, string(got), `"tool":"describe"`)
 	assert.NoFileExists(t, old)
+}
+
+// TestAViewIsHiddenAsItsBaseTableIs: a materialized view holds its base
+// table's rows, so a deny entry or a redaction for the table holds for every
+// view of it.
+func TestAViewIsHiddenAsItsBaseTableIs(t *testing.T) {
+	views := func(keyspace, name string) string {
+		switch {
+		case keyspace == "shop" && name == "secrets_by_owner":
+			return "secrets"
+		case keyspace == "shop" && name == "customers_by_email":
+			return "customers"
+		}
+		return ""
+	}
+	permit := []string{"SELECT"}
+	p := load(t, &config.Config{MCP: &config.MCPConfig{
+		Permit: &permit,
+		Deny:   []string{"shop.secrets"},
+		Redact: []string{"shop.customers.email"},
+	}}, "", Flags{}).WithViewBase(views)
+
+	assert.False(t, p.VisibleTable("shop", "secrets_by_owner"))
+	_, err := p.Check("SELECT * FROM shop.secrets_by_owner WHERE owner = 'a'")
+	assert.Error(t, err)
+
+	assert.True(t, p.Redacted("shop", "customers_by_email", "email"))
+	assert.False(t, p.Redacted("shop", "customers_by_email", "name"))
+	_, err = p.Check("SELECT JSON * FROM shop.customers_by_email WHERE email = 'a@b.c'")
+	assert.Error(t, err)
+
+	// A table that is not a view is as it was.
+	assert.True(t, p.VisibleTable("shop", "orders"))
+	assert.False(t, p.Redacted("shop", "orders", "email"))
+}
+
+// TestASecretSettingDoesNotComeBack: system_views.settings holds the node's
+// configuration, passwords among it. The value is hidden in a row for one,
+// and cannot come back as JSON, under an alias, or as the answer to a guess.
+func TestASecretSettingDoesNotComeBack(t *testing.T) {
+	secret := map[string]any{"name": "client_encryption_options_keystore_password", "value": "hunter2"}
+	plain := map[string]any{"name": "cluster_name", "value": "Test Cluster"}
+	assert.True(t, SettingHidden("system_views", "settings", "value", secret))
+	assert.False(t, SettingHidden("system_views", "settings", "name", secret))
+	assert.False(t, SettingHidden("system_views", "settings", "value", plain))
+	assert.True(t, SettingHidden("system_views", "settings", "value", map[string]any{"value": "x"}),
+		"without the name it cannot be told")
+	assert.False(t, SettingHidden("shop", "settings", "value", secret), "only the node's settings")
+
+	p := load(t, &config.Config{}, "", Flags{}).WithSystemKeyspaces()
+	for _, cql := range []string{
+		"SELECT * FROM system_views.settings",
+		"SELECT name, value FROM system_views.settings WHERE name = 'cluster_name'",
+	} {
+		_, err := p.Check(cql)
+		assert.NoError(t, err, cql)
+	}
+	for _, cql := range []string{
+		"SELECT JSON * FROM system_views.settings",
+		"SELECT value AS v FROM system_views.settings",
+		"SELECT name FROM system_views.settings WHERE value = 'hunter2' ALLOW FILTERING",
+	} {
+		_, err := p.Check(cql)
+		assert.Error(t, err, cql)
+	}
 }

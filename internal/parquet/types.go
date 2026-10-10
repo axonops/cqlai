@@ -15,7 +15,9 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
+	"gopkg.in/inf.v0"
 )
 
 // TypeMapper handles conversion between Cassandra and Arrow types
@@ -71,8 +73,9 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 	case "double":
 		return arrow.PrimitiveTypes.Float64, nil
 	case "decimal":
-		// Using Decimal128 for decimal types
-		return &arrow.Decimal128Type{Precision: 38, Scale: 10}, nil
+		// A string, as varint is: a CQL decimal has any precision and scale,
+		// which no fixed Decimal128 holds.
+		return arrow.BinaryTypes.String, nil
 	case "varint":
 		// Variable-precision integers stored as string for compatibility
 		return arrow.BinaryTypes.String, nil
@@ -102,8 +105,9 @@ func (tm *TypeMapper) CassandraToArrowType(cassandraType string) (arrow.DataType
 	case "timestamp":
 		return arrow.FixedWidthTypes.Timestamp_ms, nil
 	case "duration":
-		// Duration stored as int64 nanoseconds
-		return arrow.PrimitiveTypes.Int64, nil
+		// A string such as 1mo2d3ns: a CQL duration has months and days,
+		// which are not a fixed number of nanoseconds.
+		return arrow.BinaryTypes.String, nil
 
 	// Network type
 	case "inet":
@@ -520,6 +524,12 @@ func (tm *TypeMapper) toString(value interface{}) (string, error) {
 		return v.String(), nil
 	case *big.Int:
 		return v.String(), nil
+	case *inf.Dec:
+		return v.String(), nil
+	case inf.Dec:
+		return v.String(), nil
+	case gocql.Duration:
+		return db.FormatCQLDuration(v), nil
 	case map[string]interface{}:
 		// For UDTs, serialize as JSON
 		data, err := json.Marshal(v)
@@ -1028,13 +1038,15 @@ func (tm *TypeMapper) ArrowToCassandraType(arrowType arrow.DataType) string {
 // parseTimeString reads a time as it is displayed.
 //
 // A result reaches SAVE as [][]string, so a timestamp arrives as whatever
-// FormatValue rendered - RFC3339 - rather than as a time.Time. The plain date
+// FormatValue rendered - db.TimestampLayout, or RFC3339 before it - rather than
+// as a time.Time. The plain date
 // and the space-separated layouts are here because the same strings turn up in
 // a CSV being copied in.
 func parseTimeString(v string) (time.Time, error) {
 	layouts := []string{
 		time.RFC3339Nano,
 		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-0700", // db.TimestampLayout, as shown
 		"2006-01-02 15:04:05.999999999 -0700 MST",
 		"2006-01-02 15:04:05.999999999-07:00",
 		"2006-01-02 15:04:05",

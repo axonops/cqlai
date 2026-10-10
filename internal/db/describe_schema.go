@@ -19,46 +19,18 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 		return s.describeOnServer("DESCRIBE KEYSPACE " + keyspace)
 	}
 
-	// For Cassandra 4.0+, DESCRIBE commands are handled server-side
-	// Try server-side first, fall back to manual construction for older versions
-
-	// Try executing DESCRIBE SCHEMA as a CQL query
-	var describeQuery string
+	// Cassandra 4.0 and later describe themselves, and theirs is the
+	// description: every option, the clustering order, static columns, and
+	// quotes escaped. The statement used to go through ExecuteCQLQuery, which
+	// streams a result it cannot bound, and a streamed result was not one of
+	// the shapes looked for - so every cluster got the description built by
+	// hand below, which is for clusters too old to answer.
+	describeQuery := "DESCRIBE SCHEMA"
 	if keyspace != "" {
-		describeQuery = fmt.Sprintf("DESCRIBE KEYSPACE %s", keyspace)
-	} else {
-		describeQuery = "DESCRIBE SCHEMA"
+		describeQuery = "DESCRIBE KEYSPACE " + QuoteName(keyspace)
 	}
-
-	queryResult := s.ExecuteCQLQuery(describeQuery)
-
-	// Check if we got a valid result (not an error)
-	switch v := queryResult.(type) {
-	case string:
-		// If it's an error message, fall back to manual construction
-		if strings.Contains(v, "SyntaxException") || strings.Contains(v, "Invalid") ||
-			strings.Contains(v, "Unknown") || strings.Contains(v, "Error") {
-			// Fall through to manual construction
-			break
-		}
-		return v, nil
-
-	case QueryResult:
-		// Server returned a result - format it as text
-		if len(v.Data) > 0 && len(v.Data[0]) > 0 {
-			// DESCRIBE returns the schema as text in a single column
-			var lines []string
-			for _, row := range v.Data {
-				if len(row) > 0 {
-					lines = append(lines, row[0])
-				}
-			}
-			return strings.Join(lines, "\n"), nil
-		}
-
-	default:
-		// Unknown result type, try manual construction
-		break
+	if out, err := s.describeOnServer(describeQuery); err == nil {
+		return out, nil
 	}
 
 	// Manual construction for older Cassandra versions (< 4.0)
@@ -362,7 +334,7 @@ func formatMaterializedViewCreateStatement(keyspace string, mv *MaterializedView
 	var options []string
 
 	if mv.Comment != "" {
-		options = append(options, fmt.Sprintf("comment = '%s'", mv.Comment))
+		options = append(options, "comment = "+cqlLiteral(mv.Comment))
 	}
 
 	if len(mv.Compaction) > 0 {

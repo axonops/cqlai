@@ -5,6 +5,7 @@ import (
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/router"
+	"sort"
 )
 
 // handleSingleLineDown scrolls down by one line (j key)
@@ -467,32 +468,76 @@ func (m *MainModel) applyHorizontalOffset() {
 	m.tableViewport.SetXOffset(m.horizontalOffset)
 }
 
-// loadMoreTableDataHelper loads more rows when scrolling near the bottom
-func (m *MainModel) loadMoreTableDataHelper() {
-	if m.slidingWindow == nil || !m.slidingWindow.hasMoreData || m.session == nil {
-		return
+// loadMoreTableDataHelper loads the next page of rows: when paging, the
+// wheel, or a key nears the bottom of what is in hand.
+//
+// What is on screen stays on screen. The window drops rows from the top once
+// it holds as many as it may, which moves every line after them up; the
+// viewport is moved up with them, or each later page down lands further on
+// and the rows in between are never shown.
+func (m *MainModel) loadMoreTableDataHelper() int {
+	sw := m.slidingWindow
+	if sw == nil || !sw.hasMoreData || m.session == nil {
+		return 0
 	}
 
-	// Load the next page
-	newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
-	if newRows > 0 {
-		// Write uncaptured rows to capture file if capturing
-		metaHandler := router.GetMetaHandler()
-		if metaHandler != nil && metaHandler.IsCapturing() {
-			uncapturedRows := m.slidingWindow.GetUncapturedRows()
-			if len(uncapturedRows) > 0 {
-				_ = metaHandler.AppendCaptureRows(uncapturedRows)
-				m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
-			}
+	topRow, lineInRow := m.rowAtLine(m.tableViewport.YOffset())
+	firstBefore := sw.FirstRowIndex
+
+	newRows := sw.LoadMoreRows(m.rowsPerLoad()) // PAGING OFF is a page size of 0, which loaded nothing
+	if newRows == 0 {
+		return 0
+	}
+
+	// Write uncaptured rows to capture file if capturing
+	metaHandler := router.GetMetaHandler()
+	if metaHandler != nil && metaHandler.IsCapturing() {
+		uncapturedRows := sw.GetUncapturedRows()
+		if len(uncapturedRows) > 0 {
+			_ = metaHandler.AppendCaptureRows(uncapturedRows)
+			sw.MarkRowsAsCaptured(len(uncapturedRows))
 		}
-
-		// Clear cache to force rebuild
-		m.cachedTableLines = nil
-		m.renderResults(m.resultRows())
-
-		// Update row count
-		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
 	}
+
+	// Clear cache to force rebuild
+	m.cachedTableLines = nil
+	m.renderResults(m.resultRows())
+	m.rowCount = int(sw.TotalRowsSeen)
+
+	if sw.FirstRowIndex != firstBefore && topRow >= 0 {
+		m.tableViewport.SetYOffset(m.lineOfRow(topRow, lineInRow))
+	}
+	return newRows
+}
+
+// lineOfRow is the line a row of the result is drawn on, and lineInRow lines
+// into it: the first row in hand when that row has been dropped.
+func (m *MainModel) lineOfRow(row int64, lineInRow int) int {
+	local := int(row - m.slidingWindow.FirstRowIndex)
+	if local < 0 {
+		local, lineInRow = 0, 0
+	}
+	if local >= len(m.tableRowBoundaries) {
+		return m.tableViewport.YOffset()
+	}
+	return m.tableRowBoundaries[local] + lineInRow
+}
+
+// rowAtLine is which row of the result a line of the table is in, and how
+// far into it; -1 for a line above the first row.
+func (m *MainModel) rowAtLine(line int) (int64, int) {
+	b := m.tableRowBoundaries
+	if m.slidingWindow == nil || len(b) == 0 || line < b[0] {
+		return -1, 0
+	}
+	i := sort.SearchInts(b, line+1) - 1
+	if last := len(m.slidingWindow.Rows) - 1; i > last {
+		i = last // the last boundary is the bottom border
+	}
+	if i < 0 {
+		return -1, 0
+	}
+	return m.slidingWindow.FirstRowIndex + int64(i), line - b[i]
 }
 
 // handleAltScrollUp handles Alt+Up key for scrolling viewports up

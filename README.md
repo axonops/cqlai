@@ -141,7 +141,7 @@ We encourage you to **try CQLAI today** and help shape its development! Your fee
     - Reads a query trace and says where the time went, what the trace shows that the timings do not, and what to change (`[ Analyse Trace Alt+A ]` in the `TRACE` tab).
     - Reviews a table's definition - what it is, what will go wrong with it, and what to change (`[ Review Schema Alt+A ]` in the `SCHEMA` view).
     - Schema-aware query generation with automatic context.
-    - Safe preview and confirmation before execution.
+    - Safe preview and confirmation before execution. The window with the generated CQL opens on `Edit`, which puts the statement in the prompt to read: `Enter` alone never runs it.
     - Support for complex operations including DDL and DML.
     - **Requires API key configuration** - not needed for core functionality.
 - **MCP Server (`cqlai mcp`):**
@@ -235,7 +235,7 @@ cqlai [options] [host [port]]
 | `--no-confirm` | | Disable confirmation prompts for destructive commands (DROP, DELETE, TRUNCATE) |
 | `--connect-timeout <seconds>` | | Connection timeout (default: 10) |
 | `--request-timeout <seconds>` | | Request timeout (default: 10) |
-| `--debug` | | Enable debug logging |
+| `--debug` | | Enable debug logging. Passwords - in `cqlshrc`, and in `CREATE`/`ALTER ROLE` - are written as `***` |
 
 *\*Note: Password can be provided in three ways:*
 1. *Command line with `-p` (not recommended - visible in process list)*
@@ -280,6 +280,12 @@ cqlai -e "SELECT * FROM users;" --format csv --no-header
 # Control pagination size
 cqlai -e "SELECT * FROM large_table;" --page-size 50
 ```
+
+A statement that fails stops the run with a non-zero exit status: an error from
+Cassandra, and one CQLAI refuses itself, such as a mistyped command or a
+`DESCRIBE` of a table that does not exist. A file or piped input is split into
+statements as the shell splits what you type: a semicolon in a string or a
+comment does not end a statement, and a `BEGIN BATCH` ends at `APPLY BATCH;`.
 
 ### Basic Commands
 
@@ -382,6 +388,25 @@ Results and Trace have moved from `F3` and `F4` to `F4` and `F5`.
 `SCHEMA` is the cluster's keyspaces and tables as a tree, with the definition of
 whatever is selected beside it. Click a keyspace to see it and open it, click it
 again to fold it, and click a table for its `CREATE TABLE`.
+
+An open keyspace holds a group for each kind of object it has: tables,
+materialized views, indexes, types, functions, aggregates and triggers, with
+how many of each. A kind it has none of is left out. The tables are open, so
+they are where they always were; the other groups open the same way a keyspace
+does. Select an object for its `CREATE` statement, as `DESCRIBE` gives it. A
+group's own pane lists what is in it.
+
+```
+▾ shop
+  ▾ Tables (2)
+      customers
+      orders
+  ▸ Materialized views (1)
+  ▸ Indexes (2)
+  ▸ Types (1)
+  ▸ Functions (1)
+  ▸ Aggregates (1)
+```
 
 The arrows walk the tree - right opens a keyspace, left closes it - and the
 wheel moves whichever pane it is over. `Alt+Up` and `Alt+Down` scroll the
@@ -961,6 +986,15 @@ Meta-commands provide additional functionality beyond standard CQL:
   -- CHUNKSIZE = 10000       -- Rows per chunk for Parquet
   ```
 
+  In a CSV file each value is written as Cassandra writes it: a timestamp with
+  its milliseconds and zone (`2024-01-02 03:04:05.678+0000`), a date as
+  `2024-02-29`, a duration as `1h30m`, a blob as `0x...`. A list, set, map,
+  tuple or user-defined type is written as JSON (`["a", "b"]`,
+  `{"x": 1}`). NULL is written as `NULLVAL` (`null` unless set), so an empty
+  string stays empty and is not read back as NULL. The header row has the
+  column names alone. A read that fails partway, or a file that cannot be
+  written, is reported as an error, not as a finished export.
+
 - **COPY FROM** - Import CSV or Parquet data into table
   ```sql
   -- Basic import from CSV file
@@ -999,6 +1033,11 @@ Meta-commands provide additional functionality beyond standard CQL:
   -- ENCODING = 'UTF8'       -- File encoding
   -- QUOTE = '"'             -- Quote character for strings
   ```
+
+  Each CSV field is read by Cassandra as its column's type, so `02134` in a
+  text column stays text, and timestamps, blobs, UUIDs, durations,
+  collections, tuples and user-defined types are read as `COPY TO` writes them.
+  Columns the file does not have are left as they are, not set to NULL.
 
 - **AUTOSAVE** - Save every query's output into a directory, as it runs
   ```sql
@@ -1066,9 +1105,13 @@ Meta-commands provide additional functionality beyond standard CQL:
   SOURCE 'schema.cql'           -- Execute script
   SOURCE '/path/to/script.cql'  -- Absolute path
   ```
+  The file is split into statements as the shell splits what you type: a
+  semicolon in a string or a comment does not end a statement, and a
+  `BEGIN BATCH` runs whole. A file that sources itself, directly or through
+  another, is refused.
 
 #### Help
-- **HELP** - Display command help
+- **HELP** - Open the Help window, the same as `F1`. `HELP INSERT`, `HELP CREATE TABLE` or any other command shows how it is written, with an example and a link to its page in the [AxonOps CQL reference](https://axonops.com/docs/data-platforms/cassandra/cql/). Drag over the text to copy it. Ctrl+click the link to open it in your browser. If no browser can be opened, over ssh for example, the link is copied instead
   ```sql
   HELP                 -- Show all commands
   HELP DESCRIBE        -- Help for specific command
@@ -1839,6 +1882,15 @@ whatever the model asks for.
 - **Redacted columns.** A redacted column's values come back as `[redacted]`.
   On a table with redacted columns, a `SELECT` has to use `*` or column names:
   no `JSON`, alias or function, and no condition on a redacted column.
+- **Materialized views follow their table.** A view holds its base table's
+  rows, so a deny entry or a redaction for the table holds for every view of
+  it.
+- **Secret settings.** In `system_views.settings`, the value of any setting
+  whose name has `password`, `secret` or `credential` in it comes back as
+  `[redacted]`, from `query` as from `node_status`. A `SELECT` there has to use
+  `*` or column names, and can filter by `name` only.
+- **Permissions on hidden things.** `list_roles` leaves out a permission on a
+  hidden keyspace or table, which would name it.
 - **Scans.** `ALLOW FILTERING`, and `COUNT`, `SUM`, `AVG`, `MIN` or `MAX`
   across partitions, are refused unless scans are allowed. They can read a whole
   table to return a few rows.
@@ -1847,8 +1899,10 @@ whatever the model asks for.
   used as asked. With `Auto fetch` ticked (`"autoFetch": true`), a query
   returns every row in one call, reading the pages itself. That can be a lot
   on a large table.
-- **Limits.** One call runs at a time, up to 60 a minute. Each page read has
-  the request timeout. Long values are cut.
+- **Limits.** One call runs at a time, up to 60 a minute. Reading a resource
+  or a prompt counts as a call, and a change to the limit in PREFERENCES holds
+  from the next call. Each page read has the request timeout. Long values are
+  cut.
 - **No credentials.** No tool takes or returns a username or password, and the
   password is removed from any error before it is returned.
 - **This machine unless set, and never a web page.** The shell serves MCP on
@@ -1861,7 +1915,9 @@ whatever the model asks for.
   own, so a model's queries never change your shell's consistency or tracing.
 - **An audit log.** Every call is written to `~/.cassandra/cqlai_mcp_audit.log`, one JSON
   line each, refusals included. Statements are logged with their values
-  replaced by `?`, and no row is ever logged. The file is readable only by you.
+  replaced by `?` - strings, numbers, UUIDs and booleans - and an error that
+  repeats a value has it taken out. No row is ever logged. The file is readable
+  only by you.
 
 The strongest control is the Cassandra role CQLAI logs in as. Give the MCP
 server's connection a role of its own that can only read what it needs:
@@ -1885,9 +1941,10 @@ CQLAI provides comprehensive support for Apache Parquet format, making it ideal 
 
 - **Efficient Storage**: Columnar format with excellent compression (50-80% smaller than CSV)
 - **Fast Analytics**: Optimized for analytical queries in Spark, Presto, and other engines
-- **Type Preservation**: Maintains Cassandra data types including collections and UDTs
+- **Type Preservation**: Maintains Cassandra data types including collections and UDTs. A `decimal`, `varint` or `duration` is written as text - `-12.345`, `1mo2d1h30m` - so every digit, month and day is kept, and `COPY FROM` reads it back as its type
 - **Machine Learning Ready**: Direct compatibility with pandas, PyArrow, and ML frameworks
-- **Streaming Support**: Memory-efficient streaming for large datasets
+- **Streaming Support**: Memory-efficient streaming for large datasets: rows are written to the file as they are read, not held until the end
+- **Partitioned Exports**: Any number of partition values. A partition's file closed to make room for another is continued in a new `part-NNNNN.parquet`, never written over
 
 ### Quick Examples
 

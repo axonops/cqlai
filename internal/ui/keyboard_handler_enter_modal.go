@@ -37,13 +37,14 @@ func (m *MainModel) answerModal(choice int) (*MainModel, tea.Cmd) {
 		// Continue with normal command execution
 
 		// Add to history
-		m.commandHistory = append(m.commandHistory, command)
+		remembered := historyLine(command)
+		m.commandHistory = append(m.commandHistory, remembered)
 		m.historyIndex = -1
-		m.lastCommand = command
+		m.lastCommand = remembered
 
 		// Save to persistent history
 		if m.historyManager != nil {
-			if err := m.historyManager.SaveCommand(command); err != nil {
+			if err := m.historyManager.SaveCommand(remembered); err != nil {
 				// Log error but don't fail command execution
 				fmt.Fprintf(os.Stderr, "Warning: could not save command to history: %v\n", err)
 			}

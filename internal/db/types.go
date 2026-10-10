@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -12,10 +13,16 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
+// TimestampLayout is how a timestamp is shown and exported: as cqlsh shows it,
+// to the millisecond Cassandra keeps, in a form Cassandra reads back - so a
+// value copied from a cell into a WHERE clause finds the row it came from.
+// RFC3339 had no fraction, and dropped the milliseconds.
+const TimestampLayout = "2006-01-02 15:04:05.000-0700"
+
 // CQLTypeHandler provides standardized handling for all Cassandra/CQL data types
 type CQLTypeHandler struct {
 	// Configuration options
-	TimeFormat      string // Format for time display (default RFC3339)
+	TimeFormat      string // Format for time display (default TimestampLayout)
 	HexPrefix       string // Prefix for hex values (default "0x")
 	NullString      string // String to display for null values (default "null")
 	CollectionLimit int    // Max items to display in collections (0 = unlimited)
@@ -25,7 +32,7 @@ type CQLTypeHandler struct {
 // NewCQLTypeHandler creates a new type handler with default settings
 func NewCQLTypeHandler() *CQLTypeHandler {
 	return &CQLTypeHandler{
-		TimeFormat:      time.RFC3339,
+		TimeFormat:      TimestampLayout,
 		HexPrefix:       "0x",
 		NullString:      "null",
 		CollectionLimit: 0,
@@ -109,6 +116,11 @@ func (h *CQLTypeHandler) formatWithTypeInfo(val interface{}, typeInfo gocql.Type
 
 	// Complex types
 	case gocql.TypeUDT:
+		if udt, ok := typeInfo.(gocql.UDTTypeInfo); ok {
+			if m, ok := val.(map[string]interface{}); ok {
+				return h.formatUDTFields(m, udt)
+			}
+		}
 		return h.formatUDT(val)
 	case gocql.TypeTuple:
 		return h.formatTuple(val)
@@ -237,6 +249,10 @@ func (h *CQLTypeHandler) formatByType(val interface{}) string {
 		return h.formatUUIDList(v)
 	case []bool:
 		return h.formatBoolList(v)
+	case gocql.Duration:
+		return FormatCQLDuration(v)
+	case map[interface{}]interface{}:
+		return h.formatAnyMap(v)
 
 	// Default fallback
 	default:
@@ -427,7 +443,7 @@ func (h *CQLTypeHandler) formatDuration(val interface{}) string {
 	case time.Duration:
 		return v.String()
 	case gocql.Duration:
-		return fmt.Sprintf("%dmo%dd%dns", v.Months, v.Days, v.Nanoseconds)
+		return FormatCQLDuration(v)
 	default:
 		return fmt.Sprintf("%v", val)
 	}
@@ -490,9 +506,34 @@ func (h *CQLTypeHandler) formatMap(val interface{}) string {
 		return h.formatGenericMap(v)
 	case map[string]string:
 		return h.formatStringMap(v)
+	case map[interface{}]interface{}:
+		return h.formatAnyMap(v)
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// formatUDTFields is a UDT's fields in the order the type defines them.
+func (h *CQLTypeHandler) formatUDTFields(m map[string]interface{}, udt gocql.UDTTypeInfo) string {
+	pairs := make([]string, 0, len(udt.Elements))
+	for _, f := range udt.Elements {
+		pairs = append(pairs, fmt.Sprintf("%s: %s", f.Name, h.formatValueInCollection(m[f.Name])))
+	}
+	return "{" + strings.Join(pairs, ", ") + "}"
+}
+
+// formatAnyMap is a map whose keys are not all strings - a map<int, text>,
+// or one keyed by a blob, inet or collection - in the order of its keys.
+func (h *CQLTypeHandler) formatAnyMap(m map[interface{}]interface{}) string {
+	pairs := make([]string, 0, len(m))
+	for k, v := range m {
+		pairs = append(pairs, h.formatValueInCollection(k)+": "+h.formatValueInCollection(v))
+	}
+	sort.Strings(pairs)
+	if h.CollectionLimit > 0 && len(pairs) > h.CollectionLimit {
+		pairs = append(pairs[:h.CollectionLimit], "...")
+	}
+	return "{" + strings.Join(pairs, ", ") + "}"
 }
 
 func (h *CQLTypeHandler) formatUDT(val interface{}) string {
@@ -587,8 +628,14 @@ func (h *CQLTypeHandler) formatValueInCollection(val interface{}) string {
 	case string:
 		// Quote strings inside collections/UDTs
 		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+	case KeyText:
+		return string(v)
 	case map[string]interface{}:
 		return h.formatGenericMap(v)
+	case map[interface{}]interface{}:
+		return h.formatAnyMap(v)
+	case gocql.Duration:
+		return FormatCQLDuration(v)
 	case []interface{}:
 		return h.formatGenericListWithQuotes(v)
 	case []map[string]interface{}:
@@ -633,17 +680,21 @@ func (h *CQLTypeHandler) formatGenericMap(m map[string]interface{}) string {
 		return "{}"
 	}
 
+	// In the order of the keys: a Go map has none of its own, and the same
+	// row drawn twice came out in two orders.
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	pairs := make([]string, 0, len(m))
-	count := 0
-	for k, v := range m {
+	for count, k := range keys {
 		if h.CollectionLimit > 0 && count >= h.CollectionLimit {
 			pairs = append(pairs, "...")
 			break
 		}
 		// Format values with quotes for strings inside UDTs
-		formattedValue := h.formatValueInCollection(v)
-		pairs = append(pairs, fmt.Sprintf("%s: %s", k, formattedValue))
-		count++
+		pairs = append(pairs, fmt.Sprintf("%s: %s", k, h.formatValueInCollection(m[k])))
 	}
 	return "{" + strings.Join(pairs, ", ") + "}"
 }

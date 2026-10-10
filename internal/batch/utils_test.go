@@ -18,17 +18,17 @@ func TestStripComments(t *testing.T) {
 		{
 			name:     "line comment at end",
 			input:    "SELECT * FROM users -- this is a comment",
-			expected: "SELECT * FROM users ",
+			expected: "SELECT * FROM users",
 		},
 		{
 			name:     "double slash comment",
 			input:    "SELECT * FROM users // comment",
-			expected: "SELECT * FROM users ",
+			expected: "SELECT * FROM users",
 		},
 		{
 			name:     "block comment",
 			input:    "SELECT /* comment */ * FROM users",
-			expected: "SELECT  * FROM users",
+			expected: "SELECT   * FROM users",
 		},
 		{
 			name:     "dash inside single quotes - should NOT strip",
@@ -53,7 +53,7 @@ func TestStripComments(t *testing.T) {
 		{
 			name:     "comment after quoted string with dashes",
 			input:    "SELECT 'hello--world' FROM t -- real comment",
-			expected: "SELECT 'hello--world' FROM t ",
+			expected: "SELECT 'hello--world' FROM t",
 		},
 		{
 			name:     "multiline with comments",

@@ -5,9 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
-	"github.com/axonops/cqlai/internal/logger"
 )
 
 // outputCSV outputs data in CSV format
@@ -48,45 +46,17 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 	// Get column information from the iterator
 	cols := result.Iterator.Columns()
 
-	// Create scan destinations - use RawBytes for UDT columns
-	scanDest := make([]interface{}, len(cols))
-	udtColumns := make(map[int]*db.CQLTypeInfo)
-
-	// Get UDT decoder and registry if we might have UDT columns
-	var decoder *db.BinaryDecoder
-	var registry *db.UDTRegistry
-	if e.session != nil {
-		registry = e.session.GetUDTRegistry()
-		decoder = db.NewBinaryDecoder(registry)
-	}
-
 	// Get the current keyspace for UDT lookups
 	currentKeyspace := result.Keyspace
 	if currentKeyspace == "" && e.sessionManager != nil {
 		currentKeyspace = e.sessionManager.CurrentKeyspace()
 	}
 
-	for i, col := range cols {
-		if col.TypeInfo.Type() == gocql.TypeUDT {
-			scanDest[i] = new(db.RawBytes)
-
-			// Try to get the full type string from column types if available
-			if i < len(result.ColumnTypes) {
-				typeStr := result.ColumnTypes[i]
-				if typeStr != "" && typeStr != "udt" {
-					// Parse the type string to get the UDT info
-					parsedType, err := db.ParseCQLType(typeStr)
-					if err == nil && parsedType != nil {
-						udtColumns[i] = parsedType
-					}
-				}
-			}
-		} else {
-			// Not *interface{}: gocql panics on a NULL there, and silently
-			// stores the previous row's zero value once it has one.
-			scanDest[i] = db.NewScanDest(col.TypeInfo)
-		}
-	}
+	// The same reading of a row as JSON output's: a NULL is nil, a tuple is
+	// one value read from a destination for each of its elements, and a UDT
+	// is decoded from its bytes.
+	decoder := e.session.NewRowDecoder(cols, result.ColumnTypes, currentKeyspace)
+	handler := db.NewCQLTypeHandler()
 
 	// Precompute column name to index map to avoid O(cols^2) lookup per row
 	columnIndexMap := make(map[string]int, len(result.ColumnNames))
@@ -101,48 +71,26 @@ func (e *Executor) outputStreamingCSV(ctx context.Context, result db.StreamingQu
 			csvWriter.Flush()
 			return nil
 		default:
-			if !result.Iterator.Scan(scanDest...) {
+			if !result.Iterator.Scan(decoder.Dest()...) {
 				csvWriter.Flush()
 				return result.Iterator.Close()
 			}
 
-			// Convert row to string array
+			// Convert row to string array; a NULL is an empty field.
+			values := decoder.Row()
 			row := make([]string, len(result.ColumnNames))
-			for i, col := range cols {
-				colName := col.Name
-				colIdx, found := columnIndexMap[colName]
+			for _, col := range cols {
+				colIdx, found := columnIndexMap[col.Name]
 				if !found {
 					continue
 				}
-
-				if udtTypeInfo, hasUDT := udtColumns[i]; hasUDT {
-					// Handle UDT column
-					rawBytes := scanDest[i].(*db.RawBytes)
-					if rawBytes != nil && *rawBytes != nil && decoder != nil {
-						// Determine keyspace
-						keyspace := udtTypeInfo.Keyspace
-						if keyspace == "" {
-							keyspace = currentKeyspace
-						}
-
-						decodedValue, err := decoder.Decode([]byte(*rawBytes), udtTypeInfo, keyspace)
-						if err == nil {
-							row[colIdx] = db.FormatValue(decodedValue)
-						} else {
-							logger.DebugfToFile("batch", "Failed to decode UDT for %s: %v", colName, err)
-							row[colIdx] = db.FormatValue(*rawBytes)
-						}
-					} else {
-						row[colIdx] = ""
-					}
-				} else {
-					// Regular column
-					val := db.ScanValue(scanDest[i])
-					if val == nil {
-						row[colIdx] = ""
-					} else {
-						row[colIdx] = db.FormatValue(val)
-					}
+				switch val := values[col.Name]; {
+				case val == nil:
+					row[colIdx] = ""
+				case col.TypeInfo != nil:
+					row[colIdx] = handler.FormatValue(val, col.TypeInfo)
+				default:
+					row[colIdx] = db.FormatValue(val)
 				}
 			}
 

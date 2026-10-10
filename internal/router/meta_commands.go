@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
@@ -23,10 +22,12 @@ type MetaCommandHandler struct {
 	session                 *db.Session
 	sessionManager          *session.Manager
 	autoSaveDir             string
-	lastAutoSaved           string // the file the last query went to, for the message
-	autoSaveCount           int    // which query this is, so two in a second do not collide
-	openForCommand          string // the query the open file belongs to
-	autoSaveDepth           int    // nested write calls sharing one file
+	lastAutoSaved           string          // the file the last query went to, for the message
+	autoSaveCount           int             // which query this is, so two in a second do not collide
+	jsonRecords             int             // records in the open JSON file: a comma goes between them, not before the first
+	sourcing                map[string]bool // the SOURCE files being run, so one that sources itself is refused
+	openForCommand          string          // the query the open file belongs to
+	autoSaveDepth           int             // nested write calls sharing one file
 	captureOutput           io.WriteCloser
 	captureFormat           string // "text", "json", "csv", or "parquet"
 	csvWriter               *csv.Writer
@@ -48,12 +49,27 @@ func NewMetaCommandHandler(session *db.Session, sessionMgr *session.Manager) *Me
 }
 
 // HandleMetaCommand processes meta commands that aren't CQL
+// needsConnection is the shell commands that act on the connection.
+var needsConnection = map[string]bool{
+	"CONSISTENCY": true, "SHOW": true, "TRACING": true, "PAGING": true,
+	"AUTOFETCH": true, "SOURCE": true, "COPY": true,
+}
+
+// notConnected is what one of them says when there is no connection.
+const notConnected = "Not connected: FILE > CONNECT, or Alt+F then C, to connect."
+
 func (h *MetaCommandHandler) HandleMetaCommand(command string) interface{} {
 	upperCommand := strings.ToUpper(strings.TrimSpace(command))
 	parts := strings.Fields(upperCommand)
 
 	if len(parts) == 0 {
 		return ""
+	}
+
+	// These act on the connection, and with none there is nothing to act on:
+	// they used to reach into a session that was not there and stop cqlai.
+	if needsConnection[parts[0]] && (h.session == nil || h.session.Session == nil) {
+		return notConnected
 	}
 
 	switch parts[0] {
@@ -79,7 +95,7 @@ func (h *MetaCommandHandler) HandleMetaCommand(command string) interface{} {
 	case "COPY":
 		return h.handleCopy(command)
 	case "HELP":
-		return h.handleHelp()
+		return h.handleHelp(command)
 	default:
 		return fmt.Sprintf("Unknown meta command: %s", parts[0])
 	}
@@ -319,14 +335,30 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 		}
 	}
 
+	// A file that sources itself, directly or through another, would run
+	// until the stack ran out.
+	key := filename
+	if abs, err := filepath.Abs(filename); err == nil {
+		key = abs
+	}
+	if h.sourcing[key] {
+		return fmt.Sprintf("Error: %s is already being run: a SOURCE file cannot source itself", filename)
+	}
+	if h.sourcing == nil {
+		h.sourcing = map[string]bool{}
+	}
+	h.sourcing[key] = true
+	defer delete(h.sourcing, key)
+
 	// Read the file
 	content, err := os.ReadFile(filename) // #nosec G304 G703 - User-provided source filename
 	if err != nil {
 		return fmt.Sprintf("Error reading file: %v", err)
 	}
 
-	// Split into statements (simple split by semicolon)
-	statements := strings.Split(string(content), ";")
+	// Split as the shell splits what is typed: a semicolon in a string or a
+	// comment does not end a statement, and a BATCH ends at APPLY BATCH;.
+	statements := SplitStatements(string(content))
 
 	results := []string{}
 	successCount := 0
@@ -339,7 +371,7 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 		}
 
 		// Execute the statement
-		result := ProcessCommand(stmt+";", h.session, h.sessionManager)
+		result := ProcessCommand(stmt, h.session, h.sessionManager)
 		logger.DebugfToFile("SOURCE", "Result type for '%s': %T", stmt, result)
 
 		// Check if it's an error
@@ -385,7 +417,7 @@ func (h *MetaCommandHandler) handleSource(command string) interface{} {
 					// Fetch rows from iterator
 					for {
 						row := make(map[string]interface{})
-						if !v.Iterator.MapScan(row) {
+						if !db.ScanRow(v.Iterator, row) {
 							break
 						}
 
@@ -472,43 +504,19 @@ func (h *MetaCommandHandler) executeBatchWithValues(entries []batchEntry) int {
 	return 0
 }
 
-// getTableColumns retrieves column names for a table
+// getTableColumns is a table's column names in the order SELECT * and COPY TO
+// give them, each written as CQL reads it back.
 func (h *MetaCommandHandler) getTableColumns(table string) []string {
-	// Parse table name (could be keyspace.table)
-	parts := strings.Split(table, ".")
-	var keyspace, tableName string
-
-	if len(parts) == 2 {
-		keyspace = parts[0]
-		tableName = parts[1]
-	} else {
-		// Use current keyspace
-		keyspace = h.sessionManager.CurrentKeyspace()
-		if keyspace == "" {
-			return []string{}
-		}
-		tableName = parts[0]
+	columns, err := h.tableColumnsInOrder(table)
+	if err != nil {
+		logger.DebugfToFile("getTableColumns", "%s: %v", table, err)
+		return nil
 	}
-
-	// Build query with values inline
-	query := fmt.Sprintf(`SELECT column_name FROM system_schema.columns
-	          WHERE keyspace_name = '%s' AND table_name = '%s'
-	          ORDER BY position`, keyspace, tableName)
-
-	result := h.session.ExecuteCQLQuery(query)
-
-	switch v := result.(type) {
-	case db.QueryResult:
-		columns := make([]string, 0, len(v.Data))
-		for _, row := range v.Data {
-			if len(row) > 0 {
-				columns = append(columns, row[0])
-			}
-		}
-		return columns
-	default:
-		return []string{}
+	names := make([]string, len(columns))
+	for i, c := range columns {
+		names[i] = db.QuoteName(c.name)
 	}
+	return names
 }
 
 // getTableColumnTypes retrieves a map of column name to CQL type (lowercased)
@@ -555,36 +563,6 @@ func (h *MetaCommandHandler) getTableColumnTypes(table string) map[string]string
 		logger.DebugfToFile("getTableColumnTypes", "schema lookup failed: %v", err)
 	}
 	return types
-}
-
-// parseValueForBinding converts a CSV string value to the appropriate Go type
-// for gocql prepared statement binding
-func (h *MetaCommandHandler) parseValueForBinding(value string, _ string, _ string) interface{} {
-	// Handle empty string as empty string, not null
-	if value == "" {
-		return ""
-	}
-
-	// Try to parse as integer
-	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
-		return i
-	}
-
-	// Try to parse as float
-	if f, err := strconv.ParseFloat(value, 64); err == nil {
-		return f
-	}
-
-	// Try to parse as boolean
-	if value == "true" {
-		return true
-	}
-	if value == "false" {
-		return false
-	}
-
-	// Return as string (gocql will handle UUIDs, timestamps, etc.)
-	return value
 }
 
 // IsExpandMode returns whether expand mode is on

@@ -124,7 +124,7 @@ Animámoste a **probar CQLAI hoxe** e axudar a dar forma ao seu desenvolvemento.
 - **Xeración de Consultas Potenciada por IA (Opcional):**
     - Conversión de linguaxe natural a CQL usando provedores de IA ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Synthetic](https://synthetic.new/)).
     - Xeración de consultas con conciencia de esquema e contexto automático.
-    - Vista previa segura e confirmación antes da execución.
+    - Vista previa segura e confirmación antes da execución. A xanela co CQL xerado ábrese en `Edit`, que pon a sentenza no prompt para lela: `Enter` só nunca a executa.
     - Soporte para operacións complexas incluíndo DDL e DML.
     - **Require configuración de clave API** - non necesaria para a funcionalidade principal.
 - **Configuración:**
@@ -208,7 +208,7 @@ cqlai [opcións]
 | `--no-confirm` | | Desactivar confirmacións para comandos destrutivos (DROP, DELETE, TRUNCATE) |
 | `--connect-timeout <segundos>` | | Tempo de espera de conexión (predeterminado: 10) |
 | `--request-timeout <segundos>` | | Tempo de espera de petición (predeterminado: 10) |
-| `--debug` | | Habilitar rexistro de depuración |
+| `--debug` | | Habilitar rexistro de depuración. Os contrasinais - en `cqlshrc`, e en `CREATE`/`ALTER ROLE` - escríbense como `***` |
 
 *\*Nota: O contrasinal pode proporcionarse de tres maneiras:*
 1. *Liña de comandos con `-p` (non recomendado - visible na lista de procesos)*
@@ -253,6 +253,13 @@ cqlai -e "SELECT * FROM users;" --format csv --no-header
 # Controlar tamaño de paxinación
 cqlai -e "SELECT * FROM large_table;" --page-size 50
 ```
+
+Unha sentenza que falla detén a execución cun código de saída distinto de
+cero: un erro de Cassandra, e tamén un que rexeita o propio CQLAI, como unha
+orde mal escrita ou un `DESCRIBE` dunha táboa que non existe. Un arquivo ou
+unha entrada por tubaxe divídese en sentenzas igual que a shell divide o que
+escribes: un punto e coma dentro dunha cadea ou dun comentario non remata unha
+sentenza, e un `BEGIN BATCH` remata en `APPLY BATCH;`.
 
 ### Comandos Básicos
 
@@ -349,6 +356,26 @@ persoal. Tab completa, `..` sobe un nivel, e a roda despraza a lista.
 esquerda, e a definición do seleccionado á dereita. Ao premer nun keyspace
 amósase a súa definición e desprégase; ao premer de novo prégase. Ao premer
 nunha táboa amósase o seu `CREATE TABLE`.
+
+Un keyspace despregado ten un grupo por cada tipo de obxecto que contén:
+táboas, vistas materializadas, índices, tipos, funcións, agregados e
+disparadores, con cantos hai de cada un. Un tipo do que non hai ningún non
+aparece. As táboas están despregadas, así que seguen onde estaban; os demais
+grupos desprégase igual ca un keyspace. Ao seleccionar un obxecto amósase a
+súa sentenza `CREATE`, tal como a dá `DESCRIBE`. O panel dun grupo lista o que
+contén.
+
+```
+▾ shop
+  ▾ Tables (2)
+      customers
+      orders
+  ▸ Materialized views (1)
+  ▸ Indexes (2)
+  ▸ Types (1)
+  ▸ Functions (1)
+  ▸ Aggregates (1)
+```
 
 As frechas percorren a árbore (dereita desprega, esquerda prega) e a roda
 despraza o panel que estea baixo o punteiro. O resto segue indo ao prompt, así
@@ -630,6 +657,16 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   -- CHUNKSIZE = 10000       -- Filas por fragmento para Parquet
   ```
 
+  Nun arquivo CSV cada valor escríbese como o escribe Cassandra: un timestamp
+  cos seus milisegundos e a súa zona (`2024-01-02 03:04:05.678+0000`), unha
+  data como `2024-02-29`, unha duración como `1h30m`, un blob como `0x...`.
+  Unha lista, un set, un map, unha tupla ou un tipo definido polo usuario
+  escríbense como JSON (`["a", "b"]`, `{"x": 1}`). NULL escríbese como
+  `NULLVAL` (`null` agás que se configure), así que unha cadea baleira segue
+  baleira e non se le de volta como NULL. A fila de cabeceira ten só os nomes
+  das columnas. Unha lectura que falla á metade, ou un arquivo que non se pode
+  escribir, infórmase como erro, non como unha exportación rematada.
+
 - **COPY FROM** - Importar datos CSV ou Parquet a táboa
   ```sql
   -- Importación básica desde arquivo CSV
@@ -668,6 +705,12 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   -- ENCODING = 'UTF8'       -- Codificación do arquivo
   -- QUOTE = '"'             -- Carácter de comiñas para cadeas
   ```
+
+  Cassandra le cada campo CSV como o tipo da súa columna, así que `02134`
+  nunha columna de texto segue sendo texto, e os timestamps, blobs, UUIDs,
+  duracións, coleccións, tuplas e tipos definidos polo usuario lense tal como
+  os escribe `COPY TO`. As columnas que non están no arquivo déixanse como
+  están, non se poñen a NULL.
 
 - **AUTOSAVE** - Gardar a saída de cada consulta nun directorio, segundo se executa
   ```sql
@@ -718,9 +761,13 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   SOURCE 'schema.cql'           -- Executar script
   SOURCE '/ruta/a/script.cql'   -- Ruta absoluta
   ```
+  O arquivo divídese en sentenzas igual que a shell divide o que escribes: un
+  punto e coma dentro dunha cadea ou dun comentario non remata unha sentenza, e
+  un `BEGIN BATCH` execútase enteiro. Rexéitase un arquivo que se carga a si
+  mesmo, directamente ou a través doutro.
 
 #### Axuda
-- **HELP** - Mostrar axuda de comandos
+- **HELP** - Abrir a xanela de axuda, igual ca `F1`. `HELP INSERT`, `HELP CREATE TABLE` ou calquera outra orde amosa como se escribe, cun exemplo e unha ligazón á súa páxina na [referencia CQL de AxonOps](https://axonops.com/docs/data-platforms/cassandra/cql/). Arrastre sobre o texto para copialo. Ctrl+clic na ligazón ábrea no navegador. Se non se pode abrir un navegador, por exemplo por ssh, a ligazón cópiase
   ```sql
   HELP                 -- Mostrar todos os comandos
   HELP DESCRIBE        -- Axuda para comando específico
@@ -1403,6 +1450,15 @@ que pida o modelo.
 - **Columnas agochadas.** Os seus valores volven como `[redacted]`. Nunha táboa
   con columnas agochadas, un `SELECT` ten que usar `*` ou nomes de columna, sen
   `JSON`, alias nin funcións, e sen condicións sobre esas columnas.
+- **As vistas materializadas seguen a súa táboa.** Unha vista contén as filas
+  da súa táboa base, así que unha entrada deny ou un agochamento da táboa vale
+  para cada vista dela.
+- **Axustes secretos.** En `system_views.settings`, o valor de calquera axuste
+  cuxo nome contén `password`, `secret` ou `credential` volve como
+  `[redacted]`, tanto desde `query` como desde `node_status`. Un `SELECT` aí
+  ten que usar `*` ou nomes de columna, e só pode filtrar por `name`.
+- **Permisos sobre o agochado.** `list_roles` omite un permiso sobre un
+  keyspace ou unha táboa agochada, que o nomearía.
 - **Escaneos.** `ALLOW FILTERING` e os agregados entre particións rexéitanse
   agás que se permitan.
 - **Páxinas.** Unha consulta devolve 100 filas cada vez agás que `Page size`
@@ -1410,8 +1466,10 @@ que pida o modelo.
   tal cal. Con `Auto fetch` marcado (`"autoFetch": true`), unha consulta
   devolve todas as filas nunha chamada, lendo ela mesma as páxinas. Nunha
   táboa grande poden ser moitas.
-- **Límites.** Unha chamada á vez, ata 60 por minuto. Cada páxina lida ten o
-  tempo de espera da petición. Os valores longos recórtanse.
+- **Límites.** Unha chamada á vez, ata 60 por minuto. Ler un recurso ou un
+  prompt conta como unha chamada, e un cambio do límite en PREFERENCES vale
+  desde a seguinte chamada. Cada páxina lida ten o tempo de espera da petición.
+  Os valores longos recórtanse.
 - **Sen credenciais.** Ningunha ferramenta recibe nin devolve un usuario ou un
   contrasinal.
 - **Esta máquina agás que se configure outra, e nunca unha páxina web.** A
@@ -1424,8 +1482,9 @@ que pida o modelo.
   as consultas do modelo nunca cambian a consistencia nin o trazado da túa
   shell.
 - **Rexistro de auditoría.** Cada chamada escríbese en `~/.cassandra/cqlai_mcp_audit.log`,
-  rexeitamentos incluídos, sen os valores das sentenzas e sen filas. Só ti
-  podes lelo.
+  rexeitamentos incluídos. As sentenzas rexístranse cos seus valores cambiados
+  por `?` - cadeas, números, UUIDs e booleanos - e a un erro que repite un
+  valor quítaselle. Nunca se rexistra unha fila. Só ti podes lelo.
 
 O control máis forte é o rol de Cassandra co que entra CQLAI. Dálle á conexión
 do servidor MCP un rol propio que só poida ler o necesario:
@@ -1449,9 +1508,10 @@ CQLAI proporciona soporte integral para o formato Apache Parquet, facéndoo idea
 
 - **Almacenamento Eficiente**: Formato columnar con excelente compresión (50-80% máis pequeno que CSV)
 - **Análise Rápida**: Optimizado para consultas analíticas en Spark, Presto e outros motores
-- **Preservación de Tipos**: Mantén tipos de datos de Cassandra incluíndo coleccións e UDTs
+- **Preservación de Tipos**: Mantén tipos de datos de Cassandra incluíndo coleccións e UDTs. Un `decimal`, `varint` ou `duration` escríbese como texto - `-12.345`, `1mo2d1h30m` - para conservar cada díxito, mes e día, e `COPY FROM` leo de volta como o seu tipo
 - **Listo para Aprendizaxe Automática**: Compatibilidade directa con pandas, PyArrow e frameworks de ML
-- **Soporte de Streaming**: Streaming eficiente en memoria para conxuntos de datos grandes
+- **Soporte de Streaming**: Streaming eficiente en memoria para conxuntos de datos grandes: as filas escríbense no arquivo segundo se len, non se gardan ata o final
+- **Exportacións Particionadas**: Calquera número de valores de partición. Se se pecha o arquivo dunha partición para deixar sitio a outra, continúase nun novo `part-NNNNN.parquet`, nunca se sobrescribe
 
 ### Exemplos Rápidos
 

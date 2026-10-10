@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"reflect"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
@@ -34,6 +35,13 @@ func NewScanDest(info gocql.TypeInfo) interface{} {
 		return new(interface{})
 	}
 
+	// A type gocql cannot make a Go value for - a map keyed by a blob, an
+	// inet or a collection, anywhere inside it - is read as bytes and decoded
+	// here. Left to gocql, it panicked and took the shell down.
+	if !gocqlCanHold(info) {
+		return &rawValue{info: info}
+	}
+
 	// gocql populates a UDT only when the destination is a map, and it already
 	// leaves that map nil for a NULL, so there is nothing to fix here.
 	if info.Type() == gocql.TypeUDT {
@@ -53,6 +61,17 @@ func NewScanDest(info gocql.TypeInfo) interface{} {
 func ScanValue(dest interface{}) interface{} {
 	if dest == nil {
 		return nil
+	}
+
+	if raw, ok := dest.(*rawValue); ok {
+		if raw.data == nil {
+			return nil
+		}
+		value, err := decodeTyped(raw.info, raw.data)
+		if err != nil {
+			return fmt.Sprintf("0x%x", raw.data)
+		}
+		return value
 	}
 
 	if udt, ok := dest.(*map[string]interface{}); ok {

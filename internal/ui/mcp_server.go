@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/axonops/cqlai/internal/mcp"
+	"github.com/axonops/cqlai/internal/router"
 )
 
 // The MCP server inside the app, as the app shows it.
@@ -91,24 +92,42 @@ func (m *MainModel) showProposal(p mcpProposalMsg) (*MainModel, tea.Cmd) {
 		}
 	}
 
-	if strings.TrimSpace(m.input.Value()) == "" {
-		m.input.SetValue(p.Statement)
-		m.input.CursorEnd()
-		m.proposed = p.Statement
-		b.WriteString("\n\nIt is in the prompt. Read it, and press Enter to run it, or clear it.")
-	} else {
+	// The prompt is one line: it turns a newline into a space, and on one
+	// line a comment would take everything after it. So it gets the
+	// statement without its comments, on one line - and that is what is
+	// remembered as the proposal, so Enter on it is recognised and confirmed.
+	prompt := proposalLine(p.Statement)
+	switch {
+	case strings.TrimSpace(m.input.Value()) != "":
 		b.WriteString("\n\nThe prompt has text in it, so the statement is only here: copy it to run it.")
+	case m.input.CharLimit > 0 && len([]rune(prompt)) > m.input.CharLimit:
+		// The prompt would cut it short, and a statement cut short is not one
+		// to leave a press of Enter away.
+		b.WriteString("\n\nIt is too long for the prompt, so it is only here: copy it to run it.")
+	default:
+		m.input.SetValue(prompt)
+		m.input.CursorEnd()
+		m.proposed = prompt
+		b.WriteString("\n\nIt is in the prompt. Read it, and press Enter to run it, or clear it.")
 	}
 	updated, _ := m.report(b.String())
 	return updated, waitForProposal(m.mcpHost)
 }
 
 // isProposal reports whether a command is the change the MCP client put in
-// the prompt, as it was put there.
+// the prompt, as it was put there. Spacing is not compared: the prompt can
+// change it, and a proposal that slipped past this would run unconfirmed.
 func (m *MainModel) isProposal(command string) bool {
 	if m.proposed == "" {
 		return false
 	}
-	same := func(s string) string { return strings.TrimRight(strings.TrimSpace(s), "; \t\n") }
+	same := func(s string) string { return strings.TrimRight(strings.Join(strings.Fields(s), " "), "; ") }
 	return same(command) == same(m.proposed)
+}
+
+// proposalLine is a statement as it goes into the prompt: without its
+// comments, on one line. Only what the prompt changes anyway - a newline or a
+// tab to a space - so the spacing inside a string is left as it was proposed.
+func proposalLine(statement string) string {
+	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "\t", " ").Replace(router.StripComments(statement))
 }

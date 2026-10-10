@@ -12,8 +12,9 @@ import (
 	"github.com/axonops/cqlai/internal/logger"
 )
 
-// The SCHEMA view: the cluster's keyspaces and tables as a tree, with the
-// definition of whatever is selected beside it.
+// The SCHEMA view: the cluster's keyspaces as a tree, each holding its tables,
+// materialized views, indexes, types, functions, aggregates and triggers, one
+// group of each, with the definition of whatever is selected beside it.
 //
 // Reading a table's definition meant typing DESCRIBE TABLE and knowing the name
 // already. What you usually want first is to look - which keyspaces are there,
@@ -22,18 +23,40 @@ import (
 // The definitions are the ones DESCRIBE produces, through the same calls, so
 // the pane and the command cannot come to disagree about what a table is.
 
-// schemaRow is one line of the tree: a keyspace, or a table inside one.
+// schemaRow is one line of the tree: a keyspace, a group of one kind of object
+// inside it, or one object.
 type schemaRow struct {
 	keyspace string
-	table    string // empty on a keyspace row
+	kind     string // "" on a keyspace row; db.KindTables and the others below it
+	table    string // the object's name; empty on a keyspace or a group row
 }
+
+func (r schemaRow) isKeyspace() bool { return r.kind == "" }
+func (r schemaRow) isGroup() bool    { return r.kind != "" && r.table == "" }
 
 // key names a row, for the definitions kept against it.
 func (r schemaRow) key() string {
-	if r.table == "" {
+	switch {
+	case r.isKeyspace():
 		return r.keyspace
+	case r.isGroup():
+		return r.keyspace + " " + r.kind
+	case r.kind == db.KindTables:
+		return r.keyspace + "." + r.table
 	}
-	return r.keyspace + "." + r.table
+	return r.kind + " " + r.keyspace + "." + r.table
+}
+
+// schemaKindLabels is what a group is called in the tree, and what one of it
+// is called over its definition.
+var schemaKindLabels = map[string][2]string{
+	db.KindTables:     {"Tables", "TABLE"},
+	db.KindViews:      {"Materialized views", "MATERIALIZED VIEW"},
+	db.KindIndexes:    {"Indexes", "INDEX"},
+	db.KindTypes:      {"Types", "TYPE"},
+	db.KindFunctions:  {"Functions", "FUNCTION"},
+	db.KindAggregates: {"Aggregates", "AGGREGATE"},
+	db.KindTriggers:   {"Triggers", "TRIGGER"},
 }
 
 // schemaBrowser is the state of the view.
@@ -42,6 +65,12 @@ type schemaBrowser struct {
 	keyspaces []string
 	tables    map[string][]string
 	expanded  map[string]bool
+
+	// objects is what a keyspace holds besides its tables, by kind, fetched
+	// with its tables. groups says which groups are open, by group row key;
+	// one not in it is open if it is the tables, and closed otherwise.
+	objects map[string]map[string][]string
+	groups  map[string]bool
 
 	// definitions are kept as they are fetched. A definition is a round trip to
 	// the cluster, and walking back up a tree should not repeat it.
@@ -84,8 +113,8 @@ func (s schemaBrowser) filtering() bool {
 	return s.filterInput.Focused()
 }
 
-// rows is the tree as it stands: every keyspace, and the tables of the ones
-// that are open.
+// rows is the tree as it stands: every keyspace, the groups of the ones that
+// are open, and what is in the groups that are open.
 //
 // Drawing, clicking and moving the selection all come from this, so a click
 // cannot land on a different row from the one drawn there.
@@ -96,24 +125,67 @@ func (s schemaBrowser) rows() []schemaRow {
 
 	rows := make([]schemaRow, 0, len(s.keyspaces)*2)
 	for _, keyspace := range s.keyspaces {
-		rows = append(rows, schemaRow{keyspace: keyspace})
-		if !s.expanded[keyspace] {
+		rows = append(rows, s.keyspaceRows(keyspace)...)
+	}
+	return rows
+}
+
+// keyspaceRows is a keyspace's row, and below it, when it is open, its groups
+// and what is in the open ones.
+func (s schemaBrowser) keyspaceRows(keyspace string) []schemaRow {
+	rows := []schemaRow{{keyspace: keyspace}}
+	if !s.expanded[keyspace] {
+		return rows
+	}
+	for _, kind := range s.kindsOf(keyspace) {
+		rows = append(rows, schemaRow{keyspace: keyspace, kind: kind})
+		if !s.groupOpen(keyspace, kind) {
 			continue
 		}
-		for _, table := range s.tables[keyspace] {
-			rows = append(rows, schemaRow{keyspace: keyspace, table: table})
+		for _, name := range s.names(keyspace, kind) {
+			rows = append(rows, schemaRow{keyspace: keyspace, kind: kind, table: name})
 		}
 	}
 	return rows
 }
 
+// kindsOf is the kinds a keyspace has any of, tables first: a group with
+// nothing in it is not drawn.
+func (s schemaBrowser) kindsOf(keyspace string) []string {
+	var kinds []string
+	for _, kind := range append([]string{db.KindTables}, db.SchemaObjectKinds...) {
+		if len(s.names(keyspace, kind)) > 0 {
+			kinds = append(kinds, kind)
+		}
+	}
+	return kinds
+}
+
+// names is what a keyspace has of one kind.
+func (s schemaBrowser) names(keyspace, kind string) []string {
+	if kind == db.KindTables {
+		return s.tables[keyspace]
+	}
+	return s.objects[keyspace][kind]
+}
+
+// groupOpen reports whether a group shows what is in it. The tables are open
+// until closed, so opening a keyspace shows them as it always has; the rest
+// are closed until opened.
+func (s schemaBrowser) groupOpen(keyspace, kind string) bool {
+	if open, set := s.groups[schemaRow{keyspace: keyspace, kind: kind}.key()]; set {
+		return open
+	}
+	return kind == db.KindTables
+}
+
 // filteredRows is the tree narrowed to what the filter names.
 //
-// A keyspace whose name matches is listed as it would be anyway, its tables
-// with it when it is open. A keyspace that does not match is listed only for
-// the tables of it that do, and those are shown whether it is open or not:
-// they are what was searched for, and making someone open the keyspace to see
-// them would hide the answer behind a click.
+// A keyspace whose name matches is listed as it would be anyway. A keyspace
+// that does not match is listed only for the objects of it that do, under
+// their groups, and those are shown whether the keyspace and the group are
+// open or not: they are what was searched for, and making someone open them
+// to see it would hide the answer behind a click.
 func (s schemaBrowser) filteredRows() []schemaRow {
 	want := strings.ToLower(s.filter)
 	matches := func(name string) bool { return strings.Contains(strings.ToLower(name), want) }
@@ -121,19 +193,21 @@ func (s schemaBrowser) filteredRows() []schemaRow {
 	var rows []schemaRow
 	for _, keyspace := range s.keyspaces {
 		if matches(keyspace) {
-			rows = append(rows, schemaRow{keyspace: keyspace})
-			if s.expanded[keyspace] {
-				for _, table := range s.tables[keyspace] {
-					rows = append(rows, schemaRow{keyspace: keyspace, table: table})
-				}
-			}
+			rows = append(rows, s.keyspaceRows(keyspace)...)
 			continue
 		}
 
 		var found []schemaRow
-		for _, table := range s.tables[keyspace] {
-			if matches(table) {
-				found = append(found, schemaRow{keyspace: keyspace, table: table})
+		for _, kind := range s.kindsOf(keyspace) {
+			var hits []schemaRow
+			for _, name := range s.names(keyspace, kind) {
+				if matches(name) {
+					hits = append(hits, schemaRow{keyspace: keyspace, kind: kind, table: name})
+				}
+			}
+			if len(hits) > 0 {
+				found = append(found, schemaRow{keyspace: keyspace, kind: kind})
+				found = append(found, hits...)
 			}
 		}
 		if len(found) > 0 {
@@ -144,11 +218,15 @@ func (s schemaBrowser) filteredRows() []schemaRow {
 	return rows
 }
 
-// firstMatch is the first row whose own name the filter is in - the table or
-// keyspace being looked for, rather than the keyspace listed above it.
+// firstMatch is the first row whose own name the filter is in - the object or
+// keyspace being looked for, rather than the keyspace or group listed above
+// it.
 func (s schemaBrowser) firstMatch() int {
 	want := strings.ToLower(s.filter)
 	for i, row := range s.rows() {
+		if row.isGroup() {
+			continue
+		}
 		name := row.keyspace
 		if row.table != "" {
 			name = row.table
@@ -215,17 +293,20 @@ func (m *MainModel) openSchema() (*MainModel, tea.Cmd) {
 // refreshSchema drops everything and asks the cluster again.
 func (m *MainModel) refreshSchema() (*MainModel, tea.Cmd) {
 	open := m.schema.expanded
+	groups := m.schema.groups
 	selected := m.schema.selected
 	m.schema = schemaBrowser{}
 	m.loadSchema()
 
-	// The keyspaces that were open stay open, so asking for the schema again
-	// does not close the tree you were reading.
+	// The keyspaces and groups that were open stay open, so asking for the
+	// schema again does not close the tree you were reading.
 	for keyspace, wasOpen := range open {
 		if wasOpen {
-			m.schema.expanded[keyspace] = true
-			m.schema.tables[keyspace] = m.tablesOf(keyspace)
+			m.openKeyspace(keyspace)
 		}
+	}
+	for key, isOpen := range groups {
+		m.schema.groups[key] = isOpen
 	}
 
 	// And the selection stays where it was, as far as the tree still goes.
@@ -241,6 +322,8 @@ func (m *MainModel) loadSchema() {
 	m.schema.loaded = true
 	m.schema.tables = map[string][]string{}
 	m.schema.expanded = map[string]bool{}
+	m.schema.objects = map[string]map[string][]string{}
+	m.schema.groups = map[string]bool{}
 	m.schema.definitions = map[string]string{}
 	m.schema.message = ""
 
@@ -261,8 +344,7 @@ func (m *MainModel) loadSchema() {
 		for i, keyspace := range m.schema.keyspaces {
 			if keyspace == current {
 				m.schema.selected = i
-				m.schema.expanded[keyspace] = true
-				m.schema.tables[keyspace] = m.tablesOf(keyspace)
+				m.openKeyspace(keyspace)
 				break
 			}
 		}
@@ -279,6 +361,69 @@ func (m *MainModel) tablesOf(keyspace string) []string {
 	names := m.tableChoices(keyspace)
 	m.schema.tables[keyspace] = names
 	return names
+}
+
+// objectsOf is what a keyspace holds besides its tables, fetched the first
+// time it is wanted.
+func (m *MainModel) objectsOf(keyspace string) map[string][]string {
+	if m.schema.objects == nil {
+		m.schema.objects = map[string]map[string][]string{}
+	}
+	if objects, ok := m.schema.objects[keyspace]; ok {
+		return objects
+	}
+	objects := map[string][]string{}
+	if m.connected() {
+		objects = m.session.KeyspaceObjects(keyspace)
+	}
+	m.schema.objects[keyspace] = objects
+	return objects
+}
+
+// loadAllSchemaNames fetches the names in every keyspace not yet opened, for
+// the filter to search: seven queries in all, however many keyspaces there
+// are, rather than seven for each and one more for each of their tables.
+func (m *MainModel) loadAllSchemaNames() {
+	missing := false
+	for _, keyspace := range m.schema.keyspaces {
+		_, haveTables := m.schema.tables[keyspace]
+		_, haveObjects := m.schema.objects[keyspace]
+		missing = missing || !haveTables || !haveObjects
+	}
+	if !missing || !m.connected() {
+		for _, keyspace := range m.schema.keyspaces {
+			m.tablesOf(keyspace)
+			m.objectsOf(keyspace)
+		}
+		return
+	}
+
+	tables, objects := m.session.AllSchemaNames()
+	if m.schema.tables == nil {
+		m.schema.tables = map[string][]string{}
+	}
+	if m.schema.objects == nil {
+		m.schema.objects = map[string]map[string][]string{}
+	}
+	for _, keyspace := range m.schema.keyspaces {
+		if _, ok := m.schema.tables[keyspace]; !ok {
+			m.schema.tables[keyspace] = tables[keyspace]
+		}
+		if _, ok := m.schema.objects[keyspace]; !ok {
+			found := objects[keyspace]
+			if found == nil || m.session.IsVirtualKeyspace(keyspace) {
+				found = map[string][]string{} // as objectsOf has it
+			}
+			m.schema.objects[keyspace] = found
+		}
+	}
+}
+
+// openKeyspace opens a keyspace, fetching what it holds the first time.
+func (m *MainModel) openKeyspace(keyspace string) {
+	m.schema.expanded[keyspace] = true
+	m.tablesOf(keyspace)
+	m.objectsOf(keyspace)
 }
 
 // showSchemaDetail puts the definition of the selected row in the right-hand
@@ -316,13 +461,27 @@ func (m *MainModel) showSchemaDetail() {
 // describeSchemaRow asks the cluster what something is.
 //
 // The same calls DESCRIBE makes: a keyspace is its whole schema, the way
-// DESCRIBE KEYSPACE gives it, and a table is its CREATE TABLE.
+// DESCRIBE KEYSPACE gives it, a table is its CREATE TABLE, and so on. A group
+// is the names in it, fetched already: walking past one with the arrows
+// should not fetch the definition of everything in it.
 func (m *MainModel) describeSchemaRow(row schemaRow) string {
+	if row.isGroup() {
+		return m.describeSchemaGroup(row)
+	}
 	if !m.connected() {
 		return "Not connected."
 	}
 
-	if row.table == "" {
+	if row.kind != "" && row.kind != db.KindTables {
+		text, err := m.session.DescribeSchemaObject(row.kind, row.keyspace, row.table)
+		if err != nil {
+			logger.DebugfToFile("Schema", "Describing %s: %v", row.key(), err)
+			return fmt.Sprintf("Cannot describe %s.%s: %v", row.keyspace, row.table, err)
+		}
+		return text
+	}
+
+	if row.isKeyspace() {
 		schema, err := m.session.DBDescribeFullSchema(m.sessionManager, row.keyspace)
 		if err != nil {
 			logger.DebugfToFile("Schema", "Describing keyspace %s: %v", row.keyspace, err)
@@ -359,6 +518,17 @@ func (m *MainModel) describeSchemaRow(row schemaRow) string {
 	return db.FormatTableCreateStatement(info, false)
 }
 
+// describeSchemaGroup is what a group holds, by name.
+func (m *MainModel) describeSchemaGroup(row schemaRow) string {
+	names := m.schema.names(row.keyspace, row.kind)
+	label := strings.ToLower(schemaKindLabels[row.kind][0])
+	lines := []string{fmt.Sprintf("%d %s in %s:", len(names), label, row.keyspace), ""}
+	for _, name := range names {
+		lines = append(lines, "    "+name)
+	}
+	return strings.Join(append(lines, "", "Select one to see its definition."), "\n")
+}
+
 // selectSchemaRow moves the selection and shows what it lands on.
 func (m *MainModel) selectSchemaRow(i int) (*MainModel, tea.Cmd) {
 	rows := m.schema.rows()
@@ -376,61 +546,84 @@ func (m *MainModel) moveSchemaSelection(n int) (*MainModel, tea.Cmd) {
 	return m.selectSchemaRow(m.schema.selected + n)
 }
 
-// toggleSchemaRow opens or closes a keyspace.
+// toggleSchemaRow opens or closes a keyspace or a group.
 //
-// A table has nothing to open, so pressing Enter on one shows it again - which
-// is what it does anyway, and is better than doing nothing.
+// An object has nothing to open, so pressing Enter on one shows it again -
+// which is what it does anyway, and is better than doing nothing.
 func (m *MainModel) toggleSchemaRow() (*MainModel, tea.Cmd) {
 	row, ok := m.schema.current()
-	if !ok || row.table != "" {
+	if !ok {
 		return m, nil
 	}
 
-	if m.schema.expanded[row.keyspace] {
+	switch {
+	case row.isGroup():
+		m.schema.setGroupOpen(row, !m.schema.groupOpen(row.keyspace, row.kind))
+	case !row.isKeyspace():
+	case m.schema.expanded[row.keyspace]:
 		m.schema.expanded[row.keyspace] = false
-		return m, nil
+	default:
+		m.openKeyspace(row.keyspace)
 	}
-
-	m.schema.expanded[row.keyspace] = true
-	m.tablesOf(row.keyspace)
 	return m, nil
 }
 
-// expandSchemaRow opens a keyspace, or steps into it when it is already open.
+func (s *schemaBrowser) setGroupOpen(row schemaRow, open bool) {
+	if s.groups == nil {
+		s.groups = map[string]bool{}
+	}
+	s.groups[row.key()] = open
+}
+
+// expandSchemaRow opens a keyspace or a group, or steps into it when it is
+// already open.
 func (m *MainModel) expandSchemaRow() (*MainModel, tea.Cmd) {
 	row, ok := m.schema.current()
-	if !ok || row.table != "" {
+	if !ok {
 		return m, nil
 	}
 
-	if !m.schema.expanded[row.keyspace] {
+	switch {
+	case row.isKeyspace() && !m.schema.expanded[row.keyspace]:
 		return m.toggleSchemaRow()
-	}
-	if len(m.schema.tables[row.keyspace]) > 0 {
+	case row.isKeyspace() && len(m.schema.kindsOf(row.keyspace)) > 0:
+		return m.moveSchemaSelection(1)
+	case row.isGroup() && !m.schema.groupOpen(row.keyspace, row.kind):
+		return m.toggleSchemaRow()
+	case row.isGroup():
 		return m.moveSchemaSelection(1)
 	}
 	return m, nil
 }
 
-// collapseSchemaRow closes a keyspace, or goes up to the one holding a table.
+// collapseSchemaRow closes a keyspace or a group, or goes up a level: from an
+// object to its group, and from a closed group to its keyspace.
 func (m *MainModel) collapseSchemaRow() (*MainModel, tea.Cmd) {
 	row, ok := m.schema.current()
 	if !ok {
 		return m, nil
 	}
 
-	if row.table != "" {
-		// Up to the keyspace it is in, which is where closing happens.
+	up := func(want schemaRow) (*MainModel, tea.Cmd) {
 		for i, r := range m.schema.rows() {
-			if r.keyspace == row.keyspace && r.table == "" {
+			if r == want {
 				return m.selectSchemaRow(i)
 			}
 		}
 		return m, nil
 	}
 
-	m.schema.expanded[row.keyspace] = false
-	return m, nil
+	switch {
+	case row.isKeyspace():
+		m.schema.expanded[row.keyspace] = false
+		return m, nil
+	case !row.isGroup():
+		return up(schemaRow{keyspace: row.keyspace, kind: row.kind})
+	case m.schema.groupOpen(row.keyspace, row.kind) && m.schema.filter == "":
+		m.schema.setGroupOpen(row, false)
+		return m, nil
+	}
+	return up(schemaRow{keyspace: row.keyspace})
 }
 
 // scrollSchemaDetail moves the right-hand pane.
@@ -460,7 +653,7 @@ func (m *MainModel) leaveAIConversation() {
 
 // lipglossWidthOf is the drawn width of a line, ignoring any colour in it.
 func lipglossWidthOf(line string) int {
-	return len([]rune(stripAnsi(line)))
+	return cellWidth(line)
 }
 
 // schemaOwnsKeys reports whether the tree should take the keys that move around
@@ -616,9 +809,7 @@ func (m *MainModel) connected() bool {
 // most of them unknown - and a table that has not been fetched cannot be found
 // by its name. So they are all fetched now, once; tablesOf keeps them.
 func (m *MainModel) startSchemaFilter() (*MainModel, tea.Cmd) {
-	for _, keyspace := range m.schema.keyspaces {
-		m.tablesOf(keyspace)
-	}
+	m.loadAllSchemaNames()
 
 	in := textinput.New()
 	in.Prompt = schemaFilterPrefix
@@ -723,8 +914,11 @@ func (m *MainModel) clearSchemaFilter() (*MainModel, tea.Cmd) {
 	if !ok {
 		return m.selectSchemaRow(0)
 	}
-	if found.table != "" {
+	if !found.isKeyspace() {
 		m.schema.expanded[found.keyspace] = true
+	}
+	if found.table != "" {
+		m.schema.setGroupOpen(schemaRow{keyspace: found.keyspace, kind: found.kind}, true)
 	}
 	for i, row := range m.schema.rows() {
 		if row == found {

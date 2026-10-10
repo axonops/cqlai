@@ -23,6 +23,15 @@ func NewLimiter(perMinute int) *Limiter {
 	return &Limiter{perMinute: perMinute, slot: make(chan struct{}, 1), now: time.Now}
 }
 
+// SetRate changes how many calls a minute are allowed, from the next call:
+// the settings can change while the server runs. The calls already made this
+// minute still count.
+func (l *Limiter) SetRate(perMinute int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.perMinute = perMinute
+}
+
 // Acquire waits for the call before to finish, and refuses a call past the
 // rate. The returned release has to be called when the call is done.
 func (l *Limiter) Acquire(ctx context.Context) (release func(), err error) {

@@ -61,7 +61,7 @@ func (p *CommandParser) describeTables() interface{} {
 	serverResult, tables, err := p.session.DBDescribeTables(p.sessionManager)
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
-			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+			return fmt.Errorf("no keyspace selected: USE a keyspace, or name it as keyspace.name")
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -98,13 +98,13 @@ func (p *CommandParser) describeTablesPattern(pattern string) interface{} {
 	}
 
 	if currentKeyspace == "" {
-		return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+		return fmt.Errorf("no keyspace selected: USE a keyspace, or name it as keyspace.name")
 	}
 
 	serverResult, tables, err := p.session.DBDescribeTables(p.sessionManager)
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
-			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+			return fmt.Errorf("no keyspace selected: USE a keyspace, or name it as keyspace.name")
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -161,10 +161,10 @@ func (p *CommandParser) describeTable(tableName string) interface{} {
 	serverResult, tableInfo, err := p.session.DBDescribeTable(p.sessionManager, tableName)
 	if err != nil {
 		if err.Error() == "no keyspace selected" {
-			return "No keyspace selected. Use 'USE keyspace_name' to select a keyspace."
+			return fmt.Errorf("no keyspace selected: USE a keyspace, or name it as keyspace.name")
 		}
 		if strings.Contains(err.Error(), "not found") {
-			return err.Error()
+			return err
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -176,7 +176,7 @@ func (p *CommandParser) describeTable(tableName string) interface{} {
 
 	// Manual format - build CREATE TABLE statement
 	if tableInfo == nil {
-		return fmt.Sprintf("Table '%s' not found", tableName)
+		return fmt.Errorf("table '%s' not found", tableName)
 	}
 
 	return db.FormatTableCreateStatement(tableInfo, true)
@@ -192,7 +192,7 @@ func (p *CommandParser) describeKeyspace(keyspaceName string) interface{} {
 	schema, err := p.session.DBDescribeFullSchema(p.sessionManager, keyspaceName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return fmt.Sprintf("Keyspace '%s' not found", keyspaceName)
+			return fmt.Errorf("keyspace '%s' not found", keyspaceName)
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -254,7 +254,7 @@ func (p *CommandParser) describeType(typeName string) interface{} {
 	serverResult, typeInfo, err := p.session.DBDescribeType(p.sessionManager, typeName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return fmt.Sprintf("Type '%s' not found", typeName)
+			return fmt.Errorf("type '%s' not found", typeName)
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -267,7 +267,7 @@ func (p *CommandParser) describeType(typeName string) interface{} {
 	// For manual format, we'd need to build CREATE TYPE statement
 	// For now, return basic info
 	if typeInfo == nil {
-		return fmt.Sprintf("Type '%s' not found", typeName)
+		return fmt.Errorf("type '%s' not found", typeName)
 	}
 
 	return fmt.Sprintf("Type: %s", typeName)
@@ -353,7 +353,7 @@ func (p *CommandParser) describeAggregate(aggregateName string) interface{} {
 	serverResult, aggregateInfo, err := p.session.DBDescribeAggregate(p.sessionManager, aggregateName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return fmt.Sprintf("Aggregate '%s' not found", aggregateName)
+			return fmt.Errorf("aggregate '%s' not found", aggregateName)
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -365,7 +365,7 @@ func (p *CommandParser) describeAggregate(aggregateName string) interface{} {
 
 	// For manual format, return basic info
 	if aggregateInfo == nil {
-		return fmt.Sprintf("Aggregate '%s' not found", aggregateName)
+		return fmt.Errorf("aggregate '%s' not found", aggregateName)
 	}
 
 	return fmt.Sprintf("Aggregate: %s", aggregateName)
@@ -379,7 +379,7 @@ func (p *CommandParser) describeIndex(indexName string) interface{} {
 	serverResult, indexInfo, err := p.session.DBDescribeIndex(p.sessionManager, indexName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return fmt.Sprintf("Index '%s' not found", indexName)
+			return fmt.Errorf("index '%s' not found", indexName)
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -391,7 +391,7 @@ func (p *CommandParser) describeIndex(indexName string) interface{} {
 
 	// For manual format, return basic info
 	if indexInfo == nil {
-		return fmt.Sprintf("Index '%s' not found", indexName)
+		return fmt.Errorf("index '%s' not found", indexName)
 	}
 
 	return fmt.Sprintf("Index: %s", indexName)
@@ -405,7 +405,7 @@ func (p *CommandParser) describeMaterializedView(viewName string) interface{} {
 	serverResult, mvInfo, err := p.session.DBDescribeMaterializedView(p.sessionManager, viewName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return fmt.Sprintf("Materialized view '%s' not found", viewName)
+			return fmt.Errorf("materialized view '%s' not found", viewName)
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -417,7 +417,7 @@ func (p *CommandParser) describeMaterializedView(viewName string) interface{} {
 
 	// For manual format, return basic info
 	if mvInfo == nil {
-		return fmt.Sprintf("Materialized view '%s' not found", viewName)
+		return fmt.Errorf("materialized view '%s' not found", viewName)
 	}
 
 	return fmt.Sprintf("Materialized view: %s", viewName)
@@ -475,7 +475,7 @@ func (p *CommandParser) describeIdentifier(identifier string) interface{} {
 		}
 	}
 
-	return fmt.Sprintf("'%s' not found", identifier)
+	return fmt.Errorf("'%s' not found", identifier)
 }
 
 // tableListRows is DESCRIBE TABLES as rows: a header, then a table a row.

@@ -16,14 +16,17 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 	}
 
 	// Format CREATE TABLE statement
-	fmt.Fprintf(&result, "CREATE TABLE %s.%s (\n", tableInfo.KeyspaceName, tableInfo.TableName)
+	fmt.Fprintf(&result, "CREATE TABLE %s.%s (\n", QuoteName(tableInfo.KeyspaceName), QuoteName(tableInfo.TableName))
 
 	// Check if we have a simple primary key (single partition key, no clustering keys)
 	singlePKNoCluster := len(tableInfo.PartitionKeys) == 1 && len(tableInfo.ClusteringKeys) == 0
 
 	// Write column definitions
 	for i, col := range tableInfo.Columns {
-		fmt.Fprintf(&result, "    %s %s", col.Name, col.DataType)
+		fmt.Fprintf(&result, "    %s %s", QuoteName(col.Name), col.DataType)
+		if col.Kind == "static" {
+			result.WriteString(" static")
+		}
 
 		// Add PRIMARY KEY inline if this is the partition key and conditions are met
 		if singlePKNoCluster && col.Kind == "partition_key" {
@@ -42,15 +45,15 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 
 		// Format partition keys
 		if len(tableInfo.PartitionKeys) > 1 {
-			fmt.Fprintf(&result, "(%s)", strings.Join(tableInfo.PartitionKeys, ", "))
+			fmt.Fprintf(&result, "(%s)", strings.Join(quoteNames(tableInfo.PartitionKeys), ", "))
 		} else if len(tableInfo.PartitionKeys) == 1 {
-			result.WriteString(tableInfo.PartitionKeys[0])
+			result.WriteString(QuoteName(tableInfo.PartitionKeys[0]))
 		}
 
 		// Add clustering keys
 		if len(tableInfo.ClusteringKeys) > 0 {
 			result.WriteString(", ")
-			result.WriteString(strings.Join(tableInfo.ClusteringKeys, ", "))
+			result.WriteString(strings.Join(quoteNames(tableInfo.ClusteringKeys), ", "))
 		}
 
 		result.WriteString(")\n")
@@ -84,6 +87,13 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 	// Sort properties for consistent output
 	sort.Strings(properties)
 
+	// The order rows are kept in within a partition comes first, as
+	// Cassandra writes it. Left out, a table recreated from the description
+	// sorted its rows the other way.
+	if order := clusteringOrder(tableInfo.Columns); order != "" {
+		properties = append([]string{order}, properties...)
+	}
+
 	// Write WITH clause
 	if len(properties) > 0 {
 		result.WriteString(" WITH ")
@@ -97,6 +107,35 @@ func FormatTableCreateStatement(tableInfo *TableInfo, includeHeader bool) string
 	result.WriteString(";")
 
 	return result.String()
+}
+
+// clusteringOrder is the CLUSTERING ORDER BY clause for a table's clustering
+// columns, or "" when it has none.
+func clusteringOrder(columns []ColumnInfo) string {
+	var parts []string
+	for _, col := range columns {
+		if col.Kind != "clustering" {
+			continue
+		}
+		direction := "ASC"
+		if strings.EqualFold(col.ClusteringOrder, "desc") {
+			direction = "DESC"
+		}
+		parts = append(parts, QuoteName(col.Name)+" "+direction)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "CLUSTERING ORDER BY (" + strings.Join(parts, ", ") + ")"
+}
+
+// quoteNames is each name as CQL reads it back.
+func quoteNames(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = QuoteName(n)
+	}
+	return out
 }
 
 // formatTableProperty formats a single table property for the WITH clause
@@ -125,7 +164,7 @@ func formatTableProperty(name string, value interface{}) string {
 		// String properties that should be quoted
 		if name == "comment" || name == "speculative_retry" || name == "additional_write_policy" ||
 			name == "memtable" || name == "read_repair" {
-			return fmt.Sprintf("%s = '%s'", name, v)
+			return fmt.Sprintf("%s = %s", name, cqlLiteral(v))
 		}
 		// Unquoted strings
 		return fmt.Sprintf("%s = %s", name, v)
