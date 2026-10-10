@@ -164,9 +164,19 @@ licenses:
 	@echo "$(BLUE)Collecting license files...$(NC)"
 	@rm -rf THIRD-PARTY-LICENSES
 	@mkdir -p THIRD-PARTY-LICENSES
-	@PATH="$(HOME)/go/bin:$$PATH" go-licenses save ./cmd/cqlai --save_path=THIRD-PARTY-LICENSES --force || true
+	@# Module mode, so each licence is linked at its own repository and
+	@# version: vendor/ is not committed, and links into it go nowhere.
+	@PATH="$(HOME)/go/bin:$$PATH" GOFLAGS=-mod=readonly go-licenses save ./cmd/cqlai --save_path=THIRD-PARTY-LICENSES --force
 	@echo "$(BLUE)Generating license summary...$(NC)"
-	@PATH="$(HOME)/go/bin:$$PATH" go-licenses report ./cmd/cqlai > THIRD-PARTY-LICENSES/NOTICES.txt 2>/dev/null || true
+	@PATH="$(HOME)/go/bin:$$PATH" GOFLAGS=-mod=readonly go-licenses report ./cmd/cqlai > THIRD-PARTY-LICENSES/NOTICES.txt
+	@# Thrift's Go library has a licence header in its README, which go-licenses
+	@# takes before the LICENSE and NOTICE at the module root. Apache-2.0 asks
+	@# for the NOTICE, so both are copied from there instead.
+	@thrift=$$(GOFLAGS=-mod=readonly go list -m -f '{{.Dir}}' github.com/apache/thrift) && \
+		dir=THIRD-PARTY-LICENSES/github.com/apache/thrift/lib/go/thrift && \
+		rm -f "$$dir/README.md" && \
+		install -m 0644 "$$thrift/LICENSE" "$$thrift/NOTICE" "$$dir/" && \
+		sed -i 's|/lib/go/README.md,|/LICENSE,|' THIRD-PARTY-LICENSES/NOTICES.txt
 	@echo "$(GREEN)✓ License attributions generated in THIRD-PARTY-LICENSES/$(NC)"
 	@echo "$(GREEN)  - Individual license files in subdirectories$(NC)"
 	@echo "$(GREEN)  - License summary in NOTICES.txt$(NC)"
