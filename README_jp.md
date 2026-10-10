@@ -866,8 +866,8 @@ validate = true
   "connectTimeout": 10,
   "requestTimeout": 10,
   "debug": false,
-  "historyFile": "~/.cqlai/history",
-  "aiHistoryFile": "~/.cqlai/ai_history",
+  "historyFile": "~/.cassandra/cqlai_history",
+  "aiHistoryFile": "~/.cassandra/cqlai_ai_history",
   "ssl": {
     "enabled": false,
     "certPath": "/path/to/client-cert.pem",
@@ -911,8 +911,8 @@ validate = true
 | `maxMemoryMB` | number | `10` | クエリ結果の最大メモリ(MB) |
 | `connectTimeout` | number | `10` | 接続タイムアウト(秒) |
 | `requestTimeout` | number | `10` | リクエストタイムアウト(秒) |
-| `historyFile` | string | `~/.cqlai/history` | CQLコマンド履歴ファイルのパス(`~`展開をサポート) |
-| `aiHistoryFile` | string | `~/.cqlai/ai_history` | AIコマンド履歴ファイルのパス(`~`展開をサポート) |
+| `historyFile` | string | `~/.cassandra/cqlai_history` | CQLコマンド履歴ファイルのパス(`~`展開をサポート)。最初に使うときに `~/.cqlai/history` から移されます |
+| `aiHistoryFile` | string | `~/.cassandra/cqlai_ai_history` | AIコマンド履歴ファイルのパス(`~`展開をサポート)。最初に使うときに `~/.cqlai/ai_history` から移されます |
 | `debug` | boolean | `false` | デバッグログを有効化 |
 
 ### 設定ファイルの場所

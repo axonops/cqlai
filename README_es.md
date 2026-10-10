@@ -815,8 +815,8 @@ Para características avanzadas y configuración de IA, CQLAI usa su propio form
   "connectTimeout": 10,
   "requestTimeout": 10,
   "debug": false,
-  "historyFile": "~/.cqlai/history",
-  "aiHistoryFile": "~/.cqlai/ai_history",
+  "historyFile": "~/.cassandra/cqlai_history",
+  "aiHistoryFile": "~/.cassandra/cqlai_ai_history",
   "ssl": {
     "enabled": false,
     "certPath": "/ruta/a/client-cert.pem",
@@ -1043,8 +1043,8 @@ Si se establece una variable de entorno, se utilizará incluso si hay un valor p
 | `maxMemoryMB` | number | `10` | Memoria máxima para resultados de consultas en MB |
 | `connectTimeout` | number | `10` | Tiempo de espera de conexión en segundos |
 | `requestTimeout` | number | `10` | Tiempo de espera de petición en segundos |
-| `historyFile` | string | `~/.cqlai/history` | Ruta al archivo de historial de comandos CQL (soporta expansión `~`) |
-| `aiHistoryFile` | string | `~/.cqlai/ai_history` | Ruta al archivo de historial de comandos IA (soporta expansión `~`) |
+| `historyFile` | string | `~/.cassandra/cqlai_history` | Ruta al archivo de historial de comandos CQL (soporta expansión `~`). Se mueve desde `~/.cqlai/history` la primera vez que se usa |
+| `aiHistoryFile` | string | `~/.cassandra/cqlai_ai_history` | Ruta al archivo de historial de comandos IA (soporta expansión `~`). Se mueve desde `~/.cqlai/ai_history` la primera vez que se usa |
 | `debug` | boolean | `false` | Habilitar registro de depuración |
 
 ### Ubicaciones de Archivos de Configuración

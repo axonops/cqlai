@@ -6,13 +6,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/config"
 )
 
 const (
 	maxHistorySize = 1000
-	historyFile    = "history"
-	aiHistoryFile  = "ai_history"
+	historyFile    = "cqlai_history"    // in ~/.cassandra, beside cqlsh_history
+	aiHistoryFile  = "cqlai_ai_history" // the CHAT view's
 )
+
+// defaultHistoryPath is where a history file goes unless the settings say:
+// ~/.cassandra, beside cqlsh's own history. One an older cqlai kept in
+// ~/.cqlai is moved there the first time it is used, and ~/.cqlai is removed
+// once nothing is left in it.
+func defaultHistoryPath(name, oldName string) (string, error) {
+	path := filepath.Join(config.Dir(), name)
+	oldDir := config.HomeFile(".cqlai")
+	if err := config.MoveIn(path, filepath.Join(oldDir, oldName)); err != nil {
+		return "", err
+	}
+	_ = os.Remove(oldDir) // only when it is empty
+	return path, nil
+}
 
 // HistoryManager manages command history persistence
 type HistoryManager struct {
@@ -41,19 +57,11 @@ func NewHistoryManagerWithPath(customPath string) (*HistoryManager, error) {
 			historyPath = customPath
 		}
 	} else {
-		// Use default path
-		home, err := os.UserHomeDir()
+		path, err := defaultHistoryPath(historyFile, "history")
 		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %v", err)
+			return nil, err
 		}
-
-		// Create ~/.cqlai directory if it doesn't exist
-		cqlaiDir := filepath.Join(home, ".cqlai")
-		if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
-			return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
-		}
-
-		historyPath = filepath.Join(cqlaiDir, historyFile)
+		historyPath = path
 	}
 
 	// Ensure the directory for the history file exists
@@ -186,19 +194,11 @@ func NewAIHistoryManagerWithPath(customPath string) (*HistoryManager, error) {
 			historyPath = customPath
 		}
 	} else {
-		// Use default path
-		home, err := os.UserHomeDir()
+		path, err := defaultHistoryPath(aiHistoryFile, "ai_history")
 		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %v", err)
+			return nil, err
 		}
-
-		// Create ~/.cqlai directory if it doesn't exist
-		cqlaiDir := filepath.Join(home, ".cqlai")
-		if err := os.MkdirAll(cqlaiDir, 0700); err != nil {
-			return nil, fmt.Errorf("failed to create .cqlai directory: %v", err)
-		}
-
-		historyPath = filepath.Join(cqlaiDir, aiHistoryFile)
+		historyPath = path
 	}
 
 	// Ensure the directory for the history file exists
