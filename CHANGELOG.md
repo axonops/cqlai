@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-10
+
+### Added
+
+- **System keyspaces for the MCP server.** Tick `System keyspaces` under MCP
+  SERVER in PREFERENCES (`"systemKeyspaces": true` in `cqlai.json`). With no
+  keyspace list, `system`, `system_schema`, `system_traces` and the other
+  system keyspaces are then visible too. `system_auth`'s data never is.
+- **Auto fetch for the MCP server.** With `Auto fetch` ticked
+  (`"autoFetch": true`), `query` and `trace_query` return every row in one
+  call, reading the pages themselves. The timeout applies to each page read.
+  On a large table that can be a lot of rows.
+
+### Changed
+
+- **The MCP client chooses the page size.** A `page_size` it asks for is used
+  as asked. The setting, until now `Max rows` and now `Page size`, is the page
+  size used when the client does not ask. It is still 100 unless set.
+  `connection_info` reports it as `page_size`, with `auto_fetch`.
+
+### Fixed
+
+- **System tables no longer show what the MCP settings hide.** With
+  `system_schema` visible, its rows described the tables and columns of hidden
+  keyspaces. When anything is hidden, by a deny list, a keyspace list, or the
+  system keyspaces left out, a row about something hidden is now left out. A
+  `SELECT` on `system_schema`, `size_estimates` or a virtual table kept by
+  table then has to return `keyspace_name` and the table name, so each row can
+  be checked. When nothing is hidden, nothing is filtered or refused. Rows
+  describing `system_auth`'s tables are kept, because they are the same in
+  every cluster.
+
 ## [0.3.4] - 2026-10-09
 
 ### Added
