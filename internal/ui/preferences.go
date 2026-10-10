@@ -114,8 +114,8 @@ func prefSpecs() []prefSpec {
 		{path: "RequireConfirmation", label: "Confirm changes", kind: prefYesNo, hint: "ask before a statement that alters data or schema"},
 		{path: "Debug", label: "Debug", kind: prefYesNo, hint: "write the debug log"},
 
-		{section: "FILES", path: "HistoryFile", label: "Command history", kind: prefPath, hint: "~/.cqlai_history unless set"},
-		{path: "AIHistoryFile", label: "Chat history", kind: prefPath, hint: "~/.cqlai_ai_history unless set"},
+		{section: "FILES", path: "HistoryFile", label: "Command history", kind: prefPath, hint: "~/.cassandra/cqlai_history unless set"},
+		{path: "AIHistoryFile", label: "Chat history", kind: prefPath, hint: "~/.cassandra/cqlai_ai_history unless set"},
 
 		{section: "SSL", path: "SSL.Enabled", label: "Enabled", kind: prefYesNo, hint: "connect over TLS"},
 		{path: "SSL.CertPath", label: "Certificate", kind: prefPath, hint: "this client's certificate"},
