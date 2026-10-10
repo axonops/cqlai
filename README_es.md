@@ -772,7 +772,7 @@ Los meta-comandos proporcionan funcionalidad adicional más allá del CQL están
   que se carga a sí mismo, directamente o a través de otro.
 
 #### Ayuda
-- **HELP** - Abrir la ventana de ayuda, igual que `F1`. `HELP INSERT`, `HELP CREATE TABLE` o cualquier otra orden muestra cómo se escribe, con un ejemplo y un enlace a su página en la [referencia CQL de AxonOps](https://axonops.com/docs/data-platforms/cassandra/cql/)
+- **HELP** - Abrir la ventana de ayuda, igual que `F1`. `HELP INSERT`, `HELP CREATE TABLE` o cualquier otra orden muestra cómo se escribe, con un ejemplo y un enlace a su página en la [referencia CQL de AxonOps](https://axonops.com/docs/data-platforms/cassandra/cql/). Arrastre sobre el texto para copiarlo. Ctrl+clic en el enlace lo abre en el navegador. Si no se puede abrir un navegador, por ejemplo por ssh, el enlace se copia
   ```sql
   HELP                 -- Mostrar todos los comandos
   HELP DESCRIBE        -- Ayuda para comando específico

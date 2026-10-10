@@ -794,7 +794,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   されます。自分自身を (直接または別のファイル経由で) SOURCEするファイルは拒否されます。
 
 #### ヘルプ
-- **HELP** - `F1` と同じヘルプウィンドウを開く。`HELP INSERT`、`HELP CREATE TABLE` などのコマンドを付けると、その書き方と例、[AxonOps CQLリファレンス](https://axonops.com/docs/data-platforms/cassandra/cql/)の該当ページへのリンクを表示
+- **HELP** - `F1` と同じヘルプウィンドウを開く。`HELP INSERT`、`HELP CREATE TABLE` などのコマンドを付けると、その書き方と例、[AxonOps CQLリファレンス](https://axonops.com/docs/data-platforms/cassandra/cql/)の該当ページへのリンクを表示。テキストをドラッグするとコピーできる。リンクを Ctrl+クリックするとブラウザで開く。ssh 経由などでブラウザを開けない場合は、リンクがコピーされる
   ```sql
   HELP                 -- すべてのコマンドを表示
   HELP DESCRIBE        -- 特定のコマンドのヘルプ

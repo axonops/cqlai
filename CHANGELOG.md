@@ -14,7 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   triggers are listed in groups, each with its definition.
 - **`HELP` opens the Help window,** as `F1` does, and `HELP INSERT`,
   `HELP CREATE TABLE` or any other command shows how it is written, with an
-  example and a link to its page in the AxonOps CQL reference.
+  example and a link to its page in the AxonOps CQL reference. Drag over
+  the text to copy it, and Ctrl+click the link to open it. With no browser to
+  open, over ssh for example, the link is copied instead. A click on the
+  window no longer closes it; a click outside it does.
 
 ### Changed
 

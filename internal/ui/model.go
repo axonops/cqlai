@@ -680,6 +680,10 @@ func (m *MainModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updatedModel, cmd := m.handleSystemClipboard(msg)
 		return updatedModel, cmd
 
+	case linkNotOpenedMsg:
+		updatedModel, cmd := m.linkNotOpened(msg)
+		return updatedModel, cmd
+
 	case noClipboardToolMsg:
 		updatedModel, cmd := m.handleNoClipboardTool()
 		return updatedModel, cmd

@@ -98,15 +98,30 @@ func TestEscapeClosesIt(t *testing.T) {
 	assert.False(t, m.help.active)
 }
 
-// TestClickingElsewhereClosesIt: the window covers the screen, so you cannot
-// aim at what is underneath anyway.
+// TestClickingElsewhereClosesIt: a press off the window closes it, rather
+// than acting on what is underneath, which you cannot see to aim at.
 func TestClickingElsewhereClosesIt(t *testing.T) {
 	m := helpModel()
 	m.toggleHelp()
+	g, _, ok := m.helpGeometry(m.windowWidth, m.windowHeight)
+	require.True(t, ok)
+	require.Positive(t, g.x)
 
-	pressAt(m, 40, 10)
+	pressAt(m, g.x-1, 10)
 
 	assert.False(t, m.help.active)
+}
+
+// TestClickingInsideKeepsItOpen: the window is something to read and copy
+// from, and a click on it used to close it before anything could be copied.
+func TestClickingInsideKeepsItOpen(t *testing.T) {
+	m := helpModel()
+	m.toggleHelp()
+	g, _, _ := m.helpGeometry(m.windowWidth, m.windowHeight)
+
+	pressAt(m, g.x+5, g.y+3)
+
+	assert.True(t, m.help.active)
 }
 
 // TestTheContentComesFromTheHelpCommand, so typing HELP and clicking Help

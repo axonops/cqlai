@@ -164,7 +164,7 @@ var shellHelpTopics = []HelpTopic{
 		Name:    "HELP",
 		Summary: "Opens this window: everything there is, or how one command is written.",
 		Syntax:  []string{"HELP", "HELP command"},
-		Notes:   []string{"F1 or Alt+H opens it too."},
+		Notes:   []string{"F1 or Alt+H opens it too. Drag over its text to copy it. Ctrl+click a link to open it."},
 		Example: []string{"HELP CREATE TABLE"},
 	},
 	{

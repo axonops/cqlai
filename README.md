@@ -1111,7 +1111,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   another, is refused.
 
 #### Help
-- **HELP** - Open the Help window, the same as `F1`. `HELP INSERT`, `HELP CREATE TABLE` or any other command shows how it is written, with an example and a link to its page in the [AxonOps CQL reference](https://axonops.com/docs/data-platforms/cassandra/cql/)
+- **HELP** - Open the Help window, the same as `F1`. `HELP INSERT`, `HELP CREATE TABLE` or any other command shows how it is written, with an example and a link to its page in the [AxonOps CQL reference](https://axonops.com/docs/data-platforms/cassandra/cql/). Drag over the text to copy it. Ctrl+click the link to open it in your browser. If no browser can be opened, over ssh for example, the link is copied instead
   ```sql
   HELP                 -- Show all commands
   HELP DESCRIBE        -- Help for specific command

@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/axonops/cqlai/internal/router"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The help window, opened by the Help button on the tab line or by F1.
@@ -34,6 +35,7 @@ type helpWindow struct {
 	active bool
 	scroll int
 	topic  string // HELP <topic>: what was typed after HELP, or "" for everything
+	notice string // shown in place of the title until the next key, after a link is clicked
 }
 
 // helpGeometry is where the window sits and how much of it is showing.
@@ -137,6 +139,12 @@ func (m *MainModel) viewHelp(screenWidth, screenHeight int) (Layer, bool) {
 	title := helpTitle
 	if m.help.topic != "" {
 		title = "HELP " + strings.ToUpper(strings.TrimSpace(m.help.topic)) + "  -  ↑↓ PgUp/PgDn scrolls  -  Esc closes"
+		if hasLink(lines) {
+			title += "  -  Ctrl+click opens the link"
+		}
+	}
+	if m.help.notice != "" {
+		title = m.help.notice
 	}
 
 	var b strings.Builder
@@ -145,7 +153,7 @@ func (m *MainModel) viewHelp(screenWidth, screenHeight int) (Layer, bool) {
 
 	for i := g.first; i < g.last; i++ {
 		// One column short, so the scrollbar has somewhere to go.
-		b.WriteString(textStyle.Render(pad(" "+lines[i], g.innerWidth-1)))
+		b.WriteString(m.highlightHelpLine(i, lines[i], textStyle.Render(pad(" "+lines[i], g.innerWidth-1))))
 
 		switch {
 		case !scrolls:
@@ -176,8 +184,58 @@ func (m *MainModel) viewHelp(screenWidth, screenHeight int) (Layer, bool) {
 	}, true
 }
 
+// helpSource is the window's text as something to select from: the rows
+// showing, placed where they are drawn - inside the border, under the title,
+// and after the space each line starts with.
+func (m *MainModel) helpSource() (selectionSource, bool) {
+	g, lines, ok := m.helpGeometry(m.windowWidth, m.windowHeight)
+	if !ok {
+		return selectionSource{}, false
+	}
+	return selectionSource{
+		view:   "help",
+		lines:  lines,
+		offset: g.first,
+		height: g.last - g.first,
+		top:    g.y + 2 - m.viewTop(),
+		indent: g.x + 2,
+	}, true
+}
+
+// inHelp reports whether a screen position is on the window.
+func (m *MainModel) inHelp(col, row int) bool {
+	g, _, ok := m.helpGeometry(m.windowWidth, m.windowHeight)
+	return ok && col >= g.x && col < g.x+g.width && row >= g.y && row < g.y+g.height
+}
+
+// highlightHelpLine paints the selection onto one drawn line of the window.
+// The drawn line starts with a space, which the selection's columns do not
+// count.
+func (m *MainModel) highlightHelpLine(line int, text, drawn string) string {
+	if !m.selection.active || m.selection.empty() || m.selection.view != "help" {
+		return drawn
+	}
+	startLine, _, endLine, _ := m.selection.span()
+	if line < startLine || line > endLine {
+		return drawn
+	}
+	from, to := m.selection.columnsOn(line, ansi.StringWidth(ansi.Strip(text)), 0)
+	return highlightColumns(drawn, from+1, to+1)
+}
+
+// hasLink reports whether any of the lines holds a link.
+func hasLink(lines []string) bool {
+	for _, line := range lines {
+		if linkPattern.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
 // toggleHelp opens the window, or closes it if it is already open.
 func (m *MainModel) toggleHelp() (*MainModel, tea.Cmd) {
+	m.clearSelection()
 	if m.help.active {
 		m.help = helpWindow{}
 		return m, nil

@@ -129,14 +129,21 @@ func (m *MainModel) handleMousePress(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 	// A press anywhere drops whatever was selected.
 	m.clearSelection()
 
-	// With the help open, a press dismisses it rather than acting on whatever
-	// is underneath - which you cannot see to aim at.
+	// With the help open, a press on it selects its text, and Ctrl+click
+	// opens a link in it. A press anywhere else dismisses it rather than
+	// acting on whatever is underneath - which you cannot see to aim at.
 	if m.help.active {
 		if mode, _ := m.modeAt(m.windowWidth, mouse.X); mouse.Y == 0 && mode == helpMode {
 			return m.toggleHelp()
 		}
-		m.help = helpWindow{}
-		return m, nil
+		if !m.inHelp(mouse.X, mouse.Y) {
+			return m.toggleHelp()
+		}
+		m.help.notice = ""
+		if url, ok := m.helpLinkAt(mouse.X, mouse.Y); ok && mouse.Mod.Contains(tea.ModCtrl) {
+			return m.openLink(url)
+		}
+		return m.beginSelection(mouse.X, mouse.Y)
 	}
 
 	// A question takes every press while it is up. A click on an answer gives
