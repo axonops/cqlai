@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-10
+
+### Changed
+
+- **The history files are in `~/.cassandra`,** beside cqlsh's own history:
+  `~/.cassandra/cqlai_history` and `~/.cassandra/cqlai_ai_history`. They were
+  in `~/.cqlai`. The old files are moved the first time they are used, with
+  what they hold, and `~/.cqlai` is removed once it is empty. A history file
+  set in the settings is left where it is.
+- **`THIRD-PARTY-LICENSES` is up to date.** It now covers every module
+  compiled into cqlai, among them the Bubble Tea v2 stack, and drops the ones
+  no longer built. Each licence in `NOTICES.txt` links to its own repository
+  at the version built.
+
 ## [0.3.5] - 2026-10-10
 
 ### Added
