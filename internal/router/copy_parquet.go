@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -126,24 +125,15 @@ func (h *MetaCommandHandler) executeCopyToParquet(table string, columns []string
 		// Create scan destinations for each column
 		// Use cleanHeaders since that's what we'll iterate with
 		// Get column info from iterator to detect UDT columns
+		// ScanRow: nil is a real NULL, and a tuple is one value. A scan
+		// destination per column read none of a table with a tuple in it,
+		// since the driver reads a tuple as a column for each element.
 		columns := v.Iterator.Columns()
-		scanDest := make([]interface{}, len(cleanHeaders))
-		for i := range scanDest {
-			var info gocql.TypeInfo
-			if i < len(columns) {
-				info = columns[i].TypeInfo
-			}
-			scanDest[i] = db.NewScanDest(info)
-		}
-
-		for v.Iterator.Scan(scanDest...) {
-
-			// Build row map from scanned values
+		for scanned := map[string]interface{}{}; db.ScanRow(v.Iterator, scanned); scanned = map[string]interface{}{} {
 			cleanedRow := make(map[string]interface{})
 			for i := range cleanHeaders {
-				if i < len(scanDest) {
-					// nil here is a real NULL, not a zero value standing in for one.
-					cleanedRow[cleanHeaders[i]] = db.ScanValue(scanDest[i])
+				if i < len(columns) {
+					cleanedRow[cleanHeaders[i]] = scanned[columns[i].Name]
 				}
 			}
 

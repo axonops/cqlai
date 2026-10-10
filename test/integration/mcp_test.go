@@ -53,9 +53,7 @@ func mcpEnv(t *testing.T, mcp *config.MCPConfig) ai.ToolEnv {
 
 	pol, err := policy.Load(&config.Config{MCP: mcp}, "", "", 10*time.Second, policy.Flags{})
 	require.NoError(t, err)
-	pol = pol.
-		WithPartitionKey(func(ks, table string) []string { key, _ := sess.TableKey(ks, table); return key }).
-		WithColumns(func(ks, table string) []string { _, columns := sess.TableKey(ks, table); return columns })
+	pol = mcpserver.SessionPolicy(pol, sess)
 
 	// A schema cache of its own on this session, as the server has.
 	schema, err := ai.NewSchemaTools(sess)
@@ -298,6 +296,20 @@ func TestMCPTableSizeAndRoles(t *testing.T) {
 
 	o = callTool(t, env, "list_roles", map[string]any{"role": "cassandra' OR '1'='1"})
 	assert.NotContains(t, o.Text, "salted_hash", "a quote in the role name stays inside the name")
+
+	// A permission on a hidden table would name it.
+	for _, stmt := range []string{
+		`CREATE ROLE IF NOT EXISTS test_mcp_reader`,
+		`GRANT SELECT ON test_mcp.orders TO test_mcp_reader`,
+		`GRANT SELECT ON test_mcp.secrets TO test_mcp_reader`,
+	} {
+		require.NoError(t, env.Session.Query(stmt).Exec(), stmt)
+	}
+	t.Cleanup(func() { _ = env.Session.Query(`DROP ROLE IF EXISTS test_mcp_reader`).Exec() })
+	o = callTool(t, env, "list_roles", map[string]any{"role": "test_mcp_reader"})
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, "test_mcp.orders")
+	assert.NotContains(t, o.Text, "secrets")
 }
 
 // TestMCPSchemaResources: a keyspace's definition, without its hidden table.
@@ -442,4 +454,68 @@ func TestMCPOpenForADemo(t *testing.T) {
 
 	o = callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM system_auth.roles"})
 	assert.True(t, o.Refused, "system_auth's data, never")
+}
+
+// TestMCPAViewIsHiddenAsItsBaseTableIs: a materialized view holds its base
+// table's rows, so the deny entry and the redaction for the table hold for
+// it. Views are off unless cassandra.yaml turns them on; without them this is
+// skipped.
+func TestMCPAViewIsHiddenAsItsBaseTableIs(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+	for _, stmt := range []string{
+		`CREATE MATERIALIZED VIEW IF NOT EXISTS test_mcp.secrets_by_note AS SELECT * FROM test_mcp.secrets
+			WHERE note IS NOT NULL AND id IS NOT NULL PRIMARY KEY (note, id)`,
+		`CREATE MATERIALIZED VIEW IF NOT EXISTS test_mcp.customers_by_name AS SELECT * FROM test_mcp.customers
+			WHERE name IS NOT NULL AND id IS NOT NULL PRIMARY KEY (name, id)`,
+	} {
+		if err := env.Session.Query(stmt).Exec(); err != nil {
+			t.Skipf("views are not on here: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		_ = env.Session.Query(`DROP MATERIALIZED VIEW IF EXISTS test_mcp.secrets_by_note`).Exec()
+		_ = env.Session.Query(`DROP MATERIALIZED VIEW IF EXISTS test_mcp.customers_by_name`).Exec()
+	})
+	require.NoError(t, env.Session.AwaitSchemaAgreement(context.Background()))
+
+	o := callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM test_mcp.secrets_by_note WHERE note = 'top secret'"})
+	assert.True(t, o.Refused, o.Text)
+
+	// The view's rows can take a moment to be built.
+	var rows []map[string]any
+	require.Eventually(t, func() bool {
+		r := decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM test_mcp.customers_by_name WHERE name = 'Ann'"}))
+		rows = r.Rows
+		return len(rows) == 1
+	}, 20*time.Second, 500*time.Millisecond)
+	assert.Equal(t, policy.RedactedValue, rows[0]["email"])
+	assert.Equal(t, "Ann", rows[0]["name"])
+}
+
+// TestMCPQueryHidesSecretSettings: query hides a setting that holds a secret
+// as node_status does, whether or not Cassandra hides it, and refuses the
+// ways round that.
+func TestMCPQueryHidesSecretSettings(t *testing.T) {
+	env := mcpEnv(t, defaultMCP())
+	const name = "client_encryption_options.keystore_password"
+
+	for _, cql := range []string{
+		"SELECT name, value FROM system_views.settings WHERE name = '" + name + "'",
+		"SELECT value FROM system_views.settings WHERE name = '" + name + "'",
+	} {
+		r := decode(t, callTool(t, env, "query", map[string]any{"cql": cql}))
+		require.Len(t, r.Rows, 1, cql)
+		assert.Equal(t, policy.RedactedValue, r.Rows[0]["value"], cql)
+	}
+
+	r := decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT name, value FROM system_views.settings WHERE name = 'cluster_name'"}))
+	require.Len(t, r.Rows, 1)
+	assert.NotEqual(t, policy.RedactedValue, r.Rows[0]["value"], "a setting that is not a secret is shown")
+
+	for _, cql := range []string{
+		"SELECT JSON * FROM system_views.settings WHERE name = '" + name + "'",
+		"SELECT name FROM system_views.settings WHERE value = 'x' ALLOW FILTERING",
+	} {
+		assert.True(t, callTool(t, env, "query", map[string]any{"cql": cql}).Refused, cql)
+	}
 }

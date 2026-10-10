@@ -17,7 +17,7 @@ func splitCellIntoLines(cell string, maxWidth int) []string {
 	var result []string
 	for _, line := range lines {
 		// Further split long lines that exceed maxWidth
-		if len([]rune(line)) <= maxWidth {
+		if cellWidth(line) <= maxWidth {
 			result = append(result, line)
 		} else {
 			// Word wrap long lines
@@ -131,7 +131,7 @@ func (m *MainModel) buildFullTableMultiline(data [][]string, colWidths []int) []
 
 				// Calculate padding
 				plainContent := stripAnsi(cellContent)
-				padding := adjustedWidths[colIdx] - len([]rune(plainContent))
+				padding := adjustedWidths[colIdx] - cellWidth(plainContent)
 				if padding < 0 {
 					padding = 0
 				}

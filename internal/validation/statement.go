@@ -2,6 +2,9 @@ package validation
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -605,7 +608,9 @@ func lex(text string) ([]token, error) {
 			i++
 
 		case c == '-' && i+1 < len(r) && r[i+1] == '-', c == '/' && i+1 < len(r) && r[i+1] == '/':
-			for i < len(r) && r[i] != '\n' {
+			// Cassandra ends a line comment at a carriage return as well as a
+			// newline, so must this: what follows a lone \r is run.
+			for i < len(r) && r[i] != '\n' && r[i] != '\r' {
 				i++
 			}
 
@@ -734,20 +739,77 @@ func findWord(t []token, from int, word string) int {
 // a ?, for a log that must not hold the data: an INSERT's values, or what a
 // WHERE clause looked for. A statement that cannot be read is replaced whole.
 func WithoutValues(text string) string {
-	tokens, err := lex(text)
+	tokens, err := lex(uuidLiteral.ReplaceAllString(text, "0"))
 	if err != nil {
 		return "(a statement that could not be read)"
 	}
 	parts := make([]string, 0, len(tokens))
 	for _, t := range tokens {
-		switch t.kind {
-		case tokString, tokNumber:
+		switch {
+		case t.kind == tokString, t.kind == tokNumber, t.kind == tokWord && valueWords[t.text]:
 			parts = append(parts, "?")
-		case tokQuoted:
+		case t.kind == tokQuoted:
 			parts = append(parts, `"`+strings.ReplaceAll(t.text, `"`, `""`)+`"`)
 		default:
 			parts = append(parts, t.text)
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// uuidLiteral is a uuid written without quotes. The lexer reads it as numbers
+// and words, and would keep the words: e89b, a456.
+var uuidLiteral = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+
+// valueWords are the values written as words.
+var valueWords = map[string]bool{"true": true, "false": true, "nan": true, "infinity": true}
+
+// WithoutStatementValues is text - an error about a statement - with the
+// statement's values taken out: Cassandra's errors repeat the value they
+// could not use. Values of fewer than three characters are left, as they say
+// little and would take out parts of the words around them.
+func WithoutStatementValues(text, statement string) string {
+	values := uuidLiteral.FindAllString(statement, -1)
+	if tokens, err := lex(uuidLiteral.ReplaceAllString(statement, "0")); err == nil {
+		for _, t := range tokens {
+			if t.kind == tokString || t.kind == tokNumber {
+				values = append(values, t.text)
+			}
+		}
+	}
+	// The longest first, so a value inside another does not leave the rest.
+	sort.Slice(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
+	for _, v := range values {
+		if len(v) >= 3 {
+			text = strings.ReplaceAll(text, v, "?")
+		}
+	}
+	return text
+}
+
+// Limit is the LIMIT a statement ends with: the rows it returns at most, not
+// PER PARTITION LIMIT, which bounds each partition and leaves the result as
+// large as the table. It reports false when there is none, or it is not a
+// number written in the statement.
+func Limit(text string) (int, bool) {
+	tokens, err := lex(text)
+	if err != nil {
+		return 0, false
+	}
+	limit, found := 0, false
+	for i := 0; i+1 < len(tokens); i++ {
+		t := tokens[i]
+		if t.kind != tokWord || t.text != "limit" {
+			continue
+		}
+		if i > 0 && tokens[i-1].kind == tokWord && tokens[i-1].text == "partition" {
+			continue
+		}
+		if next := tokens[i+1]; next.kind == tokNumber {
+			if n, err := strconv.Atoi(next.text); err == nil {
+				limit, found = n, true
+			}
+		}
+	}
+	return limit, found
 }

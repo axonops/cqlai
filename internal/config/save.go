@@ -48,6 +48,14 @@ func (c *Config) Save() (string, error) {
 		if err := json.Unmarshal(data, &existing); err != nil {
 			return "", fmt.Errorf("cannot read %s back: %w", path, err)
 		}
+		// A file cqlai cannot read as its settings - a port written as a
+		// string - was never loaded, so what is being saved started from
+		// nothing. Merged over the file, that nothing would delete every
+		// setting in it, the passwords and the saved connections with them.
+		var settings Config
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return "", fmt.Errorf("%s has a value cqlai cannot read, so it was not saved over: %w. Correct it in the file, then save again", path, err)
+		}
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("cannot read %s: %w", path, err)
 	}
@@ -56,6 +64,9 @@ func (c *Config) Save() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Written whichever it is: left out, as omitempty leaves a false, the file
+	// would be read back with it on again.
+	updated["requireConfirmation"] = c.RequireConfirmation
 	mergeKnown(existing, updated, reflect.TypeOf(*c))
 
 	data, err := json.MarshalIndent(existing, "", "  ")
@@ -69,7 +80,7 @@ func (c *Config) Save() (string, error) {
 			return "", fmt.Errorf("cannot create %s: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, data, SaveFileMode); err != nil {
+	if err := writeFileAtomic(path, data, SaveFileMode); err != nil {
 		return "", fmt.Errorf("cannot write %s: %w", path, err)
 	}
 
@@ -154,4 +165,37 @@ func structType(t reflect.Type) reflect.Type {
 		return t
 	}
 	return nil
+}
+
+// writeFileAtomic writes data to path through a file beside it, renamed over
+// it once the whole of it is written: a failure partway leaves the old file,
+// not half of the new one. The file is mode, whatever it was before - it holds
+// passwords, and os.WriteFile only sets the mode of a file it creates. A path
+// that is a link is written through to what it links to.
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	if target, err := filepath.EvalSymlinks(path); err == nil {
+		path = target
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer func() { _ = os.Remove(name) }() // gone once renamed; this is for a failure
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
 }

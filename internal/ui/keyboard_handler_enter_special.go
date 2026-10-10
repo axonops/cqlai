@@ -15,6 +15,16 @@ func (m *MainModel) handleSpecialCommands(command string) (*MainModel, tea.Cmd, 
 		return updated, cmd, true
 	}
 
+	// HELP opens the Help window, the same as F1. Printed as a result, the
+	// help came out in whatever OUTPUT was set to - a page of JSON, with
+	// OUTPUT JSON. Batch mode still prints it, in the format asked for.
+	if word := strings.TrimSuffix(strings.TrimSpace(upperCommand), ";"); word == "HELP" || strings.HasPrefix(word, "HELP ") {
+		m.input.Reset()
+		// HELP INSERT is INSERT: how it is written.
+		m.help = helpWindow{active: true, topic: strings.TrimSpace(word[len("HELP"):])}
+		return m, nil, true
+	}
+
 	// MOUSE is handled here rather than in the router because it is UI state:
 	// the mode is a field on the View returned each render, not something the
 	// session knows about.

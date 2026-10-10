@@ -56,7 +56,7 @@ func (h *MetaCommandHandler) executeCopyFromParquetPartitioned(table string, col
 
 		for _, col := range columns {
 			if !columnMap[col] {
-				return fmt.Sprintf("Column '%s' not found in Parquet dataset", col)
+				return fmt.Errorf("column '%s' not found in Parquet dataset", col)
 			}
 		}
 	}
@@ -157,8 +157,7 @@ done:
 
 	// Build result message
 	partitionInfo := reader.GetPartitionFiles()
-	result := fmt.Sprintf("Imported %d rows from partitioned dataset (%d files, %d partitions)",
-		processedRows, len(partitionInfo), len(partitionColumns))
+	result := fmt.Sprintf("Imported %d rows from partitioned dataset (%d files)", processedRows, len(partitionInfo))
 
 	if insertErrorCount > 0 {
 		result += fmt.Sprintf(" with %d errors", insertErrorCount)
@@ -176,7 +175,7 @@ done:
 	}
 
 	if skipRows > 0 {
-		result += fmt.Sprintf(" (skipped %d rows)", skipRows)
+		result += fmt.Sprintf(" (skipped %d rows)", skippedRows)
 	}
 
 	return result

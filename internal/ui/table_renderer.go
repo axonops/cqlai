@@ -29,7 +29,7 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 				if i >= len(colWidths) {
 					break
 				}
-				if w := runeWidth(cell); w > colWidths[i] {
+				if w := cellWidth(cell); w > colWidths[i] {
 					colWidths[i] = w
 				}
 			}
@@ -68,7 +68,7 @@ func (m *MainModel) formatTableForViewport(data [][]string) string {
 		hasMultiLine := false
 		for _, row := range data {
 			for _, cell := range row {
-				if strings.Contains(cell, "\n") || len([]rune(stripAnsi(cell))) > 80 {
+				if strings.Contains(cell, "\n") || cellWidth(cell) > 80 {
 					hasMultiLine = true
 					break
 				}
@@ -165,7 +165,7 @@ func (m *MainModel) buildFullTable(data [][]string, colWidths []int) []string {
 		dataRow := "│"
 		for j, cell := range row {
 			plainCell := stripAnsi(cell)
-			padding := colWidths[j] - len([]rune(plainCell))
+			padding := colWidths[j] - cellWidth(plainCell)
 			if padding < 0 {
 				padding = 0
 			}
@@ -267,6 +267,10 @@ func (m *MainModel) refreshTraceView() {
 	originalColWidths := m.columnWidths
 	originalCachedLines := m.cachedTableLines
 	originalInitialWidths := m.initialColumnWidths
+	// The results' row boundaries too: drawing the trace fills them with the
+	// trace's rows, and paging in RESULTS snapped to those, so scrolling
+	// stuck at the top once the trace had been looked at.
+	originalBoundaries := m.tableRowBoundaries
 
 	// Set trace data temporarily
 	m.horizontalOffset = m.traceHorizontalOffset
@@ -289,6 +293,7 @@ func (m *MainModel) refreshTraceView() {
 	m.columnWidths = originalColWidths
 	m.cachedTableLines = originalCachedLines
 	m.initialColumnWidths = originalInitialWidths
+	m.tableRowBoundaries = originalBoundaries
 
 	// Prepend summary line to the table
 	finalContent := summaryLine + traceTable

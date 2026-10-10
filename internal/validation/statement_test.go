@@ -107,6 +107,12 @@ func TestTextInsideStringsAndCommentsIsNotTheStatement(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "INSERT", s.Command)
 
+	// A line comment ends at a carriage return, as Cassandra reads it: what
+	// follows is the statement.
+	s, err = Classify("-- note\rDROP TABLE shop.orders")
+	require.NoError(t, err)
+	assert.Equal(t, "DROP", s.Command)
+
 	// And a comment cannot hide the start of the real statement.
 	s, err = Classify("SELECT/**/ * FROM shop.orders")
 	require.NoError(t, err)
@@ -249,5 +255,28 @@ func TestTheShellAsksAboutTheSameStatementsAsBefore(t *testing.T) {
 		"BEGIN BATCH INSERT INTO shop.a (id) VALUES (1); APPLY BATCH":                                  false,
 	} {
 		assert.Equal(t, want, IsDangerousCommand(cql), cql)
+	}
+}
+
+// TestTheLimitIsTheResultsNotAPartitions: PER PARTITION LIMIT bounds each
+// partition, and the result can be the whole table.
+func TestTheLimitIsTheResultsNotAPartitions(t *testing.T) {
+	for cql, want := range map[string]int{
+		"SELECT * FROM ks.t LIMIT 10":                       10,
+		"SELECT * FROM ks.t PER PARTITION LIMIT 1 LIMIT 50": 50,
+		"select * from ks.t limit 7;":                       7,
+	} {
+		got, ok := Limit(cql)
+		assert.True(t, ok, cql)
+		assert.Equal(t, want, got, cql)
+	}
+	for _, cql := range []string{
+		"SELECT * FROM ks.t PER PARTITION LIMIT 1",
+		"SELECT * FROM ks.t WHERE s = 'LIMIT 5'",
+		"SELECT * FROM ks.t -- LIMIT 5",
+		"SELECT * FROM ks.t LIMIT ?",
+	} {
+		_, ok := Limit(cql)
+		assert.False(t, ok, cql)
 	}
 }

@@ -19,7 +19,8 @@ import (
 // it.
 type RowDecoder struct {
 	columns  []gocql.ColumnInfo
-	dest     []interface{}
+	dest     []interface{}   // what Iter.Scan fills: a tuple is one for each element
+	cols     [][]interface{} // the same destinations, by column
 	udt      map[int]*CQLTypeInfo
 	decoder  *BinaryDecoder
 	keyspace string
@@ -31,7 +32,7 @@ type RowDecoder struct {
 func (s *Session) NewRowDecoder(columns []gocql.ColumnInfo, types []string, keyspace string) *RowDecoder {
 	d := &RowDecoder{
 		columns:  columns,
-		dest:     make([]interface{}, len(columns)),
+		cols:     make([][]interface{}, len(columns)),
 		udt:      map[int]*CQLTypeInfo{},
 		keyspace: keyspace,
 	}
@@ -41,7 +42,8 @@ func (s *Session) NewRowDecoder(columns []gocql.ColumnInfo, types []string, keys
 
 	for i, col := range columns {
 		if col.TypeInfo != nil && col.TypeInfo.Type() == gocql.TypeUDT {
-			d.dest[i] = new(RawBytes)
+			d.cols[i] = []interface{}{new(RawBytes)}
+			d.dest = append(d.dest, d.cols[i]...)
 			if i < len(types) && types[i] != "" && types[i] != "udt" {
 				if parsed, err := ParseCQLType(types[i]); err == nil && parsed != nil {
 					d.udt[i] = parsed
@@ -52,8 +54,11 @@ func (s *Session) NewRowDecoder(columns []gocql.ColumnInfo, types []string, keys
 			continue
 		}
 		// Not *interface{}: gocql panics on a NULL there, and silently
-		// stores the previous row's zero value once it has one.
-		d.dest[i] = NewScanDest(col.TypeInfo)
+		// stores the previous row's zero value once it has one. A tuple is a
+		// destination for each element: the driver reads it as that many
+		// columns, and one for the whole of it failed every scan.
+		d.cols[i] = columnDests(col.TypeInfo)
+		d.dest = append(d.dest, d.cols[i]...)
 	}
 	return d
 }
@@ -65,16 +70,28 @@ func (d *RowDecoder) Dest() []interface{} { return d.dest }
 func (d *RowDecoder) Row() map[string]interface{} {
 	row := make(map[string]interface{}, len(d.columns))
 	for i, col := range d.columns {
-		raw, isUDT := d.dest[i].(*RawBytes)
+		raw, isUDT := d.cols[i][0].(*RawBytes)
 		if !isUDT {
-			row[col.Name] = ScanValue(d.dest[i])
+			row[col.Name] = columnValue(col.TypeInfo, d.cols[i])
 			continue
 		}
-		if raw == nil || *raw == nil || d.decoder == nil {
+		if raw == nil || *raw == nil {
 			row[col.Name] = nil
 			continue
 		}
+		// The driver's type for the column names the UDT's fields and their
+		// types, so it is decoded without a registry - the MCP server's
+		// session has none, and every table with a UDT failed there.
+		if udt, ok := col.TypeInfo.(gocql.UDTTypeInfo); ok && len(udt.Elements) > 0 {
+			if value, err := decodeTyped(udt, []byte(*raw)); err == nil {
+				row[col.Name] = value
+				continue
+			}
+		}
 		info := d.udt[i]
+		if d.decoder == nil {
+			info = nil
+		}
 		if info == nil {
 			row[col.Name] = fmt.Sprintf("0x%x", *raw)
 			continue

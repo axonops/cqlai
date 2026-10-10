@@ -27,7 +27,10 @@ type ParquetCaptureWriter struct {
 	totalRows  int64
 	props      *parquet.WriterProperties
 	arrowProps pqarrow.ArrowWriterProperties
-	records    []arrow.RecordBatch
+	// file writes each chunk out as it fills, as a row group of its own.
+	// The chunks used to be kept until Close and written as one table, so an
+	// export held every row it had read in memory until the end.
+	file       *pqarrow.FileWriter
 	typeMapper *TypeMapper
 	isClosed   bool
 	firstWrite bool
@@ -92,7 +95,6 @@ func NewParquetCaptureWriter(output string, columnNames []string, columnTypes []
 		chunkSize:  options.ChunkSize,
 		props:      props,
 		arrowProps: arrowProps,
-		records:    make([]arrow.RecordBatch, 0),
 		typeMapper: typeMapper,
 		firstWrite: true,
 		outputPath: output,
@@ -152,7 +154,6 @@ func NewParquetCaptureWriterWithTypeInfo(output string, columnNames []string, co
 		chunkSize:  options.ChunkSize,
 		props:      props,
 		arrowProps: arrowProps,
-		records:    make([]arrow.RecordBatch, 0),
 		typeMapper: typeMapper,
 		firstWrite: true,
 		outputPath: output,
@@ -261,82 +262,65 @@ func (w *ParquetCaptureWriter) flushChunk() error {
 		return nil
 	}
 
-	// Create a record batch from the current builder state
 	record := w.builder.NewRecordBatch()
-	// Don't defer release here - the record is stored and will be released in Close()
-
-	// Store the record for final write
-	// The record is retained for writing later
-	w.records = append(w.records, record)
+	defer record.Release()
+	if err := w.openFile(); err != nil {
+		return err
+	}
+	if err := w.file.Write(record); err != nil {
+		return fmt.Errorf("failed to write Parquet rows: %w", err)
+	}
 
 	// Reset the builder for the next chunk
+	w.builder.Release()
 	w.builder = array.NewRecordBuilder(w.allocator, w.schema)
 	w.rowCount = 0
 
 	logger.DebugfToFile("ParquetWriter", "Flushed chunk with %d total rows", w.totalRows)
-
 	return nil
 }
 
-// Close finalizes the Parquet file
+// openFile starts the Parquet file, once: the writer properties are final
+// by the first chunk.
+func (w *ParquetCaptureWriter) openFile() error {
+	if w.file != nil {
+		return nil
+	}
+	file, err := pqarrow.NewFileWriter(w.schema, w.writer, w.props, w.arrowProps)
+	if err != nil {
+		return fmt.Errorf("failed to start the Parquet file: %w", err)
+	}
+	w.file = file
+	return nil
+}
+
+// Close writes what is left, the footer, and closes the file. A file with no
+// rows still has its schema.
 func (w *ParquetCaptureWriter) Close() error {
 	if w.isClosed {
 		return nil
 	}
+	w.isClosed = true
 
-	// Flush any remaining data
-	if err := w.flushChunk(); err != nil {
-		return fmt.Errorf("failed to flush final chunk: %w", err)
+	err := w.flushChunk()
+	if err == nil {
+		err = w.openFile()
 	}
-
-	// Only write if we have data
-	if len(w.records) > 0 || (w.builder != nil && w.builder.Field(0).Len() > 0) {
-		// If there's data in the builder but not yet in records, create final record
-		if w.builder != nil && w.builder.Field(0).Len() > 0 {
-			record := w.builder.NewRecordBatch()
-			w.records = append(w.records, record)
+	if w.file != nil {
+		// Closes the file under it too: until the footer is written, it
+		// cannot be read, so a failure here is a failure of the export.
+		if cerr := w.file.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("failed to finish the Parquet file: %w", cerr)
 		}
-
-		// Create table from all records
-		if len(w.records) > 0 {
-			table := array.NewTableFromRecords(w.schema, w.records)
-			defer table.Release()
-
-			// Write the entire table to Parquet
-			if err := pqarrow.WriteTable(table, w.writer, w.chunkSize, w.props, w.arrowProps); err != nil {
-				return fmt.Errorf("failed to write Parquet table: %w", err)
-			}
-
-			logger.DebugfToFile("ParquetWriter", "Wrote Parquet file with %d total rows", w.totalRows)
-		}
+	} else if closer, ok := w.writer.(io.Closer); ok && w.writer != os.Stdout {
+		_ = closer.Close()
 	}
-
-	// Release all stored records - they are retained by the table
-	for _, record := range w.records {
-		if record != nil {
-			record.Release()
-		}
-	}
-	w.records = nil
-
-	// Release the builder
 	if w.builder != nil {
 		w.builder.Release()
 		w.builder = nil
 	}
-
-	// Close the underlying writer if it's a file (but not stdout)
-	// Note: pqarrow.WriteTable may already close the writer in some cases,
-	// so we check if it's still valid
-	if !w.isClosed {
-		if closer, ok := w.writer.(io.Closer); ok && w.writer != os.Stdout {
-			// Try to close but don't fail if already closed
-			_ = closer.Close()
-		}
-	}
-
-	w.isClosed = true
-	return nil
+	logger.DebugfToFile("ParquetWriter", "Wrote Parquet file with %d total rows", w.totalRows)
+	return err
 }
 
 // GetRowCount returns the total number of rows written

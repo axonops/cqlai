@@ -182,24 +182,20 @@ func (h *MetaCommandHandler) processParquetFile(table string, columns []string, 
 	return nil
 }
 
-// skipRows skips the specified number of rows
+// skipRows skips the specified number of rows. It reads no more than are
+// left to skip: what a read takes and the skip does not use would be lost
+// to the import too.
 func (h *MetaCommandHandler) skipRows(reader *parquet.ParquetReader, opts *copyOptions, stats *copyStats) error {
-	for i := 0; i < opts.skipRows; i += opts.batchSize {
-		batch, err := reader.ReadBatch(opts.batchSize)
-		if err == io.EOF {
+	for stats.skippedRows < opts.skipRows {
+		batch, err := reader.ReadBatch(min(opts.batchSize, opts.skipRows-stats.skippedRows))
+		if err == io.EOF || (err == nil && len(batch) == 0) {
+			stats.skippedRows += len(batch)
 			break
 		}
 		if err != nil {
 			return fmt.Errorf("error reading Parquet file: %v", err)
 		}
-
-		toSkip := opts.skipRows - i
-		if toSkip > len(batch) {
-			stats.skippedRows += len(batch)
-		} else {
-			stats.skippedRows += toSkip
-			break
-		}
+		stats.skippedRows += len(batch)
 	}
 	return nil
 }

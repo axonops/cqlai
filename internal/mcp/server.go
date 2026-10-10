@@ -268,11 +268,11 @@ func (s *Server) request(ctx context.Context, m message) []byte {
 	case "resources/templates/list":
 		return reply(m.ID, s.resourceTemplates(), nil)
 	case "resources/read":
-		return s.resourcesRead(m)
+		return s.resourcesRead(ctx, m)
 	case "prompts/list":
 		return reply(m.ID, map[string]any{"prompts": ai.MCPPrompts(s.source.Policy())}, nil)
 	case "prompts/get":
-		return s.promptsGet(m)
+		return s.promptsGet(ctx, m)
 	}
 	return reply(m.ID, nil, &rpcError{Code: codeMethodNotFound, Message: "no method " + m.Method})
 }
@@ -373,7 +373,7 @@ func (s *Server) call(ctx context.Context, name string, args map[string]any) any
 	entry := policy.Entry{Time: start.UTC(), Connection: env.Policy.Connection(), Tool: name}
 
 	var outcome ai.ToolOutcome
-	release, err := s.limiter.Acquire(ctx)
+	release, err := s.acquire(ctx, env.Policy)
 	if err != nil {
 		outcome = ai.ToolOutcome{Text: err.Error(), IsError: true, Refused: true, Reason: err.Error()}
 	} else {
@@ -411,6 +411,14 @@ func (s *Server) call(ctx context.Context, name string, args map[string]any) any
 		"content": []map[string]any{{"type": "text", "text": outcome.Text}},
 		"isError": outcome.IsError,
 	}
+}
+
+// acquire waits for a call's turn within the limits of the policy it runs
+// under: the rate is the one the settings give now, not when the server
+// started. Release it when the call is done.
+func (s *Server) acquire(ctx context.Context, pol policy.Policy) (func(), error) {
+	s.limiter.SetRate(pol.CallsPerMinute())
+	return s.limiter.Acquire(ctx)
 }
 
 // reply is a response, encoded.
@@ -456,7 +464,7 @@ func (s *Server) resourceTemplates() any {
 }
 
 // resourcesRead is one resource's text, under the policy, in the audit log.
-func (s *Server) resourcesRead(m message) []byte {
+func (s *Server) resourcesRead(ctx context.Context, m message) []byte {
 	var p struct {
 		URI string `json:"uri"`
 	}
@@ -466,7 +474,14 @@ func (s *Server) resourcesRead(m message) []byte {
 
 	start := time.Now()
 	env := s.source.Env()
-	outcome := ai.ReadSchemaResource(env, p.URI)
+	// A read runs DESCRIBE against the cluster, so it counts as a call.
+	var outcome ai.ToolOutcome
+	if release, err := s.acquire(ctx, env.Policy); err != nil {
+		outcome = ai.ToolOutcome{Text: err.Error(), IsError: true, Refused: true, Reason: err.Error()}
+	} else {
+		outcome = ai.ReadSchemaResource(env, p.URI)
+		release()
+	}
 	entry := policy.Entry{Time: start.UTC(), Connection: env.Policy.Connection(), Tool: "resources/read " + p.URI,
 		Reason: outcome.Reason, DurationMS: time.Since(start).Milliseconds(), Decision: "allowed"}
 	switch {
@@ -486,7 +501,7 @@ func (s *Server) resourcesRead(m message) []byte {
 }
 
 // promptsGet is a prompt with its arguments filled in.
-func (s *Server) promptsGet(m message) []byte {
+func (s *Server) promptsGet(ctx context.Context, m message) []byte {
 	var p struct {
 		Name      string            `json:"name"`
 		Arguments map[string]string `json:"arguments"`
@@ -494,7 +509,14 @@ func (s *Server) promptsGet(m message) []byte {
 	if err := json.Unmarshal(m.Params, &p); err != nil || p.Name == "" {
 		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: "prompts/get needs a name"})
 	}
-	text, err := ai.GetMCPPrompt(s.source.Env(), p.Name, p.Arguments)
+	// A prompt reads the schema to fill itself in, so it counts as a call.
+	env := s.source.Env()
+	release, err := s.acquire(ctx, env.Policy)
+	if err != nil {
+		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: err.Error()})
+	}
+	text, err := ai.GetMCPPrompt(env, p.Name, p.Arguments)
+	release()
 	if err != nil {
 		return reply(m.ID, nil, &rpcError{Code: codeInvalidParams, Message: err.Error()})
 	}

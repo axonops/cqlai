@@ -68,9 +68,9 @@ func (m *MainModel) headerWidths(headers []string) []int {
 	details := m.headerDetails(headers)
 
 	for i, header := range headers {
-		widths[i] = runeWidth(db.StripKeyMarker(stripAnsi(header)))
+		widths[i] = cellWidth(db.StripKeyMarker(stripAnsi(header)))
 		if details != nil {
-			widths[i] = max(widths[i], runeWidth(details[i]))
+			widths[i] = max(widths[i], cellWidth(details[i]))
 		}
 	}
 	return widths
@@ -113,7 +113,7 @@ func (m *MainModel) headerTextRow(cells []string, colWidths []int, style lipglos
 		if i >= len(colWidths) {
 			break
 		}
-		padding := max(colWidths[i]-runeWidth(cell), 0)
+		padding := max(colWidths[i]-cellWidth(cell), 0)
 		row += " " + style.Render(cell) + ansiReset + strings.Repeat(" ", padding) + " │"
 	}
 	return row
@@ -131,7 +131,17 @@ func borderRow(left, join, right string, colWidths []int) string {
 	return row + right
 }
 
-// runeWidth counts the columns a string takes, ANSI stripped.
-func runeWidth(s string) int {
-	return len([]rune(stripAnsi(s)))
+// cellWidth is the screen columns a string takes, ANSI codes left out. A
+// CJK character or an emoji takes two; counting runes gave it one, and a row
+// holding one was drawn wider than its header.
+func cellWidth(s string) int {
+	return lipgloss.Width(s)
+}
+
+// padCell is s with spaces after it to width screen columns.
+func padCell(s string, width int) string {
+	if w := cellWidth(s); w < width {
+		return s + strings.Repeat(" ", width-w)
+	}
+	return s
 }

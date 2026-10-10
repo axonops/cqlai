@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/bits"
 	"net"
+	"reflect"
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"gopkg.in/inf.v0"
 )
 
 // BinaryDecoder handles decoding of Cassandra binary protocol data
@@ -185,45 +188,14 @@ func (d *BinaryDecoder) decodeDecimal(data []byte) (string, error) {
 	if len(data) < 4 {
 		return "", fmt.Errorf("invalid decimal data length: %d", len(data))
 	}
-
-	scaleVal := binary.BigEndian.Uint32(data[:4])
-	if scaleVal > math.MaxInt32 {
-		return "", fmt.Errorf("decimal scale %d exceeds int32 range", scaleVal)
-	}
-	scale := int32(scaleVal)
-	unscaled := new(big.Int)
-	unscaled.SetBytes(data[4:])
-
-	// Handle sign bit
+	// A signed scale - a negative one is a power of ten - and a two's
+	// complement unscaled value, as gocql reads a decimal column.
+	scale := int32(binary.BigEndian.Uint32(data[:4])) // #nosec G115 - the scale is a signed int32 on the wire
+	unscaled := new(big.Int).SetBytes(data[4:])
 	if len(data) > 4 && data[4]&0x80 != 0 {
-		// Negative number
-		bytes := make([]byte, len(data)-4)
-		copy(bytes, data[4:])
-		for i := range bytes {
-			bytes[i] = ^bytes[i]
-		}
-		temp := new(big.Int)
-		temp.SetBytes(bytes)
-		unscaled = temp.Add(temp, big.NewInt(1))
-		unscaled = unscaled.Neg(unscaled)
+		unscaled.Sub(unscaled, new(big.Int).Lsh(big.NewInt(1), uint(8*(len(data)-4))))
 	}
-
-	// Format with scale
-	str := unscaled.String()
-	if scale > 0 {
-		if len(str) <= int(scale) {
-			// Need to pad with zeros
-			zeros := int(scale) - len(str) + 1
-			for i := 0; i < zeros; i++ {
-				str = "0" + str
-			}
-		}
-		// Insert decimal point
-		pos := len(str) - int(scale)
-		str = str[:pos] + "." + str[pos:]
-	}
-
-	return str, nil
+	return inf.NewDecBig(unscaled, inf.Scale(scale)).String(), nil
 }
 
 func (d *BinaryDecoder) decodeBoolean(data []byte) (bool, error) {
@@ -278,23 +250,19 @@ func (d *BinaryDecoder) decodeTime(data []byte) (time.Duration, error) {
 	return time.Duration(nanos), nil
 }
 
-func (d *BinaryDecoder) decodeDuration(data []byte) (map[string]interface{}, error) {
-	// Duration is encoded as vint months, vint days, vint nanoseconds
-	pos := 0
-
-	months, bytesRead := d.readVInt(data[pos:])
-	pos += bytesRead
-
-	days, bytesRead := d.readVInt(data[pos:])
-	pos += bytesRead
-
-	nanos, _ := d.readVInt(data[pos:])
-
-	return map[string]interface{}{
-		"months": months,
-		"days":   days,
-		"nanos":  nanos,
-	}, nil
+func (d *BinaryDecoder) decodeDuration(data []byte) (gocql.Duration, error) {
+	// Three signed vints: months, days and nanoseconds. The same type a
+	// duration column gives, so it is shown the same way.
+	months, n1 := d.readVInt(data)
+	days, n2 := d.readVInt(data[n1:])
+	nanos, n3 := d.readVInt(data[n1+n2:])
+	if n1 == 0 || n2 == 0 || n3 == 0 || n1+n2+n3 != len(data) {
+		return gocql.Duration{}, fmt.Errorf("invalid duration data length: %d", len(data))
+	}
+	if months < math.MinInt32 || months > math.MaxInt32 || days < math.MinInt32 || days > math.MaxInt32 {
+		return gocql.Duration{}, fmt.Errorf("duration out of range")
+	}
+	return gocql.Duration{Months: int32(months), Days: int32(days), Nanoseconds: nanos}, nil // #nosec G115 - range checked above
 }
 
 func (d *BinaryDecoder) decodeBlob(data []byte) ([]byte, error) {
@@ -432,16 +400,33 @@ func (d *BinaryDecoder) decodeMap(data []byte, keyType, valueType *CQLTypeInfo, 
 			}
 		}
 
-		// Convert key to string for string keys (common case)
-		if keyStr, ok := key.(string); ok {
-			result[keyStr] = value
-		} else {
-			result[key] = value
-		}
+		result[mapKey(key)] = value
 	}
 
 	return result, nil
 }
+
+// mapKey is a decoded key as a Go map can hold it. A blob, an inet or a
+// frozen collection decodes to a slice or a map, which Go cannot use as a
+// key - assigning one panicked - so it is held as the text it is shown as.
+func mapKey(key interface{}) interface{} {
+	switch k := key.(type) {
+	case nil:
+		return nil
+	case []byte:
+		return KeyText(fmt.Sprintf("0x%x", k))
+	case net.IP:
+		return k.String() // text, quoted as cqlsh quotes an inet
+	}
+	if !reflect.TypeOf(key).Comparable() {
+		return KeyText(NewCQLTypeHandler().formatValueInCollection(key))
+	}
+	return key
+}
+
+// KeyText is a map key held as the text it is shown as, written without
+// quotes: 0xcafe or [1, 2], as cqlsh writes them.
+type KeyText string
 
 func (d *BinaryDecoder) decodeTuple(data []byte, elementTypes []*CQLTypeInfo, keyspace string) ([]interface{}, error) {
 	result := make([]interface{}, len(elementTypes))
@@ -539,49 +524,25 @@ func (d *BinaryDecoder) decodeUDT(data []byte, typeInfo *CQLTypeInfo, keyspace s
 
 // Helper functions
 
+// readVInt reads one of Cassandra's signed vints: the leading one bits of
+// the first byte say how many bytes follow, and the value is zig-zag encoded,
+// so a sign costs one bit. It returns the value and the bytes read, 0 when
+// there are not enough.
 func (d *BinaryDecoder) readVInt(data []byte) (int64, int) {
 	if len(data) == 0 {
 		return 0, 0
 	}
-
-	firstByte := data[0]
-
-	// Check if it's a single byte vint
-	if firstByte&0x80 == 0 {
-		// Positive single byte
-		return int64(firstByte), 1
-	}
-
-	// Multi-byte vint
-	// Count leading ones to determine length
-	length := 0
-	for i := 7; i >= 0; i-- {
-		if firstByte&(1<<uint(i)) == 0 {
-			break
-		}
-		length++
-	}
-
-	if length == 0 || length > 8 || length > len(data) {
+	first := data[0]
+	extra := bits.LeadingZeros8(^first)
+	if 1+extra > len(data) {
 		return 0, 0
 	}
-
-	// Extract value
-	// Safely calculate the shift amount
-	if length > 8 || length < 1 {
-		return 0, 0
+	var u uint64
+	if extra < 8 {
+		u = uint64(first & (0xff >> (extra + 1)))
 	}
-	shiftAmount := 8 - length
-	result := int64(firstByte & ((1 << shiftAmount) - 1))
-	for i := 1; i < length; i++ {
-		result = (result << 8) | int64(data[i])
+	for i := 1; i <= extra; i++ {
+		u = u<<8 | uint64(data[i])
 	}
-
-	// Handle negative numbers
-	if length == 8 {
-		// Special case for maximum negative value
-		result = -result
-	}
-
-	return result, length
+	return int64(u>>1) ^ -int64(u&1), 1 + extra // #nosec G115 - zig-zag decoding
 }

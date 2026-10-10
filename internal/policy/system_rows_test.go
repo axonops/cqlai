@@ -156,3 +156,30 @@ func TestAutoFetchIsOnlyOnWhenTheTopTurnsItOn(t *testing.T) {
 	require.False(t, load(t, &config.Config{Connections: []config.Config{{Name: "prod", MCP: &config.MCPConfig{AutoFetch: true}}}}, "prod", Flags{}).AutoFetch(),
 		"a connection cannot turn on what the top does not")
 }
+
+// TestAPermissionOnAHiddenThingIsNotShown: LIST PERMISSIONS names the
+// resource each permission is on, so a row about a hidden keyspace or table
+// would name it.
+func TestAPermissionOnAHiddenThingIsNotShown(t *testing.T) {
+	p := denyOnly(t)
+	for resource, visible := range map[string]bool{
+		"<all keyspaces>":            true,
+		"<keyspace shop>":            true,
+		"<table shop.orders>":        true,
+		"<all tables in shop>":       true,
+		"<function shop.total(int)>": true,
+		"<role analyst>":             true,
+		"<all roles>":                true,
+		"<keyspace billing>":         false,
+		"<table shop.secrets>":       false,
+		"<table billing.invoices>":   false,
+		"<all tables in billing>":    false,
+		"<all functions in billing>": false,
+		"<function billing.f(int)>":  false,
+		"<keyspace system_auth>":     false,
+		`<table "shop"."secrets">`:   false,
+		"<table shopnodot>":          false,
+	} {
+		assert.Equal(t, visible, p.ResourceVisible(resource), resource)
+	}
+}

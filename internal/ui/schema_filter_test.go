@@ -51,7 +51,7 @@ func TestATableIsFoundByItsName(t *testing.T) {
 
 	m = typeKeys(m, "/use")
 
-	assert.Equal(t, []string{"my_keyspace", "users"}, treeRows(m))
+	assert.Equal(t, []string{"my_keyspace", "Tables (3)", "users"}, treeRows(m))
 	assert.Equal(t, "", m.input.Value(), "what is typed goes to the filter, not the prompt")
 
 	row, ok := m.schema.current()
@@ -79,7 +79,7 @@ func TestCaseDoesNotMatterInTheName(t *testing.T) {
 
 	m = typeKeys(m, "/auditlog")
 
-	assert.Equal(t, []string{"my_keyspace", "AuditLog"}, treeRows(m))
+	assert.Equal(t, []string{"my_keyspace", "Tables (3)", "AuditLog"}, treeRows(m))
 }
 
 // TestTheMatchesInsideAKeyspaceAreTheOnlyOnesShown: a table that does not
@@ -96,7 +96,7 @@ func TestTheMatchesInsideAKeyspaceAreTheOnlyOnesShown(t *testing.T) {
 
 	m = pressKey(m, tea.KeyBackspace)
 	m = typeKeys(m, "ers")
-	assert.Equal(t, []string{"my_keyspace", "users", "system", "peers"}, treeRows(m))
+	assert.Equal(t, []string{"my_keyspace", "Tables (3)", "users", "system", "Tables (3)", "peers"}, treeRows(m))
 }
 
 // TestNothingMatchingSaysSo.
@@ -126,7 +126,7 @@ func TestUpFromTheTopRowIsTheFilter(t *testing.T) {
 	assert.True(t, m.schema.filtering(), "and nothing is above it")
 
 	m = typeKeys(m, "peer")
-	assert.Equal(t, []string{"system", "peers"}, treeRows(m))
+	assert.Equal(t, []string{"system", "Tables (3)", "peers"}, treeRows(m))
 
 	// With the match below the top row, up still stays in the filter
 	// rather than walking the tree.
@@ -146,7 +146,7 @@ func TestDownFromTheFilterIsTheTree(t *testing.T) {
 	require.False(t, m.schema.filtering())
 	row, _ := m.schema.current()
 	assert.Equal(t, "users", row.table, "the first match, not the row after it")
-	assert.Equal(t, []string{"my_keyspace", "users", "system", "peers"}, treeRows(m))
+	assert.Equal(t, []string{"my_keyspace", "Tables (3)", "users", "system", "Tables (3)", "peers"}, treeRows(m))
 
 	m = pressKey(m, tea.KeyDown)
 	row, _ = m.schema.current()
@@ -160,11 +160,11 @@ func TestEnterKeepsTheFilterAndGivesBackThePrompt(t *testing.T) {
 
 	m = pressKey(m, tea.KeyEnter)
 	assert.False(t, m.schema.filtering())
-	assert.Equal(t, []string{"my_keyspace", "users"}, treeRows(m), "the tree stays narrowed")
+	assert.Equal(t, []string{"my_keyspace", "Tables (3)", "users"}, treeRows(m), "the tree stays narrowed")
 
 	m = typeKeys(m, "se")
 	assert.Equal(t, "se", m.input.Value(), "typing goes to the prompt again")
-	assert.Equal(t, []string{"my_keyspace", "users"}, treeRows(m))
+	assert.Equal(t, []string{"my_keyspace", "Tables (3)", "users"}, treeRows(m))
 }
 
 // TestEscapePutsTheWholeTreeBack, with what was found still selected.

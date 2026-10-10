@@ -65,6 +65,8 @@ func (a *Auditor) Log(e Entry) {
 		return
 	}
 	if e.Statement != "" {
+		// A driver error repeats the value it could not use.
+		e.Reason = validation.WithoutStatementValues(e.Reason, e.Statement)
 		e.Statement = validation.WithoutValues(e.Statement)
 	}
 	line, err := json.Marshal(e)

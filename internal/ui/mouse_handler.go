@@ -3,7 +3,6 @@ package ui
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/logger"
-	"github.com/axonops/cqlai/internal/router"
 )
 
 // handleMouseInput handles mouse events.
@@ -607,40 +606,9 @@ func (m *MainModel) handleMouseWheelRight() (*MainModel, tea.Cmd) {
 	return m, nil
 }
 
-// Helper function to load more table data (extracted from keyboard handler logic)
+// loadMoreTableData loads the next page of rows, for the wheel.
 func (m *MainModel) loadMoreTableData() {
-	if m.slidingWindow == nil {
-		logger.DebugfToFile("Mouse", "loadMoreTableData: No sliding window")
-		return
-	}
-	if !m.slidingWindow.hasMoreData {
-		logger.DebugfToFile("Mouse", "loadMoreTableData: No more data available")
-		return
-	}
-
-	logger.DebugfToFile("Mouse", "loadMoreTableData: Loading more rows, pageSize=%d", m.session.PageSize())
-	newRows := m.slidingWindow.LoadMoreRows(m.session.PageSize())
-	logger.DebugfToFile("Mouse", "loadMoreTableData: Loaded %d new rows, total rows now=%d",
-		newRows, len(m.slidingWindow.Rows))
-
-	if newRows > 0 {
-		// Write uncaptured rows to capture file if capturing
-		metaHandler := router.GetMetaHandler()
-		if metaHandler != nil && metaHandler.IsCapturing() {
-			uncapturedRows := m.slidingWindow.GetUncapturedRows()
-			if len(uncapturedRows) > 0 {
-				_ = metaHandler.WriteCaptureResult("", m.slidingWindow.Headers, uncapturedRows)
-				m.slidingWindow.MarkRowsAsCaptured(len(uncapturedRows))
-			}
-		}
-
-		// Clear cache to force rebuild (important!)
-		m.cachedTableLines = nil
-		m.renderResults(m.resultRows())
-
-		// Update row count
-		m.rowCount = int(m.slidingWindow.TotalRowsSeen)
-	}
+	m.loadMoreTableDataHelper()
 }
 
 // clickTab switches to whichever mode's tab covers a column.

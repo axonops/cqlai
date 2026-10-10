@@ -1,14 +1,25 @@
 package router
 
-// handleHelp handles HELP command
-func (h *MetaCommandHandler) handleHelp() interface{} {
-	return HelpRows()
+import "strings"
+
+// handleHelp is HELP in batch mode: the list of everything, or with a command
+// after it, how that command is written. The shell opens its Help window
+// instead.
+func (h *MetaCommandHandler) handleHelp(command string) interface{} {
+	topic := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(command), ";"))
+	if len(topic) >= 4 {
+		topic = strings.TrimSpace(topic[4:]) // after HELP
+	}
+	if topic == "" {
+		return HelpRows()
+	}
+	return strings.Join(HelpForTopic(topic), "\n")
 }
 
 // HelpRows is the help text, as category, command and description.
 //
-// One source, rendered twice: HELP prints it into the console and the Help
-// window on the tab line shows the same rows. Written out twice they would
+// One source, rendered twice: the Help window - opened by F1, the tab line, or
+// HELP at the prompt - and HELP in batch mode, which prints the rows. Written out twice they would
 // drift, and the one nobody looks at would be the one that goes stale.
 func HelpRows() [][]string {
 	return [][]string{
@@ -70,7 +81,8 @@ func HelpRows() [][]string {
 
 		// Information
 		{"─────────", "─────────", "─────────────"},
-		{"Info", "SHOW VERSION", "Show Cassandra version"},
+		{"Info", "HELP <command>", "How a command is written: HELP INSERT, HELP CREATE TABLE, HELP COPY"},
+		{"", "SHOW VERSION", "Show Cassandra version"},
 		{"", "SHOW HOST", "Show connection details"},
 		{"", "SHOW SESSION", "Display session settings"},
 
@@ -112,6 +124,7 @@ func HelpRows() [][]string {
 		{"Keys", "F1 or Alt+H", "Open this help (F1 is taken by some terminals)"},
 		{"", "F2", "Console: what you typed and what came back"},
 		{"", "F3", "Schema: the keyspaces and tables, with their definitions"},
+		{"", "  Groups", "In Schema, each keyspace holds its tables, views, indexes, types, functions, aggregates, triggers"},
 		{"", "  / or ↑ at top", "In Schema, filter the tree by name; Esc clears it"},
 		{"", "F4", "Results: the last query, in whatever OUTPUT is set to"},
 		{"", "F5", "Trace: the second tab of that view, when tracing is on"},

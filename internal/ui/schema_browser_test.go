@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/axonops/cqlai/internal/config"
 	"strings"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestTheTreeIsKeyspacesUntilOneIsOpened(t *testing.T) {
 	assert.Equal(t, []string{"my_keyspace", "system", "system_schema"}, treeRows(m))
 
 	m, _ = m.toggleSchemaRow()
-	assert.Equal(t, []string{"my_keyspace", "events", "users", "system", "system_schema"}, treeRows(m))
+	assert.Equal(t, []string{"my_keyspace", "Tables (2)", "events", "users", "system", "system_schema"}, treeRows(m))
 
 	m, _ = m.toggleSchemaRow()
 	assert.Equal(t, []string{"my_keyspace", "system", "system_schema"}, treeRows(m),
@@ -94,7 +95,7 @@ func TestSelectingARowShowsItsSchema(t *testing.T) {
 	assert.Contains(t, strings.Join(m.schema.detail, "\n"), "CREATE KEYSPACE my_keyspace")
 
 	m, _ = m.toggleSchemaRow()
-	m, _ = m.selectSchemaRow(2) // my_keyspace.users
+	m, _ = m.selectSchemaRow(rowOfTable(t, m, "users"))
 	assert.Contains(t, strings.Join(m.schema.detail, "\n"), "CREATE TABLE my_keyspace.users")
 }
 
@@ -114,8 +115,9 @@ func TestClickingARowSelectsIt(t *testing.T) {
 		assert.Equal(t, i, got, "clicking %s landed on %s", row.key(), m.schema.rows()[got].key())
 	}
 
-	m, _ = m.clickSchema(1, tabBarHeight+schemaHeaderRows+2) // users
-	assert.Equal(t, 2, m.schema.selected)
+	users := rowOfTable(t, m, "users")
+	m, _ = m.clickSchema(1, tabBarHeight+schemaHeaderRows+users)
+	assert.Equal(t, users, m.schema.selected)
 	assert.Contains(t, strings.Join(m.schema.detail, "\n"), "CREATE TABLE my_keyspace.users")
 
 	// Clicking the open keyspace again folds it.
@@ -145,19 +147,28 @@ func TestAPressOnTheDefinitionIsNotAClickOnTheTree(t *testing.T) {
 func TestTheArrowsWalkTheTree(t *testing.T) {
 	m := schemaModel(t)
 
-	m, _, _ = m.schemaKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	key := func(code rune) schemaRow {
+		m, _, _ = m.schemaKey(tea.KeyPressMsg{Code: code})
+		row, ok := m.schema.current()
+		require.True(t, ok)
+		return row
+	}
+
+	key(tea.KeyRight)
 	assert.True(t, m.schema.expanded["my_keyspace"], "right should have opened it")
 
-	m, _, _ = m.schemaKey(tea.KeyPressMsg{Code: tea.KeyDown})
-	row, ok := m.schema.current()
-	require.True(t, ok)
-	assert.Equal(t, "events", row.table)
+	// Into the keyspace is its groups, the tables first and open; into the
+	// group is what is in it.
+	assert.Equal(t, schemaRow{keyspace: "my_keyspace", kind: db.KindTables}, key(tea.KeyDown))
+	assert.Equal(t, "events", key(tea.KeyRight).table)
 
-	// Left from a table goes up to the keyspace holding it; left again closes.
-	m, _, _ = m.schemaKey(tea.KeyPressMsg{Code: tea.KeyLeft})
-	row, _ = m.schema.current()
-	assert.Equal(t, "", row.table)
-	m, _, _ = m.schemaKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	// Left from a table goes up to its group, left again closes the group, and
+	// left from a closed group goes up to the keyspace, which left closes.
+	assert.True(t, key(tea.KeyLeft).isGroup())
+	key(tea.KeyLeft)
+	assert.False(t, m.schema.groupOpen("my_keyspace", db.KindTables))
+	assert.True(t, key(tea.KeyLeft).isKeyspace())
+	key(tea.KeyLeft)
 	assert.False(t, m.schema.expanded["my_keyspace"])
 
 	// And it stops at the ends rather than wrapping.
@@ -290,7 +301,7 @@ func TestEachPaneSaysWhatItIs(t *testing.T) {
 	assert.Contains(t, drawn[0], "KEYSPACE  my_keyspace")
 
 	m, _ = m.toggleSchemaRow()
-	m, _ = m.selectSchemaRow(2)
+	m, _ = m.selectSchemaRow(rowOfTable(t, m, "users"))
 	drawn = strings.Split(stripAnsi(m.viewSchema(m.windowWidth, 8)), "\n")
 	assert.Contains(t, drawn[0], "TABLE  my_keyspace.users")
 
@@ -404,7 +415,7 @@ func TestTheHistoryListKeepsTheArrows(t *testing.T) {
 func TestTheDefinitionCanBeCopiedOut(t *testing.T) {
 	m := schemaModel(t)
 	m, _ = m.toggleSchemaRow()
-	m, _ = m.selectSchemaRow(2) // my_keyspace.users
+	m, _ = m.selectSchemaRow(rowOfTable(t, m, "users"))
 
 	// What is on screen is what a selection is over, so it has to be drawn
 	// before it can be dragged across.
@@ -540,4 +551,97 @@ func TestRefreshingKeepsWhereYouWere(t *testing.T) {
 
 	assert.True(t, m.schema.expanded["my_keyspace"], "it should still be open")
 	assert.LessOrEqual(t, m.schema.selected, max(len(m.schema.rows())-1, 0))
+}
+
+// objectsModel is the SCHEMA view on a keyspace holding one of everything.
+func objectsModel(t *testing.T) *MainModel {
+	t.Helper()
+	m := schemaModel(t)
+	m.schema.objects = map[string]map[string][]string{
+		"my_keyspace": {
+			db.KindViews:      {"users_by_email"},
+			db.KindIndexes:    {"events_kind_idx", "users_name_idx"},
+			db.KindTypes:      {"address"},
+			db.KindFunctions:  {"fahrenheit"},
+			db.KindAggregates: {"average"},
+			db.KindTriggers:   {"events.audit"},
+		},
+	}
+	m.schema.definitions["indexes my_keyspace.users_name_idx"] = "CREATE INDEX users_name_idx ON my_keyspace.users (name);"
+	return m
+}
+
+// TestAKeyspaceHoldsAGroupOfEachKind, tables first and open, the rest closed
+// until opened, and a kind it has none of not drawn at all.
+func TestAKeyspaceHoldsAGroupOfEachKind(t *testing.T) {
+	m := objectsModel(t)
+	m, _ = m.toggleSchemaRow()
+
+	assert.Equal(t, []string{
+		"my_keyspace",
+		"Tables (2)", "events", "users",
+		"Materialized views (1)", "Indexes (2)", "Types (1)", "Functions (1)", "Aggregates (1)", "Triggers (1)",
+		"system", "system_schema",
+	}, treeRows(m))
+
+	delete(m.schema.objects["my_keyspace"], db.KindTriggers)
+	assert.NotContains(t, treeRows(m), "Triggers (0)", "an empty group is not drawn")
+}
+
+// TestOpeningAGroupShowsWhatIsInIt, and its definitions.
+func TestOpeningAGroupShowsWhatIsInIt(t *testing.T) {
+	m := objectsModel(t)
+	m, _ = m.toggleSchemaRow()
+
+	indexes := -1
+	for i, row := range m.schema.rows() {
+		if row.isGroup() && row.kind == db.KindIndexes {
+			indexes = i
+		}
+	}
+	require.GreaterOrEqual(t, indexes, 0)
+	m, _ = m.selectSchemaRow(indexes)
+
+	// The group's own pane is the names in it, with nothing fetched.
+	detail := strings.Join(m.schema.detail, "\n")
+	assert.Contains(t, detail, "2 indexes in my_keyspace")
+	assert.Contains(t, detail, "users_name_idx")
+	assert.Contains(t, m.schemaDetailHeading(), "INDEXES  my_keyspace")
+
+	m, _, _ = m.schemaKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	assert.Contains(t, treeRows(m), "users_name_idx", "right opened it")
+
+	m, _ = m.selectSchemaRow(rowOfTable(t, m, "users_name_idx"))
+	assert.Equal(t, "INDEX  my_keyspace.users_name_idx", m.schemaDetailHeading())
+	assert.Contains(t, strings.Join(m.schema.detail, "\n"), "CREATE INDEX users_name_idx")
+}
+
+// TestTheFilterFindsEveryKind, under its group, with the group and keyspace
+// shown whether they are open or not.
+func TestTheFilterFindsEveryKind(t *testing.T) {
+	m := objectsModel(t)
+	m, _ = m.setSchemaFilter("name_idx")
+
+	assert.Equal(t, []string{"my_keyspace", "Indexes (2)", "users_name_idx"}, treeRows(m))
+	row, _ := m.schema.current()
+	assert.Equal(t, "users_name_idx", row.table, "the match is selected, not the group above it")
+
+	// Clearing it keeps the find selected, in the whole tree, with its group open.
+	m, _ = m.clearSchemaFilter()
+	row, _ = m.schema.current()
+	assert.Equal(t, schemaRow{keyspace: "my_keyspace", kind: db.KindIndexes, table: "users_name_idx"}, row)
+	assert.True(t, m.schema.groupOpen("my_keyspace", db.KindIndexes))
+}
+
+// TestAGroupHasNothingToReview: its pane is a list of names.
+func TestAGroupHasNothingToReview(t *testing.T) {
+	m := objectsModel(t)
+	m.aiConfig = &config.AIConfig{Provider: "anthropic", APIKey: "sk-ant-test"}
+	m, _ = m.toggleSchemaRow()
+	m, _ = m.selectSchemaRow(1) // the tables
+	require.True(t, m.schemaOnGroup())
+
+	m, cmd := m.startSchemaReview()
+	assert.Nil(t, cmd, "nothing is sent to be read")
+	assert.Equal(t, "Nothing to review", m.modal.Title)
 }

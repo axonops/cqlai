@@ -85,20 +85,48 @@ func (c *cluster) env(pol policy.Policy) ai.ToolEnv {
 		return ai.ToolEnv{Policy: pol, NotConnected: reason}
 	}
 	return ai.ToolEnv{
-		// What the gate needs to tell a scan from a read of one partition,
-		// and whether a redaction applies to a table.
-		Policy: pol.
-			WithPartitionKey(func(keyspace, table string) []string {
-				key, _ := sess.TableKey(keyspace, table)
-				return key
-			}).
-			WithColumns(func(keyspace, table string) []string {
-				_, columns := sess.TableKey(keyspace, table)
-				return columns
-			}),
+		Policy:   SessionPolicy(pol, sess),
 		Session:  sess,
 		Schema:   schema,
 		Describe: Describer(sess, c.mgr),
+	}
+}
+
+// SessionPolicy is pol, told what the gate needs from the cluster: a table's
+// partition key, to tell a scan from a read of one partition; its columns, to
+// tell whether a redaction applies; and what a materialized view is of, so it
+// is hidden and redacted as its base table is.
+func SessionPolicy(pol policy.Policy, sess *db.Session) policy.Policy {
+	return pol.
+		WithPartitionKey(func(keyspace, table string) []string {
+			key, _ := sess.TableKey(keyspace, table)
+			return key
+		}).
+		WithColumns(func(keyspace, table string) []string {
+			_, columns := sess.TableKey(keyspace, table)
+			return columns
+		}).
+		WithViewBase(viewBases(sess))
+}
+
+// viewBases is sess.ViewBase, asked once a name for the life of one call: a
+// redaction is checked for every value of every row.
+func viewBases(sess *db.Session) func(keyspace, name string) string {
+	var mu sync.Mutex
+	known := map[[2]string]string{}
+	return func(keyspace, name string) string {
+		key := [2]string{keyspace, name}
+		mu.Lock()
+		base, ok := known[key]
+		mu.Unlock()
+		if ok {
+			return base
+		}
+		base = sess.ViewBase(keyspace, name)
+		mu.Lock()
+		known[key] = base
+		mu.Unlock()
+		return base
 	}
 }
 
@@ -114,7 +142,7 @@ func (c *cluster) env(pol policy.Policy) ai.ToolEnv {
 func Describer(sess *db.Session, mgr *session.Manager) func(string) interface{} {
 	handler := router.NewMetaCommandHandler(sess, mgr)
 	return func(statement string) interface{} {
-		return router.NewCommandParser(sess, handler, mgr).ParseCommand(statement)
+		return router.AsFailure(router.NewCommandParser(sess, handler, mgr).ParseCommand(statement))
 	}
 }
 

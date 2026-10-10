@@ -91,9 +91,10 @@ func (m *MainModel) startSchemaReview() (*MainModel, tea.Cmd) {
 	row, ok := m.schema.current()
 
 	switch {
-	case !ok || len(m.schema.detail) == 0:
+	case !ok || row.isGroup() || len(m.schema.detail) == 0:
+		// A group is a list of names, which has nothing in it to review.
 		m.modal = NewMessageModal("Nothing to review",
-			"Pick a keyspace or a table on the left, and this reviews its definition.")
+			"Pick a keyspace, a table or another object on the left, and this reviews its definition.")
 		return m, nil
 	case !m.aiAvailable():
 		m.modal = NewMessageModal("No AI provider is configured",

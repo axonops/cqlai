@@ -119,6 +119,9 @@ func (m *MainModel) adoptSession(newSession *db.Session, cfg *config.Config) {
 	m.connectError = ""
 
 	m.sessionManager = session.NewManager(cfg)
+	if m.noConfirm {
+		m.sessionManager.SetRequireConfirmation(false)
+	}
 	router.InitRouter(m.sessionManager)
 	m.completionEngine = completion.NewCompletionEngine(newSession, m.sessionManager)
 

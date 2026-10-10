@@ -181,11 +181,19 @@ func (e *Executor) Execute(cql string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Ctrl+C stops this statement. The handler goes when the statement does:
+	// left registered, one per statement, a signal after the first statement
+	// only cancelled a context nobody was using, and Ctrl+C and kill no longer
+	// stopped a long -f run.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 	go func() {
-		<-sigChan
-		cancel()
+		select {
+		case <-sigChan:
+			cancel()
+		case <-ctx.Done():
+		}
 	}()
 
 	// Process the CQL command
@@ -254,93 +262,45 @@ func (e *Executor) ExecuteFile(filename string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Strip comments from the content
-	content = []byte(stripComments(string(content)))
-
-	// Split into individual statements
-	statements := splitStatements(string(content))
-
-	// Execute each statement
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
-
-		// Execute the statement
+	// One statement at a time, split as the shell splits what is typed.
+	for _, stmt := range splitStatements(string(content)) {
 		if err := e.Execute(stmt); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-// ExecuteStdin executes CQL from stdin
+// ExecuteStdin executes CQL from stdin, a statement at a time: each runs once
+// it is whole, by the rule the shell uses for what is typed - a semicolon
+// outside any string or comment, and for a BATCH its APPLY BATCH;.
 func (e *Executor) ExecuteStdin() error {
 	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var buffer strings.Builder
-	inBatch := false
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		trimmedLine := strings.TrimSpace(line)
-		upperLine := strings.ToUpper(trimmedLine)
-
-		// Check for BATCH start
-		if strings.HasPrefix(upperLine, "BEGIN BATCH") ||
-			strings.HasPrefix(upperLine, "BEGIN UNLOGGED BATCH") ||
-			strings.HasPrefix(upperLine, "BEGIN COUNTER BATCH") {
-			inBatch = true
-		}
-
-		buffer.WriteString(line)
+		buffer.WriteString(scanner.Text())
 		buffer.WriteString("\n")
-
-		// Check if we have a complete statement
-		if strings.HasSuffix(trimmedLine, ";") {
-			if inBatch {
-				// Check if this ends the batch
-				if strings.HasPrefix(upperLine, "APPLY BATCH") {
-					inBatch = false
-					stmt := strings.TrimSpace(buffer.String())
-					// Strip comments before executing
-					stmt = stripComments(stmt)
-					stmt = strings.TrimSpace(stmt)
-					if stmt != "" {
-						if err := e.Execute(stmt); err != nil {
-							return err
-						}
-					}
-					buffer.Reset()
-				}
-				// Otherwise, continue accumulating the batch
-			} else {
-				// Regular statement ended
-				stmt := strings.TrimSpace(buffer.String())
-				// Strip comments before executing
-				stmt = stripComments(stmt)
-				stmt = strings.TrimSpace(stmt)
-				if stmt != "" {
-					if err := e.Execute(stmt); err != nil {
-						return err
-					}
-				}
-				buffer.Reset()
+		if !router.StatementComplete(buffer.String()) {
+			continue
+		}
+		for _, stmt := range splitStatements(buffer.String()) {
+			if err := e.Execute(stmt); err != nil {
+				return err
 			}
 		}
+		buffer.Reset()
+	}
+	if err := scanner.Err(); err != nil {
+		return err
 	}
 
-	// Execute any remaining statement
-	if buffer.Len() > 0 {
-		stmt := strings.TrimSpace(buffer.String())
-		// Strip comments before executing
-		stmt = stripComments(stmt)
-		stmt = strings.TrimSpace(stmt)
-		if stmt != "" {
-			return e.Execute(stmt)
+	// Whatever is left at the end, without its semicolon.
+	for _, stmt := range splitStatements(buffer.String()) {
+		if err := e.Execute(stmt); err != nil {
+			return err
 		}
 	}
-
-	return scanner.Err()
+	return nil
 }

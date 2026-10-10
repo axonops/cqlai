@@ -1,9 +1,9 @@
 package router
 
 import (
-	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -147,7 +147,7 @@ func (h *MetaCommandHandler) handleCapture(command string) interface{} {
 	if !strings.HasSuffix(dir, string(filepath.Separator)) {
 		dir += string(filepath.Separator)
 	}
-	if err := os.MkdirAll(dir, 0750); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil { // #nosec G703 - the directory the user named for their own capture
 		return fmt.Sprintf("Error creating %s: %v", dir, err)
 	}
 
@@ -244,14 +244,25 @@ func (h *MetaCommandHandler) finishAutoSaveFile() {
 // file per query: which one is being written is only known once a query has
 // run, and the schema of a Parquet file is only known once its columns are.
 func (h *MetaCommandHandler) openAutoSaveFile() error {
-	name := h.autoSaveName(h.captureFormat)
-
-	writer, err := parquet.CreateWriter(context.Background(), name)
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", name, err)
+	// A new file, never one already there: the count starts again when
+	// AUTOSAVE does, and a name taken in the same second by an earlier run
+	// would have been written over. A name in use moves on to the next.
+	var name string
+	var writer *os.File
+	for tries := 0; ; tries++ {
+		name = h.autoSaveName(h.captureFormat)
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 G703 - in the directory the user named
+		if err == nil {
+			writer = f
+			break
+		}
+		if !errors.Is(err, os.ErrExist) || tries >= 1000 {
+			return fmt.Errorf("opening %s: %w", name, err)
+		}
 	}
 	h.captureOutput = writer
 	h.lastAutoSaved = name
+	h.jsonRecords = 0
 
 	switch h.captureFormat {
 	case "json":
@@ -264,6 +275,17 @@ func (h *MetaCommandHandler) openAutoSaveFile() error {
 		h.captureHeaders = nil
 	}
 	return nil
+}
+
+// writeJSONRecord adds one record to the open JSON array, with a comma before
+// it when it is not the first.
+func (h *MetaCommandHandler) writeJSONRecord(record []byte) {
+	if h.jsonRecords > 0 {
+		_, _ = h.captureOutput.Write([]byte(",\n"))
+	}
+	_, _ = h.captureOutput.Write([]byte("  "))
+	_, _ = h.captureOutput.Write(record)
+	h.jsonRecords++
 }
 
 // closeAutoSaveFile finishes the file for one query.
@@ -424,9 +446,7 @@ func (h *MetaCommandHandler) WriteCaptureText(command string, output string) err
 			return err
 		}
 
-		// Add comma separator between JSON records
-		_, _ = h.captureOutput.Write([]byte(",\n  "))
-		_, _ = h.captureOutput.Write(jsonBytes)
+		h.writeJSONRecord(jsonBytes)
 
 	default:
 		// Text format - write the command and output
@@ -702,8 +722,15 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 
 		// Use raw data if provided, otherwise fall back to string parsing
 		if rawData != nil && len(rawData) == len(rows) {
-			// Use the raw data directly - it preserves types
-			result.Rows = rawData
+			// The raw values, each as JSON can hold it: a decimal as its
+			// digits and a blob as 0x hex, not as {} and base64.
+			for _, raw := range rawData {
+				row := make(map[string]interface{}, len(raw))
+				for k, v := range raw {
+					row[k] = db.JSONValue(v)
+				}
+				result.Rows = append(result.Rows, row)
+			}
 		} else {
 			// Fall back to parsing strings (backward compatibility)
 			for _, row := range rows {
@@ -732,9 +759,7 @@ func (h *MetaCommandHandler) WriteCaptureResultWithRawData(command string, heade
 			return err
 		}
 
-		// Add comma separator between JSON records
-		_, _ = h.captureOutput.Write([]byte(",\n  "))
-		_, _ = h.captureOutput.Write(jsonBytes)
+		h.writeJSONRecord(jsonBytes)
 
 	case "parquet":
 		if h.parquetWriter == nil {

@@ -3,6 +3,7 @@ package batch
 import (
 	"context"
 	"fmt"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
@@ -27,15 +28,22 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 	isFirstBatch := true
 	var columnWidths []int // Store column widths from first batch
 
+	types := map[string]gocql.TypeInfo{}
+	for _, c := range result.Iterator.Columns() {
+		types[c.Name] = c.TypeInfo
+	}
+	handler := db.NewCQLTypeHandler()
+
 	for {
 		select {
 		case <-ctx.Done():
 			fmt.Fprintln(e.writer, "\n\nQuery interrupted by user")
 			return nil
 		default:
-			// Use MapScan to handle NULLs properly - gocql can panic on NULL values with Scan()
+			// ScanRow: a NULL is nil rather than the type's zero value, and a
+			// tuple is one value.
 			rowMap := make(map[string]interface{})
-			if !result.Iterator.MapScan(rowMap) {
+			if !db.ScanRow(result.Iterator, rowMap) {
 				// Check for errors
 				if err := result.Iterator.Close(); err != nil {
 					return fmt.Errorf("iterator error: %w", err)
@@ -76,13 +84,18 @@ func (e *Executor) handleStreamingResult(ctx context.Context, result db.Streamin
 				return nil
 			}
 
-			// Convert row to string array using MapScan results
+			// Each value as its column's type draws it: a tuple as (5, five)
+			// rather than as a list.
 			row := make([]string, len(result.ColumnNames))
 			for i, colName := range result.ColumnNames {
-				if val, exists := rowMap[colName]; exists {
-					row[i] = db.FormatValue(val)
-				} else {
+				val, exists := rowMap[colName]
+				switch {
+				case !exists || val == nil:
 					row[i] = "null"
+				case types[colName] != nil:
+					row[i] = handler.FormatValue(val, types[colName])
+				default:
+					row[i] = db.FormatValue(val)
 				}
 			}
 

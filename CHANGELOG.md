@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Every kind of schema object in the SCHEMA view.** Under each keyspace,
+  its tables, materialized views, indexes, types, functions, aggregates and
+  triggers are listed in groups, each with its definition.
+- **`HELP` opens the Help window,** as `F1` does, and `HELP INSERT`,
+  `HELP CREATE TABLE` or any other command shows how it is written, with an
+  example and a link to its page in the AxonOps CQL reference.
+
+### Changed
+
+- **COPY TO and COPY FROM CSV go through Cassandra's own conversions.** COPY
+  TO writes each value as Cassandra writes it - a timestamp with its
+  milliseconds, a date, a duration, a blob as `0x...` - and a collection,
+  tuple or UDT as JSON. The header row has the column names alone. COPY FROM
+  has Cassandra read each field as its column's type, and leaves the columns a
+  file does not have as they are rather than setting them to NULL.
+- **Decimal and duration columns are written to Parquet as text,** as varint
+  is, so every digit, month and day is kept.
+- **The window with AI-generated CQL opens on `Edit`.** `Enter` puts the
+  statement in the prompt to read; it no longer runs it.
+- **The DROP, TRUNCATE and DELETE confirmation is on by default,** as the
+  README said it was. `--no-confirm` turns it off.
+
+### Fixed
+
+- **Statements typed over several lines run as typed.** A `--` or `//`
+  comment took the rest of the input with it, not just the rest of its line,
+  so a DELETE could lose its clustering condition and delete a whole
+  partition. A line the same as the one before it was dropped. A BATCH ended
+  at its first semicolon and ran as separate statements.
+- **NULLs are NULL,** not `0`, `false`, an empty string or the zero UUID, on
+  screen, in JSON and CSV, and in COPY TO. Tuples are shown, not `null`, and
+  JSON output works on a table with one. Timestamps keep their milliseconds.
+- **Saving PREFERENCES or CONNECT no longer wipes `cqlai.json`** when one
+  value in it has the wrong type, and the file is written readable only by
+  you, in one step.
+- **Tables with a map keyed by a blob, an inet or a collection** no longer
+  crash the shell. User-defined types with a decimal, a duration or such a map
+  in them are shown correctly, with their fields in order.
+- **Paging shows every row.** Past the window's 10,000-row or memory limit,
+  rows were skipped; with `PAGING OFF`, nothing past the first 100 rows
+  loaded; after looking at the TRACE view, RESULTS stopped scrolling. Rows
+  with CJK characters or emoji keep the table's borders in line.
+- **Batch mode exits non-zero** when CQLAI refuses a statement, a GRANT fails,
+  or DESCRIBE names something that does not exist; Ctrl+C and `kill` stop a
+  long `-f` run; and splitting a large file no longer takes minutes.
+- **SOURCE** splits its file as the shell splits what is typed, and refuses a
+  file that sources itself instead of running until the stack overflows.
+- **DESCRIBE KEYSPACE and DESCRIBE SCHEMA** come from the server on Cassandra
+  4.0 and later, and the description built for older clusters has static
+  columns, the clustering order, quoted names and escaped comments.
+- **COPY and Parquet.** A partitioned export no longer writes over its own
+  files after 10 partition values. COPY TO reports a read or write failure
+  instead of a finished export. SKIPROWS no longer loses the rest of the first
+  batch. Parquet is written as it is read, not held in memory to the end, and
+  `PER PARTITION LIMIT` no longer reads a whole result in one go.
+- **AUTOSAVE** JSON files parse, and starting AUTOSAVE again never writes over
+  an earlier file.
+- **The schema filter** reads every keyspace's names in seven queries, rather
+  than seven a keyspace and one more a table.
+- **SHOW, CONSISTENCY and the other session commands** no longer crash when
+  not connected, and act on the current connection after FILE > CONNECT.
+
+### Security
+
+- **A materialized view is hidden and redacted as its base table is** by the
+  MCP server.
+- **Secret settings are masked by `query`,** as by `node_status`, and cannot
+  be read another way, such as JSON, an alias or a guess in WHERE.
+- **`list_roles` leaves out permissions on hidden keyspaces and tables.**
+- **The MCP audit log keeps no values:** UUIDs and booleans are replaced as
+  strings and numbers are, and an error repeating a value has it taken out.
+- **MCP resource and prompt reads count against the rate limit,** and a
+  change to the limit holds from the next call.
+- **The MCP gate ends a `--` comment at a carriage return,** as Cassandra
+  does, so it judges the statement Cassandra runs.
+- **A multi-line statement proposed over MCP** goes through the confirmation
+  window like any other.
+- **`--debug` no longer writes passwords to the debug log,** from `cqlshrc`
+  or from `CREATE ROLE` and `ALTER ROLE`.
+
 ## [0.3.6] - 2026-10-10
 
 ### Changed

@@ -596,7 +596,8 @@ func shapeRows(p policy.Policy, keyspace, table string, page db.QueryPageResult)
 		}
 		row := make(map[string]any, len(raw))
 		for column, value := range raw {
-			if p.Redacted(keyspace, table, column) || p.NameHidden(keyspace, table, column, raw) {
+			if p.Redacted(keyspace, table, column) || p.NameHidden(keyspace, table, column, raw) ||
+				policy.SettingHidden(keyspace, table, column, raw) {
 				row[column] = policy.RedactedValue
 				continue
 			}

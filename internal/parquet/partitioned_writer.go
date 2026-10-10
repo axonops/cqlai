@@ -28,8 +28,12 @@ type PartitionedParquetWriter struct {
 	options        WriterOptions
 	maxOpenFiles   int
 	maxFileSize    int64
-	mu             sync.Mutex
-	isClosed       bool
+	// nextPart is the number of each partition's next file. It outlives the
+	// partition's writer: one closed to make room for another partition is
+	// opened again on a new file, not over the one it wrote.
+	nextPart map[string]int
+	mu       sync.Mutex
+	isClosed bool
 	// Store column info for creating new partition files
 	columnNames     []string
 	columnTypes     []string
@@ -46,6 +50,7 @@ type partitionWriter struct {
 	fileSize     int64
 	partNum      int
 	maxFileSize  int64
+	columnNames  []string // the columns its files have
 }
 
 // PartitionedWriterOptions extends WriterOptions with partitioning config
@@ -489,83 +494,22 @@ func (pw *PartitionedParquetWriter) getOrCreateWriter(partitionKey string, colum
 		return writer, nil
 	}
 
-	// Check if we need to close an old writer
-	if len(pw.writers) >= pw.maxOpenFiles {
-		// Close least recently used writer
-		oldest := pw.writerOrder.Back()
-		if oldest != nil {
+	// Close the least recently used writer to make room. A file that cannot
+	// be closed has lost its rows, so the export stops.
+	if len(pw.writers) >= pw.openLimit() {
+		if oldest := pw.writerOrder.Back(); oldest != nil {
 			oldKey := oldest.Value.(string)
 			if err := pw.closeWriter(oldKey); err != nil {
-				logger.DebugfToFile("PartitionedWriter", "Failed to close LRU writer: %v", err)
+				return nil, fmt.Errorf("failed to close the file for partition %s: %w", oldKey, err)
 			}
 		}
 	}
 
-	// Create new writer
 	dirPath := pw.buildPartitionPath(partitionKey)
 	if err := os.MkdirAll(dirPath, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create partition directory: %w", err)
 	}
-
-	// Generate filename
-	fileName := fmt.Sprintf("part-%05d.parquet", 0)
-	filePath := filepath.Join(dirPath, fileName)
-
-	// Create Parquet writer with TypeInfo if available
-	var parquetWriter *ParquetCaptureWriter
-	var err error
-
-	switch {
-	case len(pw.columnTypeInfos) > 0:
-		// Use the TypeInfo-aware constructor
-		// Use columnNames parameter (which has virtual columns removed), not pw.columnNames
-		// Need to get the corresponding types and typeinfos for the filtered columns
-		filteredTypes := make([]string, len(columnNames))
-		filteredTypeInfos := make([]gocql.TypeInfo, len(columnNames))
-		for i, name := range columnNames {
-			// Find the type and typeinfo for this column
-			for j, origName := range pw.columnNames {
-				if origName == name {
-					if j < len(pw.columnTypes) {
-						filteredTypes[i] = pw.columnTypes[j]
-					}
-					if j < len(pw.columnTypeInfos) {
-						filteredTypeInfos[i] = pw.columnTypeInfos[j]
-					}
-					break
-				}
-			}
-		}
-		parquetWriter, err = NewParquetCaptureWriterWithTypeInfo(filePath, columnNames, filteredTypes, filteredTypeInfos, pw.options)
-	case len(pw.columnTypes) > 0:
-		// Fall back to standard constructor
-		// Use columnNames parameter (which has virtual columns removed), not pw.columnNames
-		// Need to get the corresponding column types for the filtered columns
-		filteredTypes := make([]string, len(columnNames))
-		for i, name := range columnNames {
-			// Find the type for this column from pw.columnNames/pw.columnTypes
-			for j, origName := range pw.columnNames {
-				if origName == name && j < len(pw.columnTypes) {
-					filteredTypes[i] = pw.columnTypes[j]
-					break
-				}
-			}
-		}
-		parquetWriter, err = NewParquetCaptureWriter(filePath, columnNames, filteredTypes, pw.options)
-	default:
-		// Get column types from schema (fallback)
-		columnTypes := make([]string, len(columnNames))
-		for i, name := range columnNames {
-			for j, field := range pw.schema.Fields() {
-				if field.Name == name {
-					columnTypes[i] = pw.schema.Field(j).Type.String()
-					break
-				}
-			}
-		}
-		parquetWriter, err = NewParquetCaptureWriter(filePath, columnNames, columnTypes, pw.options)
-	}
-
+	parquetWriter, filePath, partNum, err := pw.openPart(partitionKey, dirPath, columnNames)
 	if err != nil {
 		return nil, err
 	}
@@ -575,10 +519,9 @@ func (pw *PartitionedParquetWriter) getOrCreateWriter(partitionKey string, colum
 		partitionKey: partitionKey,
 		dirPath:      dirPath,
 		filePath:     filePath,
-		rowCount:     0,
-		fileSize:     0,
-		partNum:      0,
+		partNum:      partNum,
 		maxFileSize:  pw.maxFileSize,
+		columnNames:  columnNames,
 	}
 
 	// Add to cache
@@ -587,6 +530,64 @@ func (pw *PartitionedParquetWriter) getOrCreateWriter(partitionKey string, colum
 	pw.writerElements[partitionKey] = elem
 
 	return writer, nil
+}
+
+// openLimit is how many partition files may be open at once.
+func (pw *PartitionedParquetWriter) openLimit() int {
+	if pw.maxOpenFiles <= 0 {
+		return 10
+	}
+	return pw.maxOpenFiles
+}
+
+// openPart creates a partition's next file: part-00000.parquet, then
+// part-00001.parquet and on, never one it has written before.
+func (pw *PartitionedParquetWriter) openPart(partitionKey, dirPath string, columnNames []string) (*ParquetCaptureWriter, string, int, error) {
+	if pw.nextPart == nil {
+		pw.nextPart = map[string]int{}
+	}
+	partNum := pw.nextPart[partitionKey]
+	pw.nextPart[partitionKey] = partNum + 1
+	filePath := filepath.Join(dirPath, fmt.Sprintf("part-%05d.parquet", partNum))
+
+	// The types of the columns written, which leave out the partition
+	// columns a directory name already holds.
+	filteredTypes := make([]string, len(columnNames))
+	filteredTypeInfos := make([]gocql.TypeInfo, len(columnNames))
+	for i, name := range columnNames {
+		for j, origName := range pw.columnNames {
+			if origName == name {
+				if j < len(pw.columnTypes) {
+					filteredTypes[i] = pw.columnTypes[j]
+				}
+				if j < len(pw.columnTypeInfos) {
+					filteredTypeInfos[i] = pw.columnTypeInfos[j]
+				}
+				break
+			}
+		}
+	}
+
+	var parquetWriter *ParquetCaptureWriter
+	var err error
+	switch {
+	case len(pw.columnTypeInfos) > 0:
+		parquetWriter, err = NewParquetCaptureWriterWithTypeInfo(filePath, columnNames, filteredTypes, filteredTypeInfos, pw.options)
+	case len(pw.columnTypes) > 0:
+		parquetWriter, err = NewParquetCaptureWriter(filePath, columnNames, filteredTypes, pw.options)
+	default:
+		// Get column types from schema (fallback)
+		for i, name := range columnNames {
+			for j, field := range pw.schema.Fields() {
+				if field.Name == name {
+					filteredTypes[i] = pw.schema.Field(j).Type.String()
+					break
+				}
+			}
+		}
+		parquetWriter, err = NewParquetCaptureWriter(filePath, columnNames, filteredTypes, pw.options)
+	}
+	return parquetWriter, filePath, partNum, err
 }
 
 // rotatePartitionFile closes current file and creates a new one for the partition
@@ -601,26 +602,12 @@ func (pw *PartitionedParquetWriter) rotatePartitionFile(partitionKey string) err
 		return fmt.Errorf("failed to close current writer: %w", err)
 	}
 
-	// Increment part number
-	writer.partNum++
-
-	// Generate new filename
-	fileName := fmt.Sprintf("part-%05d.parquet", writer.partNum)
-	filePath := filepath.Join(writer.dirPath, fileName)
-
-	// Get column names and types from schema
-	columnNames := make([]string, 0, len(pw.schema.Fields()))
-	columnTypes := make([]string, 0, len(pw.schema.Fields()))
-	for _, field := range pw.schema.Fields() {
-		columnNames = append(columnNames, field.Name)
-		columnTypes = append(columnTypes, field.Type.String())
-	}
-
-	// Create new Parquet writer
-	parquetWriter, err := NewParquetCaptureWriter(filePath, columnNames, columnTypes, pw.options)
+	// The next file, with the same columns and types as the first.
+	parquetWriter, filePath, partNum, err := pw.openPart(partitionKey, writer.dirPath, writer.columnNames)
 	if err != nil {
 		return err
 	}
+	writer.partNum = partNum
 
 	writer.writer = parquetWriter
 	writer.filePath = filePath
@@ -682,6 +669,14 @@ func (pw *PartitionedParquetWriter) Close() error {
 
 	pw.isClosed = true
 	return firstErr
+}
+
+// PartitionCount is how many partitions have been written, whether or not
+// their files are still open.
+func (pw *PartitionedParquetWriter) PartitionCount() int {
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+	return len(pw.nextPart)
 }
 
 // GetPartitionInfo returns information about written partitions

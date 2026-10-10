@@ -33,6 +33,7 @@ const helpMargin = 4
 type helpWindow struct {
 	active bool
 	scroll int
+	topic  string // HELP <topic>: what was typed after HELP, or "" for everything
 }
 
 // helpGeometry is where the window sits and how much of it is showing.
@@ -78,6 +79,9 @@ func (m *MainModel) helpGeometry(screenWidth, screenHeight int) (helpGeometry, [
 	}
 
 	lines := helpLines(router.HelpRows())
+	if m.help.topic != "" {
+		lines = router.HelpForTopic(m.help.topic)
+	}
 	if len(lines) == 0 {
 		return helpGeometry{}, nil, false
 	}
@@ -130,8 +134,13 @@ func (m *MainModel) viewHelp(screenWidth, screenHeight int) (Layer, bool) {
 	thumb := scrollbarColumn(g.last-g.first, g.first, len(lines))
 	scrolls := len(lines) > g.rows
 
+	title := helpTitle
+	if m.help.topic != "" {
+		title = "HELP " + strings.ToUpper(strings.TrimSpace(m.help.topic)) + "  -  ↑↓ PgUp/PgDn scrolls  -  Esc closes"
+	}
+
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(centre(helpTitle, g.innerWidth)))
+	b.WriteString(titleStyle.Render(centre(title, g.innerWidth)))
 	b.WriteString("\n")
 
 	for i := g.first; i < g.last; i++ {

@@ -114,7 +114,9 @@ func (hm *HistoryManager) loadHistory() error {
 
 // SaveCommand adds a command to history and saves to file
 func (hm *HistoryManager) SaveCommand(command string) error {
-	command = strings.TrimSpace(command)
+	// One statement a line: a newline in one would make two of it when the
+	// file is read back.
+	command = strings.TrimSpace(strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(command))
 	if command == "" {
 		return nil
 	}

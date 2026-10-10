@@ -89,7 +89,9 @@ func (e *Executor) outputStreamingJSON(ctx context.Context, result db.StreamingQ
 			fmt.Fprint(e.writer, "\n  ")
 			encoder := json.NewEncoder(e.writer)
 			encoder.SetIndent("  ", "  ")
-			if err := encoder.Encode(rowMap); err != nil {
+			// Each value as JSON can hold it: a duration as 1mo2d3ns, a
+			// decimal as its digits, a blob as 0x hex.
+			if err := encoder.Encode(db.JSONValue(rowMap)); err != nil {
 				return fmt.Errorf("failed to encode JSON: %w", err)
 			}
 		}

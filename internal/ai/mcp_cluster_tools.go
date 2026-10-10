@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
-	"github.com/axonops/cqlai/internal/policy"
 )
 
 // The MCP tools about the cluster rather than its data: how the nodes are
@@ -163,17 +162,9 @@ func nodeStatus(ctx context.Context, env ToolEnv, p NodeStatusParams) ToolOutcom
 	if more {
 		page.Rows = page.Rows[:env.Policy.MaxRows()]
 	}
+	// shapeRows hides a setting that holds a secret, whether or not
+	// Cassandra hides it.
 	rows, cut := shapeRows(env.Policy, "system_views", table, page)
-
-	// A setting that holds a secret is hidden whether or not Cassandra hides
-	// it.
-	if table == "settings" {
-		for _, row := range rows {
-			if name, ok := row["name"].(string); ok && policy.MaskedSetting(name) {
-				row["value"] = policy.RedactedValue
-			}
-		}
-	}
 
 	out := map[string]any{"section": p.Section, "columns": page.Columns, "rows": rows}
 	if more {
@@ -236,6 +227,15 @@ func listRoles(ctx context.Context, env ToolEnv, p ListRolesParams) ToolOutcome 
 	if err != nil {
 		return gateOutcome(env, statement, err)
 	}
+	// A permission on a hidden keyspace or table would name it.
+	kept := page.Rows[:0:0]
+	for _, row := range page.Rows {
+		if resource, ok := row["resource"].(string); ok && !env.Policy.ResourceVisible(resource) {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	page.Rows = kept
 	rows, _ := shapeRows(env.Policy, "system_auth", "roles", page)
 	o := jsonOutcome(map[string]any{"columns": page.Columns, "rows": rows})
 	o.Statement, o.Rows = statement, len(rows)

@@ -100,7 +100,7 @@ func (p *CommandParser) filterStreamingTablesResult(streamResult db.StreamingQue
 
 		for {
 			rowMap := make(map[string]interface{})
-			if !streamResult.Iterator.MapScan(rowMap) {
+			if !db.ScanRow(streamResult.Iterator, rowMap) {
 				break
 			}
 

@@ -131,7 +131,7 @@ func TestTheFirstBatchIsOnePage(t *testing.T) {
 		m.session = &db.Session{}
 		m.session.SetPageSize(pageSize)
 
-		assert.Equal(t, pageSize, m.initialRowsToLoad())
+		assert.Equal(t, pageSize, m.rowsPerLoad())
 	}
 }
 
@@ -141,8 +141,8 @@ func TestWithPagingOffTheBatchFallsBack(t *testing.T) {
 	m.session = &db.Session{}
 	m.session.SetPageSize(0)
 
-	assert.Equal(t, rowsWithoutPaging, m.initialRowsToLoad())
+	assert.Equal(t, rowsWithoutPaging, m.rowsPerLoad())
 
 	m.session = nil
-	assert.Equal(t, rowsWithoutPaging, m.initialRowsToLoad())
+	assert.Equal(t, rowsWithoutPaging, m.rowsPerLoad())
 }
