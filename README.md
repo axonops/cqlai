@@ -1704,7 +1704,7 @@ when a tool is first called.
 | `--connection NAME` | Headless: the saved connection to use |
 | `--permit SELECT,DESCRIBE` | Permit only these commands, of those the settings permit |
 | `--keyspaces ks1,ks2` | Only these keyspaces are visible, of those the settings allow |
-| `--max-rows N` | At most this many rows per call, if lower than the settings |
+| `--max-rows N` | The page size, if lower than the settings' |
 | `--audit-log PATH` | Where the audit log goes; `-` turns it off |
 | `--config-file PATH` | The configuration file to read |
 
@@ -1722,7 +1722,7 @@ options say how it is served, and replace the settings.
 | `get_schema` | A table's keys and columns |
 | `fuzzy_search` | Keyspaces and tables whose names match a word: spelled like it, or sounding like it, with vowels or letters left out or a letter wrong (`hyto` finds `hayato`). Says why each matched. |
 | `describe` | The CQL definition of a keyspace, table, type, index, view, function or aggregate, exactly as `DESCRIBE` prints it |
-| `query` | Runs one `SELECT` and returns a page of rows, with a token for the next page |
+| `query` | Runs one `SELECT` and returns a page of rows, with a token for the next page; every row with `Auto fetch` on |
 | `trace_query` | Runs one `SELECT` with tracing on, and returns the trace with the rows |
 | `node_status` | The node's settings, thread pools, connected clients, caches, compactions or disk usage, from its virtual tables (Cassandra 4.0 and later). Settings holding a secret are hidden. |
 | `table_size` | Cassandra's estimate of a table's partition count and mean partition size |
@@ -1822,22 +1822,33 @@ whatever the model asks for.
 - **Hidden keyspaces and tables stay hidden.** They are not listed, described,
   found by search, or named in an error. `system_auth`, which holds the password
   hashes, is always hidden.
-- **The system keyspaces are hidden when every keyspace is allowed.** With no
-  keyspace list, `system`, `system_schema`, `system_traces` and the other
-  `system_` keyspaces cannot be read with `query`. They list the other
-  keyspaces, tables and columns, and hold the statements traced against them,
-  so reading them would show what deny hides. To allow one, list it with the
-  keyspaces you allow. `node_status` still reads `system_views`, unless it is
-  denied or left out of a keyspace list.
+- **The system keyspaces.** With no keyspace list, `system`, `system_schema`,
+  `system_traces` and the other `system_` keyspaces are visible only when
+  `System keyspaces` is ticked under MCP SERVER in PREFERENCES
+  (`"systemKeyspaces": true`). With a keyspace list, list the ones you want.
+  `node_status` reads `system_views` either way, unless it is denied or left
+  out of a keyspace list.
+- **System tables leave out what you hide.** `system_schema`,
+  `system.size_estimates` and some virtual tables have a row for every keyspace
+  and table. When you hide anything - with a deny list, a keyspace list, or the
+  system keyspaces left out - a row about something hidden is left out, and a
+  `SELECT` on such a table has to return `keyspace_name` (and the table name)
+  under their own names, so each row can be checked. When nothing is hidden,
+  they are read as they are. Rows describing `system_auth`'s tables are kept:
+  they are the same in every cluster. Its data stays hidden.
 - **Redacted columns.** A redacted column's values come back as `[redacted]`.
   On a table with redacted columns, a `SELECT` has to use `*` or column names:
   no `JSON`, alias or function, and no condition on a redacted column.
 - **Scans.** `ALLOW FILTERING`, and `COUNT`, `SUM`, `AVG`, `MIN` or `MAX`
   across partitions, are refused unless scans are allowed. They can read a whole
   table to return a few rows.
-- **Limits.** One call runs at a time, up to 60 a minute. Each call has the
-  request timeout. Results are capped at 100 rows a page and long values are
-  cut.
+- **Pages.** A query returns 100 rows at a time unless `Page size` says
+  otherwise, or the client asks for another number with `page_size`, which is
+  used as asked. With `Auto fetch` ticked (`"autoFetch": true`), a query
+  returns every row in one call, reading the pages itself. That can be a lot
+  on a large table.
+- **Limits.** One call runs at a time, up to 60 a minute. Each page read has
+  the request timeout. Long values are cut.
 - **No credentials.** No tool takes or returns a username or password, and the
   password is removed from any error before it is returned.
 - **This machine unless set, and never a web page.** The shell serves MCP on

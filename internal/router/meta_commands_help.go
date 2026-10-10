@@ -103,6 +103,8 @@ func HelpRows() [][]string {
 		{"", "  TLS", "TLS certificate and key serve HTTPS; TLS client CA asks for client certificates"},
 		{"", "  --headless", "No shell: MCP on stdin and stdout, for a client that starts cqlai"},
 		{"", "  What it may do", "PREFERENCES and CONNECT, under MCP SERVER"},
+		{"", "  Pages", "Page size, unless the client asks for another; Auto fetch returns every row"},
+		{"", "  System keyspaces", "Visible with no keyspace list when ticked; system_auth's data never"},
 		{"", "  Audit log", "~/.cassandra/cqlai_mcp_audit.log: every call, refusals too"},
 
 		// Keyboard Shortcuts

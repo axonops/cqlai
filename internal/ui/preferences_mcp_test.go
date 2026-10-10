@@ -81,7 +81,7 @@ func TestTheCommandRowsAreTheGatesTable(t *testing.T) {
 	assert.Equal(t, table, rows)
 	assert.Equal(t, []string{"SELECT", "DESCRIBE", "LIST"}, rows)
 
-	for _, path := range []string{"MCP.Keyspaces", "MCP.Deny", "MCP.Redact", "MCP.AllowScans",
+	for _, path := range []string{"MCP.Keyspaces", "MCP.SystemKeyspaces", "MCP.Deny", "MCP.Redact", "MCP.AllowScans", "MCP.AutoFetch",
 		"MCP.MaxRows", "MCP.AuditLog", "MCP.Listen", "MCP.Port", "MCP.Token",
 		"MCP.TLSCert", "MCP.TLSKey", "MCP.TLSClientCA"} {
 		prefIndex(t, m, path)

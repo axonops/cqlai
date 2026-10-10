@@ -57,7 +57,8 @@ func dataToolDefinitions() []ToolDefinition {
 		{
 			Name: ToolQuery.String(),
 			Description: "Run one CQL SELECT and return a page of its rows as JSON, with each column's type. " +
-				"Name tables as keyspace.table. Use next_page_token for the page after. " +
+				"Name tables as keyspace.table. Use next_page_token for the page after; with auto_fetch on " +
+				"(see connection_info) every row comes back at once and there is no next page. " +
 				"Other statements are refused; ALLOW FILTERING and aggregates across partitions may be refused too.",
 			Parameters: queryParameters(),
 			Required:   []string{"cql"},
@@ -78,7 +79,7 @@ func queryParameters() map[string]any {
 	return map[string]any{
 		"cql":         map[string]any{"type": "string", "description": "One CQL SELECT, with tables named as keyspace.table"},
 		"consistency": map[string]any{"type": "string", "enum": db.ConsistencyLevels(), "description": "For this query only"},
-		"page_size":   map[string]any{"type": "integer", "minimum": 1, "description": "Rows per page, up to the server's limit"},
+		"page_size":   map[string]any{"type": "integer", "minimum": 1, "description": "Rows per page; the server's page size when not given"},
 		"page_token":  map[string]any{"type": "string", "description": "next_page_token from the page before, with the same cql"},
 	}
 }
@@ -296,7 +297,8 @@ func connectionInfo(env ToolEnv) ToolOutcome {
 			"redacted_columns":        p.RedactPatterns(),
 			"scans_allowed":           p.AllowScans(),
 			"changes":                 "never run by this server: propose them with propose_change, for the user to run",
-			"max_rows":                p.MaxRows(),
+			"page_size":               p.MaxRows(),
+			"auto_fetch":              p.AutoFetch(),
 			"max_value_bytes":         p.MaxValueBytes(),
 			"max_calls_per_minute":    p.CallsPerMinute(),
 			"timeout_seconds":         int(p.Timeout().Seconds()),
@@ -503,32 +505,58 @@ func runQuery(ctx context.Context, env ToolEnv, p QueryParams, trace bool) ToolO
 		return o
 	}
 
+	// The page size is the client's to choose; the settings' is the one used
+	// when it does not.
 	size := pol.MaxRows()
-	if p.PageSize > 0 && p.PageSize < size {
+	if p.PageSize > 0 {
 		size = p.PageSize
 	}
 
-	if timeout := pol.Timeout(); timeout > 0 {
-		if trace {
-			timeout *= 2
+	// One page, or with auto fetch every page after it. The timeout is each
+	// page's: a whole table can take longer than any one read should.
+	read := func(state []byte, trace bool) (db.QueryPageResult, error) {
+		ctx := ctx
+		if timeout := pol.Timeout(); timeout > 0 {
+			if trace {
+				timeout *= 2
+			}
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
 		}
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
+		return env.Session.QueryPage(ctx, db.PageRequest{
+			Statement:   p.CQL,
+			Consistency: p.Consistency,
+			PageSize:    size,
+			PageState:   state,
+			Trace:       trace,
+		})
 	}
 
-	page, err := env.Session.QueryPage(ctx, db.PageRequest{
-		Statement:   p.CQL,
-		Consistency: p.Consistency,
-		PageSize:    size,
-		PageState:   state,
-		Trace:       trace,
-	})
+	page, err := read(state, trace)
 	if err != nil {
 		return gateOutcome(env, p.CQL, err)
 	}
+	for pol.AutoFetch() && len(page.PageState) > 0 {
+		next, err := read(page.PageState, false)
+		if err != nil {
+			return gateOutcome(env, p.CQL, err)
+		}
+		page.Rows = append(page.Rows, next.Rows...)
+		page.Warnings = append(page.Warnings, next.Warnings...)
+		page.PageState = next.PageState
+	}
 
+	// A system table's rows are filtered by the keyspace and table each is
+	// about, which needs the columns that say so.
 	table := statement.Names[0]
+	var columnNames []string
+	for _, c := range page.Columns {
+		columnNames = append(columnNames, c.Name)
+	}
+	if missing := pol.MissingNamingColumns(table.Keyspace, table.Table, columnNames); len(missing) > 0 {
+		return gateOutcome(env, p.CQL, policy.NamingColumnsRefusal(table.Keyspace, table.Table, missing))
+	}
 	rows, truncated := shapeRows(pol, table.Keyspace, table.Table, page)
 
 	out := map[string]any{
@@ -556,15 +584,19 @@ func runQuery(ctx context.Context, env ToolEnv, p QueryParams, trace bool) ToolO
 }
 
 // shapeRows turns a page's rows into what goes back: JSON values, the hidden
-// columns replaced, and long values cut. It reports the columns that were cut.
+// columns replaced, and long values cut. A row of a system table about a
+// hidden keyspace or table is left out. It reports the columns that were cut.
 func shapeRows(p policy.Policy, keyspace, table string, page db.QueryPageResult) ([]map[string]any, []string) {
 	limit := p.MaxValueBytes()
 	cut := map[string]bool{}
 	rows := make([]map[string]any, 0, len(page.Rows))
 	for _, raw := range page.Rows {
+		if !p.RowVisible(keyspace, table, raw) {
+			continue // about a hidden keyspace or table
+		}
 		row := make(map[string]any, len(raw))
 		for column, value := range raw {
-			if p.Redacted(keyspace, table, column) {
+			if p.Redacted(keyspace, table, column) || p.NameHidden(keyspace, table, column, raw) {
 				row[column] = policy.RedactedValue
 				continue
 			}

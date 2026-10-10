@@ -1272,7 +1272,7 @@ Arrinca haxa ou non clúster, e conéctase na primeira chamada.
 | `--connection NOME` | Headless: a conexión gardada que se usa |
 | `--permit SELECT,DESCRIBE` | Só estas ordes, das que permiten os axustes |
 | `--keyspaces ks1,ks2` | Só estes keyspaces son visibles, dos que permiten os axustes |
-| `--max-rows N` | Como moito estas filas por chamada, se é menos que nos axustes |
+| `--max-rows N` | O tamaño de páxina, se é menor que o dos axustes |
 | `--audit-log RUTA` | Onde vai o rexistro de auditoría; `-` desactívao |
 | `--config-file RUTA` | O ficheiro de configuración que se le |
 
@@ -1290,7 +1290,7 @@ opcións TLS din como se serve, e substitúen aos axustes.
 | `get_schema` | As claves e columnas dunha táboa |
 | `fuzzy_search` | Keyspaces e táboas cuxo nome coincide cunha palabra: escrito igual, ou que soa igual, sen vogais ou letras, ou cunha letra mal (`hyto` atopa `hayato`). Di por que coincide cada un. |
 | `describe` | A definición CQL dun keyspace, táboa, tipo, índice, vista, función ou agregado, tal como a imprime `DESCRIBE` |
-| `query` | Executa un `SELECT` e devolve unha páxina de filas, cun token para a seguinte |
+| `query` | Executa un `SELECT` e devolve unha páxina de filas, cun token para a seguinte; todas as filas con `Auto fetch` |
 | `trace_query` | Executa un `SELECT` con trazado e devolve a traza coas filas |
 | `node_status` | A configuración do nodo, os seus pools de fíos, clientes conectados, cachés, compactacións ou uso de disco, desde as súas táboas virtuais (Cassandra 4.0 e posteriores). Os axustes con segredos agóchanse. |
 | `table_size` | A estimación de Cassandra do número de particións dunha táboa e o seu tamaño medio |
@@ -1386,20 +1386,32 @@ que pida o modelo.
 - **O agochado segue agochado.** Os keyspaces e táboas agochados non se listan,
   non se describen, non se atopan ao buscar e non se nomean nun erro.
   `system_auth`, que garda os hashes dos contrasinais, sempre está agochado.
-- **Os keyspaces do sistema agóchanse cando se permiten todos.** Sen lista de
-  keyspaces, `system`, `system_schema`, `system_traces` e os demais keyspaces
-  `system_` non se poden ler con `query`. Listan os demais keyspaces, táboas e
-  columnas, e gardan as sentenzas trazadas contra eles, así que lelos amosaría
-  o que agocha deny. Para permitir un, inclúao na lista de keyspaces
-  permitidos. `node_status` segue lendo `system_views`, agás que estea en deny
-  ou falte nunha lista de keyspaces.
+- **Os keyspaces do sistema.** Sen lista de keyspaces, `system`,
+  `system_schema`, `system_traces` e os demais keyspaces `system_` só son
+  visibles se se marca `System keyspaces` en MCP SERVER de PREFERENCES
+  (`"systemKeyspaces": true`). Cunha lista, inclúa os que queira.
+  `node_status` le `system_views` en ambos os casos, agás que estea en deny ou
+  falte nunha lista de keyspaces.
+- **As táboas do sistema omiten o que se agocha.** `system_schema`,
+  `system.size_estimates` e algunhas táboas virtuais teñen unha fila por cada
+  keyspace e táboa. Se se agocha algo - con deny, unha lista de keyspaces, ou
+  sen os keyspaces do sistema - omítese cada fila sobre algo agochado, e un
+  `SELECT` sobre esas táboas ten que devolver `keyspace_name` (e o nome da
+  táboa) co seu propio nome, para comprobar cada fila. Se non se agocha nada,
+  lense tal cal. As filas que describen as táboas de `system_auth` mantéñense:
+  son iguais en todos os clústeres. Os seus datos seguen agochados.
 - **Columnas agochadas.** Os seus valores volven como `[redacted]`. Nunha táboa
   con columnas agochadas, un `SELECT` ten que usar `*` ou nomes de columna, sen
   `JSON`, alias nin funcións, e sen condicións sobre esas columnas.
 - **Escaneos.** `ALLOW FILTERING` e os agregados entre particións rexéitanse
   agás que se permitan.
-- **Límites.** Unha chamada á vez, ata 60 por minuto, co tempo de espera da
-  petición, 100 filas por páxina e os valores longos recortados.
+- **Páxinas.** Unha consulta devolve 100 filas cada vez agás que `Page size`
+  diga outra cousa, ou o cliente pida outro número con `page_size`, que se usa
+  tal cal. Con `Auto fetch` marcado (`"autoFetch": true`), unha consulta
+  devolve todas as filas nunha chamada, lendo ela mesma as páxinas. Nunha
+  táboa grande poden ser moitas.
+- **Límites.** Unha chamada á vez, ata 60 por minuto. Cada páxina lida ten o
+  tempo de espera da petición. Os valores longos recórtanse.
 - **Sen credenciais.** Ningunha ferramenta recibe nin devolve un usuario ou un
   contrasinal.
 - **Esta máquina agás que se configure outra, e nunca unha páxina web.** A

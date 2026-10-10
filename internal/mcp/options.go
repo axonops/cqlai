@@ -60,7 +60,7 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 	flags.StringVar(&o.TLSClientCA, "tls-client-ca", "", "Terminal app: ask each client for a certificate this CA signed (PEM)")
 	flags.StringSliceVar(&permit, "permit", nil, "Permit only these CQL commands, of those the config file permits")
 	flags.StringSliceVar(&keyspaces, "keyspaces", nil, "Only these keyspaces are visible, of those the config file allows")
-	flags.IntVar(&o.Flags.MaxRows, "max-rows", 0, "At most this many rows per call, if lower than the config file's")
+	flags.IntVar(&o.Flags.MaxRows, "max-rows", 0, "The page size, if lower than the config file's")
 	flags.StringVar(&o.Flags.AuditLog, "audit-log", "", "Where the audit log goes (\"-\" turns it off)")
 	flags.StringVar(&o.ConfigFile, "config-file", "", "Path to config file (overrides default locations)")
 	flags.StringVar(&o.Connection, "connection", "", "Headless: the saved connection to use (default: the first saved one)")
