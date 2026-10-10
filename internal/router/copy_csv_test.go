@@ -1,8 +1,10 @@
 package router
 
 import (
-	"encoding/json"
 	"testing"
+	"time"
+
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +17,9 @@ func TestACSVFieldIsTheColumnsJSONValue(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, fields, 6)
 
-	types := []string{"int", "text", "timestamp", "list<text>", "int", "boolean"}
+	ts := gocql.NewNativeType(4, gocql.TypeTimestamp, "")
+	text := gocql.NewNativeType(4, gocql.TypeText, "")
+	types := []gocql.TypeInfo{nil, text, ts, nil, nil, nil}
 	var got []string
 	for i, f := range fields {
 		got = append(got, csvField(f, types[i], "null"))
@@ -26,14 +30,33 @@ func TestACSVFieldIsTheColumnsJSONValue(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestACSVRecordGoesInAsStrings, for Cassandra to read as each column's type,
-// with NULLVAL as NULL and a quoted name kept in its quotes.
+// TestACSVRecordGoesInAsStrings, for Cassandra to read as each column's type
+// with fromJson, and NULLVAL as NULL.
 func TestACSVRecordGoesInAsStrings(t *testing.T) {
-	doc, err := jsonRow([]string{"id", ` "MixedCase"`, "zip", "tags"}, []string{"1", "kept", "02134", "null"}, "null")
+	values, err := fromJSONValues([]string{"1", "kept", "02134", "null", `say "hi"`}, "null")
 	require.NoError(t, err)
-	var back map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(doc), &back))
-	assert.Equal(t, map[string]interface{}{"id": "1", `"MixedCase"`: "kept", "zip": "02134", "tags": nil}, back)
+	assert.Equal(t, []interface{}{`"1"`, `"kept"`, `"02134"`, "null", `"say \"hi\""`}, values)
+	assert.Equal(t, `INSERT INTO ks.t (id, "MixedCase") VALUES (fromJson(?), fromJson(?))`,
+		fromJSONInsert("ks.t", []string{"id", `"MixedCase"`}))
+}
+
+// TestBeforeJSONEachFieldIsItsColumnsType: Cassandra 2.1 reads no JSON, so
+// each field is made the Go value of its column's type here.
+func TestBeforeJSONEachFieldIsItsColumnsType(t *testing.T) {
+	native := func(typ gocql.Type) gocql.TypeInfo { return gocql.NewNativeType(3, typ, "") }
+	types := []gocql.TypeInfo{native(gocql.TypeInt), native(gocql.TypeText), native(gocql.TypeTimestamp),
+		native(gocql.TypeBlob), native(gocql.TypeBoolean), native(gocql.TypeUUID)}
+	values, err := typedValues([]string{"7", "02134", "2024-01-02 03:04:05.678+0000", "0xcafe", "true", "null"}, types, "null")
+	require.NoError(t, err)
+	assert.Equal(t, int32(7), values[0])
+	assert.Equal(t, "02134", values[1])
+	assert.Equal(t, int64(1704164645678), values[2].(time.Time).UnixMilli())
+	assert.Equal(t, []byte{0xca, 0xfe}, values[3])
+	assert.Equal(t, true, values[4])
+	assert.Nil(t, values[5])
+
+	_, err = typedValues([]string{"seven"}, types[:1], "null")
+	assert.Error(t, err)
 }
 
 func TestTableNamesAreReadAsCassandraStoresThem(t *testing.T) {

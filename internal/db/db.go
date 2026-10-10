@@ -421,6 +421,22 @@ func (s *Session) IsVersion4OrHigher() bool {
 	return majorVersion >= 4
 }
 
+// HasJSON reports whether the cluster reads and writes JSON: SELECT JSON,
+// INSERT JSON and fromJson, from Cassandra 2.2. An unknown version is taken
+// to be a current one.
+func (s *Session) HasJSON() bool {
+	parts := strings.Split(s.CassandraVersion(), ".")
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return true
+	}
+	minor := 0
+	if len(parts) > 1 {
+		minor, _ = strconv.Atoi(parts[1])
+	}
+	return major > 2 || (major == 2 && minor >= 2)
+}
+
 // IsVersion3OrHigher checks if the Cassandra version is 3.0 or higher
 func (s *Session) IsVersion3OrHigher() bool {
 	version := s.CassandraVersion()

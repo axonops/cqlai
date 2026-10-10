@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/db"
 	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/parquet"
@@ -193,9 +194,9 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 	if err != nil {
 		return fmt.Sprintf("Error reading the columns of %s: %v", table, err)
 	}
-	types := map[string]string{}
+	types := map[string]gocql.TypeInfo{}
 	for _, c := range tableColumns {
-		types[c.name] = c.cqlType
+		types[c.name] = c.info
 	}
 	if len(columns) == 0 {
 		for _, c := range tableColumns {
@@ -205,11 +206,17 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 	if len(columns) == 0 {
 		return fmt.Sprintf("Error: table %s was not found", table)
 	}
-	columnTypes := make([]string, len(columns))
+	columnTypes := make([]gocql.TypeInfo, len(columns))
 	for i, c := range columns {
 		columnTypes[i] = types[storedName(c)]
 	}
+	// Cassandra writes each value from 2.2, which reads JSON. Before it, the
+	// rows are read and each value written here.
+	withJSON := h.session.HasJSON()
 	query := fmt.Sprintf("SELECT JSON %s FROM %s", strings.Join(columns, ", "), table)
+	if !withJSON {
+		query = fmt.Sprintf("SELECT %s FROM %s", strings.Join(columns, ", "), table)
+	}
 
 	// Check if output is STDOUT
 	isStdout := strings.ToUpper(filename) == "STDOUT"
@@ -261,18 +268,33 @@ func (h *MetaCommandHandler) executeCopyTo(table string, columns []string, filen
 	iter := h.session.Query(query).PageSize(pageSize).Iter()
 	rowCount := 0
 	var doc string
-	for iter.Scan(&doc) {
-		fields, err := jsonFields(doc)
-		if err == nil && len(fields) != len(columns) {
-			err = fmt.Errorf("%d values for %d columns", len(fields), len(columns))
-		}
-		if err != nil {
-			_ = iter.Close()
-			return fmt.Sprintf("Error reading row %d: %v", rowCount+1, err)
-		}
+	for {
 		row := make([]string, len(columns))
-		for i, raw := range fields {
-			row[i] = csvField(raw, columnTypes[i], nullVal)
+		if withJSON {
+			if !iter.Scan(&doc) {
+				break
+			}
+			fields, err := jsonFields(doc)
+			if err == nil && len(fields) != len(columns) {
+				err = fmt.Errorf("%d values for %d columns", len(fields), len(columns))
+			}
+			if err != nil {
+				_ = iter.Close()
+				return fmt.Sprintf("Error reading row %d: %v", rowCount+1, err)
+			}
+			for i, raw := range fields {
+				row[i] = csvField(raw, columnTypes[i], nullVal)
+			}
+		} else {
+			values := map[string]interface{}{}
+			if !db.ScanRow(iter, values) {
+				break
+			}
+			for i, c := range iter.Columns() {
+				if i < len(row) {
+					row[i] = csvValue(values[c.Name], nullVal)
+				}
+			}
 		}
 		if err := csvWriter.Write(row); err != nil {
 			_ = iter.Close()
@@ -470,10 +492,29 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 		skippedRows++
 	}
 
-	// Each row as an INSERT JSON document of strings, which Cassandra reads
-	// as each column's type. DEFAULT UNSET leaves the columns the file does
-	// not have as they are, rather than writing NULLs to them.
-	insertTemplate := fmt.Sprintf("INSERT INTO %s JSON ? DEFAULT UNSET", table)
+	// Each field given to fromJson as a JSON string, which Cassandra reads as
+	// its column's type. Only the columns named are written, so those the
+	// file does not have are left as they are. Before 2.2 there is no
+	// fromJson, and each field is made its column's Go value here.
+	withJSON := h.session.HasJSON()
+	insertTemplate := fromJSONInsert(table, columns)
+	var columnTypes []gocql.TypeInfo
+	if !withJSON {
+		placeholders := make([]string, len(columns))
+		for i := range placeholders {
+			placeholders[i] = "?"
+		}
+		insertTemplate = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
+		types := map[string]gocql.TypeInfo{}
+		if found, err := h.tableColumnsInOrder(table); err == nil {
+			for _, c := range found {
+				types[c.name] = c.info
+			}
+		}
+		for _, c := range columns {
+			columnTypes = append(columnTypes, types[storedName(c)])
+		}
+	}
 
 	// Create batch channel and wait group for concurrent execution
 	batchChan := make(chan []batchEntry, maxRequests*2)
@@ -528,12 +569,16 @@ func (h *MetaCommandHandler) handleCopyFrom(command string) interface{} {
 			continue
 		}
 
-		doc, err := jsonRow(columns, record, nullVal)
+		var values []interface{}
+		if withJSON {
+			values, err = fromJSONValues(record, nullVal)
+		} else {
+			values, err = typedValues(record, columnTypes, nullVal)
+		}
 		if err != nil {
 			parseErrorCount++
 			continue
 		}
-		values := []interface{}{doc}
 
 		// Add to batch with prepared statement template
 		batch = append(batch, batchEntry{query: insertTemplate, values: values})

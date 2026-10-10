@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   milliseconds, a date, a duration, a blob as `0x...` - and a collection,
   tuple or UDT as JSON. The header row has the column names alone. COPY FROM
   has Cassandra read each field as its column's type, and leaves the columns a
-  file does not have as they are rather than setting them to NULL.
+  file does not have as they are rather than setting them to NULL. Cassandra
+  2.1, which reads and writes no JSON, gets the same files by CQLAI converting
+  each value by its column's type.
 - **Decimal and duration columns are written to Parquet as text,** as varint
   is, so every digit, month and day is kept.
 - **The window with AI-generated CQL opens on `Edit`.** `Enter` puts the

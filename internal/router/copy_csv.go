@@ -2,11 +2,18 @@ package router
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"math/big"
+	"net"
+	"reflect"
+	"strconv"
 	"strings"
 	"time"
+
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"gopkg.in/inf.v0"
 
 	"github.com/axonops/cqlai/internal/db"
 )
@@ -20,64 +27,28 @@ import (
 // the text: 02134 in a text column stays text, and a timestamp, blob, uuid,
 // duration or collection is read by Cassandra as it reads any value.
 
-// tableColumn is one column of a table.
+// tableColumn is one column of a table, with its type as the driver has it.
 type tableColumn struct {
-	name     string
-	kind     string // partition_key, clustering, static or regular
-	position int
-	cqlType  string
+	name string
+	info gocql.TypeInfo
 }
 
 // tableColumnsInOrder is a table's columns in the order SELECT * returns
-// them: the partition key and the clustering columns by position, then the
-// static and the regular columns by name.
+// them, as the cluster itself describes its result: it works on every
+// version, where system_schema is from 3.0.
 func (h *MetaCommandHandler) tableColumnsInOrder(table string) ([]tableColumn, error) {
-	keyspace, name := h.splitTableName(table)
-	if keyspace == "" {
-		return nil, fmt.Errorf("no keyspace for %s: name it as keyspace.table, or USE one", table)
-	}
 	if h.session == nil || h.session.Session == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	iter := h.session.Query(`SELECT column_name, kind, position, type FROM system_schema.columns
-		WHERE keyspace_name = ? AND table_name = ?`, keyspace, name).Iter()
+	iter := h.session.Query("SELECT * FROM " + table + " LIMIT 1").Iter()
 	var columns []tableColumn
-	var c tableColumn
-	for iter.Scan(&c.name, &c.kind, &c.position, &c.cqlType) {
-		columns = append(columns, c)
+	for _, c := range iter.Columns() {
+		columns = append(columns, tableColumn{name: c.Name, info: c.TypeInfo})
 	}
 	if err := iter.Close(); err != nil {
 		return nil, err
 	}
-	rank := map[string]int{"partition_key": 0, "clustering": 1, "static": 2, "regular": 3}
-	sort.SliceStable(columns, func(i, j int) bool {
-		a, b := columns[i], columns[j]
-		if rank[a.kind] != rank[b.kind] {
-			return rank[a.kind] < rank[b.kind]
-		}
-		if a.kind == "partition_key" || a.kind == "clustering" {
-			return a.position < b.position
-		}
-		return a.name < b.name
-	})
 	return columns, nil
-}
-
-// splitTableName is keyspace.table, or table in the current keyspace, each
-// as Cassandra stores it: a quoted name as written, any other in lower case.
-func (h *MetaCommandHandler) splitTableName(table string) (string, string) {
-	keyspace, name, qualified := cutName(table)
-	if !qualified {
-		name, keyspace = keyspace, ""
-		if h.sessionManager != nil {
-			keyspace = h.sessionManager.CurrentKeyspace()
-		}
-		if keyspace == "" && h.session != nil {
-			keyspace = h.session.Keyspace()
-		}
-		return keyspace, storedName(name)
-	}
-	return storedName(keyspace), storedName(name)
 }
 
 // cutName splits keyspace.name at the first dot outside double quotes.
@@ -126,7 +97,7 @@ func jsonFields(doc string) ([]json.RawMessage, error) {
 
 // csvField is a column's CSV field from its JSON value. A timestamp is
 // written as the shell shows it, with its milliseconds and zone.
-func csvField(raw json.RawMessage, cqlType, nullVal string) string {
+func csvField(raw json.RawMessage, info gocql.TypeInfo, nullVal string) string {
 	raw = bytes.TrimSpace(raw)
 	switch {
 	case len(raw) == 0 || string(raw) == "null":
@@ -136,7 +107,7 @@ func csvField(raw json.RawMessage, cqlType, nullVal string) string {
 		if err := json.Unmarshal(raw, &s); err != nil {
 			return string(raw)
 		}
-		if cqlType == "timestamp" {
+		if info != nil && info.Type() == gocql.TypeTimestamp {
 			if t, err := time.Parse("2006-01-02 15:04:05.999Z07:00", s); err == nil {
 				return t.UTC().Format(db.TimestampLayout)
 			}
@@ -148,20 +119,143 @@ func csvField(raw json.RawMessage, cqlType, nullVal string) string {
 	}
 }
 
-// jsonRow is an INSERT JSON document for one CSV record: each field as a
-// string, for Cassandra to read as its column's type, and nullVal as NULL.
-func jsonRow(columns, record []string, nullVal string) (string, error) {
-	doc := make(map[string]interface{}, len(columns))
-	for i, column := range columns {
-		// A quoted name keeps its quotes: INSERT JSON reads a key in quotes as
-		// case-sensitive, and any other in lower case.
-		key := strings.TrimSpace(column)
-		if record[i] == nullVal {
-			doc[key] = nil
-		} else {
-			doc[key] = record[i]
+// fromJSONValues is a CSV record's values for an INSERT whose values are
+// fromJson(?): each field as a JSON string, which Cassandra reads as its
+// column's type, and nullVal as NULL. Only the columns named are written, so
+// those the file does not have are left as they are.
+func fromJSONValues(record []string, nullVal string) ([]interface{}, error) {
+	values := make([]interface{}, len(record))
+	for i, field := range record {
+		if field == nullVal {
+			values[i] = "null"
+			continue
+		}
+		b, err := json.Marshal(field)
+		if err != nil {
+			return nil, err
+		}
+		values[i] = string(b)
+	}
+	return values, nil
+}
+
+// fromJSONInsert is the INSERT for fromJSONValues.
+func fromJSONInsert(table string, columns []string) string {
+	values := make([]string, len(columns))
+	for i := range values {
+		values[i] = "fromJson(?)"
+	}
+	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(values, ", "))
+}
+
+// typedValues is a CSV record's values for a cluster before Cassandra 2.2,
+// which reads no JSON: each field made the Go value of its column's type.
+func typedValues(record []string, types []gocql.TypeInfo, nullVal string) ([]interface{}, error) {
+	values := make([]interface{}, len(record))
+	for i, field := range record {
+		if field == nullVal {
+			continue
+		}
+		var info gocql.TypeInfo
+		if i < len(types) {
+			info = types[i]
+		}
+		v, err := typedValue(field, info)
+		if err != nil {
+			return nil, err
+		}
+		values[i] = v
+	}
+	return values, nil
+}
+
+// typedValue is a field as the Go value gocql binds to a column of type info.
+func typedValue(field string, info gocql.TypeInfo) (interface{}, error) {
+	if info == nil {
+		return field, nil
+	}
+	f := strings.TrimSpace(field)
+	switch info.Type() {
+	case gocql.TypeInt:
+		n, err := strconv.ParseInt(f, 10, 32)
+		return int32(n), err
+	case gocql.TypeBigInt, gocql.TypeCounter:
+		return strconv.ParseInt(f, 10, 64)
+	case gocql.TypeSmallInt:
+		n, err := strconv.ParseInt(f, 10, 16)
+		return int16(n), err
+	case gocql.TypeTinyInt:
+		n, err := strconv.ParseInt(f, 10, 8)
+		return int8(n), err
+	case gocql.TypeFloat:
+		n, err := strconv.ParseFloat(f, 32)
+		return float32(n), err
+	case gocql.TypeDouble:
+		return strconv.ParseFloat(f, 64)
+	case gocql.TypeBoolean:
+		return strconv.ParseBool(f)
+	case gocql.TypeUUID, gocql.TypeTimeUUID:
+		return gocql.ParseUUID(f)
+	case gocql.TypeDecimal:
+		d, ok := new(inf.Dec).SetString(f)
+		if !ok {
+			return nil, fmt.Errorf("not a decimal: %q", field)
+		}
+		return *d, nil
+	case gocql.TypeVarint:
+		n, ok := new(big.Int).SetString(f, 10)
+		if !ok {
+			return nil, fmt.Errorf("not a varint: %q", field)
+		}
+		return n, nil
+	case gocql.TypeBlob:
+		return hex.DecodeString(strings.TrimPrefix(strings.TrimPrefix(f, "0x"), "0X"))
+	case gocql.TypeInet:
+		ip := net.ParseIP(f)
+		if ip == nil {
+			return nil, fmt.Errorf("not an address: %q", field)
+		}
+		return ip, nil
+	case gocql.TypeTimestamp:
+		for _, layout := range []string{db.TimestampLayout, "2006-01-02 15:04:05.999999999-0700", "2006-01-02 15:04:05-0700",
+			time.RFC3339Nano, "2006-01-02 15:04:05.999Z07:00", "2006-01-02 15:04:05", "2006-01-02"} {
+			if t, err := time.Parse(layout, f); err == nil {
+				return t, nil
+			}
+		}
+		return nil, fmt.Errorf("not a timestamp: %q", field)
+	}
+	return field, nil
+}
+
+// csvValue is a value read by the driver as a CSV field, for a cluster
+// before 2.2: as Cassandra writes it in SELECT JSON, near enough to be read
+// back the same way.
+func csvValue(v interface{}, nullVal string) string {
+	switch t := v.(type) {
+	case nil:
+		return nullVal
+	case string:
+		return t
+	case time.Time:
+		return t.UTC().Format(db.TimestampLayout)
+	case []byte:
+		return fmt.Sprintf("0x%x", t)
+	case gocql.Duration:
+		return db.FormatCQLDuration(t)
+	case []interface{}, map[string]interface{}, map[interface{}]interface{}:
+		b, err := json.Marshal(db.JSONValue(t))
+		if err == nil {
+			return string(b)
 		}
 	}
-	b, err := json.Marshal(doc)
-	return string(b), err
+	if j := db.JSONValue(v); j != nil {
+		if kind := reflect.ValueOf(j).Kind(); kind == reflect.Slice || kind == reflect.Map {
+			if b, err := json.Marshal(j); err == nil {
+				return string(b)
+			}
+		}
+		return fmt.Sprint(j)
+	}
+	return nullVal
 }
