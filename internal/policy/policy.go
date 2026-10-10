@@ -39,6 +39,7 @@ type Policy struct {
 	redact []string // keyspace.table.column, with * for any part
 
 	allowScans bool
+	autoFetch  bool // a query returns every row, not one page
 
 	maxRows        int
 	maxValueBytes  int
@@ -155,7 +156,12 @@ func (p Policy) VisibleTable(keyspace, table string) bool {
 }
 
 func (p Policy) denied(keyspace, table string) bool {
-	for _, d := range append(append([]string{}, alwaysDenied...), p.deny...) {
+	return Policy{deny: append(append([]string{}, alwaysDenied...), p.deny...)}.deniedBySettings(keyspace, table)
+}
+
+// deniedBySettings is denied by p.deny alone.
+func (p Policy) deniedBySettings(keyspace, table string) bool {
+	for _, d := range p.deny {
 		ks, tbl, hasTable := strings.Cut(d, ".")
 		if !strings.EqualFold(ks, keyspace) {
 			continue
@@ -214,11 +220,15 @@ func (p Policy) Scrub(text string) string {
 
 // The limits.
 
-func (p Policy) MaxRows() int               { return p.maxRows }
-func (p Policy) MaxValueBytes() int         { return p.maxValueBytes }
-func (p Policy) CallsPerMinute() int        { return p.callsPerMinute }
-func (p Policy) Timeout() time.Duration     { return p.timeout }
-func (p Policy) AllowScans() bool           { return p.allowScans }
+func (p Policy) MaxRows() int           { return p.maxRows }
+func (p Policy) MaxValueBytes() int     { return p.maxValueBytes }
+func (p Policy) CallsPerMinute() int    { return p.callsPerMinute }
+func (p Policy) Timeout() time.Duration { return p.timeout }
+func (p Policy) AllowScans() bool       { return p.allowScans }
+
+// AutoFetch reports whether a query returns every row, paging through them
+// itself, rather than one page and a token for the next.
+func (p Policy) AutoFetch() bool            { return p.autoFetch }
 func (p Policy) Connection() string         { return p.connection }
 func (p Policy) AuditLog() string           { return p.auditLog }
 func (p Policy) Deny() []string             { return append(append([]string{}, alwaysDenied...), p.deny...) }
@@ -297,6 +307,12 @@ func (p Policy) Check(text string) (validation.Statement, error) {
 
 	if err := p.checkRedaction(s); err != nil {
 		return s, err
+	}
+	if s.Command == "SELECT" && len(s.Names) > 0 {
+		n := s.Names[0]
+		if err := p.checkNamingColumns(n.Keyspace+"."+n.Table, n.Keyspace, n.Table, s.PlainSelection); err != nil {
+			return s, err
+		}
 	}
 	if err := p.checkScan(s); err != nil {
 		return s, err

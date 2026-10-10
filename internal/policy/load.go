@@ -111,6 +111,8 @@ func Load(file *config.Config, connection string, password string, timeout time.
 	// A yes/no that loosens is on only if the top turns it on, and the
 	// connection's block, when it has one, does too.
 	p.allowScans = top != nil && top.AllowScans && (own == nil || own.AllowScans)
+	p.autoFetch = top != nil && top.AutoFetch && (own == nil || own.AutoFetch)
+	p.systemVisible = top != nil && top.SystemKeyspaces && (own == nil || own.SystemKeyspaces)
 
 	// Limits: the lowest that is set, or the default.
 	p.maxRows = lowest(DefaultMaxRows, field(top, own, func(m *config.MCPConfig) int { return m.MaxRows }), flags.MaxRows)

@@ -352,3 +352,94 @@ func TestMCPDoesNotTakeOverTheShellsSettings(t *testing.T) {
 
 	assert.Same(t, before, router.GetMetaHandler(), "the shell's handler is left as it was")
 }
+
+// TestMCPSystemSchemaRowsLeaveOutWhatIsHidden: with system_schema listed, its
+// rows about a hidden keyspace or table are left out, and the rest are there.
+func TestMCPSystemSchemaRowsLeaveOutWhatIsHidden(t *testing.T) {
+	permit := []string{"SELECT"}
+	env := mcpEnv(t, &config.MCPConfig{
+		Permit:    &permit,
+		Keyspaces: []string{"test_mcp", "system_schema", "system"},
+		Deny:      []string{"test_mcp.secrets"},
+		AutoFetch: true,
+	})
+
+	r := decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM system_schema.tables"}))
+	seen := map[string]bool{}
+	for _, row := range r.Rows {
+		ks, table := row["keyspace_name"].(string), row["table_name"].(string)
+		seen[ks+"."+table] = true
+		assert.NotEqual(t, "test_mcp.secrets", ks+"."+table, "a denied table is not described")
+		assert.Contains(t, []string{"test_mcp", "system_schema", "system", "system_auth"}, ks,
+			"the keyspaces listed, and system_auth's schema, which is the same everywhere")
+	}
+	assert.True(t, seen["test_mcp.orders"], "what is visible is still there")
+	assert.True(t, seen["system_schema.columns"])
+
+	r = decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM system_schema.columns WHERE keyspace_name = 'test_mcp' AND table_name = 'secrets'"}))
+	assert.Empty(t, r.Rows, "asking for a denied table by name finds nothing")
+
+	// The columns that say what a row is about have to come back.
+	for _, cql := range []string{
+		"SELECT table_name, column_name FROM system_schema.columns",
+		"SELECT table_name AS keyspace_name, column_name FROM system_schema.columns",
+		"SELECT COUNT(*) FROM system_schema.columns",
+	} {
+		o := callTool(t, env, "query", map[string]any{"cql": cql})
+		assert.True(t, o.Refused, "%s: %s", cql, o.Text)
+	}
+
+	// A system table whose rows are not about other keyspaces is read as it is.
+	r = decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM system.local"}))
+	assert.Len(t, r.Rows, 1)
+}
+
+// TestMCPPageSizeIsTheClients: a page size asked for is used, whatever the
+// setting, which is only the page size used when none is asked for.
+func TestMCPPageSizeIsTheClients(t *testing.T) {
+	env := mcpEnv(t, &config.MCPConfig{MaxRows: 1, Keyspaces: []string{"test_mcp"}})
+
+	r := decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'"}))
+	assert.Len(t, r.Rows, 1, "the setting's page size")
+	assert.NotEmpty(t, r.Next)
+
+	r = decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'", "page_size": 1000}))
+	assert.Len(t, r.Rows, 3, "the client's page size, above the setting")
+	assert.Empty(t, r.Next)
+}
+
+// TestMCPAutoFetchReturnsEveryRow, paging through them, with no next page.
+func TestMCPAutoFetchReturnsEveryRow(t *testing.T) {
+	env := mcpEnv(t, &config.MCPConfig{MaxRows: 1, AutoFetch: true, Keyspaces: []string{"test_mcp"}})
+
+	r := decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'"}))
+	assert.Len(t, r.Rows, 3, "every row, a page of one at a time")
+	assert.Empty(t, r.Next)
+
+	o := callTool(t, env, "trace_query", map[string]any{"cql": "SELECT * FROM test_mcp.orders WHERE customer = 'ann' AND day = 'd1'"})
+	require.False(t, o.IsError, o.Text)
+	assert.Contains(t, o.Text, `"trace"`)
+}
+
+// TestMCPOpenForADemo: every keyspace and the system ones, scans and auto
+// fetch on, nothing denied. The whole of system_schema.columns comes back in
+// one call, traced, with any selection.
+func TestMCPOpenForADemo(t *testing.T) {
+	env := mcpEnv(t, &config.MCPConfig{SystemKeyspaces: true, AllowScans: true, AutoFetch: true})
+
+	o := callTool(t, env, "trace_query", map[string]any{"cql": "SELECT * FROM system_schema.columns"})
+	require.False(t, o.IsError, o.Text)
+	var r queryResult
+	require.NoError(t, json.Unmarshal([]byte(o.Text), &r))
+	assert.Greater(t, len(r.Rows), 100, "more than one page, in one call")
+	assert.Empty(t, r.Next)
+
+	r = decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT table_name, column_name FROM system_schema.columns"}))
+	assert.Greater(t, len(r.Rows), 100)
+
+	r = decode(t, callTool(t, env, "query", map[string]any{"cql": "SELECT COUNT(*) FROM system_schema.columns"}))
+	assert.Len(t, r.Rows, 1)
+
+	o = callTool(t, env, "query", map[string]any{"cql": "SELECT * FROM system_auth.roles"})
+	assert.True(t, o.Refused, "system_auth's data, never")
+}

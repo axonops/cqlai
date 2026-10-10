@@ -70,14 +70,22 @@ type MCPConfig struct {
 	// is why it is a pointer: the two have to stay apart in the file.
 	Permit *[]string `json:"permit,omitempty"`
 
-	Keyspaces []string `json:"keyspaces,omitempty"` // the visible keyspaces; empty is all of them
-	Deny      []string `json:"deny,omitempty"`      // keyspaces or keyspace.table never visible
-	Redact    []string `json:"redact,omitempty"`    // keyspace.table.column, with * for any part
+	Keyspaces []string `json:"keyspaces,omitempty"` // the visible keyspaces; empty is all but the system ones
+	// SystemKeyspaces makes the system keyspaces visible too when every
+	// keyspace is. system_auth's data stays hidden whatever this says.
+	SystemKeyspaces bool     `json:"systemKeyspaces,omitempty"`
+	Deny            []string `json:"deny,omitempty"`   // keyspaces or keyspace.table never visible
+	Redact          []string `json:"redact,omitempty"` // keyspace.table.column, with * for any part
 
-	AllowScans        bool `json:"allowScans,omitempty"`
-	MaxRows           int  `json:"maxRows,omitempty"`
-	MaxValueBytes     int  `json:"maxValueBytes,omitempty"`
-	MaxCallsPerMinute int  `json:"maxCallsPerMinute,omitempty"`
+	AllowScans bool `json:"allowScans,omitempty"`
+	// AutoFetch makes a query return every row, paging through them itself,
+	// rather than one page and a token for the next.
+	AutoFetch bool `json:"autoFetch,omitempty"`
+	// MaxRows is the page size: the rows a query returns at a time, unless
+	// the client asks for another number.
+	MaxRows           int `json:"maxRows,omitempty"`
+	MaxValueBytes     int `json:"maxValueBytes,omitempty"`
+	MaxCallsPerMinute int `json:"maxCallsPerMinute,omitempty"`
 
 	// Server-wide: these are read from the top of the file only.
 	AuditLog string `json:"auditLog,omitempty"`

@@ -1276,7 +1276,7 @@ conexión por defecto. La contraseña es la guardada con la conexión, o
 | `--connection NOMBRE` | Headless: la conexión guardada que se usa |
 | `--permit SELECT,DESCRIBE` | Solo estas órdenes, de las que permiten los ajustes |
 | `--keyspaces ks1,ks2` | Solo estos keyspaces son visibles, de los que permiten los ajustes |
-| `--max-rows N` | Como mucho estas filas por llamada, si es menos que en los ajustes |
+| `--max-rows N` | El tamaño de página, si es menor que el de los ajustes |
 | `--audit-log RUTA` | Dónde va el registro de auditoría; `-` lo desactiva |
 | `--config-file RUTA` | El archivo de configuración que se lee |
 
@@ -1294,7 +1294,7 @@ las opciones TLS dicen cómo se sirve, y sustituyen a los ajustes.
 | `get_schema` | Las claves y columnas de una tabla |
 | `fuzzy_search` | Keyspaces y tablas cuyo nombre coincide con una palabra: escrito igual, o que suena igual, sin vocales o letras, o con una letra mal (`hyto` encuentra `hayato`). Dice por qué coincide cada uno. |
 | `describe` | La definición CQL de un keyspace, tabla, tipo, índice, vista, función o agregado, tal como la imprime `DESCRIBE` |
-| `query` | Ejecuta un `SELECT` y devuelve una página de filas, con un token para la siguiente |
+| `query` | Ejecuta un `SELECT` y devuelve una página de filas, con un token para la siguiente; todas las filas con `Auto fetch` |
 | `trace_query` | Ejecuta un `SELECT` con trazado y devuelve la traza con las filas |
 | `node_status` | La configuración del nodo, sus pools de hilos, clientes conectados, cachés, compactaciones o uso de disco, desde sus tablas virtuales (Cassandra 4.0 y posteriores). Los ajustes con secretos se ocultan. |
 | `table_size` | La estimación de Cassandra del número de particiones de una tabla y su tamaño medio |
@@ -1393,20 +1393,32 @@ llamada, pida lo que pida el modelo.
 - **Lo oculto sigue oculto.** Los keyspaces y tablas ocultos no se listan, no
   se describen, no se encuentran al buscar y no se nombran en un error.
   `system_auth`, que guarda los hashes de las contraseñas, siempre está oculto.
-- **Los keyspaces del sistema se ocultan cuando se permiten todos.** Sin lista
-  de keyspaces, `system`, `system_schema`, `system_traces` y los demás
-  keyspaces `system_` no se pueden leer con `query`. Listan los demás
-  keyspaces, tablas y columnas, y guardan las sentencias trazadas contra ellos,
-  así que leerlos mostraría lo que oculta deny. Para permitir uno, inclúyalo en
-  la lista de keyspaces permitidos. `node_status` sigue leyendo `system_views`,
-  salvo que esté en deny o falte en una lista de keyspaces.
+- **Los keyspaces del sistema.** Sin lista de keyspaces, `system`,
+  `system_schema`, `system_traces` y los demás keyspaces `system_` solo son
+  visibles si se marca `System keyspaces` en MCP SERVER de PREFERENCES
+  (`"systemKeyspaces": true`). Con una lista, incluya los que quiera.
+  `node_status` lee `system_views` en ambos casos, salvo que esté en deny o
+  falte en una lista de keyspaces.
+- **Las tablas del sistema omiten lo que se oculta.** `system_schema`,
+  `system.size_estimates` y algunas tablas virtuales tienen una fila por cada
+  keyspace y tabla. Si se oculta algo - con deny, una lista de keyspaces, o sin
+  los keyspaces del sistema - se omite cada fila sobre algo oculto, y un
+  `SELECT` sobre esas tablas tiene que devolver `keyspace_name` (y el nombre de
+  la tabla) con su propio nombre, para comprobar cada fila. Si no se oculta
+  nada, se leen tal cual. Las filas que describen las tablas de `system_auth`
+  se mantienen: son iguales en todos los clústeres. Sus datos siguen ocultos.
 - **Columnas ocultadas.** Sus valores vuelven como `[redacted]`. En una tabla
   con columnas ocultadas, un `SELECT` tiene que usar `*` o nombres de columna,
   sin `JSON`, alias ni funciones, y sin condiciones sobre esas columnas.
 - **Escaneos.** `ALLOW FILTERING` y los agregados entre particiones se
   rechazan salvo que se permitan.
-- **Límites.** Una llamada a la vez, hasta 60 por minuto, con el tiempo de
-  espera de la petición, 100 filas por página y los valores largos recortados.
+- **Páginas.** Una consulta devuelve 100 filas cada vez salvo que `Page size`
+  diga otra cosa, o el cliente pida otro número con `page_size`, que se usa
+  tal cual. Con `Auto fetch` marcado (`"autoFetch": true`), una consulta
+  devuelve todas las filas en una llamada, leyendo ella misma las páginas. En
+  una tabla grande pueden ser muchas.
+- **Límites.** Una llamada a la vez, hasta 60 por minuto. Cada página leída
+  tiene el tiempo de espera de la petición. Los valores largos se recortan.
 - **Sin credenciales.** Ninguna herramienta recibe ni devuelve un usuario o una
   contraseña.
 - **Esta máquina salvo que se configure otra, y nunca una página web.** La

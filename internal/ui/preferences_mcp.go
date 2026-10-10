@@ -35,10 +35,12 @@ const mcpRestartNote = " The MCP settings apply when an MCP client next starts c
 func mcpSpecs() []prefSpec {
 	specs := []prefSpec{
 		{section: mcpSection, path: "MCP.Keyspaces", label: "Keyspaces", kind: prefList, hint: "the keyspaces the model can see, separated by commas; empty is all but the system ones"},
+		{path: "MCP.SystemKeyspaces", label: "System keyspaces", kind: prefYesNo, hint: "with no keyspace list, the system keyspaces are visible too; system_auth's data never is"},
 		{path: "MCP.Deny", label: "Hidden", kind: prefList, hint: "keyspace or keyspace.table never visible; system_auth always is"},
 		{path: "MCP.Redact", label: "Redacted columns", kind: prefList, hint: "keyspace.table.column, with * for any part: the values are replaced"},
 		{path: "MCP.AllowScans", label: "Allow scans", kind: prefYesNo, hint: "ALLOW FILTERING, and aggregates across partitions"},
-		{path: "MCP.MaxRows", label: "Max rows", kind: prefNumber, hint: "the most rows one call returns; 100 unless set"},
+		{path: "MCP.AutoFetch", label: "Auto fetch", kind: prefYesNo, hint: "a query returns every row, paging through them itself, rather than one page"},
+		{path: "MCP.MaxRows", label: "Page size", kind: prefNumber, hint: "rows a query returns at a time, unless the MCP client asks for another number; 100 unless set"},
 		{path: "MCP.MaxValueBytes", label: "Max value bytes", kind: prefNumber, hint: "longer values are cut; 4096 unless set"},
 		{path: "MCP.MaxCallsPerMinute", label: "Calls per minute", kind: prefNumber, hint: "60 unless set"},
 		{path: "MCP.AuditLog", label: "Audit log", kind: prefPath, topOnly: true, hint: "~/.cassandra/cqlai_mcp_audit.log unless set; - turns it off"},
