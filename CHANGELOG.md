@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-11
+
 ### Added
 
 - **A wide definition in the SCHEMA view scrolls sideways,** with
