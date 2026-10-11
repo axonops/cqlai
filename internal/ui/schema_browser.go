@@ -255,6 +255,12 @@ func (s schemaBrowser) current() (schemaRow, bool) {
 // looked at. Unless that is now - a change made while looking at the tree
 // should appear in it.
 func (m *MainModel) schemaChanged() {
+	// Tab completion keeps its own list of keyspaces, tables and columns,
+	// read once and kept: after a DROP it went on offering what was gone.
+	if m.completionEngine != nil {
+		m.completionEngine.Forget()
+	}
+
 	if !m.schema.loaded {
 		return // nothing has been fetched, so nothing is out of date
 	}

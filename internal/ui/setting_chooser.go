@@ -363,12 +363,16 @@ func (m *MainModel) runCommand(command string) (*MainModel, tea.Cmd) {
 		return m.runSaveCommand(save)
 	}
 
-	if text, ok := result.(string); ok && text != "" {
-		m.fullHistoryContent += "\n" + text
-
-		// A USE leaves three places tracking the keyspace to be told, the same
-		// as when one is typed at the prompt.
-		m.adoptKeyspace(text)
+	switch v := result.(type) {
+	case string:
+		if v != "" {
+			m.fullHistoryContent += "\n" + v
+		}
+	case error:
+		// A SOURCE file with a statement that failed comes back as an error,
+		// and from the File menu it was dropped: nothing ran, as far as the
+		// screen said.
+		m.fullHistoryContent += "\n" + m.styles.ErrorText.Render("Error: "+v.Error())
 	}
 	m.updateHistoryWrapping()
 	m.historyViewport.GotoBottom()

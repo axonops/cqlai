@@ -459,42 +459,8 @@ func (m *MainModel) processTableResult(command string, v [][]string) (*MainModel
 	return m, nil
 }
 
-// adoptKeyspace records a keyspace change the server has already accepted.
-//
-// The change is done by the time this runs; what is left is bookkeeping, and
-// there are three places that track the current keyspace separately - the
-// session manager, the gocql session, and the status line. Missing one leaves
-// the bottom line claiming a keyspace the queries are not going to.
-//
-// It takes the result string rather than a name because that is what says the
-// USE succeeded. Both routes to a USE - typing it, and picking a keyspace from
-// the status line - come through here, so neither can drift from the other.
-func (m *MainModel) adoptKeyspace(result string) {
-	const prefix = "Now using keyspace "
-	if !strings.HasPrefix(result, prefix) {
-		return
-	}
-	keyspace := strings.TrimSpace(strings.TrimPrefix(result, prefix))
-
-	if m.sessionManager != nil {
-		if err := m.sessionManager.SetKeyspace(keyspace); err != nil {
-			logger.DebugfToFile("keyboard_handler_enter", "Failed to update session manager keyspace: %v", err)
-		}
-		m.statusBar.Keyspace = keyspace
-	}
-	if m.session != nil {
-		if err := m.session.SetKeyspace(keyspace); err != nil {
-			// Log it but carry on: the server has already switched, so
-			// refusing here would only make the two disagree.
-			logger.DebugfToFile("keyboard_handler_enter", "Failed to update session keyspace: %v", err)
-		}
-	}
-}
-
 // processStringResult handles string type results
 func (m *MainModel) processStringResult(command string, v string) (*MainModel, tea.Cmd) {
-	m.adoptKeyspace(v)
-
 	// Text result - add to history
 	m.tableHeaders = nil
 	m.columnWidths = nil

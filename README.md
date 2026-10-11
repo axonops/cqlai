@@ -1100,7 +1100,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   ```
 
 #### Script Execution
-- **SOURCE** - Execute CQL scripts from file
+- **SOURCE** - Execute CQL scripts from file. A `USE` in the file holds for the statements after it, and after the file
   ```sql
   SOURCE 'schema.cql'           -- Execute script
   SOURCE '/path/to/script.cql'  -- Absolute path

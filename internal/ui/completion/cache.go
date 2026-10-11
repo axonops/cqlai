@@ -12,6 +12,15 @@ type completionCache struct {
 	columns   map[string][]string // keyspace.table -> columns
 }
 
+// Forget drops every name it has read, so the next completion reads them
+// again. It is for when the schema has changed.
+func (ce *CompletionEngine) Forget() {
+	ce.cache = &completionCache{
+		tables:  make(map[string][]string),
+		columns: make(map[string][]string),
+	}
+}
+
 // getKeyspaceNames returns cached keyspace names or fetches them
 func (ce *CompletionEngine) getKeyspaceNames() []string {
 	if len(ce.cache.keyspaces) == 0 {

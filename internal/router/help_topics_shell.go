@@ -91,7 +91,8 @@ var shellHelpTopics = []HelpTopic{
 		Notes: []string{
 			"The quotes can be left out. ~ is the home directory. Each statement ends",
 			"with a semicolon, as at the prompt: one in a string or a comment does not",
-			"count, and a BEGIN BATCH runs whole. A file cannot source itself.",
+			"count, and a BEGIN BATCH runs whole. A USE in the file holds for the",
+			"statements after it, and after the file. A file cannot source itself.",
 		},
 		Example: []string{"SOURCE '~/schema/shop.cql'"},
 	},
