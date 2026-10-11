@@ -784,7 +784,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   ```
 
 #### スクリプト実行
-- **SOURCE** - ファイルからCQLスクリプトを実行
+- **SOURCE** - ファイルからCQLスクリプトを実行。ファイル内の `USE` は、その後の文とファイル実行後にも有効
   ```sql
   SOURCE 'schema.cql'           -- スクリプトを実行
   SOURCE '/path/to/script.cql'  -- 絶対パス

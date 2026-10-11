@@ -756,7 +756,7 @@ Os meta-comandos proporcionan funcionalidade adicional máis alá do CQL estánd
   ```
 
 #### Execución de Scripts
-- **SOURCE** - Executar scripts CQL desde arquivo
+- **SOURCE** - Executar scripts CQL desde arquivo. Un `USE` no arquivo vale para as ordes que o seguen, e despois do arquivo
   ```sql
   SOURCE 'schema.cql'           -- Executar script
   SOURCE '/ruta/a/script.cql'   -- Ruta absoluta

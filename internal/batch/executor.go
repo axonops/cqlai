@@ -224,22 +224,7 @@ func (e *Executor) Execute(cql string) error {
 		}
 		return err
 	case string:
-		// Check if this is a USE command result and update the keyspace
-		if strings.HasPrefix(v, "Now using keyspace ") {
-			// Extract the keyspace name
-			keyspaceName := strings.TrimPrefix(v, "Now using keyspace ")
-			keyspaceName = strings.TrimSpace(keyspaceName)
-
-			// Update the session manager (keyspace already validated by Cassandra)
-			if e.sessionManager != nil {
-				_ = e.sessionManager.SetKeyspace(keyspaceName)
-			}
-
-			// Update the database session's keyspace
-			if err := e.session.SetKeyspace(keyspaceName); err != nil {
-				return fmt.Errorf("failed to change keyspace: %w", err)
-			}
-		}
+		// A USE has already moved the session: ProcessCommand does that.
 		fmt.Fprintln(e.writer, v)
 		return nil
 	case error:

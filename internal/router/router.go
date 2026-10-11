@@ -39,7 +39,66 @@ func stripComments(input string) string { return StripComments(input) }
 
 // ProcessCommand processes a user command.
 func ProcessCommand(command string, session *db.Session, sessionMgr *session.Manager) interface{} {
-	return AsFailure(processCommand(command, session, sessionMgr))
+	result := AsFailure(processCommand(command, session, sessionMgr))
+	if text, ok := result.(string); ok {
+		if err := adoptKeyspace(text, session, sessionMgr); err != nil {
+			return err
+		}
+	}
+	if _, failed := result.(error); !failed {
+		leaveDroppedKeyspace(command, session, sessionMgr)
+	}
+	return result
+}
+
+// leaveDroppedKeyspace stops using the keyspace a DROP KEYSPACE just dropped.
+//
+// The status line went on naming it, and an unqualified statement went to a
+// keyspace that was not there any more.
+func leaveDroppedKeyspace(command string, sess *db.Session, sessionMgr *session.Manager) {
+	if sessionMgr == nil || sessionMgr.CurrentKeyspace() == "" {
+		return
+	}
+	stmt, err := validation.Classify(command)
+	if err != nil || stmt.Command != "DROP" || stmt.Object != "KEYSPACE" || len(stmt.Names) == 0 ||
+		!strings.EqualFold(stmt.Names[0].Keyspace, strings.Trim(sessionMgr.CurrentKeyspace(), `"`)) {
+		return
+	}
+
+	_ = sessionMgr.SetKeyspace("")
+	if sess != nil && sess.Session != nil {
+		if err := sess.SetKeyspace(""); err != nil {
+			logger.DebugfToFile("Router", "Leaving the dropped keyspace: %v", err)
+		}
+	}
+}
+
+// usePrefix begins what a USE that worked returns.
+const usePrefix = "Now using keyspace "
+
+// adoptKeyspace makes a USE the server accepted the keyspace that follows.
+//
+// The server checks the keyspace and says so; the session still has to be
+// moved to it, and the session manager told. That was left to each caller, and
+// SOURCE was one that never did: a USE in a file was checked and forgotten,
+// and every statement after it without a keyspace failed.
+func adoptKeyspace(result string, sess *db.Session, sessionMgr *session.Manager) error {
+	if !strings.HasPrefix(result, usePrefix) {
+		return nil
+	}
+	keyspace := strings.TrimSpace(strings.TrimPrefix(result, usePrefix))
+
+	if sessionMgr != nil {
+		if err := sessionMgr.SetKeyspace(keyspace); err != nil {
+			logger.DebugfToFile("Router", "Failed to update session manager keyspace: %v", err)
+		}
+	}
+	if sess != nil && sess.Session != nil {
+		if err := sess.SetKeyspace(keyspace); err != nil {
+			return fmt.Errorf("failed to change keyspace: %w", err)
+		}
+	}
+	return nil
 }
 
 // failurePrefixes begin the messages the shell's own commands return when
@@ -78,6 +137,9 @@ func processCommand(command string, session *db.Session, sessionMgr *session.Man
 		metaHandler = NewMetaCommandHandler(session, sessionMgr)
 	}
 	metaHandler.session = session
+	if sessionMgr != nil {
+		metaHandler.sessionManager = sessionMgr
+	}
 
 	// Strip comments and trim the command
 	command = stripComments(command)
@@ -312,6 +374,19 @@ func handleOutputCommand(command string, session *db.Session) interface{} {
 	}
 
 	return "Usage: OUTPUT [" + strings.Join(config.OutputFormats(), "|") + "]"
+}
+
+// ChangesSchema reports whether a command can change the schema: a CREATE,
+// an ALTER or a DROP, or a SOURCE file, which can hold any number of them.
+func ChangesSchema(command string) bool {
+	if stmt, err := validation.Classify(command); err == nil {
+		switch stmt.Command {
+		case "CREATE", "ALTER", "DROP":
+			return true
+		}
+	}
+	fields := strings.Fields(StripComments(command))
+	return len(fields) > 0 && strings.EqualFold(fields[0], "SOURCE")
 }
 
 // IsDangerousCommand checks if a command requires confirmation

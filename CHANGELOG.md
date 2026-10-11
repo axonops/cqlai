@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `USE` in a `SOURCE` file holds.** It was checked and then forgotten, so
+  every statement after it that named no keyspace failed. `-f` was not
+  affected. The keyspace stays in use after the file, as in cqlsh.
+- **`SOURCE` from the File menu says when statements fail.** The errors were
+  dropped, so it looked as if nothing had run.
+- **Tab completion forgets dropped keyspaces and tables.** It read the names
+  once and kept them. It now reads them again after a `CREATE`, `ALTER`,
+  `DROP` or `SOURCE`, or a schema change made somewhere else.
+- **Dropping the keyspace in use leaves it.** The status line went on naming
+  it.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

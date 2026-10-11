@@ -167,6 +167,20 @@ func (m *MainModel) processCommand(command string) interface{} {
 	if m.outputFormat() != before {
 		m.redrawResults()
 	}
+
+	// A USE has moved the session already - typed, picked on the status line,
+	// or in a SOURCE file - and the status line says where it is now.
+	if m.sessionManager != nil {
+		m.statusBar.Keyspace = m.sessionManager.CurrentKeyspace()
+	}
+
+	// A CREATE, ALTER or DROP here, or any number of them in a SOURCE file,
+	// changes what Tab should offer. The schema watch would catch it within a
+	// few seconds; Tab pressed straight after should not offer what was just
+	// dropped.
+	if router.ChangesSchema(command) {
+		m.schemaChanged()
+	}
 	return result
 }
 
