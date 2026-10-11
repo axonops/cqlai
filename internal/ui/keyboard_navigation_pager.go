@@ -417,6 +417,9 @@ func (m *MainModel) halfScreen() int {
 // screen.
 func (m *MainModel) scrollHorizontally(n int) {
 	switch {
+	case m.viewMode == "schema":
+		m.scrollSchemaSideways(n)
+
 	case m.viewMode == "trace" && m.hasTrace:
 		offset := clampOffset(m.traceHorizontalOffset+n, m.traceTableWidth, m.traceViewport.Width())
 		if offset == m.traceHorizontalOffset {

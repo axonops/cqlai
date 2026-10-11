@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A wide definition in the SCHEMA view scrolls sideways,** with
+  `Alt+←`/`Alt+→`, a trackpad's sideways scroll, or the wheel with `Shift`
+  held. A line wider than the pane was cut off, with no way to see the rest.
+  `←` and `→` on their own still open and close the tree.
+
 ## [0.4.2] - 2026-10-11
 
 ### Fixed

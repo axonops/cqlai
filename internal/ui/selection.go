@@ -153,7 +153,9 @@ func (m *MainModel) selectionTarget() (selectionSource, bool) {
 				offset: g.detailFirst,
 				height: g.detailRows,
 				top:    schemaHeaderRows,
-				indent: g.treeWidth + lipgloss.Width(schemaDivider),
+				// Scrolled sideways, the screen starts that far into each
+				// line, so a column on screen is that much further along it.
+				indent: g.treeWidth + lipgloss.Width(schemaDivider) - m.schema.detailLeft,
 			}, true
 		}
 

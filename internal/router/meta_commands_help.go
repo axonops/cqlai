@@ -126,6 +126,7 @@ func HelpRows() [][]string {
 		{"", "F3", "Schema: the keyspaces and tables, with their definitions"},
 		{"", "  Groups", "In Schema, each keyspace holds its tables, views, indexes, types, functions, aggregates, triggers"},
 		{"", "  / or ↑ at top", "In Schema, filter the tree by name; Esc clears it"},
+		{"", "  Alt+←/→", "In Schema, scroll a wide definition sideways; so do the wheel with Shift and a trackpad"},
 		{"", "F4", "Results: the last query, in whatever OUTPUT is set to"},
 		{"", "F5", "Trace: the second tab of that view, when tracing is on"},
 		{"", "F6", "Chat: the AI conversation"},
@@ -157,7 +158,7 @@ func HelpRows() [][]string {
 		{"Navigate", "PgUp/PgDown", "Scroll results/Page input"},
 		{"", "Alt+↑/↓", "Scroll line by line"},
 		{"", "↑/↓", "Navigate command history"},
-		{"", "Alt+←/→", "Scroll horizontally (wide tables)"},
+		{"", "Alt+←/→", "Scroll sideways: wide tables, and a wide definition in Schema"},
 
 		// Exit
 		{"─────────", "─────────", "─────────────"},

@@ -396,6 +396,10 @@ they are where they always were; the other groups open the same way a keyspace
 does. Select an object for its `CREATE` statement, as `DESCRIBE` gives it. A
 group's own pane lists what is in it.
 
+A definition wider than its pane scrolls sideways: `Alt+←`/`Alt+→`, a
+trackpad's sideways scroll, or the wheel with `Shift` held. `←` and `→` on
+their own still open and close the tree.
+
 ```
 ▾ shop
   ▾ Tables (2)
@@ -660,7 +664,7 @@ cuts the command rather than dropping it.
 | `Space` | Load next page when more data available | Same |
 | `Enter` (empty input) | Load next page when more data available | Same |
 | `Alt+↑`/`Alt+↓` | Scroll viewport by single row (respects row boundaries) | `Option+↑`/`Option+↓` |
-| `Alt+←`/`Alt+→` | Scroll table horizontally (wide tables) | `Option+←`/`Option+→` |
+| `Alt+←`/`Alt+→` | Scroll sideways (wide tables, and a wide definition in `SCHEMA`) | `Option+←`/`Option+→` |
 | `↑`/`↓` | Scroll results in the table and trace views. In the normal view they step through command history; `Ctrl+P` recalls history from any view | Same |
 
 #### Navigation Mode (Table/Trace Views)
@@ -741,9 +745,10 @@ table view, the trace in the trace view, the conversation in the AI view.
 | Right Click | Nothing; use whatever your terminal binds paste to |
 | `Esc` | Clear the selection |
 
-Scroll wide tables sideways with `Alt+←`/`Alt+→`, or `<` and `>` in navigation
-mode. Horizontal scrolling with the wheel is not available, because the terminal
-only reports vertical wheel spins as key presses.
+Scroll wide tables, and a wide definition in `SCHEMA`, sideways with
+`Alt+←`/`Alt+→`, a trackpad's sideways scroll, or the wheel with `Shift` held.
+`<` and `>` do it too in navigation mode. The wheel needs the mouse on, which it
+is unless `MOUSE OFF` was used.
 
 **Note for macOS Users:**
 - Most `Ctrl` shortcuts work as-is on macOS, but you can also use `⌘` (Command) key as an alternative

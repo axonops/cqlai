@@ -365,6 +365,10 @@ grupos desprégase igual ca un keyspace. Ao seleccionar un obxecto amósase a
 súa sentenza `CREATE`, tal como a dá `DESCRIBE`. O panel dun grupo lista o que
 contén.
 
+Unha definición máis ancha ca o seu panel desprázase en horizontal:
+`Alt+←`/`Alt+→`, o desprazamento lateral do trackpad, ou a roda con `Shift`
+premido. `←` e `→` sos seguen abrindo e pechando a árbore.
+
 ```
 ▾ shop
   ▾ Tables (2)
@@ -396,7 +400,7 @@ mantén o filtro; `Esc` bórrao e volve amosar a
 | `Espazo` | Cargar seguinte páxina cando haxa máis datos dispoñibles | Igual |
 | `Enter` (entrada baleira) | Cargar seguinte páxina cando haxa máis datos dispoñibles | Igual |
 | `Alt+↑`/`Alt+↓` | Desprazar vista por unha soa fila (respecta límites de fila) | `Option+↑`/`Option+↓` |
-| `Alt+←`/`Alt+→` | Desprazar táboa horizontalmente (táboas anchas) | `Option+←`/`Option+→` |
+| `Alt+←`/`Alt+→` | Desprazar en horizontal (táboas anchas, e unha definición ancha en `SCHEMA`) | `Option+←`/`Option+→` |
 | `↑`/`↓` | Desprazan os resultados nas vistas de táboa e traza. Na vista normal percorren o historial de comandos; `Ctrl+P` recupera o historial desde calquera vista | Igual |
 
 #### Modo de Navegación (Vistas de Táboa/Trazas)
@@ -429,9 +433,10 @@ e a conversa na vista de IA.
 | Clic Dereito | Pegar (se o teu terminal o ten asignado así) |
 | Clic do Medio | Pegar desde o búfer de selección (Linux/Unix) |
 
-Para desprazar táboas anchas en horizontal usa `Alt+←`/`Alt+→`, ou `<` e `>` en
-modo navegación. O desprazamento horizontal coa roda non está dispoñible, porque
-o terminal só informa dos xiros verticais como pulsacións de tecla.
+Para desprazar en horizontal táboas anchas, e unha definición ancha en `SCHEMA`,
+usa `Alt+←`/`Alt+→`, o desprazamento lateral do trackpad, ou a roda con `Shift`
+premido. En modo navegación tamén serven `<` e `>`. A roda precisa o rato
+activado, que o está salvo que se usase `MOUSE OFF`.
 
 **Nota para Usuarios de macOS:**
 - A maioría de atallos `Ctrl` funcionan tal cal en macOS, pero tamén podes usar a tecla `⌘` (Comando) como alternativa
