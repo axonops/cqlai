@@ -369,6 +369,10 @@ grupos se despliegan igual que un keyspace. Al seleccionar un objeto se
 muestra su sentencia `CREATE`, tal como la da `DESCRIBE`. El panel de un grupo
 lista lo que contiene.
 
+Una definición más ancha que su panel se desplaza en horizontal: `Alt+←`/`Alt+→`,
+el desplazamiento lateral del trackpad, o la rueda con `Shift` pulsado. `←` y `→`
+solos siguen abriendo y cerrando el árbol.
+
 ```
 ▾ shop
   ▾ Tables (2)
@@ -400,7 +404,7 @@ vuelve a mostrar el árbol entero, con lo encontrado aún seleccionado.
 | `Espacio` | Cargar siguiente página cuando haya más datos disponibles | Igual |
 | `Enter` (entrada vacía) | Cargar siguiente página cuando haya más datos disponibles | Igual |
 | `Alt+↑`/`Alt+↓` | Desplazar vista por una sola fila (respeta límites de fila) | `Option+↑`/`Option+↓` |
-| `Alt+←`/`Alt+→` | Desplazar tabla horizontalmente (tablas anchas) | `Option+←`/`Option+→` |
+| `Alt+←`/`Alt+→` | Desplazar en horizontal (tablas anchas, y una definición ancha en `SCHEMA`) | `Option+←`/`Option+→` |
 | `↑`/`↓` | Desplazan los resultados en las vistas de tabla y traza. En la vista normal recorren el historial de comandos; `Ctrl+P` recupera el historial desde cualquier vista | Igual |
 
 #### Modo de Navegación (Vistas de Tabla/Trazas)
@@ -433,9 +437,10 @@ traza en la vista de traza y la conversación en la vista de IA.
 | Clic Derecho | Pegar (si tu terminal lo tiene asignado así) |
 | Clic del Medio | Pegar desde el búfer de selección (Linux/Unix) |
 
-Para desplazar tablas anchas en horizontal usa `Alt+←`/`Alt+→`, o `<` y `>` en
-modo navegación. El desplazamiento horizontal con la rueda no está disponible,
-porque el terminal solo informa de los giros verticales como pulsaciones de tecla.
+Para desplazar en horizontal tablas anchas, y una definición ancha en `SCHEMA`,
+usa `Alt+←`/`Alt+→`, el desplazamiento lateral del trackpad, o la rueda con
+`Shift` pulsado. En modo navegación también sirven `<` y `>`. La rueda necesita
+el ratón activado, que lo está salvo que se haya usado `MOUSE OFF`.
 
 **Nota para Usuarios de macOS:**
 - La mayoría de atajos `Ctrl` funcionan tal cual en macOS, pero también puedes usar la tecla `⌘` (Comando) como alternativa

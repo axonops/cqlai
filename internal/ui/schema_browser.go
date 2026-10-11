@@ -81,7 +81,8 @@ type schemaBrowser struct {
 
 	detail       []string // the definition of the selected row, by line
 	detailScroll int
-	detailWidth  int // the widest line, for scrolling sideways later
+	detailWidth  int // the widest line, which is as far as it scrolls sideways
+	detailLeft   int // the first column of the definition drawn
 
 	// review is what the model made of the definition, drawn under it.
 	review schemaReview
@@ -441,6 +442,7 @@ func (m *MainModel) showSchemaDetail() {
 	m.schema.detail = nil
 	m.schema.detailScroll = 0
 	m.schema.detailWidth = 0
+	m.schema.detailLeft = 0
 
 	row, ok := m.schema.current()
 	if !ok {
@@ -787,6 +789,15 @@ func (m *MainModel) clickSchema(col, row int) (*MainModel, tea.Cmd) {
 		return m.toggleSchemaRow()
 	}
 	return m.selectSchemaRow(i)
+}
+
+// scrollSchemaSideways moves the definition left or right by n columns.
+//
+// A definition line wider than the pane was cut off at its edge, with no way
+// to see the rest. Only the definition scrolls: the tree is names, and fits.
+func (m *MainModel) scrollSchemaSideways(n int) {
+	g := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	m.schema.detailLeft = clampOffset(m.schema.detailLeft+n, m.schema.detailWidth, g.detailWidth-1)
 }
 
 // scrollSchema moves whichever pane the pointer is over.

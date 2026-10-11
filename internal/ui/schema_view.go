@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Drawing the SCHEMA view, and working out what a click landed on.
@@ -252,7 +253,7 @@ func (m *MainModel) schemaDetailRow(g schemaGeometry, row int, detailBar []bool)
 		definition = m.schema.detail[g.detailFirst+row]
 	}
 
-	drawn := textStyle.Render(pad(cut(definition, g.detailWidth-1), g.detailWidth-1))
+	drawn := textStyle.Render(pad(ansi.Cut(definition, m.schema.detailLeft, m.schema.detailLeft+g.detailWidth-1), g.detailWidth-1))
 	return drawn + scrollbarCell(detailBar, row, len(m.schema.detail) > g.detailRows, thumbStyle, trackStyle)
 }
 

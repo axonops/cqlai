@@ -441,11 +441,26 @@ func (m *MainModel) handleMouseWheel(mouse tea.Mouse) (*MainModel, tea.Cmd) {
 			return m, nil
 		}
 
+		// Sideways, as everywhere else: the wheel's own left and right, or
+		// a modifier held with the wheel.
+		sideways := mouse.Mod.Contains(tea.ModShift) || mouse.Mod.Contains(tea.ModAlt) ||
+			mouse.Mod.Contains(tea.ModCtrl)
+
 		switch mouse.Button {
 		case tea.MouseWheelUp:
+			if sideways {
+				return m.handleMouseWheelLeft()
+			}
 			return m.scrollSchema(mouse.X, -wheelLines)
 		case tea.MouseWheelDown:
+			if sideways {
+				return m.handleMouseWheelRight()
+			}
 			return m.scrollSchema(mouse.X, wheelLines)
+		case tea.MouseWheelLeft:
+			return m.handleMouseWheelLeft()
+		case tea.MouseWheelRight:
+			return m.handleMouseWheelRight()
 		}
 		return m, nil
 	}
