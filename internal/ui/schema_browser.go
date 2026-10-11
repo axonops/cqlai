@@ -301,6 +301,7 @@ func (m *MainModel) refreshSchema() (*MainModel, tea.Cmd) {
 	open := m.schema.expanded
 	groups := m.schema.groups
 	selected := m.schema.selected
+	scroll := m.schema.scroll
 	m.schema = schemaBrowser{}
 	m.loadSchema()
 
@@ -319,6 +320,8 @@ func (m *MainModel) refreshSchema() (*MainModel, tea.Cmd) {
 	if rows := len(m.schema.rows()); rows > 0 {
 		m.schema.selected = min(selected, rows-1)
 	}
+	m.schema.scroll = scroll
+	m.keepSchemaScroll()
 	m.showSchemaDetail()
 	return m, nil
 }
@@ -543,8 +546,19 @@ func (m *MainModel) selectSchemaRow(i int) (*MainModel, tea.Cmd) {
 	}
 
 	m.schema.selected = min(max(i, 0), len(rows)-1)
+	m.keepSchemaScroll()
 	m.showSchemaDetail()
 	return m, nil
+}
+
+// keepSchemaScroll records where the tree is scrolled to.
+//
+// The geometry moves the tree only as far as it takes to keep the selection on
+// screen, but it moved it from a scroll that was never written back - always
+// the top. Anything past the first screen was drawn on the bottom row, so a
+// click on a row moved it there.
+func (m *MainModel) keepSchemaScroll() {
+	m.schema.scroll = m.schemaGeometry(m.windowWidth, m.schemaHeight()).treeFirst
 }
 
 // moveSchemaSelection moves it by n rows, stopping at the ends.

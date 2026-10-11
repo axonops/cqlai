@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clicking a row in the SCHEMA view no longer moves it.** Once the tree was
+  scrolled past its first screen, the row clicked was moved to the bottom of
+  the pane. The tree now stays where it is, and moves only to keep the
+  selection on screen.
+
 ## [0.4.1] - 2026-10-11
 
 ### Fixed

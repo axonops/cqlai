@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/axonops/cqlai/internal/config"
 	"strings"
 	"testing"
@@ -644,4 +645,35 @@ func TestAGroupHasNothingToReview(t *testing.T) {
 	m, cmd := m.startSchemaReview()
 	assert.Nil(t, cmd, "nothing is sent to be read")
 	assert.Equal(t, "Nothing to review", m.modal.Title)
+}
+
+// TestClickingARowLeavesTheTreeWhereItIs: a click on a row past the first
+// screen moved that row to the bottom of the pane, because where the tree had
+// been scrolled to was never kept.
+func TestClickingARowLeavesTheTreeWhereItIs(t *testing.T) {
+	m := schemaModel(t)
+	m.schema.keyspaces = nil
+	for i := range 60 {
+		m.schema.keyspaces = append(m.schema.keyspaces, fmt.Sprintf("ks_%02d", i))
+	}
+
+	// The wheel takes the selection, and the tree with it, down the list.
+	for range 40 {
+		m, _ = m.scrollSchema(1, 1)
+	}
+	before := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	require.Positive(t, before.treeFirst, "the tree should have scrolled")
+
+	// A click on the third row showing selects it, and nothing moves.
+	m, _ = m.clickSchema(1, tabBarHeight+schemaHeaderRows+2)
+	after := m.schemaGeometry(m.windowWidth, m.schemaHeight())
+	assert.Equal(t, before.treeFirst+2, m.schema.selected)
+	assert.Equal(t, before.treeFirst, after.treeFirst, "the tree should not have moved")
+
+	// Up one row at a time stays put too, until the selection reaches the top.
+	m, _ = m.moveSchemaSelection(-1)
+	assert.Equal(t, before.treeFirst, m.schemaGeometry(m.windowWidth, m.schemaHeight()).treeFirst)
+	m, _ = m.moveSchemaSelection(-3)
+	assert.Equal(t, m.schema.selected, m.schemaGeometry(m.windowWidth, m.schemaHeight()).treeFirst,
+		"past the top, the tree follows the selection a row at a time")
 }
