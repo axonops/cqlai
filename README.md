@@ -603,6 +603,11 @@ The windows that ask for a path - `SAVE RESULTS` and `AUTOSAVE`, and the `File`
 field on the three forms - open on a file browser under your home directory. Tab
 completes, `..` walks up, and the wheel scrolls the listing.
 
+The `File` field of `COPY TO` and `COPY FROM` also takes a folder, for a
+partitioned Parquet dataset. `COPY TO` needs `FORMAT` set to `parquet` and a
+`PARTITION`, such as `event_id.year,event_id.month`; `COPY FROM` needs only the
+`FORMAT`. A folder has no extension to tell the format from.
+
 #### The prompt
 
 A statement without a semicolon is not finished, so the prompt stays open and

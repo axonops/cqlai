@@ -354,6 +354,12 @@ antes.
 Las ventanas que piden una ruta abren un explorador de ficheros en tu directorio
 personal. Tab completa, `..` sube un nivel, y la rueda desplaza la lista.
 
+El campo `File` de `COPY TO` y `COPY FROM` también acepta una carpeta, para un
+conjunto de datos Parquet particionado. `COPY TO` necesita `FORMAT` con el valor
+`parquet` y una `PARTITION`, como `event_id.year,event_id.month`; `COPY FROM`
+solo necesita el `FORMAT`. Una carpeta no tiene extensión de la que deducir el
+formato.
+
 #### El explorador de esquema
 
 `SCHEMA` (F3) muestra los keyspaces y las tablas del clúster como un árbol a la

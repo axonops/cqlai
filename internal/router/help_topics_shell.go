@@ -115,7 +115,9 @@ var shellHelpTopics = []HelpTopic{
 		Notes: []string{
 			"A file ending .parquet is Parquet without FORMAT; anything else is CSV. With",
 			"PARTITION the target is a directory of Hive-style partitions, and FROM",
-			"reads such a directory. Unlike the shell's other commands, COPY needs its ;.",
+			"reads such a directory. A timeuuid or timestamp column splits by its date:",
+			"PARTITION = 'event_id.year, event_id.month', or .day, .hour, .date.",
+			"Unlike the shell's other commands, COPY needs its ;.",
 			"In CSV each value is written as Cassandra writes it, and a collection, tuple",
 			"or UDT as JSON. FROM has Cassandra read each field as its column's type, and",
 			"leaves columns the file does not have as they are.",

@@ -350,6 +350,11 @@ axustes cos que arranca CQLAI; baixo a segunda, `QUIT` sae, preguntando antes.
 As ventás que piden unha ruta abren un explorador de ficheiros no teu directorio
 persoal. Tab completa, `..` sobe un nivel, e a roda despraza a lista.
 
+O campo `File` de `COPY TO` e `COPY FROM` tamén acepta un cartafol, para un
+conxunto de datos Parquet particionado. `COPY TO` precisa `FORMAT` co valor
+`parquet` e unha `PARTITION`, como `event_id.year,event_id.month`; `COPY FROM`
+só precisa o `FORMAT`. Un cartafol non ten extensión da que deducir o formato.
+
 #### O explorador de esquema
 
 `SCHEMA` (F3) amosa os keyspaces e as táboas do clúster como unha árbore á
