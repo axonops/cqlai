@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The COPY TO and COPY FROM forms take a folder,** for a partitioned Parquet
+  dataset. The File field refused any path ending in `/` with "that is a
+  directory", so a partitioned export or import could only be typed. A folder
+  now works with `FORMAT` set to `parquet`, and for COPY TO a `PARTITION`. The
+  field says which of the two is missing.
+
 ## [0.4.3] - 2026-10-11
 
 ### Added

@@ -353,9 +353,9 @@ const (
 func (f fileForm) describe() string {
 	switch f.action {
 	case copyingTo:
-		return "CSV or Parquet, from the file extension."
+		return "CSV or Parquet, from the file extension. A folder takes PARTITION."
 	case copyingFrom:
-		return "CSV or Parquet, from the file extension."
+		return "CSV or Parquet, from the file extension, or a partitioned folder."
 	}
 	return "The statements run as if you had typed them."
 }
@@ -1886,8 +1886,8 @@ func (m *MainModel) fieldError(i int) string {
 			return "a file is needed"
 		case strings.HasSuffix(value, string(filepath.Separator)):
 			// Including the directory the field starts in, which is a place to
-			// look rather than an answer.
-			return "that is a directory"
+			// look rather than an answer - unless it is a partitioned dataset.
+			return m.form.folderError()
 		}
 
 	case fieldColumns:
@@ -1903,6 +1903,31 @@ func (m *MainModel) fieldError(i int) string {
 
 	case fieldOption:
 		return optionError(field.label, value)
+	}
+	return ""
+}
+
+// folderError says what a folder in the File field still needs, or "" when it
+// needs nothing. A folder is a partitioned Parquet dataset: COPY TO writes one
+// when it has PARTITION, and COPY FROM reads one. Neither guesses the format
+// from a folder, which has no extension.
+//
+// Until FORMAT or PARTITION says a dataset is meant, a folder is still just
+// where the browser is. The form opens on the home directory, and telling you
+// then that it needs Parquet sends you after a format you did not want.
+func (f fileForm) folderError() string {
+	parquet := strings.EqualFold(f.field("FORMAT"), "parquet")
+	partition := f.field("PARTITION") != ""
+
+	switch {
+	case f.action == sourcing:
+		return "that is a directory"
+	case !parquet && f.action == copyingTo && partition:
+		return "a folder needs FORMAT=parquet"
+	case !parquet:
+		return "that is a directory"
+	case f.action == copyingTo && !partition:
+		return "a folder needs PARTITION"
 	}
 	return ""
 }

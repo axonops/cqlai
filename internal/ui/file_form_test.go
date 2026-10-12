@@ -401,3 +401,57 @@ func TestTheStartingDirectoryIsNotAnAnswer(t *testing.T) {
 	set(t, m, "File", filepath.Join(t.TempDir(), "schema.cql"))
 	assert.True(t, m.formReady())
 }
+
+// TestAFolderIsAPartitionedDataset: COPY TO writes one into a folder when it
+// has PARTITION, and COPY FROM reads one. The form refused any path ending in
+// a separator, so neither could be run from it.
+func TestAFolderIsAPartitionedDataset(t *testing.T) {
+	to := formModel(t, copyingTo)
+	set(t, to, "Keyspace", "my_keyspace")
+	set(t, to, "Table", "users")
+	set(t, to, "File", "/data/events/")
+	set(t, to, "FORMAT", "parquet")
+	set(t, to, "PARTITION", "event_id.year,event_id.month")
+	assert.Empty(t, to.formErrors())
+	assert.Equal(t,
+		"COPY my_keyspace.users TO '/data/events/' WITH FORMAT='parquet' AND PARTITION='event_id.year,event_id.month'",
+		to.form.command())
+
+	from := formModel(t, copyingFrom)
+	set(t, from, "Keyspace", "my_keyspace")
+	set(t, from, "Table", "users")
+	set(t, from, "File", "/data/events/")
+	set(t, from, "FORMAT", "parquet")
+	assert.Empty(t, from.formErrors())
+}
+
+// TestAFolderSaysWhatItLacks, and is only a directory until a dataset is meant.
+func TestAFolderSaysWhatItLacks(t *testing.T) {
+	for _, tt := range []struct {
+		action            formAction
+		format, partition string
+		wrong             string
+	}{
+		{sourcing, "", "", "that is a directory"},
+		{copyingTo, "", "", "that is a directory"},
+		{copyingFrom, "", "", "that is a directory"},
+		{copyingFrom, "csv", "", "that is a directory"},
+		{copyingTo, "", "event_id.year", "a folder needs FORMAT=parquet"},
+		{copyingTo, "csv", "event_id.year", "a folder needs FORMAT=parquet"},
+		{copyingTo, "parquet", "", "a folder needs PARTITION"},
+	} {
+		m := formModel(t, tt.action)
+		if tt.action != sourcing {
+			set(t, m, "Keyspace", "my_keyspace")
+			set(t, m, "Table", "users")
+			set(t, m, "FORMAT", tt.format)
+		}
+		if tt.action == copyingTo {
+			set(t, m, "PARTITION", tt.partition)
+		}
+		set(t, m, "File", "/data/events/")
+
+		assert.False(t, m.formReady(), "%v %q %q", tt.action, tt.format, tt.partition)
+		assert.Contains(t, collect(m.formErrors()), tt.wrong)
+	}
+}
