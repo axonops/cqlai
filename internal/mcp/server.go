@@ -34,6 +34,9 @@ type Source interface {
 	// SchemaVersion is the cluster's schema version, or "" without a
 	// cluster. It never connects: it is asked every few seconds.
 	SchemaVersion() string
+	// Invalidate drops the current session so the next Env reconnects. It is
+	// called when a tool call found the connection pool empty.
+	Invalidate()
 }
 
 // Server answers MCP messages, from stdin or over HTTP.
@@ -389,6 +392,12 @@ func (s *Server) call(ctx context.Context, name string, args map[string]any) any
 			}()
 			outcome = ai.CallMCPTool(ctx, env, name, args)
 		}()
+	}
+
+	// The connection pool was empty: the session is dead (idle connections
+	// dropped, a restart). Drop it so the next call builds a fresh one.
+	if outcome.ConnLost {
+		s.source.Invalidate()
 	}
 
 	entry.Statement = outcome.Statement

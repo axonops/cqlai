@@ -33,14 +33,15 @@ func ConnectionName(conn Config) string {
 // output format beside every host.
 func ConnectionSettings(conn Config) Config {
 	kept := Config{
-		Name:           conn.Name,
-		Host:           conn.Host,
-		Port:           conn.Port,
-		Keyspace:       conn.Keyspace,
-		Username:       conn.Username,
-		Password:       conn.Password,
-		ConnectTimeout: conn.ConnectTimeout,
-		RequestTimeout: conn.RequestTimeout,
+		Name:            conn.Name,
+		Host:            conn.Host,
+		Port:            conn.Port,
+		Keyspace:        conn.Keyspace,
+		Username:        conn.Username,
+		Password:        conn.Password,
+		ConnectTimeout:  conn.ConnectTimeout,
+		RequestTimeout:  conn.RequestTimeout,
+		SocketKeepalive: conn.SocketKeepalive,
 	}
 	if conn.SSL != nil {
 		ssl := *conn.SSL
@@ -124,6 +125,7 @@ func (c *Config) UseConnection(conn Config) {
 	c.Password = conn.Password
 	c.ConnectTimeout = conn.ConnectTimeout
 	c.RequestTimeout = conn.RequestTimeout
+	c.SocketKeepalive = conn.SocketKeepalive
 
 	c.SSL = nil
 	if conn.SSL != nil {

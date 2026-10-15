@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -83,22 +84,31 @@ func (s *Session) tracedRequests() (ids [][]byte, made int) {
 
 // SessionOptions represents options for creating a session with command-line overrides
 type SessionOptions struct {
-	Host           string
-	Port           int
-	Keyspace       string
-	Username       string
-	Password       string
-	Consistency    string // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
-	SSL            *config.SSLConfig
-	BatchMode      bool   // Skip schema caching for batch mode
-	ConnectTimeout int    // Connection timeout in seconds (0 = use default)
-	RequestTimeout int    // Request timeout in seconds (0 = use default)
-	ConfigFile     string // Path to custom config file
+	Host            string
+	Port            int
+	Keyspace        string
+	Username        string
+	Password        string
+	Consistency     string // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
+	SSL             *config.SSLConfig
+	BatchMode       bool   // Skip schema caching for batch mode
+	ConnectTimeout  int    // Connection timeout in seconds (0 = use default)
+	RequestTimeout  int    // Request timeout in seconds (0 = use default)
+	SocketKeepalive int    // TCP keepalive interval in seconds (0 = use default)
+	ConfigFile      string // Path to custom config file
 }
 
 // NewSession creates a new Cassandra session.
 func NewSession() (*Session, error) {
 	return NewSessionWithOptions(SessionOptions{})
+}
+
+// IsNoHostsAvailable reports whether err is gocql's "no hosts available in the
+// pool" error, which means the session's connection pool is empty - typically
+// because idle connections were dropped. Callers can use this to discard and
+// rebuild a dead session.
+func IsNoHostsAvailable(err error) bool {
+	return errors.Is(err, gocql.ErrNoConnections)
 }
 
 // customLogger suppresses gocql error messages to prevent terminal corruption
@@ -191,6 +201,19 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		cluster.ConnectTimeout = time.Duration(cfg.ConnectTimeout) * time.Second
 	default:
 		cluster.ConnectTimeout = 10 * time.Second
+	}
+
+	// Enable TCP keepalive so idle connections are kept alive and genuinely
+	// dead sockets are detected quickly. Without this, intermediaries (NAT,
+	// firewalls, load balancers) silently drop idle connections and gocql
+	// only finds out on the next query, failing with "no hosts available".
+	switch {
+	case options.SocketKeepalive > 0:
+		cluster.SocketKeepalive = time.Duration(options.SocketKeepalive) * time.Second
+	case cfg.SocketKeepalive > 0:
+		cluster.SocketKeepalive = time.Duration(cfg.SocketKeepalive) * time.Second
+	default:
+		cluster.SocketKeepalive = 15 * time.Second
 	}
 
 	cluster.DisableInitialHostLookup = true
