@@ -540,6 +540,7 @@ SOURCE '/ruta/<Tab>    -- Muestra: archivos en /ruta/
 - **Filtrado Inteligente:** Los autocompletados se filtran según el contexto actual
 - **Escape para Cancelar:** Presiona `Esc` para cerrar el modal de autocompletado
 - **Qué Escribir:** Donde la siguiente palabra la inventas tú - el nombre de un keyspace, una tabla, una columna, o un valor - la lista lo dice en vez de quedarse vacía: `<table name>`, `<column name>`, `<value>`. Esa nota se muestra en cursiva y nunca se inserta en el prompt.
+- **Nombres entre Comillas:** Un keyspace, una tabla o una columna cuyo nombre tiene mayúsculas, empieza por un dígito o un guion bajo, es una palabra reservada como `order`, o tiene otros caracteres que CQL pasaría a minúsculas o rechazaría se inserta entre comillas dobles: `SELECT * FROM My<Tab>` da `"MyKeyspace".`, y la tabla siguiente `"MyKeyspace"."TableA"`. Sin comillas, CQL leería el nombre como `mykeyspace`. También funciona si escribes tú la comilla de apertura.
 
 #### Ejemplos
 
@@ -640,6 +641,11 @@ Los meta-comandos proporcionan funcionalidad adicional más allá del CQL están
   DESCRIBE CLUSTER                      -- Mostrar información del clúster
   DESC <keyspace>.<tabla>               -- Atajo para descripción de tabla
   ```
+
+  Un nombre se lee como lo lee CQL: sin comillas, en minúsculas, así que uno con
+  mayúsculas va entre comillas dobles - `DESCRIBE TABLE "MyKeyspace"."TableA"`.
+  También uno que empieza por un dígito o un guion bajo, o que es una palabra
+  reservada.
 
 #### Exportación/Importación de Datos
 - **COPY TO** - Exportar datos de tabla a archivo CSV o Parquet

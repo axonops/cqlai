@@ -563,6 +563,38 @@ func classifyBatch(t []token) (Statement, error) {
 	return batch, nil
 }
 
+// ParseName reads a name as a statement would: keyspace.name or a name alone,
+// each part either quoted, and kept as written, or unquoted, and folded to
+// lower case. The name alone is in Table, whatever kind of object it is.
+//
+// For a name a shell command takes as text. Trimming the quotes off the ends
+// made "MyKeyspace"."TableA" into MyKeyspace"."TableA, and k."_staging" into
+// k."_staging.
+func ParseName(text string) (Name, error) {
+	tokens, err := lex(strings.TrimSuffix(strings.TrimSpace(text), ";"))
+	if err != nil {
+		return Name{}, err
+	}
+	name, next, err := readName(tokens, 0)
+	if err != nil {
+		return Name{}, fmt.Errorf("%q is not a name", text)
+	}
+	if next != len(tokens) {
+		return Name{}, fmt.Errorf("%q is not one name", text)
+	}
+	return name, nil
+}
+
+// String is the name as it is stored, keyspace.name or name, without quotes.
+// No keyspace or table name has a dot or a quote in it, so this is the name
+// and nothing else.
+func (n Name) String() string {
+	if n.Qualified {
+		return n.Keyspace + "." + n.Table
+	}
+	return n.Table
+}
+
 // readName reads keyspace.table, or a table alone, at t[i]. It reports the
 // index after it.
 func readName(t []token, i int) (Name, int, error) {

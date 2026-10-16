@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tab completion quotes a name that needs it** (#257). A keyspace, table or
+  column with capitals in its name, such as `MyKeyspace.TableA`, went into the
+  prompt as it was, and CQL read it as `mykeyspace.tablea`, which does not
+  exist. It now goes in as `"MyKeyspace"."TableA"`. A name typed in quotes
+  completes too, and its columns are found: they were looked up in lower case.
+- **A name that starts with an underscore, or is a reserved word, is quoted.**
+  `_staging` and a column called `order` were written without quotes, which
+  Cassandra reads as a syntax error. This is the quoting completion and the
+  DESCRIBE output built by cqlai both use. The reserved words are Cassandra
+  5.0.9's own list.
+- **DESCRIBE takes a quoted name.** The quotes were trimmed off the ends of
+  what was typed, so `DESCRIBE TABLE "MyKeyspace"."TableA"` looked for a table
+  called `"TableA` in a keyspace called `MyKeyspace"`, and the same went for
+  every DESCRIBE that names an object. A name is now read as CQL reads it:
+  quoted, as written, and unquoted, in lower case, as cqlsh does.
+- **DESCRIBE of a qualified name that is not there no longer crashes cqlai.**
+  `DESCRIBE k.nosuch` panicked.
+- **Tab after a word that is a keyword but starts a longer one completes it.**
+  `AND or` and Tab put a space after OR, where the column was `order`. A
+  finished keyword such as `DESC` still gets its space.
+- **DROP and the other destructive statements ask again after File > CONNECT.**
+  A `cqlai.json` without `requireConfirmation` was read by CONNECT and
+  PREFERENCES as having it off, though it is on by default. After a CONNECT,
+  `DROP KEYSPACE` ran without asking, and saving PREFERENCES wrote the setting
+  off into the file. A file without the key now means confirmation is on, as it
+  does at start-up.
+
 ## [0.4.4] - 2026-10-12
 
 ### Fixed

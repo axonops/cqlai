@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/axonops/cqlai/internal/session"
 )
@@ -93,40 +92,19 @@ func (s *Session) DBDescribeTypes(sessionMgr *session.Manager) (interface{}, []T
 
 // DBDescribeType handles version detection and returns appropriate data
 func (s *Session) DBDescribeType(sessionMgr *session.Manager, typeName string) (interface{}, *TypeInfo, error) {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// Parse keyspace.type or just type
-		var describeCmd string
-		if strings.Contains(typeName, ".") {
-			describeCmd = fmt.Sprintf("DESCRIBE TYPE %s", typeName)
-		} else {
-			currentKeyspace := ""
-			if sessionMgr != nil {
-				currentKeyspace = sessionMgr.CurrentKeyspace()
-			}
-			if currentKeyspace == "" {
-				return nil, nil, fmt.Errorf("no keyspace selected")
-			}
-			describeCmd = fmt.Sprintf("DESCRIBE TYPE %s.%s", currentKeyspace, typeName)
-		}
-
-		result := s.ExecuteCQLQuery(describeCmd)
-		return result, nil, nil // Server-side result, no TypeInfo needed
-	}
-
-	// Fall back to manual construction for pre-4.0
-	currentKeyspace := ""
-	if sessionMgr != nil {
-		currentKeyspace = sessionMgr.CurrentKeyspace()
-	}
-	if currentKeyspace == "" {
-		return nil, nil, fmt.Errorf("no keyspace selected")
-	}
-
-	typeInfo, err := s.DescribeTypeQuery(currentKeyspace, typeName)
+	keyspace, name, err := qualify(sessionMgr, typeName)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return nil, typeInfo, nil // Manual query result, return TypeInfo for formatting
+	// Cassandra 4.0 and later describe it themselves.
+	if s.IsVersion4OrHigher() {
+		return s.ExecuteCQLQuery("DESCRIBE TYPE " + quoteQualified(keyspace, name)), nil, nil
+	}
+
+	typeInfo, err := s.DescribeTypeQuery(keyspace, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, typeInfo, nil
 }

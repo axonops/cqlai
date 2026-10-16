@@ -33,6 +33,9 @@ func NewCompletionEngine(dbSession *db.Session, sessionMgr *session.Manager) *Co
 // The note is added here, in the one place every answer passes through, rather
 // than in each of the places an answer is worked out.
 func (ce *CompletionEngine) Complete(input string) []string {
+	// The names typed in quotes are completed without them, and the names
+	// offered get them back where they need them.
+	input = unquoteIdentifiers(input)
 	suggestions := ce.CompleteNative(input)
 
 	suggestions = withoutASecondOpenBracket(input, suggestions)
@@ -41,14 +44,14 @@ func (ce *CompletionEngine) Complete(input string) []string {
 	case hintInstead:
 		return []string{hint}
 	case hintAlongside:
-		return append(suggestions, hint)
+		return append(ce.quoteNames(suggestions), hint)
 	case hintWhenNothingElse:
 		if len(suggestions) == 0 {
 			return []string{hint}
 		}
 	case noHint:
 	}
-	return suggestions
+	return ce.quoteNames(suggestions)
 }
 
 // withoutASecondOpenBracket drops the open bracket offered where one is open

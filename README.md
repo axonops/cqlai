@@ -847,6 +847,7 @@ SOURCE '/path/<Tab>    -- Shows: files in /path/
 - **Smart Filtering:** Completions are filtered based on current context
 - **Escape to Cancel:** Press `Esc` to close the completion modal
 - **What to Type:** Where the next word is yours to invent - the name of a keyspace, a table, a column, or a value - the list says so rather than going empty: `<table name>`, `<column name>`, `<value>`. A note like that is shown in italics and is never put into the prompt.
+- **Quoted Names:** A keyspace, table or column whose name has capitals, starts with a digit or an underscore, is a reserved word such as `order`, or has other characters CQL would fold or refuse goes in with double quotes: `SELECT * FROM My<Tab>` gives `"MyKeyspace".`, and the table after it `"MyKeyspace"."TableA"`. Unquoted, CQL would read the name as `mykeyspace`. Typing the opening quote yourself works too.
 
 #### Examples
 
@@ -958,6 +959,10 @@ Meta-commands provide additional functionality beyond standard CQL:
   DESCRIBE CLUSTER                      -- Show cluster information
   DESC <keyspace>.<table>               -- Shorthand for table description
   ```
+
+  A name is read as CQL reads it: without quotes in lower case, so one with
+  capitals goes in double quotes - `DESCRIBE TABLE "MyKeyspace"."TableA"`. So
+  does a name that starts with a digit or an underscore, or is a reserved word.
 
   Virtual keyspaces (Cassandra 4.0+) are listed, described, completed and can be
   `USE`d like any other. `DESCRIBE TABLES` shows their keys - which is what a

@@ -76,6 +76,7 @@ func (ce *CompletionEngine) getTablesForKeyspace(keyspace string) []string {
 	if keyspace == "" {
 		return []string{}
 	}
+	keyspace = ce.keyspaceNamed(keyspace)
 
 	if _, ok := ce.cache.tables[keyspace]; !ok {
 		ce.refreshTableCache(keyspace)
@@ -189,21 +190,7 @@ func (ce *CompletionEngine) getColumnNamesForCurrentTable(words []string, fromIn
 		return []string{}
 	}
 
-	tableName := words[fromIndex+1]
-	currentKeyspace := ""
-	if ce.sessionManager != nil {
-		currentKeyspace = ce.sessionManager.CurrentKeyspace()
-	}
-
-	// Check if table name includes keyspace
-	if strings.Contains(tableName, ".") {
-		parts := strings.Split(tableName, ".")
-		currentKeyspace = strings.ToLower(parts[0]) // Lowercase for case-insensitive lookup
-		tableName = strings.ToLower(parts[1])
-	} else {
-		tableName = strings.ToLower(tableName) // Lowercase for case-insensitive lookup
-	}
-
+	currentKeyspace, tableName := ce.tableNamed(words[fromIndex+1])
 	if currentKeyspace == "" {
 		return []string{}
 	}
@@ -221,20 +208,7 @@ func (ce *CompletionEngine) getColumnNamesForCurrentTable(words []string, fromIn
 
 // getColumnNamesForTable returns column names for a specific table
 func (ce *CompletionEngine) getColumnNamesForTable(tableName string) []string {
-	currentKeyspace := ""
-	if ce.sessionManager != nil {
-		currentKeyspace = ce.sessionManager.CurrentKeyspace()
-	}
-
-	// Check if table name includes keyspace
-	if strings.Contains(tableName, ".") {
-		parts := strings.Split(tableName, ".")
-		currentKeyspace = strings.ToLower(parts[0]) // Lowercase for case-insensitive lookup
-		tableName = strings.ToLower(parts[1])
-	} else {
-		tableName = strings.ToLower(tableName) // Lowercase for case-insensitive lookup
-	}
-
+	currentKeyspace, tableName := ce.tableNamed(tableName)
 	if currentKeyspace == "" {
 		return []string{}
 	}
@@ -252,18 +226,7 @@ func (ce *CompletionEngine) getColumnNamesForTable(tableName string) []string {
 
 // getColumnTypeTemplate returns a template string with data types for the specified columns
 func (ce *CompletionEngine) getColumnTypeTemplate(tableName string, columnNames []string) string {
-	currentKeyspace := ""
-	if ce.sessionManager != nil {
-		currentKeyspace = ce.sessionManager.CurrentKeyspace()
-	}
-
-	// Check if table name includes keyspace
-	if strings.Contains(tableName, ".") {
-		parts := strings.Split(tableName, ".")
-		currentKeyspace = parts[0]
-		tableName = parts[1]
-	}
-
+	currentKeyspace, tableName := ce.tableNamed(tableName)
 	if currentKeyspace == "" || ce.session == nil {
 		return ""
 	}

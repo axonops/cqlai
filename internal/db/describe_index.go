@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/axonops/cqlai/internal/session"
 )
@@ -68,40 +67,19 @@ func (s *Session) DescribeIndexQueryWithTable(keyspace string, tableName string,
 
 // DBDescribeIndex handles version detection and returns appropriate data
 func (s *Session) DBDescribeIndex(sessionMgr *session.Manager, indexName string) (interface{}, *IndexInfo, error) {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// Parse keyspace.index or just index
-		var describeCmd string
-		if strings.Contains(indexName, ".") {
-			describeCmd = fmt.Sprintf("DESCRIBE INDEX %s", indexName)
-		} else {
-			currentKeyspace := ""
-			if sessionMgr != nil {
-				currentKeyspace = sessionMgr.CurrentKeyspace()
-			}
-			if currentKeyspace == "" {
-				return nil, nil, fmt.Errorf("no keyspace selected")
-			}
-			describeCmd = fmt.Sprintf("DESCRIBE INDEX %s.%s", currentKeyspace, indexName)
-		}
-
-		result := s.ExecuteCQLQuery(describeCmd)
-		return result, nil, nil // Server-side result, no IndexInfo needed
-	}
-
-	// Fall back to manual construction for pre-4.0
-	currentKeyspace := ""
-	if sessionMgr != nil {
-		currentKeyspace = sessionMgr.CurrentKeyspace()
-	}
-	if currentKeyspace == "" {
-		return nil, nil, fmt.Errorf("no keyspace selected")
-	}
-
-	indexInfo, err := s.DescribeIndexQuery(currentKeyspace, indexName)
+	keyspace, name, err := qualify(sessionMgr, indexName)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return nil, indexInfo, nil // Manual query result, return IndexInfo for formatting
+	// Cassandra 4.0 and later describe it themselves.
+	if s.IsVersion4OrHigher() {
+		return s.ExecuteCQLQuery("DESCRIBE INDEX " + quoteQualified(keyspace, name)), nil, nil
+	}
+
+	indexInfo, err := s.DescribeIndexQuery(keyspace, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, indexInfo, nil
 }

@@ -16,7 +16,7 @@ func (s *Session) DBDescribeFullSchema(sessionMgr *session.Manager, keyspace str
 	// The server knows it, and says so in the form cqlsh shows: the structure,
 	// commented out, under a warning that it cannot be recreated with CQL.
 	if keyspace != "" && s.IsVirtualKeyspace(keyspace) {
-		return s.describeOnServer("DESCRIBE KEYSPACE " + keyspace)
+		return s.describeOnServer("DESCRIBE KEYSPACE " + QuoteName(keyspace))
 	}
 
 	// Cassandra 4.0 and later describe themselves, and theirs is the

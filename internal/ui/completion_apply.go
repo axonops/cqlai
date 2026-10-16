@@ -47,6 +47,14 @@ func applyCompletion(input, chosen string) string {
 		return inMap + spaceAfter(inMap)
 	}
 
+	// A name being typed in double quotes is replaced from its opening quote:
+	// `FROM "My` and "MyKeyspace" make `FROM "MyKeyspace"`, where appending
+	// after the quote made `FROM " "MyKeyspace"`.
+	if at := completion.OpenNameAt(input); at >= 0 {
+		named := input[:at] + chosen
+		return named + spaceAfter(named)
+	}
+
 	newValue := ""
 
 	// Special case: if input ends with a dot (keyspace.), just append the table name

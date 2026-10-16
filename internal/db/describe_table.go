@@ -332,12 +332,14 @@ func (s *Session) DescribeTablesQuery(keyspace string) ([]TableListInfo, error) 
 
 // DBDescribeTable handles version detection and returns appropriate data
 func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string) (interface{}, *TableInfo, error) {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// Try server-side DESCRIBE
-		describeQuery := fmt.Sprintf("DESCRIBE TABLE %s", tableName)
+	keyspace, name, err := qualify(sessionMgr, tableName)
+	if err != nil {
+		return nil, nil, err
+	}
 
-		iter := s.Query(describeQuery).Iter()
+	// Cassandra 4.0 and later describe it themselves.
+	if s.IsVersion4OrHigher() {
+		iter := s.Query("DESCRIBE TABLE " + quoteQualified(keyspace, name)).Iter()
 
 		// The server returns a result set with columns like 'keyspace_name', 'type', 'name', 'create_statement'
 		result := make(map[string]interface{})
@@ -353,25 +355,7 @@ func (s *Session) DBDescribeTable(sessionMgr *session.Manager, tableName string)
 		// Server-side DESCRIBE returned no results, fall back to manual
 	}
 
-	// Fall back to manual construction for pre-4.0 or if server-side failed
-	// Check if table name includes keyspace qualification
-	keyspaceName := ""
-	if sessionMgr != nil {
-		keyspaceName = sessionMgr.CurrentKeyspace()
-	}
-	actualTableName := tableName
-
-	if strings.Contains(tableName, ".") {
-		parts := strings.Split(tableName, ".")
-		if len(parts) == 2 {
-			keyspaceName = parts[0]
-			actualTableName = parts[1]
-		}
-	} else if keyspaceName == "" {
-		return nil, nil, fmt.Errorf("no keyspace selected")
-	}
-
-	tableInfo, err := s.DescribeTableQuery(keyspaceName, actualTableName)
+	tableInfo, err := s.DescribeTableQuery(keyspace, name)
 	if err != nil {
 		return nil, nil, err
 	}
