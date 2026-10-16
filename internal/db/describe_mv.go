@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/axonops/cqlai/internal/session"
 )
@@ -101,42 +100,21 @@ func (s *Session) DescribeMaterializedViewQuery(keyspace string, viewName string
 
 // DBDescribeMaterializedView handles version detection and returns appropriate data
 func (s *Session) DBDescribeMaterializedView(sessionMgr *session.Manager, viewName string) (interface{}, *MaterializedViewInfo, error) {
-	// Check if we can use server-side DESCRIBE (Cassandra 4.0+)
-	if s.IsVersion4OrHigher() {
-		// Parse keyspace.view or just view
-		var describeCmd string
-		if strings.Contains(viewName, ".") {
-			describeCmd = fmt.Sprintf("DESCRIBE MATERIALIZED VIEW %s", viewName)
-		} else {
-			currentKeyspace := ""
-			if sessionMgr != nil {
-				currentKeyspace = sessionMgr.CurrentKeyspace()
-			}
-			if currentKeyspace == "" {
-				return nil, nil, fmt.Errorf("no keyspace selected")
-			}
-			describeCmd = fmt.Sprintf("DESCRIBE MATERIALIZED VIEW %s.%s", currentKeyspace, viewName)
-		}
-
-		result := s.ExecuteCQLQuery(describeCmd)
-		return result, nil, nil // Server-side result, no MaterializedViewInfo needed
-	}
-
-	// Fall back to manual construction for pre-4.0
-	currentKeyspace := ""
-	if sessionMgr != nil {
-		currentKeyspace = sessionMgr.CurrentKeyspace()
-	}
-	if currentKeyspace == "" {
-		return nil, nil, fmt.Errorf("no keyspace selected")
-	}
-
-	mvInfo, err := s.DescribeMaterializedViewQuery(currentKeyspace, viewName)
+	keyspace, name, err := qualify(sessionMgr, viewName)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return nil, mvInfo, nil // Manual query result, return MaterializedViewInfo for formatting
+	// Cassandra 4.0 and later describe it themselves.
+	if s.IsVersion4OrHigher() {
+		return s.ExecuteCQLQuery("DESCRIBE MATERIALIZED VIEW " + quoteQualified(keyspace, name)), nil, nil
+	}
+
+	mvInfo, err := s.DescribeMaterializedViewQuery(keyspace, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, mvInfo, nil
 }
 
 // DBDescribeMaterializedViews lists all materialized views

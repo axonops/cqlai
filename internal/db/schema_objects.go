@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/axonops/cqlai/internal/session"
 )
 
 // What a keyspace holds besides its tables, for the SCHEMA view's tree: its
@@ -250,14 +252,56 @@ func (s *Session) describeTrigger(keyspace, name string) (string, error) {
 		QuoteName(trigger), QuoteName(keyspace), QuoteName(table), strings.ReplaceAll(options["class"], "'", "''")), nil
 }
 
-// plainName is a name CQL takes as it is: lower case, digits and underscores,
-// not starting with a digit.
-var plainName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+// plainName is a name CQL takes as it is: a lower-case letter, then lower case,
+// digits and underscores. A name starting with an underscore or a digit is not
+// one, so _staging and 2024_events are syntax errors without their quotes.
+var plainName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// reservedWords are the words CQL will not take as a name without quotes, in
+// any case: a column called order is "order". Cassandra's own list, from
+// org/apache/cassandra/cql3/reserved_keywords.txt in 5.0.9.
+var reservedWords = map[string]bool{
+	"add": true, "allow": true, "alter": true, "and": true, "apply": true,
+	"asc": true, "authorize": true, "batch": true, "begin": true, "by": true,
+	"columnfamily": true, "create": true, "delete": true, "desc": true,
+	"describe": true, "drop": true, "entries": true, "execute": true,
+	"from": true, "full": true, "grant": true, "if": true, "in": true,
+	"index": true, "infinity": true, "insert": true, "into": true, "is": true,
+	"keyspace": true, "limit": true, "materialized": true, "modify": true,
+	"nan": true, "norecursive": true, "not": true, "null": true, "of": true,
+	"on": true, "or": true, "order": true, "primary": true, "rename": true,
+	"revoke": true, "schema": true, "select": true, "set": true, "table": true,
+	"to": true, "token": true, "truncate": true, "unlogged": true,
+	"update": true, "use": true, "using": true, "view": true, "where": true,
+	"with": true,
+}
+
+// qualify is the keyspace and the name of an object named as keyspace.name, or
+// as a name alone in the keyspace in use. The names are as they are stored,
+// without quotes: the shell has read them as CQL does.
+func qualify(sessionMgr *session.Manager, name string) (keyspace, object string, err error) {
+	if ks, rest, ok := strings.Cut(name, "."); ok {
+		return ks, rest, nil
+	}
+	if sessionMgr != nil {
+		keyspace = sessionMgr.CurrentKeyspace()
+	}
+	if keyspace == "" {
+		return "", "", fmt.Errorf("no keyspace selected")
+	}
+	return keyspace, name, nil
+}
+
+// quoteQualified is keyspace.name written for a statement.
+func quoteQualified(keyspace, name string) string {
+	return QuoteName(keyspace) + "." + QuoteName(name)
+}
 
 // QuoteName writes a name so CQL reads it back as it is: in double quotes when
-// it has capitals or anything but letters, digits and underscores.
+// it has capitals or anything but letters, digits and underscores, starts with
+// anything but a letter, or is a reserved word.
 func QuoteName(name string) string {
-	if plainName.MatchString(name) {
+	if plainName.MatchString(name) && !reservedWords[name] {
 		return name
 	}
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`

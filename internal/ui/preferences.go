@@ -428,7 +428,10 @@ func (m *MainModel) prefsFile() *config.Config {
 		path = (&config.Config{}).SavePath()
 	}
 
-	cfg := &config.Config{SourcePath: path}
+	// Confirmation is on unless the file says otherwise, as it is at start-up.
+	// Read into a zero Config, a file without the key turned it off: CONNECT
+	// then ran DROP unasked, and PREFERENCES saved that off into the file.
+	cfg := &config.Config{SourcePath: path, RequireConfirmation: true}
 	data, err := os.ReadFile(path) // #nosec G304 - the file cqlai reads its configuration from
 	if err != nil {
 		return cfg
@@ -436,7 +439,7 @@ func (m *MainModel) prefsFile() *config.Config {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		// A file that will not parse is not one to write over from here. The
 		// window opens empty and Save says what went wrong.
-		return &config.Config{SourcePath: path}
+		return &config.Config{SourcePath: path, RequireConfirmation: true}
 	}
 	cfg.SourcePath = path
 	return cfg

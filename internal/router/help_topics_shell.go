@@ -72,7 +72,9 @@ var shellHelpTopics = []HelpTopic{
 			"DESCRIBE name",
 		},
 		Notes: []string{
-			"DESC is the same. A name on its own is a table, then a keyspace. TABLES",
+			"DESC is the same. A name on its own is a keyspace, then a table in the",
+			"keyspace in use. A name is read as CQL reads it: without quotes in lower",
+			"case, so one with capitals is quoted - \"MyKeyspace\".\"TableA\". TABLES",
 			"takes a pattern with * at the start, the end or the middle. The SCHEMA",
 			"view (F3) shows the same definitions as a tree.",
 		},

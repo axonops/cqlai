@@ -242,3 +242,40 @@ func TestTypingTheNameTakesTheNoteDown(t *testing.T) {
 	assert.Equal(t, "CREATE TABLE u", m.input.Value())
 	assert.False(t, m.showCompletions)
 }
+
+// TestAQuotedNameReplacesWhatIsTypedOfIt, quote and all.
+func TestAQuotedNameReplacesWhatIsTypedOfIt(t *testing.T) {
+	assert.Equal(t, `SELECT * FROM "MyKeyspace".`, applyCompletion(`SELECT * FROM "My`, `"MyKeyspace".`))
+	assert.Equal(t, `SELECT * FROM "MyKeyspace".`, applyCompletion(`SELECT * FROM "`, `"MyKeyspace".`), "only the quote typed")
+	assert.Equal(t, `SELECT * FROM "MyKeyspace"."TableA" `, applyCompletion(`SELECT * FROM "MyKeyspace"."`, `"TableA"`))
+	assert.Equal(t, `SELECT * FROM "MyKeyspace"."TableA" `, applyCompletion(`SELECT * FROM "MyKeyspace"."Ta`, `"TableA"`))
+	assert.Equal(t, `SELECT * FROM "MyKeyspace"."TableA" `, applyCompletion(`SELECT * FROM "MyKeyspace".`, `"TableA"`))
+	assert.Equal(t, `SELECT * FROM "MyKeyspace".`, applyCompletion(`SELECT * FROM My`, `"MyKeyspace".`), "typed without the quote")
+}
+
+// TestAKeywordThatStartsALongerWordGoesFurther: Tab after a keyword put a
+// space after it, even where it was the start of a name. AND or gave "AND or "
+// where the column was order.
+func TestAKeywordThatStartsALongerWordGoesFurther(t *testing.T) {
+	assert.True(t, goesFurther([]string{`"order"`, "origin"}, "or"))
+	assert.True(t, goesFurther([]string{"ascending_ids"}, "asc"))
+	assert.False(t, goesFurther([]string{"DESC", "DESCRIBE"}, "DESC"), "offered itself: finished")
+	assert.False(t, goesFurther([]string{"WHERE", "LIMIT"}, "OR"), "nothing longer")
+	assert.False(t, goesFurther([]string{`"Or"`, "order"}, "or"), "a name that is the word")
+}
+
+// TestAFinishedKeywordStillGetsItsSpace.
+func TestAFinishedKeywordStillGetsItsSpace(t *testing.T) {
+	for _, typed := range []string{"SELECT", "DESC"} {
+		m := helpModel()
+		m.input.Focus()
+		m.input.SetValue(typed)
+		m.input.CursorEnd()
+		m.completionEngine = completion.NewCompletionEngine(nil, nil)
+
+		m, _ = m.handleTabKey()
+
+		assert.Equal(t, typed+" ", m.input.Value())
+		assert.False(t, m.showCompletions, typed)
+	}
+}

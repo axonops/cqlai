@@ -89,9 +89,11 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 				lastWord := words[len(words)-1]
 				shouldAddSpace := false
 
-				// Check if last word is a complete keyword
+				// Check if last word is a complete keyword - unless it is also
+				// the start of something longer that could go here. AND or
+				// put a space after OR, where the column wanted was order.
 				if completion.IsCompleteKeyword(lastWord) {
-					shouldAddSpace = true
+					shouldAddSpace = !m.wordGoesFurther(fullInput, lastWord)
 				} else if len(words) >= 2 {
 					// Special case for COPY command: after table name, add space
 					if words[0] == "COPY" {
@@ -160,4 +162,26 @@ func (m *MainModel) handleTabKey() (*MainModel, tea.Cmd) {
 // quotesClosed reports whether every quote in the text has been closed.
 func quotesClosed(input string) bool {
 	return strings.Count(input, "'")%2 == 0 && strings.Count(input, "\"")%2 == 0
+}
+
+// wordGoesFurther reports whether the word typed is the start of something
+// the completion would offer here rather than a finished word: something
+// longer starts with it, and the word itself is not offered. DESC is finished,
+// though DESCRIBE starts with it; or after AND is the start of a column.
+func (m *MainModel) wordGoesFurther(input, word string) bool {
+	return goesFurther(m.completionEngine.Complete(input), word)
+}
+
+func goesFurther(offers []string, word string) bool {
+	longer := false
+	for _, offer := range offers {
+		offer = strings.TrimPrefix(offer, `"`)
+		switch {
+		case strings.EqualFold(strings.TrimSuffix(offer, `"`), word):
+			return false
+		case len(offer) > len(word) && strings.HasPrefix(strings.ToUpper(offer), strings.ToUpper(word)):
+			longer = true
+		}
+	}
+	return longer
 }

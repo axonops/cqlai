@@ -257,11 +257,15 @@ func TestClickingAYesNoSettingChangesIt(t *testing.T) {
 	first, _ := m.preferences.prefWindow()
 	row := g.y + 1 + g.listRow + m.preferences.lineOf(i) - first
 
-	m, _ = m.handlePreferencesClick(g.x+2, row)
-	assert.True(t, m.preferences.fields[i].yes)
+	// On to start with: the file does not have the key, and confirming is
+	// what a file without it means.
+	require.True(t, m.preferences.fields[i].yes)
 
 	m, _ = m.handlePreferencesClick(g.x+2, row)
 	assert.False(t, m.preferences.fields[i].yes)
+
+	m, _ = m.handlePreferencesClick(g.x+2, row)
+	assert.True(t, m.preferences.fields[i].yes)
 }
 
 // TestSpaceChangesAYesNoSettingAndTypesIntoTheRest.

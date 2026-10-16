@@ -97,7 +97,7 @@ func (ce *CompletionEngine) getInsertCompletions(words []string, wordPos int) []
 
 			// If we have columns, suggest the formatted column list first
 			if len(columns) > 0 {
-				columnList := "(" + strings.Join(columns, ", ") + ")"
+				columnList := "(" + strings.Join(quoteEach(columns), ", ") + ")"
 				suggestions = append(suggestions, columnList)
 			}
 		}
@@ -322,7 +322,7 @@ func (ce *CompletionEngine) handleInsertTableNameCompletion(input string, keyspa
 
 		// If we have columns, suggest the formatted column list
 		if len(columns) > 0 {
-			columnList := "(" + strings.Join(columns, ", ") + ")"
+			columnList := "(" + strings.Join(quoteEach(columns), ", ") + ")"
 			completions = append(completions, columnList)
 		}
 

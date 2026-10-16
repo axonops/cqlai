@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/axonops/cqlai/internal/db"
+	"github.com/axonops/cqlai/internal/validation"
 )
 
 // Abbreviation maps for compaction and compression strategies
@@ -154,9 +155,12 @@ func (p *CommandParser) describeTablesPattern(pattern string) interface{} {
 }
 
 // describeTable shows detailed information about a specific table
-func (p *CommandParser) describeTable(tableName string) interface{} {
-	// Remove quotes if present
-	tableName = strings.Trim(tableName, "'\"")
+func (p *CommandParser) describeTable(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
+	}
+	tableName := name.String()
 
 	serverResult, tableInfo, err := p.session.DBDescribeTable(p.sessionManager, tableName)
 	if err != nil {
@@ -183,9 +187,15 @@ func (p *CommandParser) describeTable(tableName string) interface{} {
 }
 
 // describeKeyspace shows detailed information about a keyspace
-func (p *CommandParser) describeKeyspace(keyspaceName string) interface{} {
-	// Remove quotes if present
-	keyspaceName = strings.Trim(keyspaceName, "'\"")
+func (p *CommandParser) describeKeyspace(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
+	}
+	if name.Qualified {
+		return fmt.Errorf("keyspace '%s' not found: a keyspace is one name", name)
+	}
+	keyspaceName := name.Table
 
 	// Use DBDescribeFullSchema to get the complete schema for this keyspace
 	// This matches cqlsh behavior which shows CREATE statements for all objects
@@ -247,9 +257,12 @@ func (p *CommandParser) describeTypes() interface{} {
 }
 
 // describeType shows detailed information about a specific type
-func (p *CommandParser) describeType(typeName string) interface{} {
-	// Remove quotes if present
-	typeName = strings.Trim(typeName, "'\"")
+func (p *CommandParser) describeType(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
+	}
+	typeName := name.String()
 
 	serverResult, typeInfo, err := p.session.DBDescribeType(p.sessionManager, typeName)
 	if err != nil {
@@ -289,29 +302,17 @@ func (p *CommandParser) describeFunctions() interface{} {
 }
 
 // describeFunction shows detailed information about a specific function
-func (p *CommandParser) describeFunction(functionName string) interface{} {
-	// Functions are complex - pass through a query
-	// Remove quotes if present
-	functionName = strings.Trim(functionName, "'\"")
-
-	// Parse keyspace.function if present
-	parts := strings.Split(functionName, ".")
-	var keyspaceName string
-
-	currentKeyspace := ""
-	if p.sessionManager != nil {
-		currentKeyspace = p.sessionManager.CurrentKeyspace()
+func (p *CommandParser) describeFunction(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
 	}
 
-	if len(parts) == 2 {
-		// keyspace.function format
-		keyspaceName = parts[0]
-		functionName = parts[1]
-	} else if currentKeyspace != "" {
-		// Use current keyspace
-		keyspaceName = currentKeyspace
+	// In the keyspace named, or the one in use, or with neither in all of them.
+	functionName, keyspaceName := name.Table, name.Keyspace
+	if !name.Qualified && p.sessionManager != nil {
+		keyspaceName = p.sessionManager.CurrentKeyspace()
 	}
-	// If no keyspace, keyspaceName remains empty string
 
 	result, err := p.session.DBDescribeFunctionByName(functionName, keyspaceName)
 	if err != nil {
@@ -346,9 +347,12 @@ func (p *CommandParser) describeAggregates() interface{} {
 }
 
 // describeAggregate shows detailed information about a specific aggregate
-func (p *CommandParser) describeAggregate(aggregateName string) interface{} {
-	// Remove quotes if present
-	aggregateName = strings.Trim(aggregateName, "'\"")
+func (p *CommandParser) describeAggregate(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
+	}
+	aggregateName := name.String()
 
 	serverResult, aggregateInfo, err := p.session.DBDescribeAggregate(p.sessionManager, aggregateName)
 	if err != nil {
@@ -372,9 +376,12 @@ func (p *CommandParser) describeAggregate(aggregateName string) interface{} {
 }
 
 // describeIndex shows detailed information about an index
-func (p *CommandParser) describeIndex(indexName string) interface{} {
-	// Remove quotes if present
-	indexName = strings.Trim(indexName, "'\"")
+func (p *CommandParser) describeIndex(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
+	}
+	indexName := name.String()
 
 	serverResult, indexInfo, err := p.session.DBDescribeIndex(p.sessionManager, indexName)
 	if err != nil {
@@ -398,9 +405,12 @@ func (p *CommandParser) describeIndex(indexName string) interface{} {
 }
 
 // describeMaterializedView shows detailed information about a materialized view
-func (p *CommandParser) describeMaterializedView(viewName string) interface{} {
-	// Remove quotes if present
-	viewName = strings.Trim(viewName, "'\"")
+func (p *CommandParser) describeMaterializedView(typed string) interface{} {
+	name, err := validation.ParseName(typed)
+	if err != nil {
+		return err
+	}
+	viewName := name.String()
 
 	serverResult, mvInfo, err := p.session.DBDescribeMaterializedView(p.sessionManager, viewName)
 	if err != nil {
@@ -446,36 +456,43 @@ func (p *CommandParser) describeSchema() interface{} {
 
 // describeIdentifier tries to determine what type of object an identifier is
 func (p *CommandParser) describeIdentifier(identifier string) interface{} {
-	// Remove quotes if present
-	identifier = strings.Trim(identifier, "'\"")
-
-	// Check if it contains a dot (keyspace.object notation)
-	if strings.Contains(identifier, ".") {
-		parts := strings.Split(identifier, ".")
-		if len(parts) == 2 {
-			// Try as keyspace.table first
-			result := p.describeTable(identifier)
-			if !strings.Contains(result.(string), "not found") {
-				return result
-			}
-		}
+	name, err := validation.ParseName(identifier)
+	if err != nil {
+		return err
 	}
 
-	// Try as keyspace
-	result := p.describeKeyspace(identifier)
-	if resultStr, ok := result.(string); !ok || !strings.Contains(resultStr, "not found") {
+	// keyspace.name is a table.
+	if name.Qualified {
+		if result := p.describeTable(identifier); !notFound(result) {
+			return result
+		}
+		return fmt.Errorf("'%s' not found", name)
+	}
+
+	// A name alone is a keyspace, or a table in the keyspace in use.
+	if result := p.describeKeyspace(identifier); !notFound(result) {
 		return result
 	}
-
-	// Try as table in current keyspace
 	if p.sessionManager != nil && p.sessionManager.CurrentKeyspace() != "" {
-		result = p.describeTable(identifier)
-		if resultStr, ok := result.(string); !ok || !strings.Contains(resultStr, "not found") {
+		if result := p.describeTable(identifier); !notFound(result) {
 			return result
 		}
 	}
 
-	return fmt.Errorf("'%s' not found", identifier)
+	return fmt.Errorf("'%s' not found", name)
+}
+
+// notFound reports whether a DESCRIBE answered that there is no such object.
+// It answers with an error or with text, and asserting text of an error
+// panicked: DESCRIBE k.nosuch, a name that was neither, took the shell down.
+func notFound(result interface{}) bool {
+	switch r := result.(type) {
+	case error:
+		return strings.Contains(r.Error(), "not found")
+	case string:
+		return strings.Contains(r, "not found")
+	}
+	return false
 }
 
 // tableListRows is DESCRIBE TABLES as rows: a header, then a table a row.
