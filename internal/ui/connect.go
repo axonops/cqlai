@@ -74,15 +74,16 @@ func (m *MainModel) connectWith(save bool) (*MainModel, tea.Cmd) {
 	}
 
 	session, err := db.NewSessionWithOptions(db.SessionOptions{
-		Host:           cfg.Host,
-		Port:           cfg.Port,
-		Keyspace:       cfg.Keyspace,
-		Username:       cfg.Username,
-		Password:       cfg.Password,
-		Consistency:    cfg.Consistency,
-		SSL:            cfg.SSL,
-		ConnectTimeout: cfg.ConnectTimeout,
-		RequestTimeout: cfg.RequestTimeout,
+		Host:            cfg.Host,
+		Port:            cfg.Port,
+		Keyspace:        cfg.Keyspace,
+		Username:        cfg.Username,
+		Password:        cfg.Password,
+		Consistency:     cfg.Consistency,
+		SSL:             cfg.SSL,
+		ConnectTimeout:  cfg.ConnectTimeout,
+		RequestTimeout:  cfg.RequestTimeout,
+		SocketKeepalive: cfg.SocketKeepalive,
 	})
 	if err != nil {
 		logger.DebugfToFile("Connect", "Connecting to %s:%d: %v", cfg.Host, cfg.Port, err)

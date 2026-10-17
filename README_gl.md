@@ -873,6 +873,7 @@ Para características avanzadas e configuración de IA, CQLAI usa o seu propio f
   "maxMemoryMB": 10,
   "connectTimeout": 10,
   "requestTimeout": 10,
+  "socketKeepalive": 15,
   "debug": false,
   "historyFile": "~/.cassandra/cqlai_history",
   "aiHistoryFile": "~/.cassandra/cqlai_ai_history",
@@ -1102,6 +1103,7 @@ Se se establece unha variable de contorno, utilizarase aínda que haxa un valor 
 | `maxMemoryMB` | number | `10` | Memoria máxima para resultados de consultas en MB |
 | `connectTimeout` | number | `10` | Tempo de espera de conexión en segundos |
 | `requestTimeout` | number | `10` | Tempo de espera de petición en segundos |
+| `socketKeepalive` | number | `15` | Intervalo de keepalive TCP en segundos, para manter vivas as conexións inactivas e detectar as perdidas |
 | `historyFile` | string | `~/.cassandra/cqlai_history` | Ruta ao arquivo de historial de comandos CQL (soporta expansión `~`). Móvese desde `~/.cqlai/history` a primeira vez que se usa |
 | `aiHistoryFile` | string | `~/.cassandra/cqlai_ai_history` | Ruta ao arquivo de historial de comandos IA (soporta expansión `~`). Móvese desde `~/.cqlai/ai_history` a primeira vez que se usa |
 | `debug` | boolean | `false` | Habilitar rexistro de depuración |

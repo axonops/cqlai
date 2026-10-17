@@ -1239,6 +1239,7 @@ For advanced features and AI configuration, CQLAI uses its own JSON format:
   "maxMemoryMB": 10,
   "connectTimeout": 10,
   "requestTimeout": 10,
+  "socketKeepalive": 15,
   "debug": false,
   "historyFile": "~/.cassandra/cqlai_history",
   "aiHistoryFile": "~/.cassandra/cqlai_ai_history",
@@ -1473,6 +1474,7 @@ If an environment variable is set, it will be used even if a value is present in
 | `maxMemoryMB` | number | `10` | Maximum memory for query results in MB |
 | `connectTimeout` | number | `10` | Connection timeout in seconds |
 | `requestTimeout` | number | `10` | Request timeout in seconds |
+| `socketKeepalive` | number | `15` | TCP keepalive interval in seconds, to keep idle connections alive and detect dropped ones |
 | `historyFile` | string | `~/.cassandra/cqlai_history` | Path to CQL command history file (supports `~` expansion). Moved from `~/.cqlai/history` the first time it is used |
 | `aiHistoryFile` | string | `~/.cassandra/cqlai_ai_history` | Path to AI command history file (supports `~` expansion). Moved from `~/.cqlai/ai_history` the first time it is used |
 | `debug` | boolean | `false` | Enable debug logging |

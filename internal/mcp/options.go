@@ -30,14 +30,15 @@ type Options struct {
 	TLSClientCA string
 
 	// Headless only: which connection, and overrides for it.
-	Connection     string
-	Host           string
-	PortOverride   int
-	Username       string
-	SSL            bool
-	ConnectTimeout int
-	RequestTimeout int
-	Debug          bool
+	Connection      string
+	Host            string
+	PortOverride    int
+	Username        string
+	SSL             bool
+	ConnectTimeout  int
+	RequestTimeout  int
+	SocketKeepalive int
+	Debug           bool
 }
 
 // DefaultPort is where the terminal app serves MCP unless told otherwise.
@@ -70,6 +71,7 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 	flags.BoolVar(&o.SSL, "ssl", false, "Headless: enable SSL/TLS")
 	flags.IntVar(&o.ConnectTimeout, "connect-timeout", 10, "Connection timeout in seconds")
 	flags.IntVar(&o.RequestTimeout, "request-timeout", 10, "Request timeout in seconds; also the longest one tool call may run")
+	flags.IntVar(&o.SocketKeepalive, "socket-keepalive", 15, "TCP keepalive interval in seconds, to keep idle connections alive")
 	flags.BoolVar(&o.Debug, "debug", false, "Write the debug log")
 	help := flags.BoolP("help", "h", false, "Show this help")
 

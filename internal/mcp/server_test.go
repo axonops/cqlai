@@ -29,6 +29,7 @@ type noCluster struct{ pol policy.Policy }
 
 func (n noCluster) Policy() policy.Policy { return n.pol }
 func (n noCluster) SchemaVersion() string { return "" }
+func (n noCluster) Invalidate()           {}
 func (n noCluster) Env() ai.ToolEnv {
 	return ai.ToolEnv{Policy: n.pol, NotConnected: "not connected to nowhere:9042"}
 }

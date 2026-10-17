@@ -172,6 +172,19 @@ func (c *cluster) close() {
 	}
 }
 
+// invalidate drops a dead session so the next connected() reconnects at once.
+// Unlike close, it clears the failure throttle too: the session worked a moment
+// ago, so this is a loss to recover from, not a failed attempt to back off from.
+func (c *cluster) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session != nil {
+		c.session.Close()
+		c.session, c.schema = nil, nil
+	}
+	c.failed, c.tried = "", time.Time{}
+}
+
 // waitForFirstAttempt returns once the first attempt has finished.
 func (c *cluster) waitForFirstAttempt(ctx context.Context) {
 	for {
@@ -194,3 +207,4 @@ type fixed struct {
 func (f fixed) Policy() policy.Policy { return f.pol }
 func (f fixed) Env() ai.ToolEnv       { return f.link.env(f.pol) }
 func (f fixed) SchemaVersion() string { return f.link.version() }
+func (f fixed) Invalidate()           { f.link.invalidate() }
