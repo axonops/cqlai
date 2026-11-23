@@ -208,6 +208,7 @@ cqlai [opciones]
 | `--keyspace <keyspace>` | `-k` | Keyspace predeterminado (sobrescribe config) |
 | `--username <usuario>` | `-u` | Usuario para autenticación |
 | `--password <contraseña>` | `-p` | Contraseña para autenticación* |
+| `--vault-path <ruta>` | | Lee el usuario y la contraseña de Vault u OpenBao, p. ej. `database/creds/myrole` (ver abajo) |
 | `--no-confirm` | | Desactivar confirmaciones para comandos destructivos (DROP, DELETE, TRUNCATE) |
 | `--connect-timeout <segundos>` | | Tiempo de espera de conexión (predeterminado: 10) |
 | `--request-timeout <segundos>` | | Tiempo de espera de petición (predeterminado: 10) |
@@ -217,6 +218,36 @@ cqlai [opciones]
 1. *Línea de comandos con `-p` (no recomendado - visible en la lista de procesos)*
 2. *Solicitud interactiva cuando se usa `-u` sin `-p` (recomendado)*
 3. *Variable de entorno `CQLAI_PASSWORD` (bueno para automatización)*
+
+#### Credenciales de Vault u OpenBao
+
+Con el motor de secretos de bases de datos, cqlai puede obtener credenciales
+de corta duración en lugar de usar una contraseña guardada:
+
+```bash
+export VAULT_ADDR=https://vault.example.com:8200   # o BAO_ADDR
+vault login -method=oidc                           # o define VAULT_TOKEN / BAO_TOKEN
+cqlai --vault-path database/creds/myrole cassandra.example.com
+```
+
+cqlai lee la ruta una vez antes de conectar, y su usuario y contraseña
+sustituyen a `-u`/`-p`, y no se pide contraseña. El lease se revoca al salir,
+también con `kill` o al colgar la terminal; si el token no tiene permiso para
+revocarlo, o cqlai muere con `SIGKILL`, el lease caduca con su TTL. cqlai no
+renueva el lease: cuando caduca, Vault elimina el usuario y la sesión deja de
+poder usarse.
+
+| Variable | Uso |
+|---|---|
+| `BAO_ADDR` / `VAULT_ADDR` | Dirección del servidor (obligatoria) |
+| `BAO_TOKEN` / `VAULT_TOKEN` | Token; si no está, se usa `~/.vault-token` |
+| `BAO_CACERT` / `VAULT_CACERT` | Certificado de la CA para el TLS del servidor |
+| `BAO_NAMESPACE` / `VAULT_NAMESPACE` | Namespace (Vault Enterprise) |
+
+Si están las dos, gana la variable `BAO_`.
+
+La ruta también se puede indicar con `CQLAI_VAULT_PATH`, o como `vaultPath` en
+`cqlai.json`, en la raíz o en una conexión guardada.
 
 #### Opciones de Modo Batch
 | Opción | Corta | Descripción |
@@ -1135,6 +1166,7 @@ Variables de entorno comunes:
 - `CQLAI_KEYSPACE` - Keyspace predeterminado
 - `CQLAI_USERNAME` - Nombre de usuario para autenticación
 - `CQLAI_PASSWORD` - Contraseña para autenticación
+- `CQLAI_VAULT_PATH` - Ruta de Vault/OpenBao de la que leer el usuario y la contraseña
 - `CQLAI_PAGE_SIZE` - Tamaño de paginación en modo batch (predeterminado: 100)
 - `CQLAI_NO_CONFIRM` - Establecer a `true` o `1` para desactivar confirmaciones de comandos destructivos
 - `CQLSH_RC` - Ruta a archivo CQLSHRC personalizado
@@ -1339,6 +1371,7 @@ conexión por defecto. La contraseña es la guardada con la conexión, o
 | `--tls-cert ARCHIVO`, `--tls-key ARCHIVO` | Sirve HTTPS con este certificado y esta clave (PEM) |
 | `--tls-client-ca ARCHIVO` | Pide a cada cliente un certificado firmado por esta CA (PEM) |
 | `--connection NOMBRE` | Headless: la conexión guardada que se usa |
+| `--vault-path RUTA` | Headless: lee el usuario y la contraseña de esta ruta de Vault/OpenBao |
 | `--permit SELECT,DESCRIBE` | Solo estas órdenes, de las que permiten los ajustes |
 | `--keyspaces ks1,ks2` | Solo estos keyspaces son visibles, de los que permiten los ajustes |
 | `--max-rows N` | El tamaño de página, si es menor que el de los ajustes |

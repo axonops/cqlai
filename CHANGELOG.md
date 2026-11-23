@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Credentials from Vault or OpenBao** (#260). `--vault-path database/creds/myrole`
+  (or `CQLAI_VAULT_PATH`, or `vaultPath` in `cqlai.json`) reads a username and
+  password from the database secrets engine before connecting, using
+  `VAULT_ADDR`/`VAULT_TOKEN` or `BAO_ADDR`/`BAO_TOKEN`. The lease is revoked on
+  exit when the token is allowed to; it is not renewed. Works in the shell,
+  batch mode and `cqlai mcp`.
+
 ### Fixed
 
 - **Tab completion quotes a name that needs it** (#257). A keyspace, table or

@@ -104,6 +104,7 @@ func prefSpecs() []prefSpec {
 		{path: "Keyspace", label: "Keyspace", kind: prefText, hint: "the keyspace to start in"},
 		{path: "Username", label: "Username", kind: prefText, hint: "left empty when the cluster has no authentication"},
 		{path: "Password", label: "Password", kind: prefSecret, hint: "kept in the file, which is written readable only by you"},
+		{path: "VaultPath", label: "Vault path", kind: prefText, hint: "read the username and password from Vault/OpenBao, e.g. database/creds/myrole"},
 		{path: "ConnectTimeout", label: "Connect timeout", kind: prefNumber, hint: "seconds to wait for the connection"},
 		{path: "RequestTimeout", label: "Request timeout", kind: prefNumber, hint: "seconds to wait for a query"},
 
