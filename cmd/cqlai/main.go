@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/batch"
+	"github.com/axonops/cqlai/internal/logger"
 	"github.com/axonops/cqlai/internal/mcp"
+	"github.com/axonops/cqlai/internal/telemetry"
 	"github.com/axonops/cqlai/internal/ui"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -18,16 +22,19 @@ import (
 var Version = "dev"
 
 func main() {
+	telemetry.SetServiceVersion(Version)
+
 	// `cqlai mcp` is a server on stdin and stdout, with flags of its own. It
 	// goes first: stdin is not a terminal there, which below means batch mode,
 	// and nothing may prompt on it.
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		options, carryOn, code := mcp.ParseOptions(os.Args[2:], os.Stderr)
 		if !carryOn {
-			os.Exit(code)
+			exit(code)
 		}
+		startTelemetry(envTrue("CQLAI_OTEL"))
 		if options.Headless {
-			os.Exit(mcp.RunHeadless(options, Version))
+			exit(mcp.RunHeadless(options, Version))
 		}
 
 		// The terminal app, serving MCP for whichever connection is picked
@@ -43,15 +50,15 @@ func main() {
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating model: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 		err = runInteractive(m)
 		m.CloseMCP()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
-			os.Exit(1)
+			exit(1)
 		}
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Parse command-line flags using pflag for POSIX/GNU-style flags
@@ -75,6 +82,7 @@ func main() {
 		noHeader              bool
 		fieldSep              string
 		pageSize              int
+		otelEnabled           bool
 		configFile            string
 		version               bool
 		help                  bool
@@ -95,6 +103,7 @@ func main() {
 	pflag.BoolVar(&sslInsecureSkipVerify, "ssl-insecure-skip-verify", false, "Skip SSL certificate verification (not recommended for production)")
 	pflag.StringVar(&consistency, "consistency", "", "Default consistency level (e.g., ONE, QUORUM, LOCAL_QUORUM)")
 	pflag.StringVar(&configFile, "config-file", "", "Path to config file (overrides default locations)")
+	pflag.BoolVar(&otelEnabled, "otel", false, "Send OpenTelemetry spans for CQL requests (exporter set with OTEL_* variables)")
 
 	// Batch mode flags (compatible with cqlsh)
 	pflag.StringVarP(&execute, "execute", "e", "", "Execute CQL statement and exit")
@@ -115,7 +124,7 @@ func main() {
 
 	if len(args) > 2 {
 		fmt.Fprintf(os.Stderr, "Error: unexpected positional arguments: %v\nUsage: cqlai [options] [host [port]]\n", args[2:])
-		os.Exit(1)
+		exit(1)
 	}
 
 	for i, val := range args {
@@ -134,7 +143,7 @@ func main() {
 			p, err := strconv.Atoi(val)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: invalid port number %q\n", val)
-				os.Exit(1)
+				exit(1)
 			}
 			port = p
 		}
@@ -148,13 +157,13 @@ func main() {
 		fmt.Println("       cqlai mcp [options]    the shell, serving MCP to an AI client (cqlai mcp --help)")
 		fmt.Println()
 		pflag.PrintDefaults()
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Handle version flag
 	if version {
 		fmt.Printf("cqlai version %s\n", Version)
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Validate --format value
@@ -163,7 +172,7 @@ func main() {
 		// valid
 	default:
 		fmt.Fprintf(os.Stderr, "Error: invalid output format %q (valid: ascii, json, csv, table)\n", format)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Validate --consistency value if provided
@@ -174,7 +183,7 @@ func main() {
 			consistency = strings.ToUpper(consistency)
 		default:
 			fmt.Fprintf(os.Stderr, "Error: invalid consistency level %q (valid: ANY, ONE, TWO, THREE, QUORUM, ALL, LOCAL_QUORUM, EACH_QUORUM, LOCAL_ONE, SERIAL, LOCAL_SERIAL)\n", consistency)
-			os.Exit(1)
+			exit(1)
 		}
 	}
 
@@ -225,6 +234,9 @@ func main() {
 				requestTimeout = t
 			}
 		}
+	}
+	if !otelEnabled {
+		otelEnabled = envTrue("CQLAI_OTEL")
 	}
 	if !noConfirm {
 		if envNoConfirm := os.Getenv("CQLAI_NO_CONFIRM"); envNoConfirm != "" {
@@ -293,7 +305,7 @@ func main() {
 		fmt.Fprintln(os.Stderr)                                     // Print newline after password input
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 		password = string(passwordBytes)
 	}
@@ -329,6 +341,8 @@ func main() {
 		PageSize:              pageSize,
 	}
 
+	startTelemetry(otelEnabled)
+
 	// Check if we're in batch mode
 	isBatchMode := execute != "" || executeFile != "" || !isTerminal()
 
@@ -347,7 +361,7 @@ func main() {
 		executor, err := batch.NewExecutor(batchOptions, os.Stdout)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 		// Execute based on input source
 		if execute != "" { //nolint:gocritic // more readable as if
@@ -364,21 +378,53 @@ func main() {
 		_ = executor.Close() // Error already handled in defer
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 	} else {
 		// Interactive mode - use Bubble Tea UI
 		m, err := ui.NewMainModelWithConnectionOptions(connOptions)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating model: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 
 		if err := runInteractive(m); err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
-			os.Exit(1)
+			exit(1)
 		}
 	}
+	exit(0)
+}
+
+// startTelemetry starts OpenTelemetry tracing when the flag or CQLAI_OTEL asks
+// for it. "otel" in cqlai.json is read when the session connects instead,
+// since that is where the file is loaded.
+func startTelemetry(enabled bool) {
+	if !enabled {
+		return
+	}
+	if err := telemetry.Start(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		exit(1)
+	}
+}
+
+// exit sends the spans still waiting to be exported, then exits. os.Exit
+// skips deferred calls, so every way out of main goes through here.
+func exit(code int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := telemetry.Shutdown(ctx); err != nil {
+		// Not printed: stderr is the screen or the output.
+		logger.DebugfToFile("Telemetry", "spans not all sent: %v", err)
+	}
+	cancel()
+	os.Exit(code)
+}
+
+// envTrue reports whether the environment variable is "true" or "1".
+func envTrue(name string) bool {
+	v := os.Getenv(name)
+	return v == "true" || v == "1"
 }
 
 // runInteractive runs the Bubble Tea UI.

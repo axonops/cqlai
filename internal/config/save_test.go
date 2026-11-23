@@ -142,3 +142,33 @@ func TestLoadConfigRecordsSourcePath(t *testing.T) {
 		t.Errorf("SourcePath is %q, want %q", cfg.SourcePath, path)
 	}
 }
+
+// PREFERENCES has no box for it, so saving from there must not lose it.
+func TestSaveKeepsOTel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cqlai.json")
+	if err := os.WriteFile(path, []byte(`{"host":"old","otel":{"enabled":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path) // #nosec G304 - test file
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OTel == nil || !cfg.OTel.Enabled {
+		t.Fatalf("otel read as %+v, want enabled", cfg.OTel)
+	}
+	cfg.SourcePath = path
+	cfg.Host = "new"
+	if _, err := cfg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	saved := readBack(t, path)["otel"]
+	otel, ok := saved.(map[string]any)
+	if !ok || otel["enabled"] != true {
+		t.Errorf("otel is %v after save, want enabled", saved)
+	}
+}

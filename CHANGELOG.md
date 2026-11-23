@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenTelemetry tracing** (#265). `--otel`, `CQLAI_OTEL=true` (or `1`) or
+  `"otel": {"enabled": true}` in `cqlai.json` sends a client span for every
+  request CQLAI makes to Cassandra, to the OTLP collector named by the standard
+  `OTEL_*` variables, over `grpc` or `http/protobuf`. Spans carry the operation,
+  keyspace and host, never the statement text or its values. It is off by
+  default, and off it starts no exporter.
+
 ### Fixed
 
 - **Tab completion quotes a name that needs it** (#257). A keyspace, table or
