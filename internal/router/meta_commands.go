@@ -160,6 +160,13 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 		return "Unable to get host information"
 	}
 
+	if strings.Contains(upperCommand, "USER") {
+		if user := h.session.AuthenticatedUser(); user != "" {
+			return user
+		}
+		return "(not authenticated)"
+	}
+
 	if strings.Contains(upperCommand, "SESSION") {
 		// Show session information
 		currentKeyspace := ""
@@ -175,7 +182,7 @@ func (h *MetaCommandHandler) handleShow(command string) interface{} {
 		return result
 	}
 
-	return "Usage: SHOW VERSION | SHOW HOST | SHOW SESSION"
+	return "Usage: SHOW VERSION | SHOW HOST | SHOW USER | SHOW SESSION"
 }
 
 // handleTracing handles TRACING command

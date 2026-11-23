@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **SHOW USER** (#261). Prints the user the connection logged in as, like
+  cqlsh, or `(not authenticated)` when it did not log in.
+
 ### Fixed
 
 - **Tab completion quotes a name that needs it** (#257). A keyspace, table or

@@ -84,6 +84,7 @@ func HelpRows() [][]string {
 		{"Info", "HELP <command>", "How a command is written: HELP INSERT, HELP CREATE TABLE, HELP COPY"},
 		{"", "SHOW VERSION", "Show Cassandra version"},
 		{"", "SHOW HOST", "Show connection details"},
+		{"", "SHOW USER", "Show the user logged in as"},
 		{"", "SHOW SESSION", "Display session settings"},
 
 		// File Operations

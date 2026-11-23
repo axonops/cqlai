@@ -82,8 +82,8 @@ var shellHelpTopics = []HelpTopic{
 	},
 	{
 		Name:    "SHOW",
-		Summary: "Shows the Cassandra version, the node connected to, or this session's settings.",
-		Syntax:  []string{"SHOW VERSION | HOST | SESSION"},
+		Summary: "Shows the Cassandra version, the node connected to, the user logged in as, or this session's settings.",
+		Syntax:  []string{"SHOW VERSION | HOST | USER | SESSION"},
 		Example: []string{"SHOW SESSION"},
 	},
 	{
