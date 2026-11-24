@@ -152,6 +152,7 @@ type ToolOutcome struct {
 	Proposed  bool // a change, proposed for the user and not run
 	Reason    string
 	Rows      int
+	ConnLost  bool // the session's connection pool was empty: drop and reconnect
 }
 
 // CallMCPTool runs one call from an MCP client. Everything a client can
@@ -193,7 +194,9 @@ func CallMCPTool(ctx context.Context, env ToolEnv, name string, args map[string]
 		env.Schema.refreshIfChanged()
 		result := executeCommandFor(env.Policy, env.Schema, tool, schemaToolArg(tool, params))
 		if result.Error != nil {
-			return errorOutcome(env.Policy.Scrub(result.Error.Error()))
+			o := errorOutcome(env.Policy.Scrub(result.Error.Error()))
+			o.ConnLost = db.IsNoHostsAvailable(result.Error)
+			return o
 		}
 		return ToolOutcome{Text: result.Data}
 	case ToolConnectionInfo:
@@ -276,6 +279,7 @@ func gateOutcome(env ToolEnv, statement string, err error) ToolOutcome {
 	}
 	o := errorOutcome(env.Policy.Scrub(err.Error()))
 	o.Statement = statement
+	o.ConnLost = db.IsNoHostsAvailable(err)
 	return o
 }
 
@@ -356,7 +360,9 @@ func describe(env ToolEnv, p DescribeParams) ToolOutcome {
 		// describe them all.
 		keyspaces, err := env.Session.DescribeKeyspacesQuery()
 		if err != nil {
-			return errorOutcome(pol.Scrub(err.Error()))
+			o := errorOutcome(pol.Scrub(err.Error()))
+			o.ConnLost = db.IsNoHostsAvailable(err)
+			return o
 		}
 		var parts []string
 		for _, ks := range keyspaces {
@@ -401,7 +407,9 @@ func describeText(env ToolEnv, statement string) ToolOutcome {
 	case string:
 		text = r
 	case error:
-		return errorOutcome(env.Policy.Scrub(r.Error()))
+		o := errorOutcome(env.Policy.Scrub(r.Error()))
+		o.ConnLost = db.IsNoHostsAvailable(r)
+		return o
 	case nil:
 		text = ""
 	default:

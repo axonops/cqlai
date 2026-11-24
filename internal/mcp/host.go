@@ -300,6 +300,17 @@ func (h *Host) SchemaVersion() string {
 	return link.version()
 }
 
+// Invalidate drops the served cluster's dead session so the next call
+// reconnects. Source.
+func (h *Host) Invalidate() {
+	h.mu.Lock()
+	link := h.link
+	h.mu.Unlock()
+	if link != nil {
+		link.invalidate()
+	}
+}
+
 // Serving reports whether MCP is being served.
 func (h *Host) Serving() bool {
 	h.mu.Lock()

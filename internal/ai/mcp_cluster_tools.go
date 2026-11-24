@@ -198,7 +198,9 @@ func tableSize(ctx context.Context, env ToolEnv, p TableSizeParams) ToolOutcome 
 		ranges++
 	}
 	if err := iter.Close(); err != nil {
-		return errorOutcome(env.Policy.Scrub(err.Error()))
+		o := errorOutcome(env.Policy.Scrub(err.Error()))
+		o.ConnLost = db.IsNoHostsAvailable(err)
+		return o
 	}
 
 	out := map[string]any{"keyspace": p.Keyspace, "table": p.Table, "token_ranges": ranges}

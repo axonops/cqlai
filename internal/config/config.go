@@ -27,13 +27,14 @@ type Config struct {
 	RequireConfirmation bool       `json:"requireConfirmation,omitempty"`
 	Consistency         string     `json:"consistency,omitempty"` // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	PageSize            int        `json:"pageSize,omitempty"`
-	MaxMemoryMB         int        `json:"maxMemoryMB,omitempty"`    // Max memory for results in MB (default: 10)
-	ConnectTimeout      int        `json:"connectTimeout,omitempty"` // Connection timeout in seconds
-	RequestTimeout      int        `json:"requestTimeout,omitempty"` // Request timeout in seconds
-	Debug               bool       `json:"debug,omitempty"`          // Enable debug logging
-	HistoryFile         string     `json:"historyFile,omitempty"`    // Path to CQL command history file
-	AIHistoryFile       string     `json:"aiHistoryFile,omitempty"`  // Path to AI command history file
-	OutputFormat        string     `json:"outputFormat,omitempty"`   // Default output format (TABLE, ASCII, EXPAND, JSON)
+	MaxMemoryMB         int        `json:"maxMemoryMB,omitempty"`     // Max memory for results in MB (default: 10)
+	ConnectTimeout      int        `json:"connectTimeout,omitempty"`  // Connection timeout in seconds
+	RequestTimeout      int        `json:"requestTimeout,omitempty"`  // Request timeout in seconds
+	SocketKeepalive     int        `json:"socketKeepalive,omitempty"` // TCP keepalive interval in seconds (0 = use default)
+	Debug               bool       `json:"debug,omitempty"`           // Enable debug logging
+	HistoryFile         string     `json:"historyFile,omitempty"`     // Path to CQL command history file
+	AIHistoryFile       string     `json:"aiHistoryFile,omitempty"`   // Path to AI command history file
+	OutputFormat        string     `json:"outputFormat,omitempty"`    // Default output format (TABLE, ASCII, EXPAND, JSON)
 	SSL                 *SSLConfig `json:"ssl,omitempty"`
 
 	// Name is what this connection is called in the CONNECT window, and

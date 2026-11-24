@@ -921,6 +921,7 @@ validate = true
   "maxMemoryMB": 10,
   "connectTimeout": 10,
   "requestTimeout": 10,
+  "socketKeepalive": 15,
   "debug": false,
   "historyFile": "~/.cassandra/cqlai_history",
   "aiHistoryFile": "~/.cassandra/cqlai_ai_history",
@@ -967,6 +968,7 @@ validate = true
 | `maxMemoryMB` | number | `10` | クエリ結果の最大メモリ(MB) |
 | `connectTimeout` | number | `10` | 接続タイムアウト(秒) |
 | `requestTimeout` | number | `10` | リクエストタイムアウト(秒) |
+| `socketKeepalive` | number | `15` | TCPキープアライブ間隔(秒)。アイドル接続を維持し、切断された接続を検出します |
 | `historyFile` | string | `~/.cassandra/cqlai_history` | CQLコマンド履歴ファイルのパス(`~`展開をサポート)。最初に使うときに `~/.cqlai/history` から移されます |
 | `aiHistoryFile` | string | `~/.cassandra/cqlai_ai_history` | AIコマンド履歴ファイルのパス(`~`展開をサポート)。最初に使うときに `~/.cqlai/ai_history` から移されます |
 | `debug` | boolean | `false` | デバッグログを有効化 |
