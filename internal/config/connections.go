@@ -39,6 +39,7 @@ func ConnectionSettings(conn Config) Config {
 		Keyspace:       conn.Keyspace,
 		Username:       conn.Username,
 		Password:       conn.Password,
+		VaultPath:      conn.VaultPath,
 		ConnectTimeout: conn.ConnectTimeout,
 		RequestTimeout: conn.RequestTimeout,
 	}
@@ -122,6 +123,7 @@ func (c *Config) UseConnection(conn Config) {
 	c.Keyspace = conn.Keyspace
 	c.Username = conn.Username
 	c.Password = conn.Password
+	c.VaultPath = conn.VaultPath
 	c.ConnectTimeout = conn.ConnectTimeout
 	c.RequestTimeout = conn.RequestTimeout
 

@@ -28,6 +28,7 @@ type ConnectionOptions struct {
 	Keyspace              string
 	Username              string
 	Password              string
+	VaultPath             string // Read the username and password from this Vault/OpenBao path
 	RequireConfirmation   bool
 	ConnectTimeout        int    // Connection timeout in seconds
 	RequestTimeout        int    // Request timeout in seconds
@@ -385,6 +386,9 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 	if options.Password != "" {
 		cfg.Password = options.Password
 	}
+	if options.VaultPath != "" {
+		cfg.VaultPath = options.VaultPath
+	}
 	applyConfirmation(cfg, options)
 	// Override consistency from CLI flag
 	if options.Consistency != "" {
@@ -429,6 +433,7 @@ func NewMainModelWithConnectionOptions(options ConnectionOptions) (*MainModel, e
 		ConnectTimeout: options.ConnectTimeout,
 		RequestTimeout: options.RequestTimeout,
 		ConfigFile:     options.ConfigFile,
+		VaultPath:      cfg.VaultPath,
 	})
 	connectMessage := ""
 	if connectErr != nil {

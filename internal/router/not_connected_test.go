@@ -14,7 +14,7 @@ import (
 func TestTheShellCommandsSayWhenThereIsNoConnection(t *testing.T) {
 	for _, session := range []*db.Session{nil, {}} {
 		h := &MetaCommandHandler{session: session}
-		for _, command := range []string{"SHOW VERSION", "SHOW HOST", "SHOW SESSION", "CONSISTENCY ONE",
+		for _, command := range []string{"SHOW VERSION", "SHOW HOST", "SHOW USER", "SHOW SESSION", "CONSISTENCY ONE",
 			"CONSISTENCY", "TRACING ON", "PAGING 50", "AUTOFETCH ON", "SOURCE 'x.cql'", "COPY ks.t TO 'x.csv'"} {
 			assert.NotPanics(t, func() {
 				assert.Equal(t, notConnected, h.HandleMetaCommand(command), command)

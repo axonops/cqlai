@@ -34,6 +34,7 @@ type Options struct {
 	Host           string
 	PortOverride   int
 	Username       string
+	VaultPath      string
 	SSL            bool
 	ConnectTimeout int
 	RequestTimeout int
@@ -67,6 +68,7 @@ func ParseOptions(args []string, stderr io.Writer) (Options, bool, int) {
 	flags.StringVar(&o.Host, "host", "", "Headless: Cassandra host (overrides the connection)")
 	flags.IntVar(&o.PortOverride, "cassandra-port", 0, "Headless: Cassandra port (overrides the connection)")
 	flags.StringVarP(&o.Username, "username", "u", "", "Headless: username (overrides the connection)")
+	flags.StringVar(&o.VaultPath, "vault-path", "", "Headless: read the username and password from this Vault/OpenBao path (overrides the connection)")
 	flags.BoolVar(&o.SSL, "ssl", false, "Headless: enable SSL/TLS")
 	flags.IntVar(&o.ConnectTimeout, "connect-timeout", 10, "Connection timeout in seconds")
 	flags.IntVar(&o.RequestTimeout, "request-timeout", 10, "Request timeout in seconds; also the longest one tool call may run")

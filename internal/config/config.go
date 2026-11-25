@@ -24,6 +24,7 @@ type Config struct {
 	Keyspace            string     `json:"keyspace,omitempty"`
 	Username            string     `json:"username,omitempty"`
 	Password            string     `json:"password,omitempty"`
+	VaultPath           string     `json:"vaultPath,omitempty"` // Read the username and password from this Vault/OpenBao path
 	RequireConfirmation bool       `json:"requireConfirmation,omitempty"`
 	Consistency         string     `json:"consistency,omitempty"` // Default consistency level (e.g., "LOCAL_ONE", "QUORUM")
 	PageSize            int        `json:"pageSize,omitempty"`
@@ -347,6 +348,10 @@ func OverrideWithEnvVars(config *Config) {
 	}
 	if password := os.Getenv("CQLAI_PASSWORD"); password != "" {
 		config.Password = password
+	}
+
+	if vaultPath := os.Getenv("CQLAI_VAULT_PATH"); vaultPath != "" {
+		config.VaultPath = vaultPath
 	}
 
 	// Page size setting

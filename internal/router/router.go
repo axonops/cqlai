@@ -181,6 +181,7 @@ func processCommand(command string, session *db.Session, sessionMgr *session.Man
 	if (upperCommand == "SHOW" || strings.HasPrefix(upperCommand, "SHOW ")) &&
 		!strings.Contains(upperCommand, "VERSION") &&
 		!strings.Contains(upperCommand, "HOST") &&
+		!strings.Contains(upperCommand, "USER") &&
 		!strings.Contains(upperCommand, "SESSION") {
 		// SHOW commands that aren't meta-commands should be treated as CQL
 		isMetaCommand = false

@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OTEL_*` variables, over `grpc` or `http/protobuf`. Spans carry the operation,
   keyspace and host, never the statement text or its values. It is off by
   default, and off it starts no exporter.
+- **Credentials from Vault or OpenBao** (#260). `--vault-path database/creds/myrole`
+  (or `CQLAI_VAULT_PATH`, or `vaultPath` in `cqlai.json`) reads a username and
+  password from the database secrets engine before connecting, using
+  `VAULT_ADDR`/`VAULT_TOKEN` or `BAO_ADDR`/`BAO_TOKEN`. The lease is revoked on
+  exit when the token is allowed to; it is not renewed. Works in the shell,
+  batch mode and `cqlai mcp`.
+- **SHOW USER** (#261). Prints the user the connection logged in as, like
+  cqlsh, or `(not authenticated)` when it did not log in.
 
 ### Fixed
 

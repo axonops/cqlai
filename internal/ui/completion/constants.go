@@ -329,7 +329,7 @@ var ResourceTypes = []string{
 
 // ShowCommands for SHOW command completions
 var ShowCommands = []string{
-	"VERSION", "HOST", "SESSION",
+	"VERSION", "HOST", "USER", "SESSION",
 }
 
 // OutputFormats for OUTPUT command

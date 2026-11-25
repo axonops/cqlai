@@ -231,6 +231,7 @@ cqlai [options] [host [port]]
 | `--keyspace <keyspace>` | `-k` | Default keyspace (overrides config) |
 | `--username <username>` | `-u` | Username for authentication |
 | `--password <password>` | `-p` | Password for authentication* |
+| `--vault-path <path>` | | Read the username and password from Vault or OpenBao, e.g. `database/creds/myrole` (see below) |
 | `--ssl` | | Enable SSL/TLS connection |
 | `--consistency <level>` | | Default consistency level (e.g., ONE, QUORUM, LOCAL_QUORUM) |
 | `--no-confirm` | | Disable confirmation prompts for destructive commands (DROP, DELETE, TRUNCATE) |
@@ -242,6 +243,36 @@ cqlai [options] [host [port]]
 1. *Command line with `-p` (not recommended - visible in process list)*
 2. *Interactive prompt when `-u` is used without `-p` (recommended)*
 3. *Environment variable `CQLAI_PASSWORD` (good for automation)*
+
+#### Credentials from Vault or OpenBao
+
+With the database secrets engine, cqlai can fetch short-lived credentials
+instead of using a stored password:
+
+```bash
+export VAULT_ADDR=https://vault.example.com:8200   # or BAO_ADDR
+vault login -method=oidc                           # or set VAULT_TOKEN / BAO_TOKEN
+cqlai --vault-path database/creds/myrole cassandra.example.com
+```
+
+cqlai reads the path once before connecting, and its username and password
+replace `-u`/`-p`, and no password is asked for. The lease is revoked when cqlai
+exits, including on `kill` or a hangup; if the token is not allowed to revoke
+it, or cqlai is killed with `SIGKILL`, the lease runs out at its TTL instead.
+cqlai does not renew the lease: when it expires, Vault removes the user and the
+session can no longer be used.
+
+| Variable | Used for |
+|---|---|
+| `BAO_ADDR` / `VAULT_ADDR` | Server address (required) |
+| `BAO_TOKEN` / `VAULT_TOKEN` | Token; falls back to `~/.vault-token` |
+| `BAO_CACERT` / `VAULT_CACERT` | CA certificate for the server's TLS |
+| `BAO_NAMESPACE` / `VAULT_NAMESPACE` | Namespace (Vault Enterprise) |
+
+When both are set, the `BAO_` name wins.
+
+The path can also be set with `CQLAI_VAULT_PATH`, or as `vaultPath` in
+`cqlai.json`, at the top or on a saved connection.
 
 #### Batch Mode Options
 | Option | Short | Description |
@@ -1106,6 +1137,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   ```sql
   SHOW VERSION          -- Show Cassandra version
   SHOW HOST            -- Show current connection details
+  SHOW USER            -- Show the user logged in as
   SHOW SESSION         -- Show all session settings
   ```
 
@@ -1504,6 +1536,7 @@ All environment variables supported by CQLAI. `CQLAI_*` variables take precedenc
 - `CQLAI_KEYSPACE` or `CASSANDRA_KEYSPACE` - Default keyspace
 - `CQLAI_USERNAME` or `CASSANDRA_USERNAME` - Authentication username
 - `CQLAI_PASSWORD` or `CASSANDRA_PASSWORD` - Authentication password
+- `CQLAI_VAULT_PATH` - Vault/OpenBao path to read the username and password from
 - `CQLAI_CONNECT_TIMEOUT` - Connection timeout in seconds (default: 10)
 - `CQLAI_REQUEST_TIMEOUT` - Request timeout in seconds (default: 10)
 - `CQLAI_NO_CONFIRM` - Set to `true` or `1` to disable confirmation prompts for destructive commands
@@ -1823,6 +1856,7 @@ when a tool is first called.
 | `--tls-cert FILE`, `--tls-key FILE` | Serve HTTPS with this certificate and key (PEM) |
 | `--tls-client-ca FILE` | Ask each client for a certificate this CA signed (PEM) |
 | `--connection NAME` | Headless: the saved connection to use |
+| `--vault-path PATH` | Headless: read the username and password from this Vault/OpenBao path |
 | `--permit SELECT,DESCRIBE` | Permit only these commands, of those the settings permit |
 | `--keyspaces ks1,ks2` | Only these keyspaces are visible, of those the settings allow |
 | `--max-rows N` | The page size, if lower than the settings' |
