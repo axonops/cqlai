@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/vault"
 )
 
 // Session is a wrapper around the gocql.Session.
@@ -28,6 +30,8 @@ type Session struct {
 	autoFetch        bool   // Auto-fetch all pages without scroll pauses
 	username         string // Current connection username
 	cassandraVersion string
+	vault            *vault.Client
+	leaseID          string
 	schemaCache      *SchemaCache
 	udtRegistry      *UDTRegistry
 
@@ -41,6 +45,17 @@ type Session struct {
 	// goroutine fetched the page, which is why they are behind a lock.
 	traceMu  sync.Mutex
 	traceIDs [][]byte
+}
+
+// Close closes the connection and revokes the Vault lease its credentials
+// came with, if any.
+func (s *Session) Close() {
+	s.Session.Close()
+	if s.vault != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		s.vault.Revoke(ctx, s.leaseID)
+	}
 }
 
 // tracedPagesKept is how many pages of a query are held on to.
@@ -94,6 +109,7 @@ type SessionOptions struct {
 	ConnectTimeout int    // Connection timeout in seconds (0 = use default)
 	RequestTimeout int    // Request timeout in seconds (0 = use default)
 	ConfigFile     string // Path to custom config file
+	VaultPath      string // Read the username and password from this Vault path
 }
 
 // NewSession creates a new Cassandra session.
@@ -158,6 +174,35 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		cfg.Password = options.Password
 		logger.DebugfToFile("Session", "Overriding password with command-line option")
 	}
+	// Only the caller's path counts: the one in the file may belong to another
+	// connection than the one being opened.
+	cfg.VaultPath = options.VaultPath
+	var vaultClient *vault.Client
+	var leaseID string
+	if cfg.VaultPath != "" {
+		vaultClient, err = vault.FromEnv()
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		creds, err := vaultClient.ReadCredentials(ctx, cfg.VaultPath)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		cfg.Username, cfg.Password, leaseID = creds.Username, creds.Password, creds.LeaseID
+		logger.DebugfToFile("Session", "Using credentials from Vault path %s, username=%s", cfg.VaultPath, cfg.Username)
+	}
+	// Nothing else will revoke the lease if the connection is not made.
+	connected := false
+	defer func() {
+		if !connected && vaultClient != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			vaultClient.Revoke(ctx, leaseID)
+		}
+	}()
+
 	// Override SSL config if provided
 	if options.SSL != nil {
 		cfg.SSL = options.SSL
@@ -312,7 +357,10 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		tracing:          false,
 		username:         cfg.Username,
 		cassandraVersion: releaseVersion,
+		vault:            vaultClient,
+		leaseID:          leaseID,
 	}
+	connected = true
 
 	// Initialize schema cache for AI features (skip in batch mode)
 	if !options.BatchMode {

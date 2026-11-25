@@ -3,13 +3,16 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/axonops/cqlai/internal/batch"
 	"github.com/axonops/cqlai/internal/mcp"
 	"github.com/axonops/cqlai/internal/ui"
+	"github.com/axonops/cqlai/internal/vault"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
@@ -27,7 +30,9 @@ func main() {
 			os.Exit(code)
 		}
 		if options.Headless {
-			os.Exit(mcp.RunHeadless(options, Version))
+			code := mcp.RunHeadless(options, Version)
+			vault.RevokeAll()
+			os.Exit(code)
 		}
 
 		// The terminal app, serving MCP for whichever connection is picked
@@ -47,6 +52,7 @@ func main() {
 		}
 		err = runInteractive(m)
 		m.CloseMCP()
+		vault.RevokeAll()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
 			os.Exit(1)
@@ -61,6 +67,7 @@ func main() {
 		keyspace              string
 		username              string
 		password              string
+		vaultPath             string
 		noConfirm             bool
 		connectTimeout        int
 		requestTimeout        int
@@ -86,6 +93,7 @@ func main() {
 	pflag.StringVarP(&keyspace, "keyspace", "k", "", "Default keyspace (overrides config)")
 	pflag.StringVarP(&username, "username", "u", "", "Username for authentication (overrides config)")
 	pflag.StringVarP(&password, "password", "p", "", "Password for authentication (overrides config)")
+	pflag.StringVar(&vaultPath, "vault-path", "", "Read the username and password from this Vault/OpenBao path, e.g. database/creds/myrole (needs VAULT_ADDR and VAULT_TOKEN, or BAO_ADDR and BAO_TOKEN)")
 	pflag.BoolVar(&noConfirm, "no-confirm", false, "Disable confirmation prompts for dangerous commands")
 	pflag.IntVar(&connectTimeout, "connect-timeout", 10, "Connection timeout in seconds")
 	pflag.IntVar(&requestTimeout, "request-timeout", 10, "Request timeout in seconds")
@@ -265,6 +273,10 @@ func main() {
 		}
 	}
 
+	if vaultPath == "" {
+		vaultPath = os.Getenv("CQLAI_VAULT_PATH")
+	}
+
 	// Check password environment variable before interactive prompt
 	// Precedence: CLI flag (-p) > env var > interactive prompt
 	if password == "" {
@@ -287,7 +299,7 @@ func main() {
 	}
 
 	// Prompt for password interactively only if still empty and username was provided
-	if username != "" && password == "" && isTerminal() {
+	if username != "" && password == "" && vaultPath == "" && isTerminal() {
 		fmt.Fprintf(os.Stderr, "Password: ")
 		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // G115: fd conversion is safe on all supported platforms
 		fmt.Fprintln(os.Stderr)                                     // Print newline after password input
@@ -317,6 +329,7 @@ func main() {
 		Keyspace:              keyspace,
 		Username:              username,
 		Password:              password,
+		VaultPath:             vaultPath,
 		RequireConfirmation:   !noConfirm,
 		ConnectTimeout:        connectTimeout,
 		RequestTimeout:        requestTimeout,
@@ -333,6 +346,8 @@ func main() {
 	isBatchMode := execute != "" || executeFile != "" || !isTerminal()
 
 	if isBatchMode {
+		revokeOnSignal()
+
 		// Batch mode execution
 		batchOptions := &batch.Options{
 			Execute:     execute,
@@ -362,6 +377,7 @@ func main() {
 		}
 
 		_ = executor.Close() // Error already handled in defer
+		vault.RevokeAll()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -374,7 +390,9 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := runInteractive(m); err != nil {
+		err = runInteractive(m)
+		vault.RevokeAll()
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting program: %v", err)
 			os.Exit(1)
 		}
@@ -391,6 +409,21 @@ func runInteractive(m tea.Model) error {
 	// which asks for the alternate screen and leaves the mouse to the terminal.
 	p := tea.NewProgram(m)
 
+	// Without this, kill -TERM or a hangup ended the shell before its Vault
+	// lease was revoked.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(signals)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-signals:
+			p.Quit()
+		case <-done:
+		}
+	}()
+
 	// Give the wheel back to the terminal however we leave. Bubble Tea already
 	// restores the alternate screen and mouse state itself.
 	defer ui.DisableAlternateScroll()
@@ -398,6 +431,22 @@ func runInteractive(m tea.Model) error {
 
 	_, err := p.Run()
 	return err
+}
+
+// revokeOnSignal revokes any Vault lease before TERM or HUP ends the process.
+// Ctrl+C is left to batch mode, which stops the running statement with it.
+func revokeOnSignal() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		sig := <-signals
+		vault.RevokeAll()
+		code := 1
+		if s, ok := sig.(syscall.Signal); ok {
+			code = 128 + int(s)
+		}
+		os.Exit(code)
+	}()
 }
 
 // isTerminal checks if stdin is a terminal

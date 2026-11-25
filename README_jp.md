@@ -194,6 +194,7 @@ cqlai [options] [host [port]]
 | `--keyspace <keyspace>` | `-k` | デフォルトのキースペース(設定を上書き) |
 | `--username <username>` | `-u` | 認証用のユーザー名 |
 | `--password <password>` | `-p` | 認証用のパスワード* |
+| `--vault-path <path>` | | VaultまたはOpenBaoからユーザー名とパスワードを読み取る(例: `database/creds/myrole`、下記参照) |
 | `--ssl` | | SSL/TLS接続を有効化 |
 | `--consistency <level>` | | デフォルトの整合性レベル（例: ONE、QUORUM、LOCAL_QUORUM） |
 | `--no-confirm` | | 破壊的コマンド(DROP、DELETE、TRUNCATE)の確認プロンプトを無効化 |
@@ -205,6 +206,35 @@ cqlai [options] [host [port]]
 1. *`-p`でコマンドライン指定(推奨されません - プロセスリストに表示されます)*
 2. *`-u`を`-p`なしで使用した場合の対話型プロンプト(推奨)*
 3. *環境変数`CQLAI_PASSWORD`(自動化に適しています)*
+
+#### VaultまたはOpenBaoからの認証情報
+
+データベースシークレットエンジンを使うと、保存したパスワードの代わりに短期間の
+認証情報を取得できます:
+
+```bash
+export VAULT_ADDR=https://vault.example.com:8200   # またはBAO_ADDR
+vault login -method=oidc                           # またはVAULT_TOKEN / BAO_TOKENを設定
+cqlai --vault-path database/creds/myrole cassandra.example.com
+```
+
+cqlaiは接続前にパスを一度読み取り、そのユーザー名とパスワードが`-u`/`-p`より
+優先され、パスワードは尋ねられません。リースは終了時(`kill`やハングアップを含む)
+に取り消されます。トークンに取り消しの権限がない場合や、cqlaiが`SIGKILL`で
+終了した場合、リースはTTLで期限切れになります。cqlaiはリースを更新しません。
+期限が切れるとVaultがユーザーを削除し、セッションは使えなくなります。
+
+| 変数 | 用途 |
+|---|---|
+| `BAO_ADDR` / `VAULT_ADDR` | サーバーのアドレス(必須) |
+| `BAO_TOKEN` / `VAULT_TOKEN` | トークン。未設定なら`~/.vault-token` |
+| `BAO_CACERT` / `VAULT_CACERT` | サーバーのTLS用CA証明書 |
+| `BAO_NAMESPACE` / `VAULT_NAMESPACE` | ネームスペース(Vault Enterprise) |
+
+両方が設定されている場合は`BAO_`の変数が優先されます。
+
+パスは`CQLAI_VAULT_PATH`、または`cqlai.json`の`vaultPath`(トップレベルまたは
+保存済みの接続)でも指定できます。
 
 #### バッチモードオプション
 | オプション | 短縮 | 説明 |
@@ -997,6 +1027,7 @@ CQLAIがサポートするすべての環境変数です。`CQLAI_*`変数は`CA
 - `CQLAI_KEYSPACE`または`CASSANDRA_KEYSPACE` - デフォルトのキースペース
 - `CQLAI_USERNAME`または`CASSANDRA_USERNAME` - 認証ユーザー名
 - `CQLAI_PASSWORD`または`CASSANDRA_PASSWORD` - 認証パスワード
+- `CQLAI_VAULT_PATH` - ユーザー名とパスワードを読み取るVault/OpenBaoのパス
 - `CQLAI_CONNECT_TIMEOUT` - 接続タイムアウト（秒単位、デフォルト: 10）
 - `CQLAI_REQUEST_TIMEOUT` - リクエストタイムアウト（秒単位、デフォルト: 10）
 - `CQLAI_NO_CONFIRM` - `true`または`1`に設定して破壊的コマンドの確認プロンプトを無効化
@@ -1258,6 +1289,7 @@ CQLAI 0.3.3 以前は、トークンを `~/.cqlai_mcp_token` に、監査ログ�
 | `--tls-cert ファイル`, `--tls-key ファイル` | この証明書と鍵でHTTPSを提供 (PEM) |
 | `--tls-client-ca ファイル` | 各クライアントに、このCAが署名した証明書を求める (PEM) |
 | `--connection 名前` | ヘッドレス: 使う保存済みの接続 |
+| `--vault-path パス` | ヘッドレス: このVault/OpenBaoのパスからユーザー名とパスワードを読み取る |
 | `--permit SELECT,DESCRIBE` | 設定が許可するコマンドのうち、これだけを許可 |
 | `--keyspaces ks1,ks2` | 設定が許可するキースペースのうち、これだけを見せる |
 | `--max-rows N` | ページサイズ(設定より小さい場合) |

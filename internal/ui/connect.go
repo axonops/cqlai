@@ -83,6 +83,7 @@ func (m *MainModel) connectWith(save bool) (*MainModel, tea.Cmd) {
 		SSL:            cfg.SSL,
 		ConnectTimeout: cfg.ConnectTimeout,
 		RequestTimeout: cfg.RequestTimeout,
+		VaultPath:      cfg.VaultPath,
 	})
 	if err != nil {
 		logger.DebugfToFile("Connect", "Connecting to %s:%d: %v", cfg.Host, cfg.Port, err)

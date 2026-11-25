@@ -69,6 +69,9 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 	if options.ConnOptions.Host != "" {
 		cfg.Host = options.ConnOptions.Host
 	}
+	if options.ConnOptions.VaultPath != "" {
+		cfg.VaultPath = options.ConnOptions.VaultPath
+	}
 	if options.ConnOptions.Port != 0 {
 		cfg.Port = options.ConnOptions.Port
 	}
@@ -126,6 +129,7 @@ func NewExecutor(options *Options, writer io.Writer) (*Executor, error) {
 		ConnectTimeout: options.ConnOptions.ConnectTimeout,
 		RequestTimeout: options.ConnOptions.RequestTimeout,
 		ConfigFile:     options.ConnOptions.ConfigFile,
+		VaultPath:      cfg.VaultPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)

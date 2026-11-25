@@ -66,7 +66,12 @@ func RunHeadless(o Options, version string) int {
 	if env := os.Getenv("CQLAI_PASSWORD"); env != "" {
 		conn.Password = env
 	}
-	if conn.Username != "" && conn.Password == "" {
+	if o.VaultPath != "" {
+		conn.VaultPath = o.VaultPath
+	} else if env := os.Getenv("CQLAI_VAULT_PATH"); env != "" {
+		conn.VaultPath = env
+	}
+	if conn.Username != "" && conn.Password == "" && conn.VaultPath == "" {
 		return fail("connection %q has a username and no password: save one with the connection, or set CQLAI_PASSWORD", name)
 	}
 	if o.SSL {
@@ -115,7 +120,7 @@ func RunHeadless(o Options, version string) int {
 
 	server := NewServer(fixed{pol: pol, link: link}, policy.NewLimiter(pol.CallsPerMinute()), audit, version)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	go server.WatchSchema(ctx, 5*time.Second)
 	if err := server.Serve(ctx, os.Stdin, os.Stdout); err != nil && ctx.Err() == nil {
@@ -148,6 +153,7 @@ func newCluster(conn config.Config, consistency string, o Options, where string,
 			ConnectTimeout: o.ConnectTimeout,
 			RequestTimeout: o.RequestTimeout,
 			ConfigFile:     o.ConfigFile,
+			VaultPath:      conn.VaultPath,
 		},
 		where: where,
 		scrub: scrub,
