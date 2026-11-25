@@ -221,12 +221,12 @@ func (sce *SimpleCompletionEngine) getListCompletions(words []string, endsWithSp
 
 func (sce *SimpleCompletionEngine) getShowCompletions(words []string, endsWithSpace bool) []string {
 	if len(words) == 1 && endsWithSpace {
-		return []string{"VERSION", "HOST", "SESSION"}
+		return []string{"VERSION", "HOST", "USER", "SESSION"}
 	}
 	if len(words) == 2 && !endsWithSpace {
 		suggestions := []string{}
 		second := strings.ToLower(words[1])
-		for _, obj := range []string{"VERSION", "HOST", "SESSION"} {
+		for _, obj := range []string{"VERSION", "HOST", "USER", "SESSION"} {
 			if strings.HasPrefix(strings.ToLower(obj), second) && strings.ToLower(obj) != second {
 				suggestions = append(suggestions, obj)
 			}

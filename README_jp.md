@@ -818,6 +818,7 @@ Cassandraクラスタがサポートする任意の有効なCQLステートメ�
   ```sql
   SHOW VERSION          -- Cassandraバージョンを表示
   SHOW HOST            -- 現在の接続詳細を表示
+SHOW USER            -- ログインしているユーザーを表示
   SHOW SESSION         -- すべてのセッション設定を表示
   ```
 

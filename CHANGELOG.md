@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VAULT_ADDR`/`VAULT_TOKEN` or `BAO_ADDR`/`BAO_TOKEN`. The lease is revoked on
   exit when the token is allowed to; it is not renewed. Works in the shell,
   batch mode and `cqlai mcp`.
+- **SHOW USER** (#261). Prints the user the connection logged in as, like
+  cqlsh, or `(not authenticated)` when it did not log in.
 
 ### Fixed
 

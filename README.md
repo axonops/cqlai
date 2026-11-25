@@ -1135,6 +1135,7 @@ Meta-commands provide additional functionality beyond standard CQL:
   ```sql
   SHOW VERSION          -- Show Cassandra version
   SHOW HOST            -- Show current connection details
+  SHOW USER            -- Show the user logged in as
   SHOW SESSION         -- Show all session settings
   ```
 
