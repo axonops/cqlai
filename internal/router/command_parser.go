@@ -81,6 +81,7 @@ func (p *CommandParser) isMetaShowCommand(upperCommand string) bool {
 	// These SHOW commands are meta-commands
 	return strings.Contains(upperCommand, "VERSION") ||
 		strings.Contains(upperCommand, "HOST") ||
+		strings.Contains(upperCommand, "USER") ||
 		strings.Contains(upperCommand, "SESSION")
 }
 

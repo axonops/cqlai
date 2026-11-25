@@ -383,6 +383,15 @@ func (s *Session) Username() string {
 	return s.username
 }
 
+// AuthenticatedUser is the user the connection logged in as, or "" when it
+// did not log in. A username in the settings with no password is not used.
+func (s *Session) AuthenticatedUser() string {
+	if s.cluster == nil || s.cluster.Authenticator == nil {
+		return ""
+	}
+	return s.username
+}
+
 // Query creates a new query with session defaults applied
 func (s *Session) Query(stmt string, values ...interface{}) *gocql.Query {
 	query := s.Session.Query(stmt, values...)

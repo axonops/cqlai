@@ -767,6 +767,7 @@ Los meta-comandos proporcionan funcionalidad adicional más allá del CQL están
   ```sql
   SHOW VERSION          -- Mostrar versión de Cassandra
   SHOW HOST            -- Mostrar detalles de conexión actual
+SHOW USER            -- Mostrar el usuario con el que se ha iniciado sesión
   SHOW SESSION         -- Mostrar toda la configuración de sesión
   ```
 
