@@ -17,6 +17,7 @@ import (
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/axonops/cqlai/internal/config"
 	"github.com/axonops/cqlai/internal/logger"
+	"github.com/axonops/cqlai/internal/telemetry"
 	"github.com/axonops/cqlai/internal/vault"
 )
 
@@ -260,6 +261,17 @@ func NewSessionWithOptions(options SessionOptions) (*Session, error) {
 		cluster.SslOpts = &gocql.SslOptions{
 			Config: tlsConfig,
 		}
+	}
+
+	if cfg.OTel != nil && cfg.OTel.Enabled {
+		if err := telemetry.Start(context.Background()); err != nil {
+			logger.DebugfToFile("Session", "OpenTelemetry tracing not started: %v", err)
+		}
+	}
+	if tp := telemetry.TracerProvider(); tp != nil {
+		observer := telemetry.NewObserver(tp)
+		cluster.QueryObserver = observer
+		cluster.BatchObserver = observer
 	}
 
 	// Try to connect with progressively lower protocol versions

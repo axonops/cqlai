@@ -13,6 +13,9 @@
    "debug": false,
    "historyFile": "~/.cqlai/history",
    "aiHistoryFile": "~/.cqlai/ai_history",
+   "otel": {
+      "enabled": false
+   },
    "ssl": {
       "enabled": false,
       "certPath": "/path/to/client-cert.pem",

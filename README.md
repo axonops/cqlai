@@ -70,6 +70,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
     - [Ollama](#ollama-local-models)
     - [OpenRouter](#openrouter-multiple-models)
     - [Mock Provider](#mock-provider-for-testing)
+  - [OpenTelemetry Tracing](#opentelemetry-tracing)
 - [AI-Powered Query Generation](#ai-powered-query-generation)
 - [MCP Server](#mcp-server)
 - [Apache Parquet Support](#apache-parquet-support)
@@ -287,6 +288,7 @@ The path can also be set with `CQLAI_VAULT_PATH`, or as `vaultPath` in
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--config-file <path>` | | Path to config file (overrides default locations) |
+| `--otel` | | Send OpenTelemetry spans for CQL requests. See [OpenTelemetry Tracing](#opentelemetry-tracing) |
 | `--help` | `-h` | Show help message |
 | `--version` | `-v` | Print version and exit |
 
@@ -1553,6 +1555,10 @@ All environment variables supported by CQLAI. `CQLAI_*` variables take precedenc
 - `CQLAI_PAGE_SIZE` - Pagination size (default: 100)
 - `CQLAI_MAX_MEMORY_MB` - Maximum memory for query results in MB (default: 10)
 
+#### OpenTelemetry
+- `CQLAI_OTEL` - Set to `true` or `1` to send OpenTelemetry spans (equivalent to `--otel`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and the other standard `OTEL_*` variables - where and how spans are sent. See [OpenTelemetry Tracing](#opentelemetry-tracing)
+
 #### AI Configuration
 - `CQLAI_AI_PROVIDER` or `AI_PROVIDER` - AI provider name (mock, openai, anthropic, gemini, ollama, openrouter)
 - `CQLAI_AI_API_KEY` or `AI_API_KEY` - General AI API key
@@ -1567,6 +1573,63 @@ All environment variables supported by CQLAI. `CQLAI_*` variables take precedenc
 - `OPENROUTER_API_KEY` - OpenRouter API key
 - `OPENROUTER_MODEL` - OpenRouter model name
 - `OPENROUTER_URL` - OpenRouter API URL (default: `https://openrouter.ai/api/v1`)
+
+### OpenTelemetry Tracing
+
+CQLAI can send an OpenTelemetry span for every request it makes to Cassandra, to
+an OTLP collector such as the OpenTelemetry Collector, Jaeger or Grafana Tempo.
+It is off by default. Turn it on with any one of:
+
+| Where | Setting |
+|-------|---------|
+| Command line | `--otel` |
+| Environment | `CQLAI_OTEL=true` |
+| `cqlai.json` | `"otel": {"enabled": true}`, at the top level of the file |
+
+`cqlai mcp` has no `--otel` flag; it takes `CQLAI_OTEL` or the `cqlai.json`
+setting. The `OTEL_*` variables on their own do not turn tracing on.
+
+Where the spans go is set with the standard OpenTelemetry environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or grpc, with port 4317
+export OTEL_SERVICE_NAME=nightly-export            # default: cqlai
+cqlai --otel -f export.cql
+```
+
+CQLAI reads `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and the OTLP
+exporter variables: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`,
+`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT`,
+`OTEL_EXPORTER_OTLP_COMPRESSION`, the `OTEL_EXPORTER_OTLP_CERTIFICATE` family,
+and their `OTEL_EXPORTER_OTLP_TRACES_*` forms. `OTEL_TRACES_EXPORTER` and
+`OTEL_SDK_DISABLED` are not read: the exporter is always OTLP, and `--otel` is
+the switch. The protocols are `grpc` and `http/protobuf` (the default). Any
+other value makes CQLAI stop with an error when tracing is turned on with
+`--otel` or `CQLAI_OTEL`, and leaves tracing off, with the reason in the debug
+log, when it is turned on in `cqlai.json`.
+
+Each span is a client span named after the statement's first keyword and the
+keyspace the session is using (set by `USE` or the connection, not necessarily
+the keyspace of the table in the statement), such as `SELECT shop`. Spans carry
+`db.system.name`, `db.namespace`, `db.operation.name`,
+`db.response.returned_rows`, `server.address` and `server.port`, and
+`cassandra.request.attempt` on a retry. A batch is one `BATCH` span with
+`db.operation.batch.size`. A paged query is one span per page, and a retry is a
+span of its own.
+
+The statement text and its bound values are never recorded, since a statement
+can hold a password (`CREATE ROLE ... WITH PASSWORD`) or the data being written.
+A Cassandra error records its error code in hex, such as `0x2200`, in
+`error.type` and `db.response.status_code`. Any other failure records the Go
+error type in `error.type` and no status code. The error message is never
+recorded, since it can quote a value.
+
+CQLAI's own queries, such as reading the schema and the server version, get
+spans too.
+
+These spans have nothing to do with `TRACING ON`, which asks Cassandra to
+record its own trace of a request and is shown in the trace view.
 
 ### Migration from cqlsh
 

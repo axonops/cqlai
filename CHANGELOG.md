@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OpenTelemetry tracing** (#265). `--otel`, `CQLAI_OTEL=true` (or `1`) or
+  `"otel": {"enabled": true}` in `cqlai.json` sends a client span for every
+  request CQLAI makes to Cassandra, to the OTLP collector named by the standard
+  `OTEL_*` variables, over `grpc` or `http/protobuf`. Spans carry the operation,
+  keyspace and host, never the statement text or its values. It is off by
+  default, and off it starts no exporter.
 - **Credentials from Vault or OpenBao** (#260). `--vault-path database/creds/myrole`
   (or `CQLAI_VAULT_PATH`, or `vaultPath` in `cqlai.json`) reads a username and
   password from the database secrets engine before connecting, using

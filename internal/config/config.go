@@ -44,6 +44,10 @@ type Config struct {
 	Name        string   `json:"name,omitempty"`
 	Connections []Config `json:"connections,omitempty"`
 
+	// OTel turns on OpenTelemetry spans for the CQL run. It is read from the
+	// top of the file only.
+	OTel *OTelConfig `json:"otel,omitempty"`
+
 	AI           *AIConfig     `json:"ai,omitempty"`
 	AuthProvider *AuthProvider `json:"authProvider,omitempty"`
 
@@ -58,6 +62,12 @@ type Config struct {
 	// editing a setting lands in the file the settings came from rather than in
 	// a new one somewhere else.
 	SourcePath string `json:"-"`
+}
+
+// OTelConfig is the OpenTelemetry tracing setting. Where the spans go is set
+// with the standard OTEL_* environment variables.
+type OTelConfig struct {
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // MCPConfig is what the MCP server may do: the policy as the file holds it.
