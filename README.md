@@ -14,10 +14,16 @@
 
 **AI features are completely optional** - CQLAI works perfectly as a standalone CQL shell without any AI configuration or API keys.
 
+**Built-in MCP server** - `cqlai mcp` lets an AI assistant such as Claude Code read your cluster through the [Model Context Protocol](https://modelcontextprotocol.io). It never changes data or schema: a change is proposed for you to run. See [MCP Server](#mcp-server).
+
 <div align="center">
   <video src="https://github.com/user-attachments/assets/334bd302-3152-4f48-9d2d-ed617e8d86d3" controls width="100%" style="max-width: 800px;">
     Your browser does not support the video tag.
   </video>
+</div>
+
+<div align="center">
+  <img src="./assets/cqlai-mcp.png" alt="An AI assistant listing a cluster's keyspaces through cqlai mcp" width="100%" style="max-width: 800px;">
 </div>
 
 <div align="center">
@@ -102,6 +108,7 @@ It is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubb
 - Saved connections, so CQLAI starts without a cluster and connects to a named one from the `FILE` menu
 - A `PREFERENCES` window that edits `cqlai.json` from inside the shell
 - Mouse throughout: clickable tabs and settings, drag to select and copy, and a `FILE` menu
+- An MCP server (`cqlai mcp`) that lets an AI assistant read the cluster, under the permissions you set, without changing data or schema
 - **Optional**: AI that writes CQL from plain English, reads a query trace, and reviews a table's definition ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Ollama](https://ollama.ai/), [OpenRouter](https://openrouter.ai/))
 
 We encourage you to **try CQLAI today** and help shape its development! Your feedback and contributions are invaluable in making this the best CQL shell for the Cassandra community. Please [report issues](https://github.com/axonops/cqlai/issues) or [contribute](https://github.com/axonops/cqlai/pulls).
@@ -250,9 +257,9 @@ With the database secrets engine, cqlai can fetch short-lived credentials
 instead of using a stored password:
 
 ```bash
-export VAULT_ADDR=https://vault.example.com:8200   # or BAO_ADDR
-vault login -method=oidc                           # or set VAULT_TOKEN / BAO_TOKEN
-cqlai --vault-path database/creds/myrole cassandra.example.com
+export BAO_ADDR=https://openbao.example.com:8200   # or VAULT_ADDR
+export BAO_TOKEN=$(bao login -method=oidc -field=token) # or VAULT_TOKEN
+cqlai --vault-path database/creds/reader cassandra.example.com
 ```
 
 cqlai reads the path once before connecting, and its username and password

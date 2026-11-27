@@ -14,10 +14,16 @@
 
 **AI機能は完全にオプションです** - CQLAIはAI設定やAPIキーなしでも、スタンドアロンのCQLシェルとして完璧に動作します。
 
+**MCPサーバー内蔵** - `cqlai mcp` を使うと、Claude CodeなどのAIアシスタントが [Model Context Protocol](https://modelcontextprotocol.io) を通してクラスタを読み取れます。データやスキーマを変更することはありません。変更は提案され、実行するのはあなたです。[MCPサーバー](#mcpサーバー)を参照してください。
+
 <div align="center">
   <video src="https://github.com/user-attachments/assets/334bd302-3152-4f48-9d2d-ed617e8d86d3" controls width="100%" style="max-width: 800px;">
     Your browser does not support the video tag.
   </video>
+</div>
+
+<div align="center">
+  <img src="./assets/cqlai-mcp.png" alt="cqlai mcpを通してAIアシスタントがクラスタのキースペースを一覧表示している様子" width="100%" style="max-width: 800px;">
 </div>
 
 <div align="center">
@@ -85,6 +91,7 @@
 - 保存された接続: クラスタなしで起動し、`FILE` メニューから名前付きの接続に接続
 - シェル内から `cqlai.json` を編集する `PREFERENCES` ウィンドウ
 - 全面的なマウス対応: クリックできるタブと設定、ドラッグで選択してコピー、`FILE` メニュー
+- AIアシスタントが、設定した権限の範囲でクラスタを読み取れるMCPサーバー(`cqlai mcp`)。データやスキーマは変更しません
 - **オプション**: 平易な言葉からCQLを書き、クエリトレースを読み、テーブル定義をレビューするAI([OpenAI](https://openai.com/)、[Anthropic](https://www.anthropic.com/)、[Google Gemini](https://ai.google.dev/)、[Ollama](https://ollama.ai/)、[OpenRouter](https://openrouter.ai/))
 
 **今すぐCQLAIをお試しください**。開発にご協力いただければ幸いです！フィードバックと貢献は、CassandraコミュニティにとってベストなCQLシェルを作るために非常に貴重です。[問題を報告](https://github.com/axonops/cqlai/issues)するか、[貢献](https://github.com/axonops/cqlai/pulls)してください。
@@ -213,9 +220,9 @@ cqlai [options] [host [port]]
 認証情報を取得できます:
 
 ```bash
-export VAULT_ADDR=https://vault.example.com:8200   # またはBAO_ADDR
-vault login -method=oidc                           # またはVAULT_TOKEN / BAO_TOKENを設定
-cqlai --vault-path database/creds/myrole cassandra.example.com
+export BAO_ADDR=https://openbao.example.com:8200   # またはVAULT_ADDR
+export BAO_TOKEN=$(bao login -method=oidc -field=token) # またはVAULT_TOKEN
+cqlai --vault-path database/creds/reader cassandra.example.com
 ```
 
 cqlaiは接続前にパスを一度読み取り、そのユーザー名とパスワードが`-u`/`-p`より

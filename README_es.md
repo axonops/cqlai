@@ -14,10 +14,16 @@
 
 **Las funciones de IA son completamente opcionales** - CQLAI funciona perfectamente como un shell CQL independiente sin ninguna configuración de IA o claves API.
 
+**Servidor MCP integrado** - `cqlai mcp` permite que un asistente de IA como Claude Code lea tu clúster a través del [Model Context Protocol](https://modelcontextprotocol.io). Nunca cambia datos ni esquema: un cambio se propone para que lo ejecutes tú. Ver [Servidor MCP](#servidor-mcp).
+
 <div align="center">
   <video src="https://github.com/user-attachments/assets/334bd302-3152-4f48-9d2d-ed617e8d86d3" controls width="100%" style="max-width: 800px;">
     Your browser does not support the video tag.
   </video>
+</div>
+
+<div align="center">
+  <img src="./assets/cqlai-mcp.png" alt="Un asistente de IA listando los keyspaces de un clúster a través de cqlai mcp" width="100%" style="max-width: 800px;">
 </div>
 
 <div align="center">
@@ -101,6 +107,7 @@ Está construido con [Bubble Tea](https://github.com/charmbracelet/bubbletea), [
 - Conexiones guardadas: CQLAI arranca sin clúster y se conecta a una con nombre desde el menú `FILE`
 - Una ventana `PREFERENCES` que edita `cqlai.json` desde el propio shell
 - Ratón en todas partes: pestañas y ajustes clicables, arrastrar para seleccionar y copiar, y un menú `FILE`
+- Un servidor MCP (`cqlai mcp`) que permite a un asistente de IA leer el clúster, con los permisos que definas, sin cambiar datos ni esquema
 - **Opcional**: IA que escribe CQL en lenguaje natural, lee una traza de consulta y revisa la definición de una tabla ([OpenAI](https://openai.com/), [Anthropic](https://www.anthropic.com/), [Google Gemini](https://ai.google.dev/), [Ollama](https://ollama.ai/), [OpenRouter](https://openrouter.ai/))
 
 Te animamos a **probar CQLAI hoy** y ayudar a dar forma a su desarrollo. Tu retroalimentación y contribuciones son invaluables para hacer de este el mejor shell CQL para la comunidad de Cassandra. Por favor [reporta problemas](https://github.com/axonops/cqlai/issues) o [contribuye](https://github.com/axonops/cqlai/pulls).
@@ -225,9 +232,9 @@ Con el motor de secretos de bases de datos, cqlai puede obtener credenciales
 de corta duración en lugar de usar una contraseña guardada:
 
 ```bash
-export VAULT_ADDR=https://vault.example.com:8200   # o BAO_ADDR
-vault login -method=oidc                           # o define VAULT_TOKEN / BAO_TOKEN
-cqlai --vault-path database/creds/myrole cassandra.example.com
+export BAO_ADDR=https://openbao.example.com:8200   # o VAULT_ADDR
+export BAO_TOKEN=$(bao login -method=oidc -field=token) # o VAULT_TOKEN
+cqlai --vault-path database/creds/reader cassandra.example.com
 ```
 
 cqlai lee la ruta una vez antes de conectar, y su usuario y contraseña
